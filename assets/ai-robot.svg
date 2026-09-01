@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 420" role="img" aria-labelledby="t d">
+<title id="t">AI Robot</title><desc id="d">科技感 AI 機器人半身圖</desc>
+<defs>
+  <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#82efff"/><stop offset=".5" stop-color="#278cff"/><stop offset="1" stop-color="#243a7d"/>
+  </linearGradient>
+  <linearGradient id="g2" x1=".2" y1="0" x2=".8" y2="1">
+    <stop offset="0" stop-color="#dffaff"/><stop offset=".55" stop-color="#7899b8"/><stop offset="1" stop-color="#25344e"/>
+  </linearGradient>
+  <radialGradient id="glow">
+    <stop offset="0" stop-color="#63eaff" stop-opacity=".85"/><stop offset="1" stop-color="#63eaff" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="soft"><feGaussianBlur stdDeviation="8"/></filter>
+</defs>
+<circle cx="210" cy="200" r="150" fill="url(#glow)" opacity=".18" filter="url(#soft)"/>
+<path d="M118 331c13-53 49-78 92-78s79 25 92 78l12 48H106z" fill="#0d1a2c" stroke="#3f91c6" stroke-opacity=".6"/>
+<path d="M145 328c17-33 39-48 65-48s48 15 65 48" fill="none" stroke="url(#g1)" stroke-width="7" stroke-linecap="round"/>
+<rect x="187" y="234" width="46" height="54" rx="14" fill="url(#g2)" stroke="#7feaff" stroke-opacity=".65"/>
+<path d="M128 150c0-63 34-104 82-104s82 41 82 104v62c0 49-36 79-82 79s-82-30-82-79z" fill="url(#g2)" stroke="#7feaff" stroke-width="2"/>
+<path d="M145 145c9-43 31-67 65-67s56 24 65 67l-9 72c-3 28-25 47-56 47s-53-19-56-47z" fill="#0a1525" stroke="#5ccfea" stroke-opacity=".55"/>
+<path d="M158 164h47l-7 32h-36zM215 164h47l-4 32h-36z" fill="#101e31" stroke="#5edfff"/>
+<path d="M169 178h24M227 178h24" stroke="#8ff3ff" stroke-width="5" stroke-linecap="round"/>
+<circle cx="181" cy="178" r="5" fill="#dfffff"/><circle cx="239" cy="178" r="5" fill="#dfffff"/>
+<path d="M184 223c8 7 17 10 26 10s18-3 26-10" fill="none" stroke="#5edfff" stroke-width="3" stroke-linecap="round"/>
+<path d="M128 173l-18 8v46l24 11M292 173l18 8v46l-24 11" fill="#19324b" stroke="#5edfff"/>
+<path d="M210 46V25" stroke="#6fe9ff" stroke-width="4"/><circle cx="210" cy="18" r="8" fill="#7df3ff"/>
+<circle cx="210" cy="337" r="21" fill="#0b1b2d" stroke="#58dcff" stroke-width="3"/>
+<circle cx="210" cy="337" r="9" fill="#8cf6ff"/>
+<path d="M155 343l-32 20M265 343l32 20M159 125l-25-14M261 125l25-14" stroke="#3b7fa8" stroke-width="3" opacity=".7"/>
+</svg>
