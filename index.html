@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <title>BGS 128D AI Predictor Lab</title>
-  <meta name="description" content="64D 牌靴進程 + 64D 路單結構的 128D Frozen Direct LinUCB 本地測試面板">
+  <title>BGS 128D Frozen Prior AI Predictor Lab</title>
+  <meta name="description" content="64D 牌靴進程 + 64D 路單結構的 128D Frozen Prior Contextual LinUCB 本地測試面板">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -15,15 +15,15 @@
   <main class="shell">
     <section class="hero panel">
       <div class="hero-copy">
-        <div class="eyebrow">BGS AI · 128D LOCAL BRAIN</div>
-        <h1>128D AI 預測實驗室</h1>
+        <div class="eyebrow">BGS AI · 128D FROZEN PRIOR</div>
+        <h1>128D Frozen Prior 實驗室</h1>
         <p class="hero-text">
-          64維牌靴進程 + 64維路單結構。莊／閒／和只負責輸入歷史；
-          「開始分析」沿用128D本地腦直接預測，方便獨立測試維度擴充後的效能。
+          64維牌靴進程 + 64維路單結構。Context 先固定正規化與 Regime Gate，
+          再交給固定 B/P 雙臂 A/b 做 Contextual LinUCB 推論；執行期間完全不學習、不更新。
         </p>
         <div class="status-row">
           <span class="status-pill" id="modePill">準備歷史</span>
-          <span class="status-pill subtle">64D + 64D · 128D DIRECT</span>
+          <span class="status-pill subtle">64D + 64D · FROZEN PRIOR</span>
           <span class="status-pill subtle" id="roundPill">0 局</span>
         </div>
       </div>
@@ -43,7 +43,7 @@
             <div class="eyebrow">NEXT ROUND</div>
             <h2>下一局方向</h2>
           </div>
-          <div class="brain-state" id="brainState">尚未建腦</div>
+          <div class="brain-state" id="brainState">Frozen Prior V1</div>
         </div>
 
         <div class="prediction-main">
@@ -61,7 +61,7 @@
         </div>
 
         <div class="message" id="message" aria-live="polite">
-          先用莊／閒／和按鈕建立歷史，建議至少 8 局，再按「開始分析」。
+          先用莊／閒／和按鈕建立歷史，再按「開始分析」。Frozen A/b 在執行期間永遠不更新。
         </div>
       </section>
 
@@ -95,8 +95,8 @@
         </div>
 
         <div class="mini-note">
-          莊／閒／和只會把結果加入歷史。按「開始分析」才會用目前完整歷史重新算128D Context，
-          <b>沿用本地 A/b 直接預測，不做 Walk-forward、不更新上一筆 prediction。</b>
+          莊／閒／和只加入歷史；「開始分析」才重新計算 128D Context。
+          <b>不 bootstrap、不 Walk-forward、不 replay、不結算上一筆、不更新 A/b、不 decay。</b>
         </div>
       </section>
     </section>
@@ -109,7 +109,7 @@
         </div>
         <div class="history-meta">
           <span>目前歷史：<b id="seedCount">0</b></span>
-          <span>本地腦 updates：<b id="liveCount">0</b></span>
+          <span>Frozen updates：<b id="liveCount">0</b></span>
         </div>
       </div>
       <div class="history-track" id="historyTrack">
@@ -149,10 +149,10 @@
     </section>
 
     <footer>
-      128D（64D＋64D）Local Direct 測試面板 · 僅供 BBB 網頁版獨立測試 · 不會連線到正式 LINE 模型
+      128D Frozen Prior Contextual LinUCB 測試面板 · 固定 A/b · updates 永遠為 0 · 僅供 BBB 網頁版獨立測試
     </footer>
   </main>
 
-  <script src="app128.js"></script>
+  <script src="app128prior.js"></script>
 </body>
 </html>
