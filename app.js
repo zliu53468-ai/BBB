@@ -4,6 +4,8 @@
   const SHOE_DIM = 32;
   const ROAD_DIM = 32;
   const DIM = SHOE_DIM + ROAD_DIM;
+  const PRIMARY_WEIGHTS = Object.freeze({ shoe: 0.40, road: 0.60, key: "40/60" });
+  const BASELINE_WEIGHTS = Object.freeze({ shoe: 0.50, road: 0.50, key: "50/50" });
   const ARMS = ["P", "B"];
   const RIDGE = 1.0;
   const FORGETTING = 0.90;
@@ -17,14 +19,15 @@
   const AVG_CARDS_PER_HAND = 4.9;
   const DECKS = 8;
   const TOTAL_CARDS = 52 * DECKS;
-  const STORAGE_KEY = "bgs64d_32plus32_frozen_direct_tech_panel_v2";
-  const LEGACY_STORAGE_KEY = "bgs32d_frozen_direct_tech_panel_v1";
+  const STORAGE_KEY = "bgs64d_weighted_ab_online_panel_v3";
+  const PREVIOUS_64D_STORAGE_KEY = "bgs64d_32plus32_frozen_direct_tech_panel_v2";
+  const LEGACY_32D_STORAGE_KEY = "bgs32d_frozen_direct_tech_panel_v1";
 
   const SHOE_NAMES = [
     "remaining_cards_ratio","penetration_ratio","estimated_hands_remaining_norm","shoe_maturity_ratio",
-    "rank_A_relative_ratio","rank_2_relative_ratio","rank_3_relative_ratio","rank_4_relative_ratio",
-    "rank_5_relative_ratio","rank_6_relative_ratio","rank_7_relative_ratio","rank_8_relative_ratio",
-    "rank_9_relative_ratio","rank_10JQK_relative_ratio","physical_edge_proxy","shoe_information_reliability",
+    "rank_A_relative_deviation","rank_2_relative_deviation","rank_3_relative_deviation","rank_4_relative_deviation",
+    "rank_5_relative_deviation","rank_6_relative_deviation","rank_7_relative_deviation","rank_8_relative_deviation",
+    "rank_9_relative_deviation","rank_10JQK_relative_deviation","physical_edge_proxy","shoe_information_reliability",
     "shoe_phase_early","shoe_phase_middle","shoe_phase_late","estimated_hands_played_norm",
     "remaining_decks_ratio","hands_elapsed_log_norm","tie_ratio_all","tie_ratio_recent8",
     "tie_ratio_recent16","bp_balance_strength","bp_entropy_recent12","outcome_entropy_recent12",
@@ -48,9 +51,13 @@
     history: [],
     active: false,
     brain: null,
-    lastPrediction: null
+    baselineBrain: null,
+    lastPrediction: null,
+    lastBaselinePrediction: null,
+    stats: null,
+    settlements: []
   };
-  let migratedFrom32D = false;
+  let migratedFromPreviousVersion = false;
 
   function freshArm() {
     return { A: eye(DIM), b: Array(DIM).fill(0), n: 0, effective_n: 0 };
@@ -63,6 +70,22 @@
       last_selected: "",
       selection_streak: 0
     };
+  }
+
+  function freshStats() {
+    return {
+      settled: 0,
+      correct: 0,
+      pushes: 0,
+      recent: [],
+      current_losing_streak: 0,
+      max_losing_streak: 0,
+      brier_sum: 0
+    };
+  }
+
+  function freshExperimentStats() {
+    return { weighted: freshStats(), baseline: freshStats() };
   }
 
   function eye(n) {
@@ -88,21 +111,51 @@
     return !!brain && !!brain.arms && validArm(brain.arms.P) && validArm(brain.arms.B);
   }
 
+  function validPrediction(prediction) {
+    return !!prediction && ["B","P"].includes(prediction.direction) &&
+      Array.isArray(prediction.x) && prediction.x.length === DIM &&
+      prediction.probabilities && Number.isFinite(+prediction.probabilities.B);
+  }
+
+  function normalizeStats(raw) {
+    const base = freshStats();
+    if (!raw || typeof raw !== "object") return base;
+    base.settled = Math.max(0, Math.floor(+raw.settled || 0));
+    base.correct = Math.max(0, Math.min(base.settled, Math.floor(+raw.correct || 0)));
+    base.pushes = Math.max(0, Math.floor(+raw.pushes || 0));
+    base.recent = Array.isArray(raw.recent) ? raw.recent.filter(x => x === 0 || x === 1).slice(-20) : [];
+    base.current_losing_streak = Math.max(0, Math.floor(+raw.current_losing_streak || 0));
+    base.max_losing_streak = Math.max(base.current_losing_streak, Math.floor(+raw.max_losing_streak || 0));
+    base.brier_sum = Math.max(0, +raw.brier_sum || 0);
+    return base;
+  }
+
   function load() {
     try {
       const current = localStorage.getItem(STORAGE_KEY);
-      const legacy = current ? null : localStorage.getItem(LEGACY_STORAGE_KEY);
-      const raw = JSON.parse(current || legacy || "null");
+      const previous64 = current ? null : localStorage.getItem(PREVIOUS_64D_STORAGE_KEY);
+      const previous32 = current || previous64 ? null : localStorage.getItem(LEGACY_32D_STORAGE_KEY);
+      const previous = previous64 || previous32;
+      const raw = JSON.parse(current || previous || "null");
       if (raw && Array.isArray(raw.history)) {
-        const compatibleBrain = !legacy && validBrain(raw.brain);
-        const compatiblePrediction = compatibleBrain && raw.lastPrediction &&
-          Array.isArray(raw.lastPrediction.x) && raw.lastPrediction.x.length === DIM;
-        migratedFrom32D = !!legacy;
+        const compatibleState = !!current && validBrain(raw.brain) && validBrain(raw.baselineBrain);
+        const compatiblePredictions = compatibleState && validPrediction(raw.lastPrediction) &&
+          validPrediction(raw.lastBaselinePrediction) &&
+          raw.lastPrediction.historyLength === raw.history.length &&
+          raw.lastBaselinePrediction.historyLength === raw.history.length;
+        migratedFromPreviousVersion = !!previous;
         state = {
           history: raw.history.filter(x => ["B","P","T"].includes(x)).slice(-500),
-          active: compatiblePrediction ? !!raw.active : false,
-          brain: compatibleBrain ? raw.brain : freshBrain(),
-          lastPrediction: compatiblePrediction ? raw.lastPrediction : null
+          active: compatiblePredictions ? !!raw.active : false,
+          brain: compatibleState ? raw.brain : freshBrain(),
+          baselineBrain: compatibleState ? raw.baselineBrain : freshBrain(),
+          lastPrediction: compatiblePredictions ? raw.lastPrediction : null,
+          lastBaselinePrediction: compatiblePredictions ? raw.lastBaselinePrediction : null,
+          stats: compatibleState ? {
+            weighted: normalizeStats(raw.stats && raw.stats.weighted),
+            baseline: normalizeStats(raw.stats && raw.stats.baseline)
+          } : freshExperimentStats(),
+          settlements: compatibleState && Array.isArray(raw.settlements) ? raw.settlements : []
         };
       }
     } catch (_) {}
@@ -314,7 +367,12 @@
     return clip((weights[0] + weights[1]) / total);
   }
 
-  function context64(seq) {
+  function normalizeBlock(values) {
+    const norm = Math.sqrt(values.reduce((sum, value) => sum + value * value, 0));
+    return norm > 1e-12 ? values.map(value => value / norm) : values.map(() => 0);
+  }
+
+  function context64(seq, weights = PRIMARY_WEIGHTS) {
     const used = Math.min(TOTAL_CARDS, seq.length * AVG_CARDS_PER_HAND);
     const remaining = Math.max(0, TOTAL_CARDS - used);
     const rr = clip(remaining / TOTAL_CARDS);
@@ -328,10 +386,11 @@
     const allBankerRatio = bankerRatio(seq, Math.max(1, bp(seq).length));
 
     // Button-only panel has no exact rank/card input.
-    // Therefore point-rank ratios stay neutral, exactly as the no-exact-composition fallback.
+    // Relative ratios are centered as (ratio - 1), so missing/neutral composition is 0
+    // and cannot consume the shoe block's normalized energy as a fake constant signal.
     const shoe = [
       rr, penetration, rr, maturity,
-      1,1,1,1,1,1,1,1,1,1,
+      0,0,0,0,0,0,0,0,0,0,
       0,0,
       phaseEarly,
       phaseMiddle,
@@ -402,10 +461,19 @@
       last3Same
     ];
 
-    const vector = [...shoe, ...road];
-    if (shoe.length !== SHOE_DIM || road.length !== ROAD_DIM || vector.length !== DIM) {
-      throw new Error(`64D context shape mismatch: shoe=${shoe.length}, road=${road.length}, total=${vector.length}`);
+    if (shoe.length !== SHOE_DIM || road.length !== ROAD_DIM) {
+      throw new Error(`64D context shape mismatch: shoe=${shoe.length}, road=${road.length}`);
     }
+
+    // LinUCB 的能量項是 xᵀA⁻¹x，因此以 sqrt(weight) 縮放，
+    // 讓兩個已各自 L2 正規化的區塊真正呈現指定的 40/60 或 50/50 佔比。
+    const shoeScale = Math.sqrt(weights.shoe);
+    const roadScale = Math.sqrt(weights.road);
+    const vector = [
+      ...normalizeBlock(shoe).map(value => value * shoeScale),
+      ...normalizeBlock(road).map(value => value * roadScale)
+    ];
+    if (vector.length !== DIM) throw new Error(`64D context total mismatch: total=${vector.length}`);
     return vector;
   }
 
@@ -453,8 +521,8 @@
     };
   }
 
-  function choose(brain, seq) {
-    const x = context64(seq);
+  function choose(brain, seq, weights = PRIMARY_WEIGHTS) {
+    const x = context64(seq, weights);
     const nBP = bp(seq).length;
     const baseScale = nBP < 8 ? 1.35 : nBP < 15 ? 1.15 : 1.0;
     const eff = {
@@ -501,7 +569,18 @@
     brain.selection_streak = prev === direction ? (brain.selection_streak || 0) + 1 : 1;
     brain.last_selected = direction;
 
-    return { direction, reason, x, scores, gap, probabilities: { B: pB, P: pP }, confidence };
+    return {
+      direction,
+      reason,
+      x,
+      scores,
+      gap,
+      probabilities: { B: pB, P: pP },
+      confidence,
+      weights: { shoe: weights.shoe, road: weights.road, key: weights.key },
+      historyLength: seq.length,
+      targetRound: seq.length + 1
+    };
   }
 
   function decayBrain(brain) {
@@ -519,10 +598,10 @@
   }
 
   function trainingUpdate(brain, action, x, actual) {
+    if (actual === "T") return;
+
     decayBrain(brain);
     brain.updates++;
-
-    if (actual === "T") return;
 
     const reward = action === actual ? (action === "B" ? 0.95 : 1.0) : -1.0;
     const arm = brain.arms[action];
@@ -537,22 +616,99 @@
     arm.effective_n++;
   }
 
-  function bootstrap(history) {
-    const brain = freshBrain();
-    for (let target = 1; target < history.length; target++) {
-      const prefix = history.slice(0, target);
-      const pred = choose(brain, prefix);
-      trainingUpdate(brain, pred.direction, pred.x, history[target]);
+  function recordStats(stats, prediction, actual) {
+    if (actual === "T") {
+      stats.pushes++;
+      return;
     }
-    return brain;
+
+    const hit = prediction.direction === actual ? 1 : 0;
+    stats.settled++;
+    stats.correct += hit;
+    stats.recent.push(hit);
+    stats.recent = stats.recent.slice(-20);
+    stats.current_losing_streak = hit ? 0 : stats.current_losing_streak + 1;
+    stats.max_losing_streak = Math.max(stats.max_losing_streak, stats.current_losing_streak);
+
+    const actualB = actual === "B" ? 1 : 0;
+    const pB = clip(+prediction.probabilities.B);
+    stats.brier_sum += (pB - actualB) ** 2;
+  }
+
+  function predictionSnapshot(prediction) {
+    return {
+      direction: prediction.direction,
+      x: prediction.x,
+      pB: prediction.probabilities.B
+    };
+  }
+
+  function applySettlement(entry) {
+    const weightedPrediction = {
+      direction: entry.weighted.direction,
+      x: entry.weighted.x,
+      probabilities: { B: entry.weighted.pB, P: 1 - entry.weighted.pB }
+    };
+    const baselinePrediction = {
+      direction: entry.baseline.direction,
+      x: entry.baseline.x,
+      probabilities: { B: entry.baseline.pB, P: 1 - entry.baseline.pB }
+    };
+
+    recordStats(state.stats.weighted, weightedPrediction, entry.actual);
+    recordStats(state.stats.baseline, baselinePrediction, entry.actual);
+    trainingUpdate(state.brain, weightedPrediction.direction, weightedPrediction.x, entry.actual);
+    trainingUpdate(state.baselineBrain, baselinePrediction.direction, baselinePrediction.x, entry.actual);
+  }
+
+  function settlePending(actual) {
+    if (!validPrediction(state.lastPrediction) || !validPrediction(state.lastBaselinePrediction)) return null;
+    if (state.lastPrediction.historyLength !== state.history.length ||
+        state.lastBaselinePrediction.historyLength !== state.history.length) return null;
+
+    const entry = {
+      round: state.history.length + 1,
+      actual,
+      weighted: predictionSnapshot(state.lastPrediction),
+      baseline: predictionSnapshot(state.lastBaselinePrediction)
+    };
+    state.settlements.push(entry);
+    applySettlement(entry);
+    return entry;
+  }
+
+  function rebuildLearningState() {
+    const retained = state.settlements.filter(entry =>
+      entry && entry.round <= state.history.length && ["B","P","T"].includes(entry.actual) &&
+      entry.weighted && entry.baseline &&
+      Array.isArray(entry.weighted.x) && entry.weighted.x.length === DIM &&
+      Array.isArray(entry.baseline.x) && entry.baseline.x.length === DIM
+    );
+    state.brain = freshBrain();
+    state.baselineBrain = freshBrain();
+    state.stats = freshExperimentStats();
+    state.settlements = retained;
+    for (const entry of retained) applySettlement(entry);
   }
 
   function addOutcome(outcome) {
     if (!["B","P","T"].includes(outcome)) return;
+    const settlement = settlePending(outcome);
     state.history.push(outcome);
-    // 跟原測試面板一樣：輸入歷史只改 history，不自動預測、不更新 A/b。
+    state.active = false;
     state.lastPrediction = null;
-    setMessage(`已加入第 ${state.history.length} 局：${outcome === "B" ? "莊" : outcome === "P" ? "閒" : "和"}。按「開始分析」＝沿用64D（32D＋32D）本地腦直接預測。`);
+    state.lastBaselinePrediction = null;
+
+    const label = outcome === "B" ? "莊" : outcome === "P" ? "閒" : "和";
+    if (!settlement) {
+      setMessage(`已加入第 ${state.history.length} 局：${label}。尚無待結算預測，按「開始分析」預測下一局。`);
+    } else if (outcome === "T") {
+      setMessage(`第 ${state.history.length} 局開和：兩組測試皆記為 Push，不計勝負且不更新 A/b。`);
+    } else {
+      const weightedHit = settlement.weighted.direction === outcome ? "命中" : "未中";
+      const baselineHit = settlement.baseline.direction === outcome ? "命中" : "未中";
+      setMessage(`第 ${state.history.length} 局已延遲結算：40/60 ${weightedHit}；50/50 ${baselineHit}。兩組 A/b 已各自更新。`);
+    }
     save();
     render();
   }
@@ -562,14 +718,25 @@
       setMessage("請先用莊／閒／和輸入歷史紀錄。", true);
       return;
     }
-    if (!state.brain || !state.brain.arms) state.brain = freshBrain();
+    if (!validBrain(state.brain)) state.brain = freshBrain();
+    if (!validBrain(state.baselineBrain)) state.baselineBrain = freshBrain();
+    if (!state.stats) state.stats = freshExperimentStats();
 
-    // 完全對應原測試面板的 Frozen Direct 流程：
-    // load local brain -> 用目前完整 history 算64D Context -> predict -> save local brain
-    // 不 bootstrap、不回放、不結算上一筆、不更新 A/b、不 decay。
+    if (validPrediction(state.lastPrediction) && validPrediction(state.lastBaselinePrediction) &&
+        state.lastPrediction.historyLength === state.history.length &&
+        state.lastBaselinePrediction.historyLength === state.history.length) {
+      state.active = true;
+      setMessage(`第 ${state.history.length + 1} 局已存在待結算預測，請輸入實際莊／閒／和後再繼續。`, true);
+      render();
+      return;
+    }
+
     state.active = true;
-    state.lastPrediction = choose(state.brain, state.history);
-    setMessage(`已沿用64D（32D＋32D）本地腦直接預測第 ${state.history.length + 1} 局。A/b 未更新。`);
+    state.lastPrediction = choose(state.brain, state.history, PRIMARY_WEIGHTS);
+    state.lastBaselinePrediction = choose(state.baselineBrain, state.history, BASELINE_WEIGHTS);
+    const weightedDirection = state.lastPrediction.direction === "B" ? "莊" : "閒";
+    const baselineDirection = state.lastBaselinePrediction.direction === "B" ? "莊" : "閒";
+    setMessage(`第 ${state.history.length + 1} 局：40/60 主模型預測${weightedDirection}；50/50對照組預測${baselineDirection}。輸入開獎結果後才延遲更新。`);
     save();
     render();
   }
@@ -581,8 +748,8 @@
     }
     state.active = false;
     state.lastPrediction = null;
-    // 本地 brain 保留，等同測試面板 localStorage 腦，不清空 A/b。
-    setMessage("分析已結束。歷史與64D本地腦都保留，可繼續追加紀錄後再次開始分析。");
+    state.lastBaselinePrediction = null;
+    setMessage("分析已結束。歷史、兩組64D本地腦與A/B統計都會保留。");
     save();
     render();
   }
@@ -593,9 +760,14 @@
       return;
     }
     const removed = state.history.pop();
+    const before = state.settlements.length;
+    state.settlements = state.settlements.filter(entry => entry.round <= state.history.length);
+    if (state.settlements.length !== before) rebuildLearningState();
     state.active = false;
     state.lastPrediction = null;
-    setMessage(`已返回上一局（移除 ${removed}）。本地64D腦沒有更新；要預測請再按「開始分析」。`);
+    state.lastBaselinePrediction = null;
+    const rollback = state.settlements.length !== before ? "，對應學習與統計已回滾" : "";
+    setMessage(`已返回上一局（移除 ${removed}）${rollback}；要預測請再按「開始分析」。`);
     save();
     render();
   }
@@ -641,7 +813,7 @@
       el("ucbP").textContent = "—";
       el("scoreGap").textContent = "—";
       orb.className = "direction-orb idle";
-      renderFeatures(context64(state.history));
+      renderFeatures(context64(state.history, PRIMARY_WEIGHTS));
       return;
     }
 
@@ -655,15 +827,64 @@
     renderFeatures(p.x);
   }
 
+  function accuracyText(stats, recent = false) {
+    const values = recent ? stats.recent : null;
+    const total = recent ? values.length : stats.settled;
+    const correct = recent ? values.reduce((sum, value) => sum + value, 0) : stats.correct;
+    return total ? `${(correct / total * 100).toFixed(2)}%` : "—";
+  }
+
+  function brierText(stats) {
+    return stats.settled ? (stats.brier_sum / stats.settled).toFixed(4) : "—";
+  }
+
+  function directionText(prediction) {
+    if (!state.active || !validPrediction(prediction)) return "—";
+    return prediction.direction === "B" ? "莊 · B" : "閒 · P";
+  }
+
+  function renderExperimentStats() {
+    const weighted = state.stats.weighted;
+    const baseline = state.stats.baseline;
+
+    el("weightedNext").textContent = directionText(state.lastPrediction);
+    el("weightedSettled").textContent = weighted.settled;
+    el("weightedAccuracy").textContent = accuracyText(weighted);
+    el("weightedRecent").textContent = accuracyText(weighted, true);
+    el("weightedMaxLoss").textContent = weighted.max_losing_streak;
+    el("weightedBrier").textContent = brierText(weighted);
+
+    el("baselineNext").textContent = directionText(state.lastBaselinePrediction);
+    el("baselineSettled").textContent = baseline.settled;
+    el("baselineAccuracy").textContent = accuracyText(baseline);
+    el("baselineRecent").textContent = accuracyText(baseline, true);
+    el("baselineMaxLoss").textContent = baseline.max_losing_streak;
+    el("baselineBrier").textContent = brierText(baseline);
+
+    const summary = el("abSummary");
+    if (!weighted.settled) {
+      summary.textContent = "至少完成一筆『預測 → 輸入下一局結果』後，才會開始比較。";
+      return;
+    }
+    const weightedRate = weighted.correct / weighted.settled;
+    const baselineRate = baseline.correct / Math.max(1, baseline.settled);
+    const rateGap = (weightedRate - baselineRate) * 100;
+    const weightedBrier = weighted.brier_sum / weighted.settled;
+    const baselineBrier = baseline.brier_sum / Math.max(1, baseline.settled);
+    const leader = rateGap > 0 ? "40/60主模型領先" : rateGap < 0 ? "50/50對照組領先" : "兩組命中率相同";
+    summary.textContent = `${leader} ${Math.abs(rateGap).toFixed(2)} 個百分點；Brier差 ${(weightedBrier - baselineBrier).toFixed(4)}（負值代表40/60較佳）。`;
+  }
+
   function renderDebug() {
     const brain = state.brain;
+    const baselineBrain = state.baselineBrain;
     const debug = {
-      model: "64D (32D Shoe + 32D Road) Frozen Direct Local Brain",
-      version: "FROZEN-DIRECT-V10-64D-STATIC-PANEL",
+      model: "64D weighted online LinUCB A/B lab",
+      version: "WEIGHTED-ONLINE-V11-64D-AB",
       active: state.active,
       totalHistory: state.history.length,
       history: state.history.join(""),
-      brain: brain ? {
+      primary_40_60: brain ? {
         stored_updates: brain.updates,
         effective_n: {
           B: brain.arms.B.effective_n,
@@ -675,16 +896,42 @@
         },
         last_selected: brain.last_selected,
         selection_streak: brain.selection_streak,
-        direct_predict_only: true,
+        weights: PRIMARY_WEIGHTS,
         no_bootstrap_on_start: true,
-        no_feedback_update: true
+        delayed_feedback_update: true
       } : null,
-      prediction: state.lastPrediction ? {
+      baseline_50_50: baselineBrain ? {
+        stored_updates: baselineBrain.updates,
+        effective_n: {
+          B: baselineBrain.arms.B.effective_n,
+          P: baselineBrain.arms.P.effective_n
+        },
+        raw_n: {
+          B: baselineBrain.arms.B.n,
+          P: baselineBrain.arms.P.n
+        },
+        last_selected: baselineBrain.last_selected,
+        selection_streak: baselineBrain.selection_streak,
+        weights: BASELINE_WEIGHTS,
+        no_bootstrap_on_start: true,
+        delayed_feedback_update: true
+      } : null,
+      stats: state.stats,
+      settlements: state.settlements.length,
+      primary_prediction: state.lastPrediction ? {
         direction: state.lastPrediction.direction,
         confidence: state.lastPrediction.confidence,
         gap: state.lastPrediction.gap,
         reason: state.lastPrediction.reason,
         context64: state.lastPrediction.x,
+        dimensions: { shoe: SHOE_DIM, road: ROAD_DIM, total: DIM }
+      } : null,
+      baseline_prediction: state.lastBaselinePrediction ? {
+        direction: state.lastBaselinePrediction.direction,
+        confidence: state.lastBaselinePrediction.confidence,
+        gap: state.lastBaselinePrediction.gap,
+        reason: state.lastBaselinePrediction.reason,
+        context64: state.lastBaselinePrediction.x,
         dimensions: { shoe: SHOE_DIM, road: ROAD_DIM, total: DIM }
       } : null
     };
@@ -692,17 +939,19 @@
   }
 
   function render() {
-    el("modePill").textContent = state.active ? "已完成本次預測" : "準備歷史";
+    el("modePill").textContent = state.active ? "等待下一局結算" : "準備下一次預測";
     el("roundPill").textContent = `${state.history.length} 局`;
-    el("brainState").textContent = "沿用64D本地腦";
+    el("brainState").textContent = "64D · 牌靴40%／牌路60%";
     el("seedCount").textContent = state.history.length;
     el("liveCount").textContent = state.brain ? Math.round((state.brain.updates || 0)) : 0;
+    el("baselineLiveCount").textContent = state.baselineBrain ? Math.round((state.baselineBrain.updates || 0)) : 0;
 
     el("btnStart").disabled = false;
     el("btnEnd").disabled = !state.active && !state.lastPrediction;
 
     renderHistory();
     renderPrediction();
+    renderExperimentStats();
     renderDebug();
   }
 
@@ -767,13 +1016,20 @@
 
   load();
 
-  // 沒有相容的 local brain 時建立空白64D腦；不做 Walk-forward。
+  // 兩組64D腦從同一時間點開始，確保40/60與50/50比較公平。
   if (!validBrain(state.brain)) state.brain = freshBrain();
-  if (state.active && !state.lastPrediction) state.active = false;
+  if (!validBrain(state.baselineBrain)) state.baselineBrain = freshBrain();
+  if (!state.stats) state.stats = freshExperimentStats();
+  if (!Array.isArray(state.settlements)) state.settlements = [];
+  if (state.active && (!validPrediction(state.lastPrediction) || !validPrediction(state.lastBaselinePrediction))) {
+    state.active = false;
+    state.lastPrediction = null;
+    state.lastBaselinePrediction = null;
+  }
 
   render();
-  if (migratedFrom32D) {
-    setMessage("已保留舊32D版本的歷史紀錄，並重建為64D（32D＋32D）本地腦；舊矩陣未混用。", true);
+  if (migratedFromPreviousVersion) {
+    setMessage("已保留舊版歷史，並為40/60主模型與50/50對照組建立兩套乾淨64D腦；A/B統計從零開始。", true);
     save();
   }
   initCanvas();

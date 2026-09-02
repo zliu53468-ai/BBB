@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
   <title>BGS 64D AI Predictor Lab</title>
-  <meta name="description" content="32D 牌靴進程 + 32D 路單結構的 64D Frozen Direct LinUCB 本地測試面板">
+  <meta name="description" content="64D LinUCB：牌靴40%／牌路60%主模型與50/50對照組的線上A/B測試面板">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -18,12 +18,12 @@
         <div class="eyebrow">BGS AI · 64D LOCAL BRAIN</div>
         <h1>64D AI 預測實驗室</h1>
         <p class="hero-text">
-          32維牌靴進程 + 32維路單結構。莊／閒／和只負責輸入歷史；
-          「開始分析」沿用64D本地腦直接預測，方便獨立測試維度擴充後的效能。
+          32維牌靴進程 + 32維路單結構。主模型採牌靴40%／牌路60%，
+          並讓50%／50%對照組同步預測、同步學習，直接比較實際效能。
         </p>
         <div class="status-row">
           <span class="status-pill" id="modePill">準備歷史</span>
-          <span class="status-pill subtle">32D + 32D · 64D DIRECT</span>
+          <span class="status-pill subtle">40/60 vs 50/50 · A/B TEST</span>
           <span class="status-pill subtle" id="roundPill">0 局</span>
         </div>
       </div>
@@ -40,8 +40,8 @@
       <section class="panel prediction-card">
         <div class="section-head">
           <div>
-            <div class="eyebrow">NEXT ROUND</div>
-            <h2>下一局方向</h2>
+            <div class="eyebrow">PRIMARY · 40/60</div>
+            <h2>主模型下一局方向</h2>
           </div>
           <div class="brain-state" id="brainState">尚未建腦</div>
         </div>
@@ -61,7 +61,7 @@
         </div>
 
         <div class="message" id="message" aria-live="polite">
-          先用莊／閒／和按鈕建立歷史，建議至少 8 局，再按「開始分析」。
+          先輸入歷史並按「開始分析」；下一局開出後按莊／閒／和，系統才會延遲結算與學習。
         </div>
       </section>
 
@@ -95,10 +95,50 @@
         </div>
 
         <div class="mini-note">
-          莊／閒／和只會把結果加入歷史。按「開始分析」才會用目前完整歷史重新算64D Context，
-          <b>沿用本地 A/b 直接預測，不做 Walk-forward、不更新上一筆 prediction。</b>
+          「開始分析」會同時產生40/60與50/50兩組預測；下一次輸入莊／閒／和時，
+          <b>系統才會結算上一筆預測並分別更新兩組 A/b，不做歷史偷看或 Walk-forward。</b>
         </div>
       </section>
+    </section>
+
+    <section class="feature-layout experiment-layout">
+      <section class="panel feature-panel shoe">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">PRIMARY MODEL</div>
+            <h2>牌靴40%／牌路60%</h2>
+          </div>
+          <span class="feature-index" id="weightedNext">—</span>
+        </div>
+        <div class="metric-grid">
+          <div class="metric"><span>有效結算</span><strong id="weightedSettled">0</strong></div>
+          <div class="metric"><span>累計勝率</span><strong id="weightedAccuracy">—</strong></div>
+          <div class="metric"><span>最近20局</span><strong id="weightedRecent">—</strong></div>
+          <div class="metric"><span>最長連輸</span><strong id="weightedMaxLoss">0</strong></div>
+          <div class="metric"><span>Brier Score</span><strong id="weightedBrier">—</strong></div>
+        </div>
+      </section>
+
+      <section class="panel feature-panel road">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">CONTROL MODEL</div>
+            <h2>牌靴50%／牌路50%</h2>
+          </div>
+          <span class="feature-index" id="baselineNext">—</span>
+        </div>
+        <div class="metric-grid">
+          <div class="metric"><span>有效結算</span><strong id="baselineSettled">0</strong></div>
+          <div class="metric"><span>累計勝率</span><strong id="baselineAccuracy">—</strong></div>
+          <div class="metric"><span>最近20局</span><strong id="baselineRecent">—</strong></div>
+          <div class="metric"><span>最長連輸</span><strong id="baselineMaxLoss">0</strong></div>
+          <div class="metric"><span>Brier Score</span><strong id="baselineBrier">—</strong></div>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel diagnostics">
+      <div class="message" id="abSummary">至少完成一筆預測與結算後，才會開始比較。</div>
     </section>
 
     <section class="panel history-panel">
@@ -109,7 +149,8 @@
         </div>
         <div class="history-meta">
           <span>目前歷史：<b id="seedCount">0</b></span>
-          <span>本地腦 updates：<b id="liveCount">0</b></span>
+          <span>40/60 updates：<b id="liveCount">0</b></span>
+          <span>50/50 updates：<b id="baselineLiveCount">0</b></span>
         </div>
       </div>
       <div class="history-track" id="historyTrack">
@@ -122,7 +163,7 @@
         <div class="section-head">
           <div>
             <div class="eyebrow">SHOE VECTOR</div>
-            <h2>32維牌靴進程</h2>
+            <h2>32維牌靴進程（40%加權後）</h2>
           </div>
           <span class="feature-index">01–32</span>
         </div>
@@ -133,7 +174,7 @@
         <div class="section-head">
           <div>
             <div class="eyebrow">ROAD VECTOR</div>
-            <h2>32維路單結構</h2>
+            <h2>32維路單結構（60%加權後）</h2>
           </div>
           <span class="feature-index">33–64</span>
         </div>
@@ -149,7 +190,7 @@
     </section>
 
     <footer>
-      64D（32D＋32D）Local Direct 測試面板 · 僅供 BBB 網頁版獨立測試 · 不會連線到正式 LINE 模型
+      64D（32D＋32D）加權線上學習 A/B 測試面板 · 僅修改 BBB 網頁版 · 不會連線到正式 LINE 模型
     </footer>
   </main>
 
