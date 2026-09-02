@@ -1,7 +1,9 @@
 (() => {
   "use strict";
 
-  const DIM = 32;
+  const SHOE_DIM = 32;
+  const ROAD_DIM = 32;
+  const DIM = SHOE_DIM + ROAD_DIM;
   const ARMS = ["P", "B"];
   const RIDGE = 1.0;
   const FORGETTING = 0.90;
@@ -15,19 +17,28 @@
   const AVG_CARDS_PER_HAND = 4.9;
   const DECKS = 8;
   const TOTAL_CARDS = 52 * DECKS;
-  const STORAGE_KEY = "bgs32d_frozen_direct_tech_panel_v1";
+  const STORAGE_KEY = "bgs64d_32plus32_frozen_direct_tech_panel_v2";
+  const LEGACY_STORAGE_KEY = "bgs32d_frozen_direct_tech_panel_v1";
 
   const SHOE_NAMES = [
     "remaining_cards_ratio","penetration_ratio","estimated_hands_remaining_norm","shoe_maturity_ratio",
     "rank_A_relative_ratio","rank_2_relative_ratio","rank_3_relative_ratio","rank_4_relative_ratio",
     "rank_5_relative_ratio","rank_6_relative_ratio","rank_7_relative_ratio","rank_8_relative_ratio",
-    "rank_9_relative_ratio","rank_10JQK_relative_ratio","physical_edge_proxy","shoe_information_reliability"
+    "rank_9_relative_ratio","rank_10JQK_relative_ratio","physical_edge_proxy","shoe_information_reliability",
+    "shoe_phase_early","shoe_phase_middle","shoe_phase_late","estimated_hands_played_norm",
+    "remaining_decks_ratio","hands_elapsed_log_norm","tie_ratio_all","tie_ratio_recent8",
+    "tie_ratio_recent16","bp_balance_strength","bp_entropy_recent12","outcome_entropy_recent12",
+    "outcome_entropy_recent24","sample_support_norm","composition_missing_indicator","shoe_progression_confidence"
   ];
   const ROAD_NAMES = [
     "current_side_banker_binary","current_run_length_norm","previous_run_length_norm","previous2_run_length_norm",
     "recent5_banker_ratio","recent8_banker_ratio","recent12_banker_ratio","recent5_turn_rate",
     "recent8_turn_rate","recent12_turn_rate","run_length_hazard_rate","hsmm_stable_probability",
-    "big_eye_regularity","small_road_regularity","cockroach_road_regularity","derived_road_consensus"
+    "big_eye_regularity","small_road_regularity","cockroach_road_regularity","derived_road_consensus",
+    "current_side_player_binary","previous3_run_length_norm","recent3_banker_ratio","recent20_banker_ratio",
+    "recent3_turn_rate","recent20_turn_rate","run_continue_probability","recent8_outcome_entropy",
+    "recent20_outcome_entropy","recent6_run_volatility","recent5_run_height_trend","big_eye_support_norm",
+    "small_road_support_norm","cockroach_road_support_norm","last2_same_side","last3_same_side"
   ];
 
   const el = id => document.getElementById(id);
@@ -39,6 +50,7 @@
     brain: null,
     lastPrediction: null
   };
+  let migratedFrom32D = false;
 
   function freshArm() {
     return { A: eye(DIM), b: Array(DIM).fill(0), n: 0, effective_n: 0 };
@@ -65,15 +77,32 @@
     } catch (_) {}
   }
 
+  function validArm(arm) {
+    return !!arm &&
+      Array.isArray(arm.A) && arm.A.length === DIM &&
+      arm.A.every(row => Array.isArray(row) && row.length === DIM) &&
+      Array.isArray(arm.b) && arm.b.length === DIM;
+  }
+
+  function validBrain(brain) {
+    return !!brain && !!brain.arms && validArm(brain.arms.P) && validArm(brain.arms.B);
+  }
+
   function load() {
     try {
-      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      const current = localStorage.getItem(STORAGE_KEY);
+      const legacy = current ? null : localStorage.getItem(LEGACY_STORAGE_KEY);
+      const raw = JSON.parse(current || legacy || "null");
       if (raw && Array.isArray(raw.history)) {
+        const compatibleBrain = !legacy && validBrain(raw.brain);
+        const compatiblePrediction = compatibleBrain && raw.lastPrediction &&
+          Array.isArray(raw.lastPrediction.x) && raw.lastPrediction.x.length === DIM;
+        migratedFrom32D = !!legacy;
         state = {
           history: raw.history.filter(x => ["B","P","T"].includes(x)).slice(-500),
-          active: !!raw.active,
-          brain: raw.brain && raw.brain.arms ? raw.brain : freshBrain(),
-          lastPrediction: raw.lastPrediction || null
+          active: compatiblePrediction ? !!raw.active : false,
+          brain: compatibleBrain ? raw.brain : freshBrain(),
+          lastPrediction: compatiblePrediction ? raw.lastPrediction : null
         };
       }
     } catch (_) {}
@@ -237,12 +266,35 @@
     return clip(e / Math.log2(3));
   }
 
+  function binaryEntropyNorm(seq, w = 12) {
+    const a = bp(seq).slice(-w);
+    if (!a.length) return 1;
+    const pB = a.filter(x => x === "B").length / a.length;
+    const pP = 1 - pB;
+    let e = 0;
+    if (pB > 0) e -= pB * Math.log2(pB);
+    if (pP > 0) e -= pP * Math.log2(pP);
+    return clip(e);
+  }
+
+  function tieRatio(seq, w = 0) {
+    const a = w > 0 ? seq.slice(-w) : seq;
+    return a.length ? a.filter(x => x === "T").length / a.length : 0;
+  }
+
   function runVolatility(seq) {
     const h = runs(seq).slice(-6).map(x => x[1]);
     if (h.length < 2) return 0.25;
     let d = 0;
     for (let i = 1; i < h.length; i++) d += Math.abs(h[i] - h[i - 1]);
     return clip((d / (h.length - 1)) / 3);
+  }
+
+  function runHeightTrend(seq, w = 5) {
+    const h = runs(seq).slice(-w).map(x => x[1]);
+    if (h.length < 2) return 0.5;
+    const slope = (h[h.length - 1] - h[0]) / (h.length - 1);
+    return clip(0.5 + slope / 6);
   }
 
   function hsmmStable(seq) {
@@ -262,33 +314,61 @@
     return clip((weights[0] + weights[1]) / total);
   }
 
-  function context32(seq) {
+  function context64(seq) {
     const used = Math.min(TOTAL_CARDS, seq.length * AVG_CARDS_PER_HAND);
     const remaining = Math.max(0, TOTAL_CARDS - used);
     const rr = clip(remaining / TOTAL_CARDS);
     const penetration = clip(1 - rr);
     const maturity = clip(seq.length / 70);
+    const estimatedHandCapacity = TOTAL_CARDS / AVG_CARDS_PER_HAND;
+    const handsPlayedNorm = clip(seq.length / estimatedHandCapacity);
+    const phaseEarly = clip(1 - penetration / 0.35);
+    const phaseMiddle = clip(1 - Math.abs(penetration - 0.50) / 0.35);
+    const phaseLate = clip((penetration - 0.55) / 0.35);
+    const allBankerRatio = bankerRatio(seq, Math.max(1, bp(seq).length));
 
     // Button-only panel has no exact rank/card input.
     // Therefore point-rank ratios stay neutral, exactly as the no-exact-composition fallback.
     const shoe = [
       rr, penetration, rr, maturity,
       1,1,1,1,1,1,1,1,1,1,
-      0,0
+      0,0,
+      phaseEarly,
+      phaseMiddle,
+      phaseLate,
+      handsPlayedNorm,
+      rr,
+      clip(Math.log1p(seq.length) / Math.log1p(estimatedHandCapacity)),
+      tieRatio(seq),
+      tieRatio(seq, 8),
+      tieRatio(seq, 16),
+      clip(1 - Math.abs(allBankerRatio - 0.5) * 2),
+      binaryEntropyNorm(seq, 12),
+      entropyNorm(seq, 12),
+      entropyNorm(seq, 24),
+      clip(seq.length / 32),
+      1,
+      clip(Math.sqrt(seq.length) / Math.sqrt(estimatedHandCapacity))
     ];
 
     const rs = runs(seq);
     const current = rs.length ? rs[rs.length - 1] : ["", 0];
     const prev = rs.length >= 2 ? rs[rs.length - 2] : ["", 0];
     const prev2 = rs.length >= 3 ? rs[rs.length - 3] : ["", 0];
+    const prev3 = rs.length >= 4 ? rs[rs.length - 4] : ["", 0];
     const sideB = current[0] === "B" ? 1 : current[0] === "P" ? 0 : 0.5;
+    const sideP = current[0] === "P" ? 1 : current[0] === "B" ? 0 : 0.5;
 
     const dr = buildDerivedRoads(seq);
-    const [be] = regularity(dr.big_eye);
-    const [sm] = regularity(dr.small_road);
-    const [cr] = regularity(dr.cockroach_road);
+    const [be, beSupport] = regularity(dr.big_eye);
+    const [sm, smSupport] = regularity(dr.small_road);
+    const [cr, crSupport] = regularity(dr.cockroach_road);
     const mean = (be + sm + cr) / 3;
     const consensus = clip(1 - (Math.abs(be - mean) + Math.abs(sm - mean) + Math.abs(cr - mean)) / 1.5);
+    const turnHazard = hazard(seq);
+    const roadBP = bp(seq);
+    const last2Same = roadBP.length >= 2 ? +(roadBP.at(-1) === roadBP.at(-2)) : 0.5;
+    const last3Same = roadBP.length >= 3 ? +(roadBP.at(-1) === roadBP.at(-2) && roadBP.at(-2) === roadBP.at(-3)) : 0.5;
 
     const road = [
       sideB,
@@ -301,12 +381,32 @@
       turnRate(seq, 5),
       turnRate(seq, 8),
       turnRate(seq, 12),
-      hazard(seq),
+      turnHazard,
       hsmmStable(seq),
-      be, sm, cr, consensus
+      be, sm, cr, consensus,
+      sideP,
+      clip(prev3[1] / 8),
+      bankerRatio(seq, 3),
+      bankerRatio(seq, 20),
+      turnRate(seq, 3),
+      turnRate(seq, 20),
+      clip(1 - turnHazard),
+      entropyNorm(seq, 8),
+      entropyNorm(seq, 20),
+      runVolatility(seq),
+      runHeightTrend(seq, 5),
+      clip(beSupport / 8),
+      clip(smSupport / 8),
+      clip(crSupport / 8),
+      last2Same,
+      last3Same
     ];
 
-    return [...shoe, ...road];
+    const vector = [...shoe, ...road];
+    if (shoe.length !== SHOE_DIM || road.length !== ROAD_DIM || vector.length !== DIM) {
+      throw new Error(`64D context shape mismatch: shoe=${shoe.length}, road=${road.length}, total=${vector.length}`);
+    }
+    return vector;
   }
 
   function solve(A, b) {
@@ -354,7 +454,7 @@
   }
 
   function choose(brain, seq) {
-    const x = context32(seq);
+    const x = context64(seq);
     const nBP = bp(seq).length;
     const baseScale = nBP < 8 ? 1.35 : nBP < 15 ? 1.15 : 1.0;
     const eff = {
@@ -382,7 +482,7 @@
         reason = "tie_opposite_previous_arm";
       } else {
         let h = 0;
-        const token = "LOCAL_32D|" + seq.join("");
+        const token = "LOCAL_64D_32PLUS32|" + seq.join("");
         for (let i = 0; i < token.length; i++) h = (h * 31 + token.charCodeAt(i)) >>> 0;
         direction = h % 2 ? "B" : "P";
         reason = "tie_deterministic_history_hash";
@@ -452,7 +552,7 @@
     state.history.push(outcome);
     // 跟原測試面板一樣：輸入歷史只改 history，不自動預測、不更新 A/b。
     state.lastPrediction = null;
-    setMessage(`已加入第 ${state.history.length} 局：${outcome === "B" ? "莊" : outcome === "P" ? "閒" : "和"}。按「開始分析」＝沿用32D本地腦直接預測。`);
+    setMessage(`已加入第 ${state.history.length} 局：${outcome === "B" ? "莊" : outcome === "P" ? "閒" : "和"}。按「開始分析」＝沿用64D（32D＋32D）本地腦直接預測。`);
     save();
     render();
   }
@@ -464,12 +564,12 @@
     }
     if (!state.brain || !state.brain.arms) state.brain = freshBrain();
 
-    // 完全對應原測試面板「沿用32D本地腦直接預測」：
-    // load local brain -> 用目前完整 history 算32D Context -> predict -> save local brain
+    // 完全對應原測試面板的 Frozen Direct 流程：
+    // load local brain -> 用目前完整 history 算64D Context -> predict -> save local brain
     // 不 bootstrap、不回放、不結算上一筆、不更新 A/b、不 decay。
     state.active = true;
     state.lastPrediction = choose(state.brain, state.history);
-    setMessage(`已沿用32D本地腦直接預測第 ${state.history.length + 1} 局。A/b 未更新。`);
+    setMessage(`已沿用64D（32D＋32D）本地腦直接預測第 ${state.history.length + 1} 局。A/b 未更新。`);
     save();
     render();
   }
@@ -482,7 +582,7 @@
     state.active = false;
     state.lastPrediction = null;
     // 本地 brain 保留，等同測試面板 localStorage 腦，不清空 A/b。
-    setMessage("分析已結束。歷史與32D本地腦都保留，可繼續追加紀錄後再次開始分析。");
+    setMessage("分析已結束。歷史與64D本地腦都保留，可繼續追加紀錄後再次開始分析。");
     save();
     render();
   }
@@ -495,7 +595,7 @@
     const removed = state.history.pop();
     state.active = false;
     state.lastPrediction = null;
-    setMessage(`已返回上一局（移除 ${removed}）。本地32D腦沒有更新；要預測請再按「開始分析」。`);
+    setMessage(`已返回上一局（移除 ${removed}）。本地64D腦沒有更新；要預測請再按「開始分析」。`);
     save();
     render();
   }
@@ -519,12 +619,12 @@
   }
 
   function renderFeatures(vector) {
-    const v = Array.isArray(vector) && vector.length === 32 ? vector : Array(32).fill(0);
+    const v = Array.isArray(vector) && vector.length === DIM ? vector : Array(DIM).fill(0);
     el("shoeGrid").innerHTML = SHOE_NAMES.map((name, i) =>
       `<div class="feature-row"><span>${String(i + 1).padStart(2, "0")} · ${name}</span><b>${(+v[i]).toFixed(5)}</b></div>`
     ).join("");
     el("roadGrid").innerHTML = ROAD_NAMES.map((name, i) => {
-      const idx = i + 16;
+      const idx = i + SHOE_DIM;
       return `<div class="feature-row"><span>${String(idx + 1).padStart(2, "0")} · ${name}</span><b>${(+v[idx]).toFixed(5)}</b></div>`;
     }).join("");
   }
@@ -541,7 +641,7 @@
       el("ucbP").textContent = "—";
       el("scoreGap").textContent = "—";
       orb.className = "direction-orb idle";
-      renderFeatures(context32(state.history));
+      renderFeatures(context64(state.history));
       return;
     }
 
@@ -558,8 +658,8 @@
   function renderDebug() {
     const brain = state.brain;
     const debug = {
-      model: "32D Frozen Direct Local Brain",
-      version: "FROZEN-DIRECT-V9-STATIC-PANEL",
+      model: "64D (32D Shoe + 32D Road) Frozen Direct Local Brain",
+      version: "FROZEN-DIRECT-V10-64D-STATIC-PANEL",
       active: state.active,
       totalHistory: state.history.length,
       history: state.history.join(""),
@@ -584,7 +684,8 @@
         confidence: state.lastPrediction.confidence,
         gap: state.lastPrediction.gap,
         reason: state.lastPrediction.reason,
-        context32: state.lastPrediction.x
+        context64: state.lastPrediction.x,
+        dimensions: { shoe: SHOE_DIM, road: ROAD_DIM, total: DIM }
       } : null
     };
     el("debug").textContent = JSON.stringify(debug, null, 2);
@@ -593,7 +694,7 @@
   function render() {
     el("modePill").textContent = state.active ? "已完成本次預測" : "準備歷史";
     el("roundPill").textContent = `${state.history.length} 局`;
-    el("brainState").textContent = "沿用32D本地腦";
+    el("brainState").textContent = "沿用64D本地腦";
     el("seedCount").textContent = state.history.length;
     el("liveCount").textContent = state.brain ? Math.round((state.brain.updates || 0)) : 0;
 
@@ -666,10 +767,14 @@
 
   load();
 
-  // 沒有既有 local brain 時建立空白32D腦；不做 Walk-forward。
-  if (!state.brain || !state.brain.arms) state.brain = freshBrain();
+  // 沒有相容的 local brain 時建立空白64D腦；不做 Walk-forward。
+  if (!validBrain(state.brain)) state.brain = freshBrain();
   if (state.active && !state.lastPrediction) state.active = false;
 
   render();
+  if (migratedFrom32D) {
+    setMessage("已保留舊32D版本的歷史紀錄，並重建為64D（32D＋32D）本地腦；舊矩陣未混用。", true);
+    save();
+  }
   initCanvas();
 })();

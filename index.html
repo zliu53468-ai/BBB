@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <title>BGS 32D AI Predictor Lab</title>
-  <meta name="description" content="32D Frozen Direct LinUCB 本地測試面板">
+  <title>BGS 64D AI Predictor Lab</title>
+  <meta name="description" content="32D 牌靴進程 + 32D 路單結構的 64D Frozen Direct LinUCB 本地測試面板">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -15,15 +15,15 @@
   <main class="shell">
     <section class="hero panel">
       <div class="hero-copy">
-        <div class="eyebrow">BGS AI · 32D LOCAL BRAIN</div>
-        <h1>32D AI 預測實驗室</h1>
+        <div class="eyebrow">BGS AI · 64D LOCAL BRAIN</div>
+        <h1>64D AI 預測實驗室</h1>
         <p class="hero-text">
-          16維牌靴 + 16維路單。莊／閒／和只負責輸入歷史；
-          「開始分析」完全等同原32D測試面板的「沿用32D本地腦直接預測」。
+          32維牌靴進程 + 32維路單結構。莊／閒／和只負責輸入歷史；
+          「開始分析」沿用64D本地腦直接預測，方便獨立測試維度擴充後的效能。
         </p>
         <div class="status-row">
           <span class="status-pill" id="modePill">準備歷史</span>
-          <span class="status-pill subtle">32D LOCAL DIRECT</span>
+          <span class="status-pill subtle">32D + 32D · 64D DIRECT</span>
           <span class="status-pill subtle" id="roundPill">0 局</span>
         </div>
       </div>
@@ -95,7 +95,7 @@
         </div>
 
         <div class="mini-note">
-          莊／閒／和只會把結果加入歷史。按「開始分析」才會用目前完整歷史重新算32D Context，
+          莊／閒／和只會把結果加入歷史。按「開始分析」才會用目前完整歷史重新算64D Context，
           <b>沿用本地 A/b 直接預測，不做 Walk-forward、不更新上一筆 prediction。</b>
         </div>
       </section>
@@ -122,9 +122,9 @@
         <div class="section-head">
           <div>
             <div class="eyebrow">SHOE VECTOR</div>
-            <h2>16維牌靴</h2>
+            <h2>32維牌靴進程</h2>
           </div>
-          <span class="feature-index">01–16</span>
+          <span class="feature-index">01–32</span>
         </div>
         <div class="feature-grid" id="shoeGrid"></div>
       </section>
@@ -133,9 +133,9 @@
         <div class="section-head">
           <div>
             <div class="eyebrow">ROAD VECTOR</div>
-            <h2>16維路單</h2>
+            <h2>32維路單結構</h2>
           </div>
-          <span class="feature-index">17–32</span>
+          <span class="feature-index">33–64</span>
         </div>
         <div class="feature-grid" id="roadGrid"></div>
       </section>
@@ -149,7 +149,7 @@
     </section>
 
     <footer>
-      32D Local Direct 測試面板 · 原測試邏輯換科技感介面 · 不會連線到正式 LINE 模型
+      64D（32D＋32D）Local Direct 測試面板 · 僅供 BBB 網頁版獨立測試 · 不會連線到正式 LINE 模型
     </footer>
   </main>
 
