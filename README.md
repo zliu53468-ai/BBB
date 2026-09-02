@@ -1,10 +1,10 @@
-# BGS 128D Frozen Prior Contextual LinUCB 測試面板
+# BGS 128D Frozen V2 Multi-Expert 測試面板
 
-目前 `main` 是在 128D（64D 牌靴 + 64D 牌路）基礎上，改成 **固定 Frozen Prior** 的測試版本。
+目前 `main` 使用 **128D = 64D 牌靴 + 64D 牌路**，方向核心已由 Frozen Prior V1 升級成 **Frozen V2 Multi-Expert Contextual Arms**。
 
-## 這版的核心限制
+## 核心限制保持不變
 
-正式操作期間全部保持關閉：
+正式操作期間全部關閉：
 
 - 不 bootstrap
 - 不 Walk-forward
@@ -15,115 +15,140 @@
 
 `updates` 永遠維持 0。
 
-## 為什麼不是直接稱為 pretrained A/b
+## 為什麼升級到 V2
 
-目前 BBB repository 裡沒有可供 Train / Validation / Test 使用的歷史多靴資料，因此這一版不假裝已經做過資料預訓練。
+V1 的主要問題是把大量方向特徵一起乘上同一個 `directionalMode`。一旦 Trend / Reversal regime 判錯，整組方向訊號可能同時翻面，容易把單局判斷錯誤延續成連續錯誤。
 
-目前使用的是：
+另外 V1 同時使用大量高度相關的 Banker Ratio 視窗，容易讓同一種訊號被重複投票。
 
-- `engineered_static_prior_v1_no_training_dataset`
-- 固定 B/P 雙臂 prior
-- 固定 A（以 diagonal precision vector 表示）
-- 固定 b
-- 固定 normalization
-- 固定 deterministic regime gate
-
-之後若提供歷史多靴資料，可以保留同一套執行介面，只把固定 engineered prior 替換成真正離線訓練、驗證後凍結的 A/b。
+V2 將這兩個問題拆開處理。
 
 ## 128D 結構
 
 - 001–064：牌靴／進程特徵
 - 065–128：牌路／結構特徵
 
-牌靴端保留進度、penetration、樣本支撐、和局比例、B/P entropy、B/P/T entropy、balance 與不同階段 basis。
+牌靴端保留 penetration、shoe phase、樣本支撐、和局比例、entropy、balance 等資訊；因按鈕版沒有真實 A～10/J/Q/K 殘牌資料，所以不虛構 exact composition 方向訊號。
 
-牌路端保留 current side、run length、Banker ratio、Turn rate、hazard、HSMM stability、大眼仔、小路、蟑螂路、run 統計與交替／同邊結構。
+牌路端保留 current side、run length、Banker ratio、Turn rate、hazard、HSMM stability、大眼仔、小路、蟑螂路、run 統計、交替與同邊結構。
 
-## Frozen Prior V1 的設計
+## Frozen V2 四專家
 
-### 1. Fixed normalization
+### 1. Trend Expert
 
-128D Context 在進入雙臂 prior 前會先轉為固定中心化尺度，不會在執行期間重新估計 mean/std，也不會隨使用者資料改變。
+判斷目前方向是否具有延續條件，綜合：
 
-### 2. Fixed regime gate
-
-根據目前歷史的：
-
-- Turn rate
+- current side
+- 8 / 16 / 32 局方向結構
 - run hazard
+- Turn Rate
 - HSMM stability
+- current run length
+
+### 2. Reversal Expert
+
+獨立判斷轉折，不再把全部特徵一起乘負號。主要使用：
+
+- 4 / 8 局 Turn Rate
+- run hazard
 - alternating tail
-- same-side tail
-- entropy / volatility
-- derived-road support
+- HSMM stability
+- current side 的反向候選
+- 短窗相對長窗的 shift
 
-產生固定 deterministic 的 `trend / reversal / neutral` regime 與結構可信度。
+### 3. Derived-road Candidate Expert
 
-這不是學習器，也不會修改任何參數。
-
-### 3. Shoe / Road gating
-
-牌靴資料主要控制目前樣本成熟度與結構可信度；因按鈕版沒有真實 A～10/J/Q/K 殘牌資料，所以不讓牌靴進度本身虛構成 B/P 方向訊號。
-
-Road directional features 才負責提供 B/P 方向證據，並受到 Frozen regime gate 的固定縮放。
-
-### 4. Fixed B/P A/b
-
-B、P 兩個 arm 各自有固定 b；A 使用固定 diagonal precision representation。
-
-程式啟動時由 source code 重建：
+對下一局分別模擬：
 
 ```text
-A_B = fixed diagonal precision
-b_B = A_B × theta_B
-
-A_P = fixed diagonal precision
-b_P = A_P × theta_P
+History + B
+History + P
 ```
 
-正式預測時只做：
+再比較兩個候選對：
+
+- 大眼仔
+- 小路
+- 蟑螂路
+
+的結構符合程度，得到 `derived B support`、`derived P support` 與方向差值。
+
+這只是 deterministic candidate simulation，不是 replay，也不會更新模型。
+
+### 4. Multi-scale Divergence Expert
+
+方向核心不再讓 2/3/4/5/6/8/10/12/16/20/24/32/48 等大量高度相關窗口重複投票，而聚焦：
+
+- 4 局
+- 8 局
+- 16 局
+- 32 局
+
+並使用：
 
 ```text
-128D raw context
-→ fixed normalization
-→ deterministic regime gate
-→ frozen model context
-→ fixed B/P LinUCB scores
-→ argmax(B, P)
+ratio4 - ratio16
+ratio8 - ratio32
 ```
 
-沒有任何 feedback update。
+捕捉短期與中長期方向分歧。
 
-## Tie handling
+## Regime Consensus
 
-已移除「上一把選 B，平手就切 P」這類依賴上一個 prediction 的交替規則。
+V2 同時計算：
 
-只有在 B/P score 真正完全平手時，才使用固定 history hash 做 deterministic tie-break；同一段歷史永遠得到相同結果。
+- short regime
+- middle regime
+- long regime
 
-## 舊資料處理
+至少兩個尺度同方向時，Trend 或 Reversal expert 才會獲得較高權重。
+
+如果短、中、長尺度衝突，V2 不會整組翻面，而是：
+
+- 降低 Trend / Reversal 權重
+- 提高 Derived-road Candidate / Divergence 權重
+- 壓縮最終方向幅度
+
+目標是降低錯誤 regime 連續支配多局的風險。
+
+## Frozen Contextual Arms
+
+V2 仍保留固定 B/P Contextual Arms 與 128D normalization，但 base prior 權重被刻意降低，只使用 4 / 8 / 16 / 32 等較少的方向窗口作弱基礎訊號。
+
+主要方向由四專家 Soft Fusion 決定；uncertainty 僅保留在診斷與 confidence calibration，不再用探索項強行改變 B/P 方向。
+
+## Storage / 舊版本
 
 新 storage key：
 
-`bgs128d_frozen_prior_static_v1`
+`bgs128d_frozen_v2_multi_expert`
 
-首次載入時如果偵測到舊 128D / 64D / 32D localStorage：
+第一次載入 V2 時：
 
-- 只保留 B / P / T 歷史
-- 舊 A/b 完全不沿用
+- 保留舊 B / P / T 歷史
+- 舊 A/b 不沿用
 - 不做 migration training
-- Frozen Prior 直接由目前 source code 重建
+- 不結算任何舊 prediction
 
-舊版本備份：
+備份分支：
 
+- `backup-frozen-prior-v1-before-v2`
 - `backup-128d-blankbrain-before-frozen-prior-v1`
 - `backup-64d-f6c24d3-before-128d`
 
-## 真正 pretrained 的下一步
+## 測試重點
 
-如果要把這版升級成真正 Frozen pretrained A/b，需要另外準備多靴歷史資料，依整靴分成 Train / Validation / Test，離線建立 A/b、選 ridge / alpha，再把最終參數寫入前端。
+不要只比較整體命中率，也應比較：
 
-正式前端仍然可以維持本版所有 Frozen 限制，不需要加入線上學習。
+- 最大連錯
+- 3 連錯出現頻率
+- 連勝長度分布
+- Trend / Reversal 切換後前 3 局表現
+- Derived candidate B/P support 是否穩定
+- 64D、128D V1、128D V2 在同一批未參與設計資料上的差異
 
-## 注意
+## 限制
 
-這是模型架構測試工具，不代表任何保證勝率；128D 或 Frozen prior 是否有效，仍應使用未參與設計的獨立測試資料比較。
+目前 repository 仍沒有可供 Train / Validation / Test 使用的多靴歷史資料，因此這版是透明的 engineered Frozen V2，不宣稱是 dataset-pretrained 模型。
+
+這是模型架構測試工具，不代表任何保證勝率；維度增加或多專家融合是否有效，仍需要用獨立牌靴資料驗證。
