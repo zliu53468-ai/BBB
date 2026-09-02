@@ -1,89 +1,87 @@
-# BGS 128D（64D＋64D）AI 科技感測試面板
+# BGS 256D（128D＋128D）Frozen Direct 測試面板
 
-這一版是在 `f6c24d3` 的 64D Frozen Direct 基礎上，將 BBB 網頁測試面板擴充為 128D：
+目前 `main` 是以使用者指定的基準 commit `c3420c274bd7acf1096e44178de482297ae542e4` 為底，將原本 128D（64D 牌靴 + 64D 牌路）對稱擴充成：
 
-- 64 維牌靴／進程特徵
-- 64 維路單／結構特徵
-- 合併為單一 128 維 Context，交給 two-arm LinUCB 計算 B / P 方向
+- 128 維牌靴／進程特徵
+- 128 維牌路／結構特徵
+- 合計 256D Context
+- two-arm LinUCB：B / P
 
-操作流程維持 Frozen Direct：只在按下「開始分析」時直接預測，
-不做 Walk-forward、不自動回饋、不 bootstrap、不 replay、不 decay，也不更新 A/b。
+## Frozen Direct 限制
 
-## 操作方式
+正式操作流程完全維持原基準版：
 
-1. 用「莊 / 閒 / 和」按鈕輸入歷史。
-   - 每按一次，畫面增加一筆 B / P / T。
-   - 這一步只修改歷史資料。
-   - 不預測、不 Walk-forward、不更新 A/b。
+- 不 bootstrap
+- 不 Walk-forward
+- 不 replay
+- 不結算上一筆 prediction
+- 不更新 A/b
+- 不 decay
 
-2. 按「開始分析」。
-   - 沿用目前 128D 本地腦直接預測。
-   - 用目前完整 B/P/T 歷史計算最新 128D Context。
-   - 直接做 LinUCB B/P 預測。
-   - 不做 Walk-forward replay。
-   - 不結算上一筆 prediction。
-   - 不更新 A/b。
-   - 不 decay。
+莊／閒／和按鈕只加入歷史；只有按下「開始分析」才用目前完整歷史重新計算 256D Context 並直接預測下一局。
 
-3. 下一局開出後：
-   - 再按一次「莊 / 閒 / 和」把新結果加入歷史。
-   - 再按「開始分析」預測下一局。
+## 256D 結構
 
-4. 「返回上一局」
-   - 移除歷史最後一筆。
-   - 不修改 128D 本地腦。
+### 001–128：牌靴／進程
 
-5. 「結束分析」
-   - 只清掉目前顯示的預測結果。
-   - 歷史與本地 128D brain 保留。
+前 64 維延續 c3420c2 的 128D 版本原有牌靴語意，再增加 64 維多尺度特徵，包括：
 
-## 128D 結構
+- 2 / 3 / 5 / 7 / 10 / 14 / 20 / 28 / 40 / 48 / 56 / 64 局 Tie ratio
+- 同窗口 B/P entropy
+- 同窗口 B/P/T entropy
+- 同窗口 B/P balance
+- penetration / remaining cubic 與 quarter-root
+- 更細四分位 shoe phase basis
+- 4 / 12 / 20 / 32 局 sample support
+- 短長窗 tie / entropy / balance delta
 
-### 64D 牌靴／進程
+按鈕版仍沒有真正的 A～K 牌值輸入，因此既有 rank relative ratio 維持 neutral，不虛構實際殘牌組成。
 
-保留原本 32D 牌靴進程特徵，再增加 32 個多尺度訊號，包括：
+### 129–256：牌路／結構
 
-- 4 / 6 / 12 / 24 / 32 局和局比例
-- 4 / 6 / 8 / 16 / 24 / 32 局 B/P entropy
-- 6 / 8 / 16 / 32 局 B/P/T entropy
-- 多窗口 B/P balance
-- penetration / remaining 的平方與平方根轉換
-- 更細的牌靴階段 basis
-- 8 / 16 / 24 / 48 局樣本支撐
+前 64 維延續 c3420c2 的原有路單特徵，再增加 64 維，包括：
 
-按鈕版仍沒有 A～10/J/Q/K 的實際殘牌輸入，因此牌值比例維持 neutral 1.0，
-physical edge 與 exact composition reliability 維持 0，不虛構實際殘牌資訊。
-
-### 64D 路單／結構
-
-保留原本 32D 路單特徵，再增加 32 個多尺度訊號，包括：
-
-- 2 / 4 / 6 / 10 / 16 / 24 / 32 / 48 局 Banker ratio
-- 同窗口 Turn rate
-- 大眼仔 / 小路 / 蟑螂路的 4 局與 16 局 regularity
-- 更長的前序 run length
-- 最近 run 平均、高度最大值、標準差與變化量
-- 4 / 6 局交替結構
-- 4 / 5 局同邊結構
+- 更多 7～72 局 Banker ratio 與 Turn rate 多尺度
+- 大眼仔 / 小路 / 蟑螂路 6 / 12 / 24 / 32 窗口 regularity
+- 更長的 previous run 與 6 / 12 run 統計
+- 3 / 5 / 8 / 10 局 alternating 結構
+- 6 / 7 / 8 / 10 局 same-side 結構
+- Banker ratio 的 4–16、8–32、16–64 短長窗差分
+- Turn rate 的同尺度差分
+- hazard / continue / HSMM / derived consensus 非線性特徵
 
 ## 舊資料相容性
 
-首次載入 128D 版本時，如果瀏覽器只有舊 64D 或 32D localStorage：
+新 storage key：
 
-- 保留 B / P / T 歷史紀錄
-- 不沿用尺寸不相容的舊 A 矩陣與 b 向量
-- 自動建立新的 128×128 A 矩陣與 128 維 b 向量
-- 舊 64D 版本已保存在分支 `backup-64d-f6c24d3-before-128d`
+`bgs256d_128plus128_frozen_direct_tech_panel_v1`
+
+如果瀏覽器只有舊 128D / 64D / 32D localStorage：
+
+- 保留 B / P / T 歷史
+- 不沿用尺寸不相容的舊 A/b
+- 自動建立新的 256×256 A 與 256 維 b
+
+## 備份
+
+升級前的目前版本已保留：
+
+`backup-before-reset-to-c3420c2-256d-test`
+
+指定的 128D 基準仍可由 commit：
+
+`c3420c274bd7acf1096e44178de482297ae542e4`
+
+精準恢復。
 
 ## 測試定位
 
-這次目的是單純比較 64D 與 128D 的特徵容量差異，因此 Frozen Direct 行為維持不變。
-維度增加本身不代表勝率一定提高；應使用相同牌局資料比較兩版方向、穩定性、反轉敏感度與實際命中結果。
+256D 只是受控的維度擴充實驗，不代表勝率一定會提高。建議使用與 128D 相同的完整牌局序列，比較：
 
-## GitHub Pages
+- 總命中率
+- 最大連錯
+- 三連錯發生次數
+- 長龍 / 單跳 / 雙跳 / 轉折段表現
+- 256D 是否因新增多尺度特徵變得過度敏感
 
-Repository → Settings → Pages 使用既有 GitHub Actions 部署即可。
-
-## 注意
-
-這是測試工具，不代表任何保證勝率。
+這是模型架構測試工具，不代表任何保證勝率。
