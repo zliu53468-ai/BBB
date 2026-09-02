@@ -3,90 +3,90 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
-  <title>BGS 256D AI Predictor Lab</title>
-  <meta name="description" content="128D 牌靴進程 + 128D 路單結構的 256D Frozen Direct LinUCB 本地測試面板">
+  <meta name="theme-color" content="#08111f">
+  <title>BGS AI 預測分析</title>
+  <meta name="description" content="BGS 256維穩定分析面板">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <canvas id="techCanvas" aria-hidden="true"></canvas>
-  <div class="scanline" aria-hidden="true"></div>
-
-  <main class="shell">
-    <section class="hero panel">
-      <div class="hero-copy">
-        <div class="eyebrow">BGS AI · 256D LOCAL BRAIN</div>
-        <h1>256D AI 預測實驗室</h1>
-        <p class="hero-text">
-          128維牌靴進程 + 128維路單結構。莊／閒／和只負責輸入歷史；
-          「開始分析」沿用256D本地腦直接預測，方便跟指定的 c3420c2 128D 基準版做維度擴充對照。
-        </p>
-        <div class="status-row">
-          <span class="status-pill" id="modePill">準備歷史</span>
-          <span class="status-pill subtle">128D + 128D · 256D DIRECT</span>
-          <span class="status-pill subtle" id="roundPill">0 局</span>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">BGS</div>
+        <div>
+          <h1>AI 預測分析</h1>
+          <p>256維穩定分析核心</p>
         </div>
       </div>
-
-      <div class="robot-stage" aria-label="AI 機器人視覺">
-        <div class="orbit orbit-a"></div>
-        <div class="orbit orbit-b"></div>
-        <img src="assets/ai-robot.svg" alt="科技感 AI 機器人" class="robot-img">
-        <div class="core-dot"></div>
+      <div class="status-area">
+        <span class="status-pill" id="modePill">準備中</span>
+        <span class="round-pill" id="roundPill">0 局</span>
       </div>
-    </section>
+    </header>
 
-    <section class="control-layout">
-      <section class="panel prediction-card">
-        <div class="section-head"><div><div class="eyebrow">NEXT ROUND</div><h2>下一局方向</h2></div><div class="brain-state" id="brainState">尚未建腦</div></div>
-        <div class="prediction-main">
-          <div class="direction-orb idle" id="directionOrb"><span id="directionText">—</span><small id="directionCode">WAIT</small></div>
-          <div class="metric-grid">
-            <div class="metric"><span>模型信心</span><strong id="confidence">—</strong></div>
-            <div class="metric"><span>UCB 莊</span><strong id="ucbB">—</strong></div>
-            <div class="metric"><span>UCB 閒</span><strong id="ucbP">—</strong></div>
-            <div class="metric"><span>Score Gap</span><strong id="scoreGap">—</strong></div>
+    <section class="card prediction-card">
+      <div class="card-title">
+        <span>下一局方向</span>
+        <small>即時分析</small>
+      </div>
+
+      <div class="prediction-layout">
+        <div class="direction-orb idle" id="directionOrb">
+          <span id="directionText">—</span>
+          <small id="directionCode">等待分析</small>
+        </div>
+
+        <div class="metrics">
+          <div class="metric">
+            <span>模型信心</span>
+            <strong id="confidence">—</strong>
+          </div>
+          <div class="metric">
+            <span>牌型狀態</span>
+            <strong id="regime">—</strong>
+          </div>
+          <div class="metric">
+            <span>結構強度</span>
+            <strong id="strength">—</strong>
+          </div>
+          <div class="metric">
+            <span>分析局數</span>
+            <strong><b id="roundCount">0</b> 局</strong>
           </div>
         </div>
-        <div class="message" id="message" aria-live="polite">先用莊／閒／和按鈕建立歷史，建議至少 8 局，再按「開始分析」。</div>
-      </section>
+      </div>
 
-      <section class="panel action-card">
-        <div class="section-head"><div><div class="eyebrow">CONTROL</div><h2>牌局操作</h2></div></div>
-        <div class="result-buttons">
-          <button class="result-btn banker" id="btnB" type="button"><span class="btn-glow"></span><strong>莊</strong><small>BANKER · B</small></button>
-          <button class="result-btn player" id="btnP" type="button"><span class="btn-glow"></span><strong>閒</strong><small>PLAYER · P</small></button>
-          <button class="result-btn tie" id="btnT" type="button"><span class="btn-glow"></span><strong>和</strong><small>TIE · T</small></button>
-        </div>
-        <div class="system-buttons">
-          <button class="sys-btn primary" id="btnStart" type="button">開始分析</button>
-          <button class="sys-btn" id="btnBack" type="button">返回上一局</button>
-          <button class="sys-btn danger" id="btnEnd" type="button">結束分析</button>
-        </div>
-        <div class="mini-note">莊／閒／和只會把結果加入歷史。按「開始分析」才會用目前完整歷史重新算256D Context，<b>沿用本地 A/b 直接預測，不 bootstrap、不 Walk-forward、不 replay、不結算上一筆、不更新 A/b、不 decay。</b></div>
-      </section>
+      <div class="message" id="message" aria-live="polite">輸入牌局後開始分析</div>
     </section>
 
-    <section class="panel history-panel">
-      <div class="section-head"><div><div class="eyebrow">HISTORY STREAM</div><h2>歷史紀錄</h2></div><div class="history-meta"><span>目前歷史：<b id="seedCount">0</b></span><span>本地腦 updates：<b id="liveCount">0</b></span></div></div>
-      <div class="history-track" id="historyTrack"><div class="empty-history">尚未輸入牌局</div></div>
+    <section class="card controls-card">
+      <div class="result-buttons">
+        <button class="result-btn banker" id="btnB" type="button"><strong>莊</strong><small>BANKER</small></button>
+        <button class="result-btn player" id="btnP" type="button"><strong>閒</strong><small>PLAYER</small></button>
+        <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
+      </div>
+
+      <div class="action-buttons">
+        <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
+        <button class="action-btn" id="btnBack" type="button">返回上一局</button>
+        <button class="action-btn danger" id="btnEnd" type="button">結束分析</button>
+      </div>
+      <div class="clear-note">結束分析會清空本靴全部紀錄</div>
     </section>
 
-    <section class="feature-layout">
-      <section class="panel feature-panel shoe">
-        <div class="section-head"><div><div class="eyebrow">SHOE VECTOR</div><h2>128維牌靴進程</h2></div><span class="feature-index">001–128</span></div>
-        <div class="feature-grid" id="shoeGrid"></div>
-      </section>
-      <section class="panel feature-panel road">
-        <div class="section-head"><div><div class="eyebrow">ROAD VECTOR</div><h2>128維路單結構</h2></div><span class="feature-index">129–256</span></div>
-        <div class="feature-grid" id="roadGrid"></div>
-      </section>
+    <section class="card history-card">
+      <div class="card-title">
+        <span>本靴紀錄</span>
+        <small>依輸入順序排列</small>
+      </div>
+      <div class="history-track" id="historyTrack">
+        <div class="empty-history">尚未輸入牌局</div>
+      </div>
     </section>
 
-    <section class="panel diagnostics"><details><summary>模型診斷資料</summary><pre id="debug">{}</pre></details></section>
-    <footer>256D（128D＋128D）Local Direct 測試面板 · 基於 c3420c2 架構擴充 · 不會連線到正式 LINE 模型</footer>
+    <footer>256維穩定版 · 網頁測試面板</footer>
   </main>
 
-  <script src="app256.js"></script>
+  <script src="app256stable.js"></script>
 </body>
 </html>
