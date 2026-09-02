@@ -4,7 +4,7 @@
   const SHOE_DIM = 32;
   const ROAD_DIM = 32;
   const DIM = SHOE_DIM + ROAD_DIM;
-  const PRIMARY_WEIGHTS = Object.freeze({ shoe: 0.40, road: 0.60, key: "40/60" });
+  const PRIMARY_WEIGHTS = Object.freeze({ shoe: 0.60, road: 0.40, key: "60/40" });
   const BASELINE_WEIGHTS = Object.freeze({ shoe: 0.50, road: 0.50, key: "50/50" });
   const ARMS = ["P", "B"];
   const RIDGE = 1.0;
@@ -19,7 +19,8 @@
   const AVG_CARDS_PER_HAND = 4.9;
   const DECKS = 8;
   const TOTAL_CARDS = 52 * DECKS;
-  const STORAGE_KEY = "bgs64d_weighted_ab_online_panel_v3";
+  const STORAGE_KEY = "bgs64d_shoe60_road40_ab_online_panel_v4";
+  const PREVIOUS_WEIGHTED_STORAGE_KEY = "bgs64d_weighted_ab_online_panel_v3";
   const PREVIOUS_64D_STORAGE_KEY = "bgs64d_32plus32_frozen_direct_tech_panel_v2";
   const LEGACY_32D_STORAGE_KEY = "bgs32d_frozen_direct_tech_panel_v1";
 
@@ -133,9 +134,10 @@
   function load() {
     try {
       const current = localStorage.getItem(STORAGE_KEY);
-      const previous64 = current ? null : localStorage.getItem(PREVIOUS_64D_STORAGE_KEY);
-      const previous32 = current || previous64 ? null : localStorage.getItem(LEGACY_32D_STORAGE_KEY);
-      const previous = previous64 || previous32;
+      const previousWeighted = current ? null : localStorage.getItem(PREVIOUS_WEIGHTED_STORAGE_KEY);
+      const previous64 = current || previousWeighted ? null : localStorage.getItem(PREVIOUS_64D_STORAGE_KEY);
+      const previous32 = current || previousWeighted || previous64 ? null : localStorage.getItem(LEGACY_32D_STORAGE_KEY);
+      const previous = previousWeighted || previous64 || previous32;
       const raw = JSON.parse(current || previous || "null");
       if (raw && Array.isArray(raw.history)) {
         const compatibleState = !!current && validBrain(raw.brain) && validBrain(raw.baselineBrain);
@@ -466,7 +468,7 @@
     }
 
     // LinUCB 的能量項是 xᵀA⁻¹x，因此以 sqrt(weight) 縮放，
-    // 讓兩個已各自 L2 正規化的區塊真正呈現指定的 40/60 或 50/50 佔比。
+    // 讓兩個已各自 L2 正規化的區塊真正呈現指定的 60/40 或 50/50 佔比。
     const shoeScale = Math.sqrt(weights.shoe);
     const roadScale = Math.sqrt(weights.road);
     const vector = [
@@ -707,7 +709,7 @@
     } else {
       const weightedHit = settlement.weighted.direction === outcome ? "命中" : "未中";
       const baselineHit = settlement.baseline.direction === outcome ? "命中" : "未中";
-      setMessage(`第 ${state.history.length} 局已延遲結算：40/60 ${weightedHit}；50/50 ${baselineHit}。兩組 A/b 已各自更新。`);
+      setMessage(`第 ${state.history.length} 局已延遲結算：60/40 ${weightedHit}；50/50 ${baselineHit}。兩組 A/b 已各自更新。`);
     }
     save();
     render();
@@ -736,7 +738,7 @@
     state.lastBaselinePrediction = choose(state.baselineBrain, state.history, BASELINE_WEIGHTS);
     const weightedDirection = state.lastPrediction.direction === "B" ? "莊" : "閒";
     const baselineDirection = state.lastBaselinePrediction.direction === "B" ? "莊" : "閒";
-    setMessage(`第 ${state.history.length + 1} 局：40/60 主模型預測${weightedDirection}；50/50對照組預測${baselineDirection}。輸入開獎結果後才延遲更新。`);
+    setMessage(`第 ${state.history.length + 1} 局：60/40 主模型預測${weightedDirection}；50/50對照組預測${baselineDirection}。輸入開獎結果後才延遲更新。`);
     save();
     render();
   }
@@ -871,8 +873,8 @@
     const rateGap = (weightedRate - baselineRate) * 100;
     const weightedBrier = weighted.brier_sum / weighted.settled;
     const baselineBrier = baseline.brier_sum / Math.max(1, baseline.settled);
-    const leader = rateGap > 0 ? "40/60主模型領先" : rateGap < 0 ? "50/50對照組領先" : "兩組命中率相同";
-    summary.textContent = `${leader} ${Math.abs(rateGap).toFixed(2)} 個百分點；Brier差 ${(weightedBrier - baselineBrier).toFixed(4)}（負值代表40/60較佳）。`;
+    const leader = rateGap > 0 ? "60/40主模型領先" : rateGap < 0 ? "50/50對照組領先" : "兩組命中率相同";
+    summary.textContent = `${leader} ${Math.abs(rateGap).toFixed(2)} 個百分點；Brier差 ${(weightedBrier - baselineBrier).toFixed(4)}（負值代表60/40較佳）。`;
   }
 
   function renderDebug() {
@@ -880,7 +882,7 @@
     const baselineBrain = state.baselineBrain;
     const debug = {
       model: "64D weighted online LinUCB A/B lab",
-      version: "WEIGHTED-ONLINE-V11-64D-AB",
+      version: "WEIGHTED-ONLINE-V12-64D-SHOE60-AB",
       active: state.active,
       totalHistory: state.history.length,
       history: state.history.join(""),
@@ -941,7 +943,7 @@
   function render() {
     el("modePill").textContent = state.active ? "等待下一局結算" : "準備下一次預測";
     el("roundPill").textContent = `${state.history.length} 局`;
-    el("brainState").textContent = "64D · 牌靴40%／牌路60%";
+    el("brainState").textContent = "64D · 牌靴60%／牌路40%";
     el("seedCount").textContent = state.history.length;
     el("liveCount").textContent = state.brain ? Math.round((state.brain.updates || 0)) : 0;
     el("baselineLiveCount").textContent = state.baselineBrain ? Math.round((state.baselineBrain.updates || 0)) : 0;
@@ -1016,7 +1018,7 @@
 
   load();
 
-  // 兩組64D腦從同一時間點開始，確保40/60與50/50比較公平。
+  // 兩組64D腦從同一時間點開始，確保60/40與50/50比較公平。
   if (!validBrain(state.brain)) state.brain = freshBrain();
   if (!validBrain(state.baselineBrain)) state.baselineBrain = freshBrain();
   if (!state.stats) state.stats = freshExperimentStats();
@@ -1029,7 +1031,7 @@
 
   render();
   if (migratedFromPreviousVersion) {
-    setMessage("已保留舊版歷史，並為40/60主模型與50/50對照組建立兩套乾淨64D腦；A/B統計從零開始。", true);
+    setMessage("已保留舊版歷史，並為60/40主模型與50/50對照組建立兩套乾淨64D腦；A/B統計從零開始。", true);
     save();
   }
   initCanvas();

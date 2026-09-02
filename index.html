@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
   <title>BGS 64D AI Predictor Lab</title>
-  <meta name="description" content="64D LinUCB：牌靴40%／牌路60%主模型與50/50對照組的線上A/B測試面板">
+  <meta name="description" content="64D LinUCB：牌靴60%／牌路40%主模型與50/50對照組的線上A/B測試面板">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -18,12 +18,12 @@
         <div class="eyebrow">BGS AI · 64D LOCAL BRAIN</div>
         <h1>64D AI 預測實驗室</h1>
         <p class="hero-text">
-          32維牌靴進程 + 32維路單結構。主模型採牌靴40%／牌路60%，
+          32維牌靴進程 + 32維路單結構。主模型採牌靴60%／牌路40%，
           並讓50%／50%對照組同步預測、同步學習，直接比較實際效能。
         </p>
         <div class="status-row">
           <span class="status-pill" id="modePill">準備歷史</span>
-          <span class="status-pill subtle">40/60 vs 50/50 · A/B TEST</span>
+          <span class="status-pill subtle">60/40 vs 50/50 · A/B TEST</span>
           <span class="status-pill subtle" id="roundPill">0 局</span>
         </div>
       </div>
@@ -40,7 +40,7 @@
       <section class="panel prediction-card">
         <div class="section-head">
           <div>
-            <div class="eyebrow">PRIMARY · 40/60</div>
+            <div class="eyebrow">PRIMARY · 60/40</div>
             <h2>主模型下一局方向</h2>
           </div>
           <div class="brain-state" id="brainState">尚未建腦</div>
@@ -95,7 +95,7 @@
         </div>
 
         <div class="mini-note">
-          「開始分析」會同時產生40/60與50/50兩組預測；下一次輸入莊／閒／和時，
+          「開始分析」會同時產生60/40與50/50兩組預測；下一次輸入莊／閒／和時，
           <b>系統才會結算上一筆預測並分別更新兩組 A/b，不做歷史偷看或 Walk-forward。</b>
         </div>
       </section>
@@ -106,7 +106,7 @@
         <div class="section-head">
           <div>
             <div class="eyebrow">PRIMARY MODEL</div>
-            <h2>牌靴40%／牌路60%</h2>
+            <h2>牌靴60%／牌路40%</h2>
           </div>
           <span class="feature-index" id="weightedNext">—</span>
         </div>
@@ -149,7 +149,7 @@
         </div>
         <div class="history-meta">
           <span>目前歷史：<b id="seedCount">0</b></span>
-          <span>40/60 updates：<b id="liveCount">0</b></span>
+          <span>60/40 updates：<b id="liveCount">0</b></span>
           <span>50/50 updates：<b id="baselineLiveCount">0</b></span>
         </div>
       </div>
@@ -163,7 +163,7 @@
         <div class="section-head">
           <div>
             <div class="eyebrow">SHOE VECTOR</div>
-            <h2>32維牌靴進程（40%加權後）</h2>
+            <h2>32維牌靴進程（60%加權後）</h2>
           </div>
           <span class="feature-index">01–32</span>
         </div>
@@ -174,7 +174,7 @@
         <div class="section-head">
           <div>
             <div class="eyebrow">ROAD VECTOR</div>
-            <h2>32維路單結構（60%加權後）</h2>
+            <h2>32維路單結構（40%加權後）</h2>
           </div>
           <span class="feature-index">33–64</span>
         </div>
