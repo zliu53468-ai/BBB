@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08111f">
   <title>BGS AI 預測分析</title>
-  <meta name="description" content="BGS 256維穩定分析面板">
+  <meta name="description" content="BGS 256維柱高穩定分析面板">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -25,37 +25,16 @@
     </header>
 
     <section class="card prediction-card">
-      <div class="card-title">
-        <span>下一局方向</span>
-        <small>即時分析</small>
-      </div>
-
+      <div class="card-title"><span>下一局方向</span><small>即時分析</small></div>
       <div class="prediction-layout">
-        <div class="direction-orb idle" id="directionOrb">
-          <span id="directionText">—</span>
-          <small id="directionCode">等待分析</small>
-        </div>
-
+        <div class="direction-orb idle" id="directionOrb"><span id="directionText">—</span><small id="directionCode">等待分析</small></div>
         <div class="metrics">
-          <div class="metric">
-            <span>模型信心</span>
-            <strong id="confidence">—</strong>
-          </div>
-          <div class="metric">
-            <span>牌型狀態</span>
-            <strong id="regime">—</strong>
-          </div>
-          <div class="metric">
-            <span>結構強度</span>
-            <strong id="strength">—</strong>
-          </div>
-          <div class="metric">
-            <span>分析局數</span>
-            <strong><b id="roundCount">0</b> 局</strong>
-          </div>
+          <div class="metric"><span>模型信心</span><strong id="confidence">—</strong></div>
+          <div class="metric"><span>牌型狀態</span><strong id="regime">—</strong></div>
+          <div class="metric"><span>結構強度</span><strong id="strength">—</strong></div>
+          <div class="metric"><span>分析局數</span><strong><b id="roundCount">0</b> 局</strong></div>
         </div>
       </div>
-
       <div class="message" id="message" aria-live="polite">輸入牌局後開始分析</div>
     </section>
 
@@ -65,7 +44,6 @@
         <button class="result-btn player" id="btnP" type="button"><strong>閒</strong><small>PLAYER</small></button>
         <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
       </div>
-
       <div class="action-buttons">
         <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
         <button class="action-btn" id="btnBack" type="button">返回上一局</button>
@@ -75,18 +53,13 @@
     </section>
 
     <section class="card history-card">
-      <div class="card-title">
-        <span>本靴紀錄</span>
-        <small>依輸入順序排列</small>
-      </div>
-      <div class="history-track" id="historyTrack">
-        <div class="empty-history">尚未輸入牌局</div>
-      </div>
+      <div class="card-title"><span>本靴紀錄</span><small>依輸入順序排列</small></div>
+      <div class="history-track" id="historyTrack"><div class="empty-history">尚未輸入牌局</div></div>
     </section>
 
-    <footer>256維穩定版 · 網頁測試面板</footer>
+    <footer>256維柱高穩定版 · 網頁測試面板</footer>
   </main>
 
-  <script src="app256stable.js"></script>
+  <script src="app256column.js"></script>
 </body>
 </html>
