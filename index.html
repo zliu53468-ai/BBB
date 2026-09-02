@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <title>BGS 128D Frozen Prior AI Predictor Lab</title>
-  <meta name="description" content="64D 牌靴進程 + 64D 路單結構的 128D Frozen Prior Contextual LinUCB 本地測試面板">
+  <title>BGS 128D Frozen V2 AI Predictor Lab</title>
+  <meta name="description" content="64D 牌靴進程 + 64D 路單結構的 128D Frozen V2 Multi-Expert 本地測試面板">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -15,15 +15,15 @@
   <main class="shell">
     <section class="hero panel">
       <div class="hero-copy">
-        <div class="eyebrow">BGS AI · 128D FROZEN PRIOR</div>
-        <h1>128D Frozen Prior 實驗室</h1>
+        <div class="eyebrow">BGS AI · 128D FROZEN V2</div>
+        <h1>128D Frozen V2 實驗室</h1>
         <p class="hero-text">
-          64維牌靴進程 + 64維路單結構。Context 先固定正規化與 Regime Gate，
-          再交給固定 B/P 雙臂 A/b 做 Contextual LinUCB 推論；執行期間完全不學習、不更新。
+          64維牌靴進程 + 64維路單結構。方向核心改為 Trend、Reversal、Derived-road Candidate、
+          Multi-scale Divergence 四專家 Soft Fusion，避免單一 Regime 誤判把整組訊號一起翻面。
         </p>
         <div class="status-row">
           <span class="status-pill" id="modePill">準備歷史</span>
-          <span class="status-pill subtle">64D + 64D · FROZEN PRIOR</span>
+          <span class="status-pill subtle">64D + 64D · 4 EXPERTS</span>
           <span class="status-pill subtle" id="roundPill">0 局</span>
         </div>
       </div>
@@ -43,7 +43,7 @@
             <div class="eyebrow">NEXT ROUND</div>
             <h2>下一局方向</h2>
           </div>
-          <div class="brain-state" id="brainState">Frozen Prior V1</div>
+          <div class="brain-state" id="brainState">Frozen V2 · 4 Experts</div>
         </div>
 
         <div class="prediction-main">
@@ -54,14 +54,14 @@
 
           <div class="metric-grid">
             <div class="metric"><span>模型信心</span><strong id="confidence">—</strong></div>
-            <div class="metric"><span>UCB 莊</span><strong id="ucbB">—</strong></div>
-            <div class="metric"><span>UCB 閒</span><strong id="ucbP">—</strong></div>
+            <div class="metric"><span>Score 莊</span><strong id="ucbB">—</strong></div>
+            <div class="metric"><span>Score 閒</span><strong id="ucbP">—</strong></div>
             <div class="metric"><span>Score Gap</span><strong id="scoreGap">—</strong></div>
           </div>
         </div>
 
         <div class="message" id="message" aria-live="polite">
-          先用莊／閒／和按鈕建立歷史，再按「開始分析」。Frozen A/b 在執行期間永遠不更新。
+          先用莊／閒／和按鈕建立歷史，再按「開始分析」。Frozen V2 執行期間完全不學習、不更新。
         </div>
       </section>
 
@@ -95,7 +95,7 @@
         </div>
 
         <div class="mini-note">
-          莊／閒／和只加入歷史；「開始分析」才重新計算 128D Context。
+          莊／閒／和只加入歷史；「開始分析」才重新計算 128D Context 與四專家分數。
           <b>不 bootstrap、不 Walk-forward、不 replay、不結算上一筆、不更新 A/b、不 decay。</b>
         </div>
       </section>
@@ -149,10 +149,10 @@
     </section>
 
     <footer>
-      128D Frozen Prior Contextual LinUCB 測試面板 · 固定 A/b · updates 永遠為 0 · 僅供 BBB 網頁版獨立測試
+      128D Frozen V2 Multi-Expert 測試面板 · 四專家 Soft Fusion · updates 永遠為 0 · 僅供 BBB 網頁版獨立測試
     </footer>
   </main>
 
-  <script src="app128prior.js"></script>
+  <script src="app128v2.js"></script>
 </body>
 </html>
