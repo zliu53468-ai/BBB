@@ -1,60 +1,435 @@
 (() => {
 "use strict";
-const SHOE_DIM=128,ROAD_DIM=128,DIM=256,ARMS=["P","B"],RIDGE=1,ALPHA=.5,ALPHA_MAX_SCALE=1.6,SCORE_TIE_EPS=1e-6,SCORE_TEMP=2,PROB_MIN=.42,PROB_MAX=.58,DECKS=8,TOTAL_CARDS=416,AVG_CARDS_PER_HAND=4.9;
-const STORAGE_KEY="bgs256d_128plus128_frozen_direct_tech_panel_v1";
-const LEGACY_STORAGE_KEYS=["bgs128d_64plus64_frozen_direct_tech_panel_v1","bgs64d_32plus32_frozen_direct_tech_panel_v2","bgs32d_frozen_direct_tech_panel_v1"];
-const el=id=>document.getElementById(id),clip=(v,lo=0,hi=1)=>Math.max(lo,Math.min(hi,Number.isFinite(+v)?+v:lo));
-let state={history:[],active:false,brain:null,lastPrediction:null},migratedFromLegacy="";
-const bp=s=>s.filter(x=>x==="B"||x==="P");
-function runs(seq){const s=bp(seq);if(!s.length)return[];const o=[];let side=s[0],n=1;for(const v of s.slice(1)){if(v===side)n++;else{o.push([side,n]);side=v;n=1}}o.push([side,n]);return o}
-function bankerRatio(seq,w){const a=bp(seq).slice(-Math.max(1,w));return a.length?a.filter(x=>x==="B").length/a.length:.5}
-const balanceStrength=(s,w)=>clip(1-Math.abs(bankerRatio(s,w)-.5)*2);
-function turnRate(seq,w){const a=bp(seq).slice(-Math.max(2,w));if(a.length<2)return .5;let t=0;for(let i=1;i<a.length;i++)if(a[i]!==a[i-1])t++;return t/(a.length-1)}
-function tieRatio(seq,w=0){const a=w?seq.slice(-w):seq;return a.length?a.filter(x=>x==="T").length/a.length:0}
-function entropyNorm(seq,w=12){const a=seq.slice(-w);if(!a.length)return 1;let e=0;for(const o of["B","P","T"]){const p=a.filter(x=>x===o).length/a.length;if(p)e-=p*Math.log2(p)}return clip(e/Math.log2(3))}
-function binaryEntropyNorm(seq,w=12){const a=bp(seq).slice(-w);if(!a.length)return 1;const p=a.filter(x=>x==="B").length/a.length,q=1-p;let e=0;if(p)e-=p*Math.log2(p);if(q)e-=q*Math.log2(q);return clip(e)}
-function derivedMark(h,c,row,newCol,off){if(newCol){if(c<off+1)return"";return h[c-1]===h[c-1-off]?"R":"U"}if(c<off)return"";const r=h[c-off];return(r>=row)===(r>=row-1)?"R":"U"}
-function buildDerivedRoads(seq){const s=bp(seq),sides=[],h=[],out={big_eye:[],small_road:[],cockroach_road:[]},offs={big_eye:1,small_road:2,cockroach_road:3};for(const side of s){const nc=!sides.length||side!==sides.at(-1);if(nc){sides.push(side);h.push(1)}else h[h.length-1]++;const c=h.length-1,row=h[c];for(const[k,o]of Object.entries(offs)){const m=derivedMark(h,c,row,nc,o);if(m)out[k].push(m)}}return out}
-function regularity(v,w=8){const a=v.slice(-w).filter(x=>x==="R"||x==="U");return a.length?[a.filter(x=>x==="R").length/a.length,a.length]:[.5,0]}
-function lengthBucket(n){n=Math.max(1,Math.floor(n));return n<=5?String(n):"6+"}
-function hazardContexts(side,cur,prev){const ph=prev.length?prev.at(-1):0,d=[];for(let i=1;i<prev.length;i++)d.push(prev[i]>prev[i-1]?"UP":prev[i]<prev[i-1]?"DOWN":"EQUAL");const d1=d.length?d.at(-1):"NA",d2=d.length>1?d.at(-2):"NA",c=lengthBucket(cur),p=ph?lengthBucket(ph):"0";return[["full",`HZF|side=${side||"NA"}|cur=${c}|prev=${p}|d1=${d1}|d2=${d2}`],["structure",`HZS|cur=${c}|prev=${p}|d1=${d1}|d2=${d2}`],["shape",`HZP|cur=${c}|prev=${p}|d1=${d1}`],["length",`HZL|cur=${c}`],["global","HZG|GLOBAL"]]}
-function hazardTable(rs){const done=rs.slice(0,-1),hs=done.map(x=>x[1]),t={};const b=k=>t[k]||(t[k]={CONTINUE:0,TURN:0});done.forEach(([side,len],i)=>{const p=hs.slice(0,i);for(let at=1;at<=Math.max(1,len);at++){const ev=at<len?"CONTINUE":"TURN";for(const[,k]of hazardContexts(side,at,p))b(k)[ev]++}});return t}
-function hazardPosterior(c){const co=+c.CONTINUE||0,tu=+c.TURN||0,d=co+tu+6;return{CONTINUE:(co+3)/d,TURN:(tu+3)/d}}
-function hazard(seq){const rs=runs(seq);if(!rs.length)return .5;const[side,cur]=rs.at(-1),hs=rs.slice(0,-1).map(x=>x[1]),t=hazardTable(rs),cs=hazardContexts(side,cur,hs);let p={CONTINUE:.5,TURN:.5},pen=1,found=false;for(let i=0;i<cs.length;i++){const c=t[cs[i][1]]||{CONTINUE:0,TURN:0};if(c.CONTINUE+c.TURN>=4){p=hazardPosterior(c);found=true;break}if(i<cs.length-1)pen*=.75}if(!found){const g=t["HZG|GLOBAL"]||{CONTINUE:0,TURN:0};if(g.CONTINUE+g.TURN)p=hazardPosterior(g);else pen=0}return clip(1-((1-pen)*.5+pen*p.CONTINUE))}
-function runVolatility(seq,w=6){const h=runs(seq).slice(-w).map(x=>x[1]);if(h.length<2)return .25;let d=0;for(let i=1;i<h.length;i++)d+=Math.abs(h[i]-h[i-1]);return clip(d/(h.length-1)/3)}
-function runHeightTrend(seq,w=5){const h=runs(seq).slice(-w).map(x=>x[1]);return h.length<2?.5:clip(.5+((h.at(-1)-h[0])/(h.length-1))/6)}
-function hsmmStable(seq){const a=turnRate(seq,10),rs=runs(seq),cur=rs.length?rs.at(-1)[1]:0,r=clip(cur/6),e=entropyNorm(seq,12),v=runVolatility(seq);const p=Math.exp(-(((a-.25)/.24)**2)-(((r-.7)/.28)**2)-(((e-.62)/.24)**2)-(((v-.26)/.24)**2)),q=Math.exp(-(((a-.84)/.18)**2)-(((r-.18)/.2)**2)-(((e-.7)/.23)**2)-(((v-.3)/.24)**2)),t=Math.exp(-(((a-.52)/.28)**2)-(((r-.34)/.26)**2)-(((e-.82)/.18)**2)-(((v-.72)/.23)**2)),n=Math.exp(-(((a-.55)/.3)**2)-(((r-.27)/.24)**2)-(((e-.94)/.11)**2)-(((v-.55)/.28)**2)),ws=[.25*p,.25*q,.2*t,.3*n],z=ws.reduce((x,y)=>x+y,0)||1;return clip((ws[0]+ws[1])/z)}
-function alternatingTail(seq,w){const a=bp(seq).slice(-w);if(a.length<w)return .5;for(let i=1;i<a.length;i++)if(a[i]===a[i-1])return 0;return 1}
-function sameTail(seq,w){const a=bp(seq).slice(-w);return a.length<w?.5:+a.every(x=>x===a[0])}
-function runStats(seq,w){const a=runs(seq).slice(-w).map(x=>x[1]),m=a.length?a.reduce((s,v)=>s+v,0)/a.length:0,v=a.length?a.reduce((s,x)=>s+(x-m)**2,0)/a.length:0;return{avg:clip(m/8),max:clip((a.length?Math.max(...a):0)/12),std:clip(Math.sqrt(v)/6)}}
-const SHOE_NAMES=[],ROAD_NAMES=[];const sn=n=>SHOE_NAMES.push(n),rn=n=>ROAD_NAMES.push(n);
-["remaining_cards_ratio","penetration_ratio","estimated_hands_remaining_norm","shoe_maturity_ratio","rank_A_relative_ratio","rank_2_relative_ratio","rank_3_relative_ratio","rank_4_relative_ratio","rank_5_relative_ratio","rank_6_relative_ratio","rank_7_relative_ratio","rank_8_relative_ratio","rank_9_relative_ratio","rank_10JQK_relative_ratio","physical_edge_proxy","shoe_information_reliability","shoe_phase_early","shoe_phase_middle","shoe_phase_late","estimated_hands_played_norm","remaining_decks_ratio","hands_elapsed_log_norm","tie_ratio_all","tie_ratio_recent8","tie_ratio_recent16","bp_balance_strength","bp_entropy_recent12","outcome_entropy_recent12","outcome_entropy_recent24","sample_support_norm","composition_missing_indicator","shoe_progression_confidence"].forEach(sn);
-[4,6,12,24,32].forEach(w=>sn(`tie_ratio_recent${w}`));[4,6,8,16,24,32].forEach(w=>sn(`bp_entropy_recent${w}`));[6,8,16,32].forEach(w=>sn(`outcome_entropy_recent${w}`));[6,8,16,24,32].forEach(w=>sn(`bp_balance_recent${w}`));
-["penetration_squared","penetration_sqrt","remaining_squared","remaining_sqrt","shoe_phase_very_early","shoe_phase_early_mid","shoe_phase_mid_late","shoe_phase_very_late","sample_support_8","sample_support_16","sample_support_24","sample_support_48"].forEach(sn);
-[2,3,5,7,10,14,20,28,40,48,56,64].forEach(w=>sn(`tie_ratio_recent${w}`));[2,3,5,7,10,14,20,28,40,48,56,64].forEach(w=>sn(`bp_entropy_recent${w}`));[2,3,5,7,10,14,20,28,40,48,56,64].forEach(w=>sn(`outcome_entropy_recent${w}`));[2,3,5,7,10,14,20,28,40,48,56,64].forEach(w=>sn(`bp_balance_recent${w}`));
-["penetration_cubic","remaining_cubic","penetration_quarter_root","remaining_quarter_root","shoe_phase_q1","shoe_phase_q2","shoe_phase_q3","shoe_phase_q4","sample_support_4","sample_support_12","sample_support_20","sample_support_32","tie_short_long_delta","entropy_short_long_delta","balance_short_long_delta","maturity_log_norm"].forEach(sn);
-["current_side_banker_binary","current_run_length_norm","previous_run_length_norm","previous2_run_length_norm","recent5_banker_ratio","recent8_banker_ratio","recent12_banker_ratio","recent5_turn_rate","recent8_turn_rate","recent12_turn_rate","run_length_hazard_rate","hsmm_stable_probability","big_eye_regularity","small_road_regularity","cockroach_road_regularity","derived_road_consensus","current_side_player_binary","previous3_run_length_norm","recent3_banker_ratio","recent20_banker_ratio","recent3_turn_rate","recent20_turn_rate","run_continue_probability","recent8_outcome_entropy","recent20_outcome_entropy","recent6_run_volatility","recent5_run_height_trend","big_eye_support_norm","small_road_support_norm","cockroach_road_support_norm","last2_same_side","last3_same_side"].forEach(rn);
-[2,4,6,10,16,24,32,48].forEach(w=>rn(`recent${w}_banker_ratio`));[2,4,6,10,16,24,32,48].forEach(w=>rn(`recent${w}_turn_rate`));
-["big_eye_regularity_w4","small_road_regularity_w4","cockroach_road_regularity_w4","big_eye_regularity_w16","small_road_regularity_w16","cockroach_road_regularity_w16","previous4_run_length_norm","avg_run_last4_norm","avg_run_last8_norm","max_run_last8_norm","run_std_last8_norm","run_delta_last_norm","alternating_last4","alternating_last6","last4_same_side","last5_same_side"].forEach(rn);
-[7,9,11,14,18,22,28,36,40,56,64,72].forEach(w=>rn(`recent${w}_banker_ratio`));[7,9,11,14,18,22,28,36,40,56,64,72].forEach(w=>rn(`recent${w}_turn_rate`));
-[6,12,24,32].forEach(w=>["big_eye","small_road","cockroach_road"].forEach(k=>rn(`${k}_regularity_w${w}`)));
-["previous5_run_length_norm","previous6_run_length_norm","avg_run_last6_norm","avg_run_last12_norm","max_run_last12_norm","run_std_last12_norm","run_height_trend_w8","run_height_trend_w12","alternating_last3","alternating_last5","alternating_last8","alternating_last10","last6_same_side","last7_same_side","last8_same_side","last10_same_side","banker_ratio_delta_4_16","banker_ratio_delta_8_32","banker_ratio_delta_16_64","turn_rate_delta_4_16","turn_rate_delta_8_32","turn_rate_delta_16_64","hazard_squared","continue_squared","hsmm_stable_squared","derived_consensus_squared","derived_support_mean","derived_regularity_mean"].forEach(rn);
-if(SHOE_NAMES.length!==128||ROAD_NAMES.length!==128)throw new Error(`256D names mismatch ${SHOE_NAMES.length}/${ROAD_NAMES.length}`);
-function context256(seq){const used=Math.min(TOTAL_CARDS,seq.length*AVG_CARDS_PER_HAND),remaining=Math.max(0,TOTAL_CARDS-used),rr=clip(remaining/TOTAL_CARDS),pen=clip(1-rr),maturity=clip(seq.length/70),cap=TOTAL_CARDS/AVG_CARDS_PER_HAND,hp=clip(seq.length/cap),allBR=bankerRatio(seq,Math.max(1,bp(seq).length));const shoe=[rr,pen,rr,maturity,1,1,1,1,1,1,1,1,1,1,0,0,clip(1-pen/.35),clip(1-Math.abs(pen-.5)/.35),clip((pen-.55)/.35),hp,rr,clip(Math.log1p(seq.length)/Math.log1p(cap)),tieRatio(seq),tieRatio(seq,8),tieRatio(seq,16),clip(1-Math.abs(allBR-.5)*2),binaryEntropyNorm(seq,12),entropyNorm(seq,12),entropyNorm(seq,24),clip(seq.length/32),1,clip(Math.sqrt(seq.length)/Math.sqrt(cap))];[4,6,12,24,32].forEach(w=>shoe.push(tieRatio(seq,w)));[4,6,8,16,24,32].forEach(w=>shoe.push(binaryEntropyNorm(seq,w)));[6,8,16,32].forEach(w=>shoe.push(entropyNorm(seq,w)));[6,8,16,24,32].forEach(w=>shoe.push(balanceStrength(seq,w)));shoe.push(pen*pen,Math.sqrt(pen),rr*rr,Math.sqrt(rr),clip(1-pen/.18),clip(1-Math.abs(pen-.3)/.22),clip(1-Math.abs(pen-.62)/.24),clip((pen-.72)/.22),clip(seq.length/8),clip(seq.length/16),clip(seq.length/24),clip(seq.length/48));[2,3,5,7,10,14,20,28,40,48,56,64].forEach(w=>shoe.push(tieRatio(seq,w)));[2,3,5,7,10,14,20,28,40,48,56,64].forEach(w=>shoe.push(binaryEntropyNorm(seq,w)));[2,3,5,7,10,14,20,28,40,48,56,64].forEach(w=>shoe.push(entropyNorm(seq,w)));[2,3,5,7,10,14,20,28,40,48,56,64].forEach(w=>shoe.push(balanceStrength(seq,w)));shoe.push(pen**3,rr**3,Math.sqrt(Math.sqrt(pen)),Math.sqrt(Math.sqrt(rr)),clip(1-Math.abs(pen-.125)/.125),clip(1-Math.abs(pen-.375)/.125),clip(1-Math.abs(pen-.625)/.125),clip(1-Math.abs(pen-.875)/.125),clip(seq.length/4),clip(seq.length/12),clip(seq.length/20),clip(seq.length/32),clip(.5+(tieRatio(seq,8)-tieRatio(seq,32))/2),clip(.5+(binaryEntropyNorm(seq,8)-binaryEntropyNorm(seq,32))/2),clip(.5+(balanceStrength(seq,8)-balanceStrength(seq,32))/2),clip(Math.log1p(seq.length)/Math.log1p(128)));const rs=runs(seq),cur=rs.length?rs.at(-1):["",0],p1=rs.length>1?rs.at(-2):["",0],p2=rs.length>2?rs.at(-3):["",0],p3=rs.length>3?rs.at(-4):["",0],p4=rs.length>4?rs.at(-5):["",0],p5=rs.length>5?rs.at(-6):["",0],p6=rs.length>6?rs.at(-7):["",0],sideB=cur[0]==="B"?1:cur[0]==="P"?0:.5,sideP=cur[0]==="P"?1:cur[0]==="B"?0:.5,dr=buildDerivedRoads(seq);const R=w=>{const[be,bn]=regularity(dr.big_eye,w),[sm,sn]=regularity(dr.small_road,w),[cr,cn]=regularity(dr.cockroach_road,w);return{be,sm,cr,bn,sn,cn}},r4=R(4),r6=R(6),r8=R(8),r12=R(12),r16=R(16),r24=R(24),r32=R(32),m=(r8.be+r8.sm+r8.cr)/3,cons=clip(1-(Math.abs(r8.be-m)+Math.abs(r8.sm-m)+Math.abs(r8.cr-m))/1.5),hz=hazard(seq),roadBP=bp(seq),same=n=>roadBP.length>=n?+roadBP.slice(-n).every(v=>v===roadBP.at(-1)):.5,s4=runStats(seq,4),s6=runStats(seq,6),s8=runStats(seq,8),s12=runStats(seq,12),runDelta=rs.length>1?clip(.5+(cur[1]-p1[1])/12):.5;const road=[sideB,clip(cur[1]/8),clip(p1[1]/8),clip(p2[1]/8),bankerRatio(seq,5),bankerRatio(seq,8),bankerRatio(seq,12),turnRate(seq,5),turnRate(seq,8),turnRate(seq,12),hz,hsmmStable(seq),r8.be,r8.sm,r8.cr,cons,sideP,clip(p3[1]/8),bankerRatio(seq,3),bankerRatio(seq,20),turnRate(seq,3),turnRate(seq,20),clip(1-hz),entropyNorm(seq,8),entropyNorm(seq,20),runVolatility(seq),runHeightTrend(seq,5),clip(r8.bn/8),clip(r8.sn/8),clip(r8.cn/8),same(2),same(3)];[2,4,6,10,16,24,32,48].forEach(w=>road.push(bankerRatio(seq,w)));[2,4,6,10,16,24,32,48].forEach(w=>road.push(turnRate(seq,w)));road.push(r4.be,r4.sm,r4.cr,r16.be,r16.sm,r16.cr,clip(p4[1]/8),s4.avg,s8.avg,s8.max,s8.std,runDelta,alternatingTail(seq,4),alternatingTail(seq,6),same(4),same(5));[7,9,11,14,18,22,28,36,40,56,64,72].forEach(w=>road.push(bankerRatio(seq,w)));[7,9,11,14,18,22,28,36,40,56,64,72].forEach(w=>road.push(turnRate(seq,w)));[r6,r12,r24,r32].forEach(r=>road.push(r.be,r.sm,r.cr));road.push(clip(p5[1]/8),clip(p6[1]/8),s6.avg,s12.avg,s12.max,s12.std,runHeightTrend(seq,8),runHeightTrend(seq,12),alternatingTail(seq,3),alternatingTail(seq,5),alternatingTail(seq,8),alternatingTail(seq,10),same(6),same(7),same(8),same(10),clip(.5+(bankerRatio(seq,4)-bankerRatio(seq,16))/2),clip(.5+(bankerRatio(seq,8)-bankerRatio(seq,32))/2),clip(.5+(bankerRatio(seq,16)-bankerRatio(seq,64))/2),clip(.5+(turnRate(seq,4)-turnRate(seq,16))/2),clip(.5+(turnRate(seq,8)-turnRate(seq,32))/2),clip(.5+(turnRate(seq,16)-turnRate(seq,64))/2),hz*hz,(1-hz)**2,hsmmStable(seq)**2,cons**2,clip((r8.bn+r8.sn+r8.cn)/24),clip((r8.be+r8.sm+r8.cr)/3));const v=[...shoe,...road];if(shoe.length!==128||road.length!==128||v.length!==256)throw new Error(`256D context mismatch ${shoe.length}/${road.length}/${v.length}`);return v}
-const eye=n=>Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i===j?RIDGE:0));const freshArm=()=>({A:eye(DIM),b:Array(DIM).fill(0),n:0,effective_n:0}),freshBrain=()=>({arms:{P:freshArm(),B:freshArm()},updates:0,last_selected:"",selection_streak:0});const validArm=a=>!!a&&Array.isArray(a.A)&&a.A.length===DIM&&a.A.every(r=>Array.isArray(r)&&r.length===DIM)&&Array.isArray(a.b)&&a.b.length===DIM,validBrain=b=>!!b&&b.arms&&validArm(b.arms.P)&&validArm(b.arms.B);
-function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state))}catch(_){}}
-function load(){try{let source=STORAGE_KEY,text=localStorage.getItem(STORAGE_KEY);if(!text)for(const k of LEGACY_STORAGE_KEYS){const c=localStorage.getItem(k);if(c){text=c;source=k;break}}const raw=JSON.parse(text||"null");if(!raw||!Array.isArray(raw.history))return;const ok=source===STORAGE_KEY&&validBrain(raw.brain),pred=ok&&raw.lastPrediction&&Array.isArray(raw.lastPrediction.x)&&raw.lastPrediction.x.length===DIM;migratedFromLegacy=source!==STORAGE_KEY?source:"";state={history:raw.history.filter(x=>["B","P","T"].includes(x)).slice(-500),active:pred?!!raw.active:false,brain:ok?raw.brain:freshBrain(),lastPrediction:pred?raw.lastPrediction:null}}catch(_){}}
-function solve(A,b){const n=A.length,m=A.map((r,i)=>[...r,+b[i]]);for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(m[r][c])>Math.abs(m[p][c]))p=r;if(Math.abs(m[p][c])<1e-10){const bumped=A.map((r,i)=>r.map((v,j)=>v+(i===j?RIDGE:0)));return solve(bumped,b)}[m[c],m[p]]=[m[p],m[c]];const d=m[c][c];for(let j=c;j<=n;j++)m[c][j]/=d;for(let r=0;r<n;r++){if(r===c)continue;const f=m[r][c];for(let j=c;j<=n;j++)m[r][j]-=f*m[c][j]}}return m.map(r=>r[n])}
-const dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0);function scoreArm(a,x,scale){const th=solve(a.A,a.b),sx=solve(a.A,x),mean=dot(x,th),uncertainty=Math.sqrt(Math.max(0,dot(x,sx))),effectiveAlpha=ALPHA*Math.max(.5,Math.min(2.5,scale));return{mean,uncertainty,effectiveAlpha,score:mean+effectiveAlpha*uncertainty}}
-function choose(brain,seq){const x=context256(seq),n=bp(seq).length,base=n<8?1.35:n<15?1.15:1,eff={P:Math.max(0,+brain.arms.P.effective_n||0),B:Math.max(0,+brain.arms.B.effective_n||0)},total=eff.P+eff.B,scores={};for(const arm of ARMS){const imb=Math.sqrt(Math.max(1,total+2)/Math.max(1,eff[arm]+1));scores[arm]=scoreArm(brain.arms[arm],x,base*clip(imb,.85,ALPHA_MAX_SCALE))}const gap=scores.B.score-scores.P.score;let direction,reason;if(Math.abs(gap)<=SCORE_TIE_EPS){if(Math.abs(eff.B-eff.P)>1e-9){direction=eff.B<eff.P?"B":"P";reason="tie_less_sampled_arm"}else if(["B","P"].includes(brain.last_selected)){direction=brain.last_selected==="B"?"P":"B";reason="tie_opposite_previous_arm"}else{let h=0;const tok="LOCAL_256D_128PLUS128|"+seq.join("");for(let i=0;i<tok.length;i++)h=(h*31+tok.charCodeAt(i))>>>0;direction=h%2?"B":"P";reason="tie_deterministic_history_hash"}}else{direction=gap>0?"B":"P";reason="linucb_ucb_score_argmax"}const raw=1/(1+Math.exp(-Math.max(-8,Math.min(8,gap/SCORE_TEMP)))),pB=clip(raw,PROB_MIN,PROB_MAX),pP=1-pB,confidence=direction==="B"?pB:pP,prev=brain.last_selected;brain.selection_streak=prev===direction?(brain.selection_streak||0)+1:1;brain.last_selected=direction;return{direction,reason,x,scores,gap,probabilities:{B:pB,P:pP},confidence}}
-function setMessage(t,w=false){const b=el("message");b.textContent=t;b.style.borderLeftColor=w?"#f7d46a":"#55d6ff";b.style.color=w?"#dfc986":"#9ab4c7"}
-function addOutcome(o){if(!["B","P","T"].includes(o))return;state.history.push(o);state.lastPrediction=null;state.active=false;setMessage(`已加入第 ${state.history.length} 局：${o==="B"?"莊":o==="P"?"閒":"和"}。按「開始分析」＝沿用256D（128D＋128D）本地腦直接預測。`);save();render()}
-function startAnalysis(){if(!state.history.length){setMessage("請先用莊／閒／和輸入歷史紀錄。",true);return}if(!validBrain(state.brain))state.brain=freshBrain();state.active=true;state.lastPrediction=choose(state.brain,state.history);setMessage(`已沿用256D（128D＋128D）本地腦直接預測第 ${state.history.length+1} 局。A/b 未更新。`);save();render()}
-function endAnalysis(){state.active=false;state.lastPrediction=null;setMessage("分析已結束。歷史與256D本地腦保留。");save();render()}
-function backOne(){if(!state.history.length)return;const r=state.history.pop();state.active=false;state.lastPrediction=null;setMessage(`已返回上一局（移除 ${r}）。256D本地腦沒有更新。`);save();render()}
-function renderFeatures(v){v=Array.isArray(v)&&v.length===DIM?v:Array(DIM).fill(0);el("shoeGrid").innerHTML=SHOE_NAMES.map((n,i)=>`<div class="feature-row"><span>${String(i+1).padStart(3,"0")} · ${n}</span><b>${(+v[i]).toFixed(5)}</b></div>`).join("");el("roadGrid").innerHTML=ROAD_NAMES.map((n,i)=>{const j=i+SHOE_DIM;return`<div class="feature-row"><span>${String(j+1).padStart(3,"0")} · ${n}</span><b>${(+v[j]).toFixed(5)}</b></div>`}).join("")}
-function render(){el("modePill").textContent=state.active?"已完成本次預測":"準備歷史";el("roundPill").textContent=`${state.history.length} 局`;el("brainState").textContent="沿用256D本地腦";el("seedCount").textContent=state.history.length;el("liveCount").textContent=state.brain?Math.round(state.brain.updates||0):0;el("historyTrack").innerHTML=state.history.length?state.history.map((v,i)=>`<div class="history-chip ${v}" title="第${i+1}局">${v}</div>`).join(""):'<div class="empty-history">尚未輸入牌局</div>';const p=state.lastPrediction,orb=el("directionOrb");if(!p||!state.active){el("directionText").textContent="—";el("directionCode").textContent="WAIT";el("confidence").textContent=el("ucbB").textContent=el("ucbP").textContent=el("scoreGap").textContent="—";orb.className="direction-orb idle";renderFeatures(context256(state.history))}else{el("directionText").textContent=p.direction==="B"?"莊":"閒";el("directionCode").textContent=p.direction==="B"?"BANKER · B":"PLAYER · P";el("confidence").textContent=(p.confidence*100).toFixed(2)+"%";el("ucbB").textContent=p.scores.B.score.toFixed(6);el("ucbP").textContent=p.scores.P.score.toFixed(6);el("scoreGap").textContent=p.gap.toFixed(6);orb.className="direction-orb "+(p.direction==="B"?"banker":"player");renderFeatures(p.x)}el("debug").textContent=JSON.stringify({model:"256D (128D Shoe + 128D Road) Frozen Direct Local Brain",version:"FROZEN-DIRECT-V12-256D-STATIC-PANEL",immutable:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_A_b:false,decay:false},history:state.history.join(""),prediction:p?{direction:p.direction,reason:p.reason,gap:p.gap,dimensions:{shoe:128,road:128,total:256}}:null},null,2)}
-function initCanvas(){const c=el("techCanvas"),x=c&&c.getContext("2d");if(!x)return;let w=0,h=0,nodes=[];function resize(){const d=Math.min(window.devicePixelRatio||1,2);w=window.innerWidth;h=window.innerHeight;c.width=w*d;c.height=h*d;c.style.width=w+"px";c.style.height=h+"px";x.setTransform(d,0,0,d,0,0);nodes=Array.from({length:Math.max(18,Math.min(44,Math.floor(w/32)))},()=>({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*.18,vy:(Math.random()-.5)*.18,r:1+Math.random()*1.5}))}function frame(){x.clearRect(0,0,w,h);for(const n of nodes){n.x+=n.vx;n.y+=n.vy;if(n.x<0||n.x>w)n.vx*=-1;if(n.y<0||n.y>h)n.vy*=-1;x.fillStyle="rgba(98,220,255,.32)";x.beginPath();x.arc(n.x,n.y,n.r,0,Math.PI*2);x.fill()}requestAnimationFrame(frame)}resize();window.addEventListener("resize",resize,{passive:true});frame()}
-el("btnB").addEventListener("click",()=>addOutcome("B"));el("btnP").addEventListener("click",()=>addOutcome("P"));el("btnT").addEventListener("click",()=>addOutcome("T"));el("btnStart").addEventListener("click",startAnalysis);el("btnEnd").addEventListener("click",endAnalysis);el("btnBack").addEventListener("click",backOne);
-load();if(!validBrain(state.brain))state.brain=freshBrain();render();if(migratedFromLegacy){setMessage("已保留舊128D／64D／32D歷史，並重建256D本地腦；舊尺寸 A/b 未混用。",true);save()}initCanvas();
+const SHOE_DIM = 128;
+const ROAD_DIM = 128;
+const DIM = 256;
+const ARMS = ["P", "B"];
+const ALPHA = 0.5;
+const RIDGE = 1.0;
+const PROB_MIN = 0.42;
+const PROB_MAX = 0.58;
+const SCORE_TEMP = 0.42;
+const SCORE_TIE_EPS = 1e-9;
+const TOTAL_CARDS = 416;
+const AVG_CARDS_PER_HAND = 4.9;
+const STORAGE_KEY = "bgs256d_frozen_column_linucb_v15";
+const LEGACY_KEYS = [
+"bgs256d_side_aware_column_v14_user_panel_v1",
+"bgs256d_column_geometry_v13_user_panel_v1",
+"bgs256d_stability_v12_user_panel_v1",
+"bgs256d_128plus128_frozen_direct_tech_panel_v1",
+"bgs128d_64plus64_frozen_direct_tech_panel_v1",
+"bgs64d_32plus32_frozen_direct_tech_panel_v2",
+"bgs32d_frozen_direct_tech_panel_v1"
+];
+const el = id => document.getElementById(id);
+const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
+const bp = seq => seq.filter(x => x === "B" || x === "P");
+let state = { history: [], active: false, lastPrediction: null, last_selected: "", selection_streak: 0 };
+function runs(seq) {
+const a = bp(seq);
+if (!a.length) return [];
+const out = [];
+let side = a[0], n = 1;
+for (let i = 1; i < a.length; i++) {
+if (a[i] === side) n++;
+else { out.push([side, n]); side = a[i]; n = 1; }
+}
+out.push([side, n]);
+return out;
+}
+function bankerRatio(seq, w) {
+const a = bp(seq).slice(-Math.max(1, w));
+return a.length ? a.filter(x => x === "B").length / a.length : 0.5;
+}
+function turnRate(seq, w) {
+const a = bp(seq).slice(-Math.max(2, w));
+if (a.length < 2) return 0.5;
+let t = 0;
+for (let i = 1; i < a.length; i++) if (a[i] !== a[i - 1]) t++;
+return t / (a.length - 1);
+}
+function tieRatio(seq, w = 0) {
+const a = w ? seq.slice(-w) : seq;
+return a.length ? a.filter(x => x === "T").length / a.length : 0;
+}
+function binaryEntropy(seq, w = 12) {
+const a = bp(seq).slice(-w);
+if (!a.length) return 1;
+const p = a.filter(x => x === "B").length / a.length;
+const q = 1 - p;
+let e = 0;
+if (p) e -= p * Math.log2(p);
+if (q) e -= q * Math.log2(q);
+return clip(e);
+}
+function outcomeEntropy(seq, w = 12) {
+const a = seq.slice(-w);
+if (!a.length) return 1;
+let e = 0;
+for (const o of ["B", "P", "T"]) {
+const p = a.filter(x => x === o).length / a.length;
+if (p) e -= p * Math.log2(p);
+}
+return clip(e / Math.log2(3));
+}
+const balance = (seq, w) => clip(1 - Math.abs(bankerRatio(seq, w) - 0.5) * 2);
+function sameTail(seq, w) {
+const a = bp(seq).slice(-w);
+return a.length < w ? 0.5 : +a.every(x => x === a[0]);
+}
+function alternatingTail(seq, w) {
+const a = bp(seq).slice(-w);
+if (a.length < w) return 0.5;
+for (let i = 1; i < a.length; i++) if (a[i] === a[i - 1]) return 0;
+return 1;
+}
+function runVolatility(seq, w = 6) {
+const h = runs(seq).slice(-w).map(x => x[1]);
+if (h.length < 2) return 0.25;
+let d = 0;
+for (let i = 1; i < h.length; i++) d += Math.abs(h[i] - h[i - 1]);
+return clip(d / (h.length - 1) / 3);
+}
+function runTrend(seq, w = 5) {
+const h = runs(seq).slice(-w).map(x => x[1]);
+return h.length < 2 ? 0.5 : clip(0.5 + ((h.at(-1) - h[0]) / (h.length - 1)) / 6);
+}
+function runStats(seq, w) {
+const h = runs(seq).slice(-w).map(x => x[1]);
+if (!h.length) return { avg: 0, max: 0, std: 0 };
+const mean = h.reduce((a, b) => a + b, 0) / h.length;
+const variance = h.reduce((s, x) => s + (x - mean) ** 2, 0) / h.length;
+return { avg: clip(mean / 8), max: clip(Math.max(...h) / 12), std: clip(Math.sqrt(variance) / 6) };
+}
+function derivedMark(h, c, row, newCol, off) {
+if (newCol) {
+if (c < off + 1) return "";
+return h[c - 1] === h[c - 1 - off] ? "R" : "U";
+}
+if (c < off) return "";
+const ref = h[c - off];
+return (ref >= row) === (ref >= row - 1) ? "R" : "U";
+}
+function buildDerivedRoads(seq) {
+const a = bp(seq), sides = [], h = [];
+const out = { big_eye: [], small_road: [], cockroach_road: [] };
+const offsets = { big_eye: 1, small_road: 2, cockroach_road: 3 };
+for (const side of a) {
+const nc = !sides.length || side !== sides.at(-1);
+if (nc) { sides.push(side); h.push(1); } else h[h.length - 1]++;
+const c = h.length - 1, row = h[c];
+for (const [name, off] of Object.entries(offsets)) {
+const mark = derivedMark(h, c, row, nc, off);
+if (mark) out[name].push(mark);
+}
+}
+return out;
+}
+function regularity(values, w = 8) {
+const a = values.slice(-w).filter(x => x === "R" || x === "U");
+return a.length ? [a.filter(x => x === "R").length / a.length, a.length] : [0.5, 0];
+}
+function derivedInfo(seq, w = 8) {
+const roads = buildDerivedRoads(seq);
+const [be, bn] = regularity(roads.big_eye, w);
+const [sm, sn] = regularity(roads.small_road, w);
+const [cr, cn] = regularity(roads.cockroach_road, w);
+const mean = (be + sm + cr) / 3;
+return {
+be, sm, cr, bn, sn, cn,
+consensus: clip(1 - (Math.abs(be - mean) + Math.abs(sm - mean) + Math.abs(cr - mean)) / 1.5),
+support: clip((bn + sn + cn) / (w * 3))
+};
+}
+function median(values) {
+if (!values.length) return 0;
+const a = [...values].sort((x, y) => x - y), m = Math.floor(a.length / 2);
+return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+function modeValue(values) {
+if (!values.length) return { value: 0, support: 0 };
+const counts = new Map();
+for (const x of values) counts.set(x, (counts.get(x) || 0) + 1);
+let best = values[0], bestCount = 0;
+for (const [value, count] of counts) {
+if (count > bestCount || (count === bestCount && Math.abs(value - median(values)) < Math.abs(best - median(values)))) {
+best = value; bestCount = count;
+}
+}
+return { value: best, support: bestCount / values.length };
+}
+function sideColumnStats(completed, side) {
+const values = completed.filter(x => x[0] === side).map(x => x[1]).slice(-8);
+if (!values.length) return { count: 0, target: 0, mean: 0, median: 0, mode: 0, recent: 0, std: 0, slope: 0, reliability: 0 };
+const mean = values.reduce((a, b) => a + b, 0) / values.length;
+const med = median(values), mv = modeValue(values), recentValues = values.slice(-3);
+const recent = recentValues.reduce((a, b) => a + b, 0) / recentValues.length;
+const variance = values.reduce((s, x) => s + (x - mean) ** 2, 0) / values.length;
+const std = Math.sqrt(variance);
+const slope = values.length >= 2 ? (values.at(-1) - values[0]) / (values.length - 1) : 0;
+const reliability = clip(values.length / 4) * clip(0.45 + 0.55 * mv.support) * clip(1 - std / 6);
+const target = 0.45 * mv.value + 0.30 * med + 0.25 * recent;
+return { count: values.length, values, target, mean, median: med, mode: mv.value, recent, std, slope, reliability };
+}
+function sideHazard(completed, side, currentHeight) {
+const values = completed.filter(x => x[0] === side).map(x => x[1]);
+if (!values.length) return { turn: 0.5, cont: 0.5, support: 0 };
+let reached = 0, ended = 0, exceeded = 0;
+for (const h of values) {
+if (h >= currentHeight) {
+reached++;
+if (h === currentHeight) ended++;
+if (h > currentHeight) exceeded++;
+}
+}
+const turn = (ended + 2.5) / (reached + 5);
+const cont = (exceeded + 2.5) / (reached + 5);
+return { turn: clip(turn), cont: clip(cont), support: clip(reached / 5) };
+}
+function pairStats(completed, fromSide) {
+const toSide = fromSide === "B" ? "P" : "B", pairs = [];
+for (let i = 0; i < completed.length - 1; i++) {
+if (completed[i][0] === fromSide && completed[i + 1][0] === toSide) pairs.push([completed[i][1], completed[i + 1][1]]);
+}
+const use = pairs.slice(-6);
+if (!use.length) return { count: 0, fromTarget: 0, toTarget: 0, reliability: 0 };
+const from = use.map(x => x[0]), to = use.map(x => x[1]);
+const fromMode = modeValue(from), toMode = modeValue(to);
+const fromTarget = 0.55 * fromMode.value + 0.45 * median(from);
+const toTarget = 0.55 * toMode.value + 0.45 * median(to);
+const reliability = clip(use.length / 4) * clip(0.5 + 0.25 * fromMode.support + 0.25 * toMode.support);
+return { count: use.length, fromTarget, toTarget, reliability };
+}
+function closeness(a, b) {
+if (!b) return 0.5;
+return clip(1 - Math.abs(a - b) / Math.max(3, b + 1));
+}
+function candidateDerivedQuality(seq, candidate) {
+const d = derivedInfo([...seq, candidate], 8);
+return clip(0.60 * d.consensus + 0.40 * d.support);
+}
+function sideAwareCandidates(seq) {
+const rs = runs(seq), current = rs.at(-1) || ["", 0];
+if (!current[0]) return { B: 0.5, P: 0.5, support: 0, currentComplete: 0.5, continuationNeed: 0.5, currentSide: "", ownTarget: 0, oppositeTarget: 0 };
+const completed = rs.slice(0, -1), currentSide = current[0], opposite = currentSide === "B" ? "P" : "B", cur = current[1];
+const own = sideColumnStats(completed, currentSide), opp = sideColumnStats(completed, opposite);
+const hazard = sideHazard(completed, currentSide, cur), pair = pairStats(completed, currentSide);
+const ownTarget = own.target || cur;
+const currentComplete = own.count ? closeness(cur, ownTarget) : 0.5;
+const continuationNeed = own.count ? clip((ownTarget - cur + 0.35) / Math.max(1.5, ownTarget)) : 0.35;
+const nextFit = own.count ? closeness(cur + 1, ownTarget) : 0.5;
+const pairFit = pair.count ? closeness(cur, pair.fromTarget) : 0.5;
+const overComplete = own.count ? clip((cur - ownTarget) / Math.max(2, ownTarget)) : 0;
+const continueDerived = candidateDerivedQuality(seq, currentSide);
+const reverseDerived = candidateDerivedQuality(seq, opposite);
+const continueScore = clip(
+0.30 * hazard.cont +
+0.27 * nextFit +
+0.18 * continuationNeed +
+0.12 * own.reliability +
+0.08 * continueDerived +
+0.05 * (1 - overComplete)
+);
+const reverseScore = clip(
+0.30 * hazard.turn +
+0.25 * currentComplete +
+0.18 * pairFit +
+0.10 * pair.reliability +
+0.08 * opp.reliability +
+0.06 * reverseDerived +
+0.03 * overComplete
+);
+const scores = currentSide === "B" ? { B: continueScore, P: reverseScore } : { P: continueScore, B: reverseScore };
+const support = clip(0.36 * own.reliability + 0.22 * opp.reliability + 0.22 * hazard.support + 0.20 * pair.reliability);
+return {
+...scores, support, currentComplete, continuationNeed, currentSide,
+ownTarget, oppositeTarget: opp.target || 0, pairReliability: pair.reliability,
+turnProbability: hazard.turn, continueProbability: hazard.cont,
+continueScore, reverseScore
+};
+}
+function buildShoeVector(seq) {
+const used = Math.min(TOTAL_CARDS, seq.length * AVG_CARDS_PER_HAND);
+const remaining = Math.max(0, TOTAL_CARDS - used), rr = clip(remaining / TOTAL_CARDS), pen = clip(1 - rr);
+const maturity = clip(seq.length / 70), hands = clip(seq.length / (TOTAL_CARDS / AVG_CARDS_PER_HAND));
+const v = [rr, pen, rr, maturity, ...Array(10).fill(1), 0, 0,
+clip(1 - pen / .35), clip(1 - Math.abs(pen - .5) / .35), clip((pen - .55) / .35), hands,
+rr, clip(Math.log1p(seq.length) / Math.log1p(TOTAL_CARDS / AVG_CARDS_PER_HAND)), tieRatio(seq), tieRatio(seq, 8), tieRatio(seq, 16),
+balance(seq, Math.max(1, bp(seq).length)), binaryEntropy(seq, 12), outcomeEntropy(seq, 12), outcomeEntropy(seq, 24), clip(seq.length / 32), 1,
+clip(Math.sqrt(seq.length) / Math.sqrt(TOTAL_CARDS / AVG_CARDS_PER_HAND))];
+for (const w of [4,6,12,24,32]) v.push(tieRatio(seq,w));
+for (const w of [4,6,8,16,24,32]) v.push(binaryEntropy(seq,w));
+for (const w of [6,8,16,32]) v.push(outcomeEntropy(seq,w));
+for (const w of [6,8,16,24,32]) v.push(balance(seq,w));
+v.push(pen*pen,Math.sqrt(pen),rr*rr,Math.sqrt(rr),clip(1-pen/.18),clip(1-Math.abs(pen-.3)/.22),clip(1-Math.abs(pen-.62)/.24),clip((pen-.72)/.22),clip(seq.length/8),clip(seq.length/16),clip(seq.length/24),clip(seq.length/48));
+for (const w of [2,3,5,7,10,14,20,28,40,48,56,64]) v.push(tieRatio(seq,w));
+for (const w of [2,3,5,7,10,14,20,28,40,48,56,64]) v.push(binaryEntropy(seq,w));
+for (const w of [2,3,5,7,10,14,20,28,40,48,56,64]) v.push(outcomeEntropy(seq,w));
+for (const w of [2,3,5,7,10,14,20,28,40,48,56,64]) v.push(balance(seq,w));
+v.push(pen**3,rr**3,Math.sqrt(Math.sqrt(pen)),Math.sqrt(Math.sqrt(rr)),clip(1-Math.abs(pen-.125)/.125),clip(1-Math.abs(pen-.375)/.125),clip(1-Math.abs(pen-.625)/.125),clip(1-Math.abs(pen-.875)/.125),clip(seq.length/4),clip(seq.length/12),clip(seq.length/20),clip(seq.length/32),clip(.5+(tieRatio(seq,8)-tieRatio(seq,32))/2),clip(.5+(binaryEntropy(seq,8)-binaryEntropy(seq,32))/2),clip(.5+(balance(seq,8)-balance(seq,32))/2),clip(Math.log1p(seq.length)/Math.log1p(128)));
+if (v.length !== SHOE_DIM) throw new Error(`shoe mismatch ${v.length}`);
+return v;
+}
+const ROAD_INDEX = {};
+function buildRoadVector(seq) {
+const rs = runs(seq), current = rs.at(-1) || ["",0], prior = i => rs.length > i ? rs.at(-1-i) : ["",0];
+const d8 = derivedInfo(seq,8), s4 = runStats(seq,4), s8 = runStats(seq,8), s12 = runStats(seq,12), cand = sideAwareCandidates(seq);
+const hz = cand.currentSide ? cand.turnProbability : 0.5;
+const hs = clip(1 - runVolatility(seq,6) * .55 - Math.abs(turnRate(seq,8)-turnRate(seq,24))*.45);
+const road = [];
+const push = (name, value) => { if (!(name in ROAD_INDEX)) ROAD_INDEX[name] = road.length; road.push(value); };
+push("current_side_banker", current[0]==="B"?1:current[0]==="P"?-1:0);
+push("current_run_norm", clip(current[1]/8));
+for(let i=1;i<=6;i++) push(`previous_run_${i}`, clip(prior(i)[1]/8));
+push("side_turn_probability", hz);
+push("side_continue_probability", cand.continueProbability ?? .5);
+push("structure_stability", hs);
+push("run_volatility", runVolatility(seq,6));
+push("run_trend", runTrend(seq,5));
+push("derived_big_eye", d8.be); push("derived_small", d8.sm); push("derived_cockroach", d8.cr); push("derived_consensus", d8.consensus); push("derived_support", d8.support);
+push("same2", sameTail(seq,2)); push("same3", sameTail(seq,3)); push("alt4", alternatingTail(seq,4)); push("alt6", alternatingTail(seq,6));
+for(const w of [2,4,6,8,10,12,16,20,24,32,48,64]) push(`banker_bias_${w}`, (bankerRatio(seq,w)-.5)*2);
+for(const w of [2,4,6,8,10,12,16,20,24,32,48,64]) push(`turn_rate_${w}`, turnRate(seq,w));
+for(const w of [4,8,16,24,32]) { const d=derivedInfo(seq,w); push(`be_${w}`,d.be); push(`sm_${w}`,d.sm); push(`cr_${w}`,d.cr); }
+push("run_avg4",s4.avg); push("run_avg8",s8.avg); push("run_avg12",s12.avg); push("run_max8",s8.max); push("run_max12",s12.max); push("run_std8",s8.std); push("run_std12",s12.std);
+push("run_trend8",runTrend(seq,8)); push("run_trend12",runTrend(seq,12));
+for(const w of [3,5,8,10]) push(`alternating_${w}`,alternatingTail(seq,w));
+for(const w of [4,5,6,8,10]) push(`same_${w}`,sameTail(seq,w));
+push("banker_delta_4_16",bankerRatio(seq,4)-bankerRatio(seq,16));
+push("banker_delta_8_32",bankerRatio(seq,8)-bankerRatio(seq,32));
+push("banker_delta_16_64",bankerRatio(seq,16)-bankerRatio(seq,64));
+push("turn_delta_4_16",turnRate(seq,4)-turnRate(seq,16));
+push("turn_delta_8_32",turnRate(seq,8)-turnRate(seq,32));
+push("turn_delta_16_64",turnRate(seq,16)-turnRate(seq,64));
+push("column_candidate_B", cand.B - .5);
+push("column_candidate_P", cand.P - .5);
+push("column_candidate_gap_B", cand.B - cand.P);
+push("column_support", cand.support);
+push("column_current_complete", cand.currentComplete);
+push("column_continuation_need", cand.continuationNeed);
+push("column_own_target", clip((cand.ownTarget||0)/8));
+push("column_opposite_target", clip((cand.oppositeTarget||0)/8));
+push("column_pair_reliability", cand.pairReliability||0);
+push("column_side_turn", cand.turnProbability||.5);
+push("column_side_continue", cand.continueProbability||.5);
+push("column_continue_score", cand.continueScore||.5);
+push("column_reverse_score", cand.reverseScore||.5);
+push("column_current_is_B", cand.currentSide==="B"?1:cand.currentSide==="P"?-1:0);
+for(const w of [7,14,28,56]) push(`banker_bias_extra_${w}`,(bankerRatio(seq,w)-.5)*2);
+for(const w of [7,14,28,56]) push(`turn_extra_${w}`,turnRate(seq,w));
+while(road.length < ROAD_DIM) push(`reserved_${road.length}`,0);
+if (road.length !== ROAD_DIM) throw new Error(`road mismatch ${road.length}`);
+return { vector: road, candidates: cand };
+}
+function context256(seq) {
+const shoe = buildShoeVector(seq), roadData = buildRoadVector(seq), vector = [...shoe, ...roadData.vector];
+if (vector.length !== DIM) throw new Error(`context mismatch ${vector.length}`);
+return { vector, candidates: roadData.candidates };
+}
+function frozenPrior() {
+const A = { B: Array(DIM).fill(RIDGE), P: Array(DIM).fill(RIDGE) };
+const b = { B: Array(DIM).fill(0), P: Array(DIM).fill(0) };
+const setDirectional = (roadName, weight, precision=1.0) => {
+const local = ROAD_INDEX[roadName]; if (local === undefined) return;
+const i = SHOE_DIM + local;
+A.B[i] = precision; A.P[i] = precision;
+b.B[i] = weight; b.P[i] = -weight;
+};
+const setCandidate = (roadName, arm, weight, precision=1.0) => {
+const local = ROAD_INDEX[roadName]; if (local === undefined) return;
+const i = SHOE_DIM + local;
+A[arm][i] = precision; b[arm][i] = weight;
+};
+setDirectional("banker_bias_8", 0.055, 1.15);
+setDirectional("banker_bias_16", 0.045, 1.20);
+setDirectional("banker_bias_32", 0.032, 1.25);
+setDirectional("banker_delta_4_16", 0.050, 1.15);
+setDirectional("banker_delta_8_32", 0.040, 1.20);
+setDirectional("column_candidate_gap_B", 0.38, 0.90);
+setCandidate("column_candidate_B", "B", 0.20, 0.95);
+setCandidate("column_candidate_P", "P", 0.20, 0.95);
+setDirectional("current_side_banker", 0.018, 1.35);
+return { A, b };
+}
+function modelX(raw) {
+return raw.map(v => Number.isFinite(+v) ? +v : 0);
+}
+function scoreArm(arm, x, prior) {
+const A = prior.A[arm], b = prior.b[arm];
+let mean = 0, uncertaintySquared = 0;
+for (let i=0;i<DIM;i++) {
+const a = Math.max(1e-9, A[i]);
+mean += x[i] * (b[i] / a);
+uncertaintySquared += (x[i] * x[i]) / a;
+}
+const uncertainty = Math.sqrt(Math.max(0, uncertaintySquared));
+return { mean, uncertainty, score: mean + ALPHA * uncertainty, effectiveAlpha: ALPHA };
+}
+function deterministicTie(seq) {
+let h=0; const token="FROZEN256_COLUMN_V15|"+seq.join("");
+for(let i=0;i<token.length;i++) h=(h*31+token.charCodeAt(i))>>>0;
+return h%2?"B":"P";
+}
+function choose(seq) {
+const ctx = context256(seq), x = modelX(ctx.vector), prior = frozenPrior();
+const scores = { B: scoreArm("B",x,prior), P: scoreArm("P",x,prior) };
+const gap = scores.B.score - scores.P.score;
+let direction, reason;
+if (Math.abs(gap) <= SCORE_TIE_EPS) { direction = deterministicTie(seq); reason = "固定歷史平手判定"; }
+else { direction = gap > 0 ? "B" : "P"; reason = "256維雙臂判斷"; }
+const rawPB = 1/(1+Math.exp(-Math.max(-8,Math.min(8,gap/SCORE_TEMP))));
+const pB = clip(rawPB,PROB_MIN,PROB_MAX), pP=1-pB;
+const confidence = direction==="B"?pB:pP;
+const previous=state.last_selected;
+state.selection_streak = previous===direction ? (state.selection_streak||0)+1 : 1;
+state.last_selected = direction;
+const c=ctx.candidates;
+let regime="混合";
+if(c.support>=.35){
+const currentContinuation = c.currentSide && direction===c.currentSide;
+if(Math.abs(c.B-c.P)>=.07) regime=currentContinuation?"柱高延續":"柱高反轉";
+else regime="柱高觀察";
+}
+const strength = clip(.42 + .34*c.support + Math.min(.20,Math.abs(gap)*.9));
+return { direction,reason,x,scores,gap,confidence,probabilities:{B:pB,P:pP},regime,strength,candidates:c,
+frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM} };
+}
+function save(){
+try { localStorage.setItem(STORAGE_KEY,JSON.stringify({history:state.history,last_selected:state.last_selected,selection_streak:state.selection_streak})); } catch(_){}
+}
+function load(){
+try {
+let text=localStorage.getItem(STORAGE_KEY);
+if(!text){ for(const key of LEGACY_KEYS){ const t=localStorage.getItem(key); if(t){text=t;break;} } }
+const raw=JSON.parse(text||"null");
+if(!raw||!Array.isArray(raw.history)) return;
+state.history=raw.history.filter(x=>["B","P","T"].includes(x)).slice(-500);
+state.last_selected=["B","P"].includes(raw.last_selected)?raw.last_selected:"";
+state.selection_streak=Math.max(0,+raw.selection_streak||0);
+} catch(_){}
+}
+function clearAllStorage(){
+try { localStorage.removeItem(STORAGE_KEY); for(const key of LEGACY_KEYS)localStorage.removeItem(key); } catch(_){}
+}
+function setMessage(text,warning=false){ const box=el("message"); if(!box)return; box.textContent=text; box.classList.toggle("warning",warning); }
+function addOutcome(outcome){ if(!["B","P","T"].includes(outcome))return; state.history.push(outcome); state.active=false; state.lastPrediction=null; save(); setMessage(`已記錄第 ${state.history.length} 局`); render(); }
+function startAnalysis(){ if(!state.history.length){setMessage("請先輸入牌局紀錄",true);return;} state.lastPrediction=choose(state.history);state.active=true;save();setMessage(`第 ${state.history.length+1} 局分析完成`);render(); }
+function backOne(){ if(!state.history.length){setMessage("目前沒有可返回的紀錄",true);return;} state.history.pop();state.active=false;state.lastPrediction=null;save();setMessage("已返回上一局");render(); }
+function endAnalysis(){ state={history:[],active:false,lastPrediction:null,last_selected:"",selection_streak:0};clearAllStorage();setMessage("本靴資料已清空");render(); }
+function renderHistory(){ const box=el("historyTrack"); if(!box)return; if(!state.history.length){box.innerHTML='<div class="empty-history">尚未輸入牌局</div>';return;} box.innerHTML=state.history.map((v,i)=>`<span class="history-chip ${v}" title="第 ${i+1} 局">${v}</span>`).join("");box.scrollLeft=box.scrollWidth; }
+function renderPrediction(){
+const p=state.active?state.lastPrediction:null,orb=el("directionOrb"); if(!orb)return;
+if(!p){el("directionText").textContent="—";el("directionCode").textContent="等待分析";el("confidence").textContent="—";el("regime").textContent="—";el("strength").textContent="—";orb.className="direction-orb idle";return;}
+const isB=p.direction==="B";el("directionText").textContent=isB?"莊":"閒";el("directionCode").textContent=isB?"BANKER":"PLAYER";el("confidence").textContent=(p.confidence*100).toFixed(1)+"%";el("regime").textContent=p.regime;el("strength").textContent=p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isB?"banker":"player");
+}
+function render(){ if(el("roundPill"))el("roundPill").textContent=`${state.history.length} 局`;if(el("modePill"))el("modePill").textContent=state.active?"分析完成":"準備中";if(el("roundCount"))el("roundCount").textContent=state.history.length;renderPrediction();renderHistory(); }
+if(el("btnB"))el("btnB").addEventListener("click",()=>addOutcome("B"));
+if(el("btnP"))el("btnP").addEventListener("click",()=>addOutcome("P"));
+if(el("btnT"))el("btnT").addEventListener("click",()=>addOutcome("T"));
+if(el("btnStart"))el("btnStart").addEventListener("click",startAnalysis);
+if(el("btnBack"))el("btnBack").addEventListener("click",backOne);
+if(el("btnEnd"))el("btnEnd").addEventListener("click",endAnalysis);
+if(typeof window!=="undefined") window.__BGS256_TEST__={runs,sideColumnStats,sideAwareCandidates,context256,choose,constants:{DIM,SHOE_DIM,ROAD_DIM,ALPHA,RIDGE,PROB_MIN,PROB_MAX}};
+load(); render();
 })();
