@@ -4,11 +4,12 @@
 const BASE = (typeof window !== "undefined") ? window.__BGS256_TEST__ : null;
 if (!BASE) return;
 
-const VERSION = "V19_CONTINUATION_START_BREAK";
-const STORAGE_KEY = "bgs256d_continuation_start_break_v19";
+const VERSION = "V20_TRANSITION_FORECAST";
+const STORAGE_KEY = "bgs256d_transition_forecast_v20";
 const SCORE_TEMP = 0.42;
 const PROB_MIN = 0.42;
 const PROB_MAX = 0.58;
+const MAX_ADJUSTMENT = 0.12;
 
 const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
 const signed = v => clip(v, -1, 1);
@@ -35,52 +36,175 @@ function transitionRate(arr) {
   return turns / (arr.length - 1);
 }
 
+function transitionSequence(seq) {
+  const a = bp(seq), out = [];
+  for (let i = 1; i < a.length; i++) out.push(a[i] === a[i - 1] ? "S" : "X");
+  return out;
+}
+
 function persistenceShift(seq) {
   const a = bp(seq);
-  if (a.length < 7) return { value: 0.5, support: clip(a.length / 10) };
+  if (a.length < 7) return { value: 0.5, support: clip(a.length / 10), recentTurn: 0.5, previousTurn: 0.5 };
   const recent = a.slice(-5);
   const previous = a.slice(Math.max(0, a.length - 13), Math.max(0, a.length - 5));
   const recentTurn = transitionRate(recent);
   const previousTurn = transitionRate(previous);
   const sameRecent = 1 - recentTurn;
   const samePrevious = 1 - previousTurn;
-  const acceleration = (sameRecent - samePrevious);
   return {
-    value: clip(0.5 + acceleration * 0.95),
+    value: clip(0.5 + (sameRecent - samePrevious) * 0.75),
     support: clip(Math.min(recent.length - 1, previous.length - 1) / 5),
     recentTurn,
     previousTurn
   };
 }
 
-function empiricalExhaustion(completed, side, currentLength) {
-  const items = completed.filter(s => s.side === side).slice(-16);
-  if (!items.length) return { value: 0.5, support: 0, tailShare: 0.5 };
-  let weight = 0, endedByNow = 0, exceeded = 0;
-  for (let i = 0; i < items.length; i++) {
-    const recency = Math.pow(0.95, items.length - 1 - i);
-    weight += recency;
-    if (items[i].logicalLength <= currentLength) endedByNow += recency;
-    if (items[i].logicalLength > currentLength) exceeded += recency;
+function motifOrderStats(tokens, order) {
+  if (tokens.length <= order) return null;
+  const context = tokens.slice(-order).join("");
+  let same = 0, sw = 0, total = 0;
+  const start = Math.max(0, tokens.length - 96);
+  for (let i = start; i + order < tokens.length; i++) {
+    if (tokens.slice(i, i + order).join("") !== context) continue;
+    const age = tokens.length - 1 - (i + order);
+    const weight = Math.pow(0.965, age);
+    total += weight;
+    if (tokens[i + order] === "S") same += weight;
+    else sw += weight;
   }
-  const prior = 0.8;
-  const tailShare = (endedByNow + prior) / (weight + 2 * prior);
-  const continueShare = (exceeded + prior) / (weight + 2 * prior);
+  if (total <= 0) return null;
+  const prior = 0.85;
+  const denom = total + 2 * prior;
   return {
-    value: clip(tailShare),
-    continueShare: clip(continueShare),
-    support: clip(weight / 5),
-    tailShare: clip(tailShare)
+    order,
+    context,
+    pSame: clip((same + prior) / denom),
+    pSwitch: clip((sw + prior) / denom),
+    support: clip(total / 3.5),
+    weightedSamples: total
   };
 }
 
+function transitionMotifBackoff(seq) {
+  const tokens = transitionSequence(seq);
+  if (!tokens.length) return { pSame: 0.5, pSwitch: 0.5, support: 0, order: 0, agreement: 0, details: [] };
+
+  const details = [];
+  for (let order = Math.min(5, tokens.length); order >= 1; order--) {
+    const item = motifOrderStats(tokens, order);
+    if (item) details.push(item);
+  }
+
+  if (!details.length) return { pSame: 0.5, pSwitch: 0.5, support: 0, order: 0, agreement: 0, details: [] };
+
+  let weightedSame = 0, weightTotal = 0, supportTotal = 0;
+  const directions = [];
+  for (const item of details) {
+    const orderWeight = ({5:1.00,4:0.82,3:0.66,2:0.50,1:0.34})[item.order] || 0.25;
+    const w = orderWeight * (0.25 + 0.75 * item.support);
+    weightedSame += item.pSame * w;
+    weightTotal += w;
+    supportTotal += item.support * orderWeight;
+    if (Math.abs(item.pSame - 0.5) >= 0.035) directions.push(Math.sign(item.pSame - 0.5));
+  }
+  const pSameRaw = weightTotal ? weightedSame / weightTotal : 0.5;
+  const support = clip(supportTotal / 2.4);
+  const pSame = clip(0.5 + (pSameRaw - 0.5) * (0.35 + 0.65 * support));
+  const agreement = directions.length ? Math.abs(directions.reduce((a,b)=>a+b,0)) / directions.length : 0;
+  return {
+    pSame,
+    pSwitch: 1 - pSame,
+    support,
+    order: details[0]?.order || 0,
+    agreement,
+    details
+  };
+}
+
+function transitionDepthForecast(seq) {
+  const tokens = transitionSequence(seq);
+  if (!tokens.length) return { pSame: 0.5, pSwitch: 0.5, support: 0, token: "", depth: 0 };
+  const token = tokens.at(-1);
+  let depth = 1;
+  for (let i = tokens.length - 2; i >= 0 && tokens[i] === token; i--) depth++;
+
+  const completedRuns = [];
+  let side = tokens[0], n = 1;
+  for (let i = 1; i < tokens.length; i++) {
+    if (tokens[i] === side) n++;
+    else { completedRuns.push({ token: side, length: n }); side = tokens[i]; n = 1; }
+  }
+
+  const items = completedRuns.filter(r => r.token === token).slice(-18);
+  let reached = 0, continued = 0, ended = 0;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].length < depth) continue;
+    const recency = Math.pow(0.95, items.length - 1 - i);
+    reached += recency;
+    if (items[i].length > depth) continued += recency;
+    else ended += recency;
+  }
+  const prior = 0.9, denom = reached + 2 * prior;
+  const pPersist = denom > 0 ? clip((continued + prior) / denom) : 0.5;
+  const support = clip(reached / 4);
+  const adjustedPersist = clip(0.5 + (pPersist - 0.5) * (0.35 + 0.65 * support));
+  const pSame = token === "S" ? adjustedPersist : 1 - adjustedPersist;
+  return { pSame, pSwitch: 1 - pSame, support, token, depth, pPersist, reached, continued, ended };
+}
+
+function empiricalExhaustion(completed, side, currentLength) {
+  const items = completed.filter(s => s.side === side).slice(-18);
+  let reached = 0, endedHere = 0, exceeded = 0;
+  for (let i = 0; i < items.length; i++) {
+    const length = items[i].logicalLength;
+    if (length < currentLength) continue;
+    const recency = Math.pow(0.95, items.length - 1 - i);
+    reached += recency;
+    if (length === currentLength) endedHere += recency;
+    else exceeded += recency;
+  }
+  if (reached <= 0) return { value: 0.5, turnShare: 0.5, continueShare: 0.5, support: 0, reached: 0 };
+  const prior = 0.8, denom = reached + 2 * prior;
+  const turnShare = clip((endedHere + prior) / denom);
+  const continueShare = clip((exceeded + prior) / denom);
+  return {
+    value: turnShare,
+    turnShare,
+    continueShare,
+    support: clip(reached / 4),
+    reached,
+    endedHere,
+    exceeded
+  };
+}
+
+function expectedBranchFutureQuality(seq, first) {
+  const opposite = first === "B" ? "P" : "B";
+  const road1 = BASE.buildBigRoad([...seq, first]);
+  const current = road1.currentStreak;
+  if (!current) return { quality: 0.5, pSame: 0.5, support: 0, sameQuality: 0.5, switchQuality: 0.5 };
+
+  const completed = road1.streaks.length > 1 ? road1.streaks.slice(0, -1) : [];
+  const stage = BASE.stageSurvival(completed, first, current.logicalLength);
+  const context = BASE.contextualStageStats(completed, completed.length, first, current.logicalLength);
+  const support = clip(0.56 * (stage.support || 0) + 0.44 * (context.support || 0));
+  const rawPSame = clip(0.56 * stage.cont + 0.44 * context.cont);
+  const pSame = clip(0.5 + (rawPSame - 0.5) * (0.35 + 0.65 * support));
+
+  const second = BASE.bigRoadCandidates([...seq, first]);
+  const sameQuality = clip(second?.[first] ?? 0.5);
+  const switchQuality = clip(second?.[opposite] ?? 0.5);
+  const quality = clip(pSame * sameQuality + (1 - pSame) * switchQuality);
+  return { quality, pSame, support, sameQuality, switchQuality };
+}
+
 function continuationSignals(seq, basePrediction) {
-  const a = bp(seq);
   const rs = runs(seq);
   const current = rs.at(-1) || ["", 0];
   const currentSide = current[0];
   const currentLength = current[1];
   const sign = sideSign(currentSide);
+  const opposite = currentSide === "B" ? "P" : "B";
   const cand = basePrediction?.candidates || BASE.bigRoadCandidates(seq);
   const road = BASE.buildBigRoad(seq);
   const completed = road.streaks.length > 1 ? road.streaks.slice(0, -1) : [];
@@ -89,57 +213,76 @@ function continuationSignals(seq, basePrediction) {
   const stageNext = BASE.stageSurvival(completed, currentSide, currentLength + 1);
   const shift = persistenceShift(seq);
   const exhaustion = empiricalExhaustion(completed, currentSide, currentLength);
+  const motif = transitionMotifBackoff(seq);
+  const depth = transitionDepthForecast(seq);
 
-  const sameFuture = BASE.branchFutureQuality(seq, currentSide);
-  const opposite = currentSide === "B" ? "P" : "B";
-  const reverseFuture = BASE.branchFutureQuality(seq, opposite);
-  const branchCurrentAdv = clip(0.5 + (sameFuture - reverseFuture) * 1.55);
-  const branchReverseAdv = clip(0.5 + (reverseFuture - sameFuture) * 1.55);
+  const sameFuture = expectedBranchFutureQuality(seq, currentSide);
+  const reverseFuture = expectedBranchFutureQuality(seq, opposite);
+  const expectedDiff = sameFuture.quality - reverseFuture.quality;
+  const expectedSupport = clip(0.5 * sameFuture.support + 0.5 * reverseFuture.support);
+  const branchCurrentAdv = clip(0.5 + expectedDiff * 1.8);
+  const branchReverseAdv = clip(0.5 - expectedDiff * 1.8);
 
-  const twoStepCurrent = cand?.twoStepDirectional == null ? 0.5 : clip(0.5 + sign * cand.twoStepDirectional * 0.5);
-  const forwardCurrent = cand?.forwardDirectional == null ? 0.5 : clip(0.5 + sign * cand.forwardDirectional * 0.5);
   const contextCont = cand?.contextCont ?? 0.5;
   const contextTurn = cand?.contextTurn ?? 0.5;
+  const forwardCurrent = cand?.forwardDirectional == null ? 0.5 : clip(0.5 + sign * cand.forwardDirectional * 0.5);
+
+  const motifSigned = (motif.pSame - motif.pSwitch) * motif.support * (0.6 + 0.4 * motif.agreement);
+  const depthSigned = (depth.pSame - depth.pSwitch) * depth.support;
+  const expectedSigned = expectedDiff * 2 * expectedSupport;
+  const stageSigned = (stageNow.cont - stageNow.turn) * (stageNow.support || 0);
+  const sameVsSwitch = signed(
+    0.42 * motifSigned +
+    0.20 * depthSigned +
+    0.21 * expectedSigned +
+    0.17 * stageSigned
+  );
+  const transitionDirectional = signed(sign * sameVsSwitch);
 
   const earlyGate = clip((4 - currentLength) / 3);
   const startRaw = clip(
-    0.25 * stageNow.cont +
-    0.20 * contextCont +
-    0.18 * branchCurrentAdv +
-    0.15 * shift.value +
-    0.12 * twoStepCurrent +
-    0.10 * forwardCurrent
+    0.22 * stageNow.cont +
+    0.17 * contextCont +
+    0.20 * motif.pSame +
+    0.13 * depth.pSame +
+    0.16 * branchCurrentAdv +
+    0.07 * shift.value +
+    0.05 * forwardCurrent
   );
   const startSupport = clip(
-    0.30 * (stageNow.support || 0) +
-    0.22 * (cand?.contextSupport || 0) +
-    0.18 * shift.support +
-    0.15 * (cand?.support || 0) +
+    0.20 * (stageNow.support || 0) +
+    0.15 * (cand?.contextSupport || 0) +
+    0.25 * motif.support +
+    0.15 * depth.support +
+    0.10 * expectedSupport +
     0.15 * clip(completed.length / 8)
   );
-  const startSignal = clip(earlyGate * startSupport * clip((startRaw - 0.50) / 0.30));
+  const startSignal = clip(earlyGate * startSupport * clip((startRaw - 0.50) / 0.26));
 
-  const survivalDrop = clip(0.5 + (stageNow.cont - stageNext.cont) * 1.8);
-  const maturityGate = clip((currentLength - 1) / 3);
-  const overshoot = cand?.ownTarget ? clip((currentLength - cand.ownTarget + 0.25) / Math.max(2, cand.ownTarget * 0.75)) : 0;
+  const survivalDrop = clip(0.5 + (stageNow.cont - stageNext.cont) * 1.65);
+  const maturityGate = clip((currentLength - 1) / 2.5);
   const breakRaw = clip(
-    0.25 * stageNow.turn +
-    0.19 * contextTurn +
-    0.18 * survivalDrop +
-    0.15 * exhaustion.value +
-    0.13 * branchReverseAdv +
-    0.10 * overshoot
+    0.20 * stageNow.turn +
+    0.16 * contextTurn +
+    0.20 * motif.pSwitch +
+    0.14 * depth.pSwitch +
+    0.12 * survivalDrop +
+    0.10 * exhaustion.turnShare +
+    0.08 * branchReverseAdv
   );
   const breakSupport = clip(
-    0.32 * (stageNow.support || 0) +
-    0.22 * (cand?.contextSupport || 0) +
-    0.20 * exhaustion.support +
-    0.14 * (cand?.support || 0) +
-    0.12 * clip(completed.length / 8)
+    0.20 * (stageNow.support || 0) +
+    0.14 * (cand?.contextSupport || 0) +
+    0.24 * motif.support +
+    0.16 * depth.support +
+    0.16 * exhaustion.support +
+    0.10 * expectedSupport
   );
-  const breakSignal = clip(maturityGate * breakSupport * clip((breakRaw - 0.50) / 0.30));
+  const breakSignal = clip(maturityGate * breakSupport * clip((breakRaw - 0.50) / 0.26));
 
-  const net = signed(startSignal - breakSignal);
+  const continuationDirectional = signed(sign * (startSignal - breakSignal));
+  const directional = signed(0.66 * transitionDirectional + 0.34 * continuationDirectional);
+
   return {
     currentSide,
     currentLength,
@@ -154,17 +297,23 @@ function continuationSignals(seq, basePrediction) {
     survivalDrop,
     shift,
     exhaustion,
+    motif,
+    depth,
     sameFuture,
     reverseFuture,
-    net,
-    directional: signed(sign * net)
+    expectedDiff,
+    expectedSupport,
+    transitionDirectional,
+    continuationDirectional,
+    sameVsSwitch,
+    directional
   };
 }
 
 function enhancedChoose(seq) {
   const basePrediction = BASE.choose(seq);
   const sig = continuationSignals(seq, basePrediction);
-  const adjustment = signed(sig.directional) * 0.16;
+  const adjustment = signed(sig.directional) * MAX_ADJUSTMENT;
   const adjustedGap = basePrediction.gap + adjustment;
   let direction;
   if (Math.abs(adjustedGap) <= 1e-9) direction = basePrediction.direction;
@@ -175,13 +324,16 @@ function enhancedChoose(seq) {
   const confidence = direction === "B" ? pB : pP;
 
   let stateLabel = "前瞻平衡";
-  if (sig.startSignal >= 0.28 && sig.startSignal > sig.breakSignal + 0.08) stateLabel = "延續前兆";
-  else if (sig.breakSignal >= 0.28 && sig.breakSignal > sig.startSignal + 0.08) stateLabel = "延續衰竭";
+  if (sig.currentLength === 1 && sig.motif.support >= 0.28 && sig.motif.pSwitch >= 0.60) stateLabel = "交錯前兆";
+  else if (sig.startSignal >= 0.24 && sig.startSignal > sig.breakSignal + 0.06) stateLabel = "延續前兆";
+  else if (sig.breakSignal >= 0.24 && sig.breakSignal > sig.startSignal + 0.06) stateLabel = "延續衰竭";
 
   const strength = clip(
-    (basePrediction.strength || 0.5) * 0.78 +
-    0.12 * Math.max(sig.startSupport, sig.breakSupport) +
-    0.10 * Math.max(sig.startSignal, sig.breakSignal)
+    (basePrediction.strength || 0.5) * 0.76 +
+    0.09 * Math.max(sig.startSupport, sig.breakSupport) +
+    0.08 * sig.motif.support +
+    0.04 * sig.depth.support +
+    0.03 * Math.abs(sig.directional)
   );
 
   return {
@@ -193,10 +345,17 @@ function enhancedChoose(seq) {
     regime: stateLabel,
     strength,
     continuationSignals: sig,
-    v19: {
+    v20: {
       version: VERSION,
       baseGap: basePrediction.gap,
       adjustment,
+      transitionDirectional: sig.transitionDirectional,
+      continuationDirectional: sig.continuationDirectional,
+      motifPSame: sig.motif.pSame,
+      motifPSwitch: sig.motif.pSwitch,
+      motifSupport: sig.motif.support,
+      depthPSame: sig.depth.pSame,
+      depthPSwitch: sig.depth.pSwitch,
       startSignal: sig.startSignal,
       breakSignal: sig.breakSignal
     }
@@ -274,6 +433,10 @@ if (typeof window !== "undefined") {
     enhancedChoose,
     persistenceShift,
     empiricalExhaustion,
+    transitionSequence,
+    transitionMotifBackoff,
+    transitionDepthForecast,
+    expectedBranchFutureQuality,
     version: VERSION
   };
 }
