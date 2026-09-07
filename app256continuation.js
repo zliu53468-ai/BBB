@@ -4,7 +4,7 @@
 const BASE = (typeof window !== "undefined") ? window.__BGS256_TEST__ : null;
 if (!BASE) return;
 
-const VERSION = "V23_1_LOW_EVIDENCE_CALIBRATION";
+const VERSION = "V23_2_SIDE_CONDITIONED_REFERENCE";
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const PROB_MIN = 0.42;
 const PROB_MAX = 0.58;
@@ -170,6 +170,75 @@ function baseBackgroundEvidence(basePrediction, state) {
   return { pSame, pSwitch: 1 - pSame, support, gap, sideGap };
 }
 
+function sideConditionedReference(seq, currentSide) {
+  const outcomes = bp(seq);
+  const tokens = transitionSequence(seq);
+  if (!currentSide || outcomes.length < 4 || tokens.length < 2) {
+    return { pSame: 0.5, pSwitch: 0.5, support: 0, order: 0, agreement: 0, weightedSamples: 0, details: [] };
+  }
+
+  const orderWeights = { 4: 1.00, 3: 0.78, 2: 0.56, 1: 0.36 };
+  const details = [];
+  const maxOrder = Math.min(4, tokens.length);
+
+  for (let order = maxOrder; order >= 1; order--) {
+    const context = tokens.slice(-order).join("");
+    let same = 0, sw = 0, total = 0;
+    const start = Math.max(0, tokens.length - 140);
+
+    for (let i = start; i + order < tokens.length; i++) {
+      if (tokens.slice(i, i + order).join("") !== context) continue;
+      const anchorSide = outcomes[i + order];
+      if (anchorSide !== currentSide) continue;
+
+      const age = tokens.length - 1 - (i + order);
+      const w = Math.pow(0.965, age);
+      total += w;
+      if (tokens[i + order] === "S") same += w;
+      else sw += w;
+    }
+
+    if (total <= 0) continue;
+    const prior = 0.75;
+    const denom = total + 2 * prior;
+    const rawPSame = clip((same + prior) / denom);
+    const support = clip(total / 3.5);
+    const pSame = clip(0.5 + (rawPSame - 0.5) * (0.40 + 0.60 * support), 0.16, 0.84);
+    details.push({ order, context, pSame, pSwitch: 1 - pSame, support, weightedSamples: total });
+  }
+
+  if (!details.length) {
+    return { pSame: 0.5, pSwitch: 0.5, support: 0, order: 0, agreement: 0, weightedSamples: 0, details: [] };
+  }
+
+  let sameSum = 0, weightSum = 0, supportSum = 0, weightedSamples = 0;
+  const dirs = [];
+  for (const item of details) {
+    const ow = orderWeights[item.order] || 0.30;
+    const w = ow * (0.35 + 0.65 * item.support);
+    sameSum += item.pSame * w;
+    weightSum += w;
+    supportSum += ow * item.support;
+    weightedSamples += item.weightedSamples;
+    if (Math.abs(item.pSame - 0.5) >= 0.04) dirs.push(Math.sign(item.pSame - 0.5));
+  }
+
+  const raw = weightSum > 0 ? sameSum / weightSum : 0.5;
+  const support = clip(supportSum / 2.2);
+  const agreement = dirs.length ? Math.abs(dirs.reduce((a, b) => a + b, 0)) / dirs.length : 0;
+  const pSame = clip(0.5 + (raw - 0.5) * (0.55 + 0.45 * support), 0.18, 0.82);
+  return {
+    pSame,
+    pSwitch: 1 - pSame,
+    support,
+    order: details[0]?.order || 0,
+    agreement,
+    weightedSamples,
+    currentSide,
+    details
+  };
+}
+
 function lowEvidenceCalibration(stage, motif, depth, candidate, background, evidenceQuality) {
   const quality = clip(evidenceQuality);
   const unknownPressure = clip((0.46 - quality) / 0.28);
@@ -229,6 +298,7 @@ function singleHazardSignals(seq, basePrediction) {
   const stage = conditionalStageEvidence(state.completed, state.side, state.length);
   const candidate = candidateEvidence(seq, state, basePrediction);
   const background = baseBackgroundEvidence(basePrediction, state);
+  const sideReference = sideConditionedReference(seq, state.side);
 
   const shortSwitchPhase = state.length === 1 && depth.token === "X";
   const switchConsensus = shortSwitchPhase && motif.pSwitch >= 0.54 && depth.pSwitch >= 0.54;
@@ -311,6 +381,18 @@ function singleHazardSignals(seq, basePrediction) {
     pSame = 0.5 + (pSame - 0.5) * calibration.conflictShrink;
   }
 
+  const sideGate = clip((sideReference.support - 0.24) / 0.56);
+  const sideEdge = signed((sideReference.pSame - 0.5) * 2);
+  const coreEdgeBeforeSide = signed((pSame - 0.5) * 2);
+  const sideAligned = sideEdge === 0 || coreEdgeBeforeSide === 0 || Math.sign(sideEdge) === Math.sign(coreEdgeBeforeSide);
+  const disagreementScale = sideAligned ? 1 : (Math.abs(coreEdgeBeforeSide) < 0.10 ? 0.75 : 0.45);
+  const sideReferenceWeight = (sideGate > 0 && Math.abs(sideEdge) >= 0.08)
+    ? clip(0.10 * sideGate * (0.70 + 0.30 * sideReference.agreement) * disagreementScale, 0, 0.10)
+    : 0;
+  if (sideReferenceWeight > 0) {
+    pSame = pSame * (1 - sideReferenceWeight) + sideReference.pSame * sideReferenceWeight;
+  }
+
   pSame = clip(pSame, 0.16, 0.84);
   const sameEdge = signed((pSame - 0.5) * 2);
   const support = clip(0.72 * hazardSupport + 0.18 * background.support + 0.10 * Math.abs(sameEdge));
@@ -327,6 +409,7 @@ function singleHazardSignals(seq, basePrediction) {
     stage,
     candidate,
     background,
+    sideReference,
     cliffEvidence,
     formationBoost,
     shortSwitchPhase,
@@ -340,6 +423,8 @@ function singleHazardSignals(seq, basePrediction) {
     fallbackPSame: calibration.fallbackPSame,
     fallbackBlend: calibration.fallbackBlend,
     conflictShrink: calibration.conflictShrink,
+    sideReferenceWeight,
+    sideReferenceAligned: sideAligned,
     weights: { stageWeight, contextWeight, motifWeight, depthWeight, candidateWeight, backgroundWeight, neutralWeight }
   };
 }
@@ -394,6 +479,12 @@ function hazardChoose(seq) {
     fallbackPSame: sig.fallbackPSame,
     fallbackBlend: sig.fallbackBlend,
     conflictShrink: sig.conflictShrink,
+    sideReferencePSame: sig.sideReference.pSame,
+    sideReferenceSupport: sig.sideReference.support,
+    sideReferenceAgreement: sig.sideReference.agreement,
+    sideReferenceOrder: sig.sideReference.order,
+    sideReferenceWeight: sig.sideReferenceWeight,
+    sideReferenceAligned: sig.sideReferenceAligned,
     backgroundWeight: sig.weights.backgroundWeight,
     shortSwitchPhase: sig.shortSwitchPhase,
     switchConsensus: sig.switchConsensus,
@@ -412,7 +503,8 @@ function hazardChoose(seq) {
     singleHazard: sig,
     v22: diag,
     v23: diag,
-    v23_1: diag
+    v23_1: diag,
+    v23_2: diag
   };
 }
 
@@ -501,6 +593,7 @@ if (typeof window !== "undefined") {
     transitionMotifBackoff,
     transitionDepthForecast,
     conditionalStageEvidence,
+    sideConditionedReference,
     lowEvidenceCalibration,
     singleHazardSignals,
     continuationSignals,
