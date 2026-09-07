@@ -4,8 +4,8 @@
 const BASE = (typeof window !== "undefined") ? window.__BGS256_TEST__ : null;
 if (!BASE) return;
 
-const VERSION = "V23_SHORT_X_DYNAMIC_HAZARD";
-const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
+const VERSION = "V24_ADAPTIVE_SX_HAZARD";
+const STORAGE_KEY = "bgs256d_adaptive_sx_hazard_v24";
 const PROB_MIN = 0.42;
 const PROB_MAX = 0.58;
 const GAP_SCALE = 0.30;
@@ -106,6 +106,24 @@ function transitionDepthForecast(seq) {
   return { pSame, pSwitch: 1 - pSame, support, token, depth, pPersist, reached, persisted, ended };
 }
 
+function transitionMomentum(seq) {
+  const tokens = transitionSequence(seq);
+  if (tokens.length < 3) return {
+    pSame: 0.5, pSwitch: 0.5, edge: 0, support: clip(tokens.length / 6),
+    recentSame: 0.5, previousSame: 0.5, delta: 0
+  };
+  const recent = tokens.slice(-4);
+  const previous = tokens.slice(Math.max(0, tokens.length - 12), Math.max(0, tokens.length - 4));
+  const sameRate = arr => arr.length ? arr.filter(x => x === "S").length / arr.length : 0.5;
+  const recentSame = sameRate(recent);
+  const previousSame = sameRate(previous);
+  const delta = recentSame - previousSame;
+  const support = clip(Math.min(recent.length, Math.max(1, previous.length)) / 4) * clip(tokens.length / 8);
+  const edge = signed(delta * 1.55);
+  const pSame = clip(0.5 + 0.5 * edge * (0.45 + 0.55 * support), 0.16, 0.84);
+  return { pSame, pSwitch: 1 - pSame, edge, support, recentSame, previousSame, delta };
+}
+
 function currentRoadState(seq) {
   const road = BASE.buildBigRoad(seq);
   const current = road.currentStreak || null;
@@ -128,14 +146,25 @@ function stageCurve(completed, side, maxStage = 6) {
 function conditionalStageEvidence(completed, side, length) {
   if (!side || !length) return {
     pSame: 0.5, support: 0, contextPSame: 0.5, contextSupport: 0,
-    nextPSame: 0.5, nextSupport: 0, cliff: 0, cliffSupport: 0, curve: []
+    nextPSame: 0.5, nextSupport: 0, cliff: 0, cliffSupport: 0,
+    previousPSame: 0.5, previousSupport: 0, localSlope: 0, previousSlope: 0,
+    cliffAcceleration: 0, cliffScore: 0, curve: []
   };
   const now = BASE.stageSurvival(completed, side, length);
   const next = BASE.stageSurvival(completed, side, length + 1);
+  const previous = length > 1 ? BASE.stageSurvival(completed, side, length - 1) : now;
   const context = BASE.contextualStageStats(completed, completed.length, side, length);
   const curve = stageCurve(completed, side, Math.max(6, Math.min(8, length + 2)));
   const cliff = clip(now.cont - next.cont, 0, 1);
-  const cliffSupport = clip(Math.min(now.support || 0, Math.max(0.20, next.support || 0)));
+  const localSlope = next.cont - now.cont;
+  const previousSlope = length > 1 ? now.cont - previous.cont : 0;
+  const cliffAcceleration = clip(previousSlope - localSlope, 0, 1);
+  const cliffScore = clip(0.68 * cliff + 0.32 * cliffAcceleration);
+  const cliffSupport = clip(Math.min(
+    now.support || 0,
+    Math.max(0.20, next.support || 0),
+    length > 1 ? Math.max(0.20, previous.support || 0) : 1
+  ));
   return {
     pSame: now.cont,
     pSwitch: now.turn,
@@ -145,8 +174,14 @@ function conditionalStageEvidence(completed, side, length) {
     contextSupport: context.support || 0,
     nextPSame: next.cont,
     nextSupport: next.support || 0,
+    previousPSame: previous.cont,
+    previousSupport: previous.support || 0,
     cliff,
     cliffSupport,
+    localSlope,
+    previousSlope,
+    cliffAcceleration,
+    cliffScore,
     curve
   };
 }
@@ -174,54 +209,83 @@ function singleHazardSignals(seq, basePrediction) {
   const state = currentRoadState(seq);
   if (!state.side) return {
     state, pSame: 0.5, pSwitch: 0.5, support: 0, sameEdge: 0,
-    motif: transitionMotifBackoff(seq), depth: transitionDepthForecast(seq)
+    motif: transitionMotifBackoff(seq), depth: transitionDepthForecast(seq), momentum: transitionMomentum(seq)
   };
 
   const motif = transitionMotifBackoff(seq);
   const depth = transitionDepthForecast(seq);
+  const momentum = transitionMomentum(seq);
   const stage = conditionalStageEvidence(state.completed, state.side, state.length);
   const candidate = candidateEvidence(seq, state, basePrediction);
   const background = baseBackgroundEvidence(basePrediction, state);
 
-  const shortSwitchPhase = state.length === 1 && depth.token === "X";
+  const shortPhase = state.length === 1;
+  const shortSwitchPhase = shortPhase && depth.token === "X";
+  const formationPhase = state.length >= 2 && state.length <= 3;
+  const maturePhase = state.length >= 4;
   const switchConsensus = shortSwitchPhase && motif.pSwitch >= 0.54 && depth.pSwitch >= 0.54;
   const consensusStrength = switchConsensus
     ? clip(((motif.pSwitch - 0.50) + (depth.pSwitch - 0.50)) / 0.28)
     : 0;
   const staleScale = switchConsensus ? clip(0.60 - 0.18 * consensusStrength, 0.42, 0.60) : 1;
 
-  const stageBase = shortSwitchPhase ? 0.17 : 0.30;
-  const contextBase = shortSwitchPhase ? 0.12 : 0.20;
-  const motifBase = shortSwitchPhase ? 0.28 : 0.20;
-  const depthBase = shortSwitchPhase ? 0.22 : 0.14;
-  const candidateBase = shortSwitchPhase ? 0.07 : 0.09;
+  let bases;
+  if (shortPhase) {
+    bases = { stage: 0.15, context: 0.10, motif: 0.27, depth: 0.20, candidate: 0.06, momentum: 0.16 };
+  } else if (formationPhase) {
+    bases = { stage: 0.30, context: 0.22, motif: 0.15, depth: 0.10, candidate: 0.08, momentum: 0.10 };
+  } else {
+    bases = { stage: 0.26, context: 0.16, motif: 0.16, depth: 0.12, candidate: 0.08, momentum: 0.12 };
+  }
 
-  const stageWeight = stageBase * (0.28 + 0.72 * stage.support) * staleScale;
-  const contextWeight = contextBase * (0.28 + 0.72 * stage.contextSupport) * staleScale;
-  const motifWeight = motifBase * (0.30 + 0.70 * motif.support) * (0.78 + 0.22 * motif.agreement);
-  const depthWeight = depthBase * (0.30 + 0.70 * depth.support);
-  const candidateWeight = candidateBase * (0.30 + 0.70 * candidate.support);
+  const stageWeight = bases.stage * (0.28 + 0.72 * stage.support) * staleScale;
+  const contextWeight = bases.context * (0.28 + 0.72 * stage.contextSupport) * staleScale;
+  const motifWeight = bases.motif * (0.30 + 0.70 * motif.support) * (0.78 + 0.22 * motif.agreement);
+  const depthWeight = bases.depth * (0.30 + 0.70 * depth.support);
+  const candidateWeight = bases.candidate * (0.30 + 0.70 * candidate.support);
+  const momentumWeight = bases.momentum * (0.30 + 0.70 * momentum.support);
 
-  const hazardSupport = shortSwitchPhase
-    ? clip(
-        0.18 * stage.support +
-        0.12 * stage.contextSupport +
-        0.30 * motif.support +
-        0.24 * depth.support +
-        0.16 * candidate.support
-      )
-    : clip(
-        0.30 * stage.support +
-        0.20 * stage.contextSupport +
-        0.22 * motif.support +
-        0.14 * depth.support +
-        0.14 * candidate.support
-      );
+  let hazardSupport;
+  if (shortPhase) {
+    hazardSupport = clip(
+      0.15 * stage.support +
+      0.10 * stage.contextSupport +
+      0.26 * motif.support +
+      0.20 * depth.support +
+      0.13 * candidate.support +
+      0.16 * momentum.support
+    );
+  } else if (formationPhase) {
+    hazardSupport = clip(
+      0.28 * stage.support +
+      0.20 * stage.contextSupport +
+      0.14 * motif.support +
+      0.10 * depth.support +
+      0.10 * candidate.support +
+      0.18 * momentum.support
+    );
+  } else {
+    hazardSupport = clip(
+      0.22 * stage.support +
+      0.14 * stage.contextSupport +
+      0.15 * motif.support +
+      0.12 * depth.support +
+      0.10 * candidate.support +
+      0.15 * momentum.support +
+      0.12 * stage.cliffSupport
+    );
+  }
 
-  const backgroundWeight = shortSwitchPhase
-    ? 0.16 * (1 - 0.72 * hazardSupport) + 0.03
-    : 0.22 * (1 - 0.68 * hazardSupport) + 0.04;
-  let neutralWeight = 0.34 * (1 - 0.55 * hazardSupport);
+  const backgroundWeight = shortPhase
+    ? 0.15 * (1 - 0.72 * hazardSupport) + 0.03
+    : formationPhase
+      ? 0.20 * (1 - 0.68 * hazardSupport) + 0.04
+      : 0.18 * (1 - 0.70 * hazardSupport) + 0.035;
+  let neutralWeight = shortPhase
+    ? 0.25 * (1 - 0.58 * hazardSupport)
+    : formationPhase
+      ? 0.30 * (1 - 0.55 * hazardSupport)
+      : 0.28 * (1 - 0.60 * hazardSupport);
   if (shortSwitchPhase) neutralWeight *= 0.72;
 
   let numerator = 0.5 * neutralWeight;
@@ -232,35 +296,40 @@ function singleHazardSignals(seq, basePrediction) {
   add(motif.pSame, motifWeight);
   add(depth.pSame, depthWeight);
   add(candidate.pSame, candidateWeight);
+  add(momentum.pSame, momentumWeight);
   add(background.pSame, backgroundWeight);
 
   let pSame = denominator > 0 ? numerator / denominator : 0.5;
 
   const cliffGate = state.length >= 3 ? clip((state.length - 2) / 2) : 0;
-  const cliffEvidence = stage.cliff * stage.cliffSupport * cliffGate;
-  pSame -= 0.22 * cliffEvidence;
+  const cliffEvidence = stage.cliffScore * stage.cliffSupport * cliffGate;
+  pSame -= 0.24 * cliffEvidence;
 
   let shortSwitchBoost = 0;
   if (switchConsensus) {
     const evidence = clip(
-      0.52 * clip((motif.pSwitch - 0.50) / 0.22) * (0.35 + 0.65 * motif.support) +
-      0.48 * clip((depth.pSwitch - 0.50) / 0.22) * (0.35 + 0.65 * depth.support)
+      0.43 * clip((motif.pSwitch - 0.50) / 0.22) * (0.35 + 0.65 * motif.support) +
+      0.39 * clip((depth.pSwitch - 0.50) / 0.22) * (0.35 + 0.65 * depth.support) +
+      0.18 * clip(-momentum.edge) * momentum.support
     );
     shortSwitchBoost = 0.045 * evidence;
     pSame -= shortSwitchBoost;
   }
 
   let formationBoost = 0;
-  if (state.length === 2) {
+  if (formationPhase) {
     const agreement = Math.min(stage.pSame, stage.contextPSame);
     const support = Math.min(1, 0.55 * stage.support + 0.45 * stage.contextSupport);
-    formationBoost = clip((agreement - 0.5) / 0.32) * support * 0.055;
+    const stageBoost = clip((agreement - 0.5) / 0.30) * support * 0.043;
+    const momentumBoost = clip(momentum.edge) * momentum.support * 0.016;
+    const phaseScale = state.length === 2 ? 1 : 0.72;
+    formationBoost = phaseScale * (stageBoost + momentumBoost);
     pSame += formationBoost;
   }
 
   pSame = clip(pSame, 0.16, 0.84);
   const sameEdge = signed((pSame - 0.5) * 2);
-  const support = clip(0.72 * hazardSupport + 0.18 * background.support + 0.10 * Math.abs(sameEdge));
+  const support = clip(0.68 * hazardSupport + 0.14 * background.support + 0.10 * Math.abs(sameEdge) + 0.08 * momentum.support);
 
   return {
     state,
@@ -271,17 +340,21 @@ function singleHazardSignals(seq, basePrediction) {
     hazardSupport,
     motif,
     depth,
+    momentum,
     stage,
     candidate,
     background,
     cliffEvidence,
     formationBoost,
+    shortPhase,
     shortSwitchPhase,
+    formationPhase,
+    maturePhase,
     switchConsensus,
     consensusStrength,
     staleScale,
     shortSwitchBoost,
-    weights: { stageWeight, contextWeight, motifWeight, depthWeight, candidateWeight, backgroundWeight, neutralWeight }
+    weights: { stageWeight, contextWeight, motifWeight, depthWeight, candidateWeight, momentumWeight, backgroundWeight, neutralWeight }
   };
 }
 
@@ -291,40 +364,74 @@ function hazardChoose(seq) {
   const currentSide = sig.state.side;
   if (!currentSide) return base;
 
-  const direction = sig.pSame >= 0.5 ? currentSide : sig.state.opposite;
-  const pBUnclipped = currentSide === "B" ? sig.pSame : 1 - sig.pSame;
+  let decisionPSame = sig.pSame;
+  let tieBreakEdge = 0;
+  let tieBreakApplied = false;
+  if (Math.abs(decisionPSame - 0.5) <= 0.02) {
+    const motifEdge = (sig.motif.pSame - 0.5) * 2 * sig.motif.support * (0.70 + 0.30 * sig.motif.agreement);
+    const depthEdge = (sig.depth.pSame - 0.5) * 2 * sig.depth.support;
+    const momentumEdge = sig.momentum.edge * sig.momentum.support;
+    const cliffEdge = -sig.cliffEvidence;
+    const backgroundEdge = (sig.background.pSame - 0.5) * 2 * sig.background.support;
+    tieBreakEdge = signed(
+      0.28 * motifEdge +
+      0.22 * depthEdge +
+      0.24 * momentumEdge +
+      0.16 * cliffEdge +
+      0.10 * backgroundEdge
+    );
+    if (Math.abs(tieBreakEdge) >= 0.025) {
+      const nudge = Math.min(0.018, Math.max(0.003, Math.abs(tieBreakEdge) * 0.035));
+      decisionPSame = clip(0.5 + Math.sign(tieBreakEdge) * nudge, 0.482, 0.518);
+      tieBreakApplied = true;
+    }
+  }
+
+  const direction = decisionPSame >= 0.5 ? currentSide : sig.state.opposite;
+  const pBUnclipped = currentSide === "B" ? decisionPSame : 1 - decisionPSame;
   const pB = clip(pBUnclipped, PROB_MIN, PROB_MAX), pP = 1 - pB;
   const confidence = direction === "B" ? pB : pP;
-  const gap = sig.state.sign * sig.sameEdge * GAP_SCALE;
+  const decisionEdge = signed((decisionPSame - 0.5) * 2);
+  const gap = sig.state.sign * decisionEdge * GAP_SCALE;
 
   let regime = "S/X平衡";
-  if (sig.shortSwitchPhase && sig.switchConsensus && sig.pSame < 0.50) regime = "短交錯切換";
-  else if (sig.state.length >= 3 && sig.cliffEvidence >= 0.08 && sig.pSame < 0.50) regime = "條件斷點";
-  else if (sig.pSame >= 0.56) regime = "條件延續";
-  else if (sig.pSame <= 0.44) regime = "條件切換";
+  if (tieBreakApplied) regime = "邊界前瞻";
+  else if (sig.shortSwitchPhase && sig.switchConsensus && decisionPSame < 0.50) regime = "短交錯切換";
+  else if (sig.state.length >= 3 && sig.cliffEvidence >= 0.08 && decisionPSame < 0.50) regime = "條件斷點";
+  else if (sig.formationPhase && decisionPSame >= 0.55) regime = "延續形成";
+  else if (decisionPSame >= 0.56) regime = "條件延續";
+  else if (decisionPSame <= 0.44) regime = "條件切換";
 
-  const strength = clip(0.42 + 0.36 * sig.support + 0.18 * Math.abs(sig.sameEdge) + 0.04 * Math.min(1, sig.state.length / 4));
+  const strength = clip(0.42 + 0.34 * sig.support + 0.16 * Math.abs(decisionEdge) + 0.04 * Math.min(1, sig.state.length / 4) + 0.04 * sig.momentum.support);
 
   const diag = {
     version: VERSION,
     baseGap: base.gap,
     finalGap: gap,
-    pSame: sig.pSame,
-    pSwitch: sig.pSwitch,
+    rawPSame: sig.pSame,
+    pSame: decisionPSame,
+    pSwitch: 1 - decisionPSame,
     currentSide,
     currentLength: sig.state.length,
+    phase: sig.shortPhase ? "short" : sig.formationPhase ? "formation" : "mature",
     transitionToken: sig.depth.token,
     transitionDepth: sig.depth.depth,
     motifPSame: sig.motif.pSame,
     motifSupport: sig.motif.support,
     depthPSame: sig.depth.pSame,
     depthSupport: sig.depth.support,
+    momentumPSame: sig.momentum.pSame,
+    momentumEdge: sig.momentum.edge,
+    momentumSupport: sig.momentum.support,
     stagePSame: sig.stage.pSame,
+    previousStagePSame: sig.stage.previousPSame,
     nextStagePSame: sig.stage.nextPSame,
     stageSupport: sig.stage.support,
     contextPSame: sig.stage.contextPSame,
     contextSupport: sig.stage.contextSupport,
     survivalCliff: sig.stage.cliff,
+    cliffAcceleration: sig.stage.cliffAcceleration,
+    cliffScore: sig.stage.cliffScore,
     cliffEvidence: sig.cliffEvidence,
     formationBoost: sig.formationBoost,
     hazardSupport: sig.hazardSupport,
@@ -332,7 +439,9 @@ function hazardChoose(seq) {
     shortSwitchPhase: sig.shortSwitchPhase,
     switchConsensus: sig.switchConsensus,
     staleScale: sig.staleScale,
-    shortSwitchBoost: sig.shortSwitchBoost
+    shortSwitchBoost: sig.shortSwitchBoost,
+    tieBreakApplied,
+    tieBreakEdge
   };
 
   return {
@@ -345,7 +454,8 @@ function hazardChoose(seq) {
     strength,
     singleHazard: sig,
     v22: diag,
-    v23: diag
+    v23: diag,
+    v24: diag
   };
 }
 
@@ -433,6 +543,7 @@ if (typeof window !== "undefined") {
     transitionSequence,
     transitionMotifBackoff,
     transitionDepthForecast,
+    transitionMomentum,
     conditionalStageEvidence,
     singleHazardSignals,
     continuationSignals,
