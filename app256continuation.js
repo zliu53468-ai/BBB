@@ -4,8 +4,8 @@
 const BASE = (typeof window !== "undefined") ? window.__BGS256_TEST__ : null;
 if (!BASE) return;
 
-const VERSION = "V22_SINGLE_SX_CONDITIONAL_HAZARD";
-const STORAGE_KEY = "bgs256d_single_sx_hazard_v22";
+const VERSION = "V23_SHORT_X_DYNAMIC_HAZARD";
+const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const PROB_MIN = 0.42;
 const PROB_MAX = 0.58;
 const GAP_SCALE = 0.30;
@@ -35,7 +35,7 @@ function transitionMotifOrder(tokens, order) {
     else sw += w;
   }
   if (total <= 0) return null;
-  const prior = 0.72, denom = total + 2 * prior;
+  const prior = 0.62, denom = total + 2 * prior;
   return {
     order,
     context,
@@ -98,7 +98,7 @@ function transitionDepthForecast(seq) {
     if (items[i].length > depth) persisted += w;
     else ended += w;
   }
-  const prior = 0.82, denom = reached + 2 * prior;
+  const prior = 0.70, denom = reached + 2 * prior;
   const rawPersist = denom > 0 ? clip((persisted + prior) / denom) : 0.5;
   const support = clip(reached / 4);
   const pPersist = clip(0.5 + (rawPersist - 0.5) * (0.42 + 0.58 * support), 0.12, 0.88);
@@ -183,22 +183,46 @@ function singleHazardSignals(seq, basePrediction) {
   const candidate = candidateEvidence(seq, state, basePrediction);
   const background = baseBackgroundEvidence(basePrediction, state);
 
-  const stageWeight = 0.30 * (0.28 + 0.72 * stage.support);
-  const contextWeight = 0.20 * (0.28 + 0.72 * stage.contextSupport);
-  const motifWeight = 0.20 * (0.30 + 0.70 * motif.support) * (0.78 + 0.22 * motif.agreement);
-  const depthWeight = 0.14 * (0.30 + 0.70 * depth.support);
-  const candidateWeight = 0.09 * (0.30 + 0.70 * candidate.support);
+  const shortSwitchPhase = state.length === 1 && depth.token === "X";
+  const switchConsensus = shortSwitchPhase && motif.pSwitch >= 0.54 && depth.pSwitch >= 0.54;
+  const consensusStrength = switchConsensus
+    ? clip(((motif.pSwitch - 0.50) + (depth.pSwitch - 0.50)) / 0.28)
+    : 0;
+  const staleScale = switchConsensus ? clip(0.60 - 0.18 * consensusStrength, 0.42, 0.60) : 1;
 
-  const hazardSupport = clip(
-    0.30 * stage.support +
-    0.20 * stage.contextSupport +
-    0.22 * motif.support +
-    0.14 * depth.support +
-    0.14 * candidate.support
-  );
+  const stageBase = shortSwitchPhase ? 0.17 : 0.30;
+  const contextBase = shortSwitchPhase ? 0.12 : 0.20;
+  const motifBase = shortSwitchPhase ? 0.28 : 0.20;
+  const depthBase = shortSwitchPhase ? 0.22 : 0.14;
+  const candidateBase = shortSwitchPhase ? 0.07 : 0.09;
 
-  const backgroundWeight = 0.22 * (1 - 0.68 * hazardSupport) + 0.04;
-  const neutralWeight = 0.34 * (1 - 0.55 * hazardSupport);
+  const stageWeight = stageBase * (0.28 + 0.72 * stage.support) * staleScale;
+  const contextWeight = contextBase * (0.28 + 0.72 * stage.contextSupport) * staleScale;
+  const motifWeight = motifBase * (0.30 + 0.70 * motif.support) * (0.78 + 0.22 * motif.agreement);
+  const depthWeight = depthBase * (0.30 + 0.70 * depth.support);
+  const candidateWeight = candidateBase * (0.30 + 0.70 * candidate.support);
+
+  const hazardSupport = shortSwitchPhase
+    ? clip(
+        0.18 * stage.support +
+        0.12 * stage.contextSupport +
+        0.30 * motif.support +
+        0.24 * depth.support +
+        0.16 * candidate.support
+      )
+    : clip(
+        0.30 * stage.support +
+        0.20 * stage.contextSupport +
+        0.22 * motif.support +
+        0.14 * depth.support +
+        0.14 * candidate.support
+      );
+
+  const backgroundWeight = shortSwitchPhase
+    ? 0.16 * (1 - 0.72 * hazardSupport) + 0.03
+    : 0.22 * (1 - 0.68 * hazardSupport) + 0.04;
+  let neutralWeight = 0.34 * (1 - 0.55 * hazardSupport);
+  if (shortSwitchPhase) neutralWeight *= 0.72;
 
   let numerator = 0.5 * neutralWeight;
   let denominator = neutralWeight;
@@ -215,6 +239,16 @@ function singleHazardSignals(seq, basePrediction) {
   const cliffGate = state.length >= 3 ? clip((state.length - 2) / 2) : 0;
   const cliffEvidence = stage.cliff * stage.cliffSupport * cliffGate;
   pSame -= 0.22 * cliffEvidence;
+
+  let shortSwitchBoost = 0;
+  if (switchConsensus) {
+    const evidence = clip(
+      0.52 * clip((motif.pSwitch - 0.50) / 0.22) * (0.35 + 0.65 * motif.support) +
+      0.48 * clip((depth.pSwitch - 0.50) / 0.22) * (0.35 + 0.65 * depth.support)
+    );
+    shortSwitchBoost = 0.045 * evidence;
+    pSame -= shortSwitchBoost;
+  }
 
   let formationBoost = 0;
   if (state.length === 2) {
@@ -242,6 +276,11 @@ function singleHazardSignals(seq, basePrediction) {
     background,
     cliffEvidence,
     formationBoost,
+    shortSwitchPhase,
+    switchConsensus,
+    consensusStrength,
+    staleScale,
+    shortSwitchBoost,
     weights: { stageWeight, contextWeight, motifWeight, depthWeight, candidateWeight, backgroundWeight, neutralWeight }
   };
 }
@@ -259,11 +298,42 @@ function hazardChoose(seq) {
   const gap = sig.state.sign * sig.sameEdge * GAP_SCALE;
 
   let regime = "S/X平衡";
-  if (sig.state.length >= 3 && sig.cliffEvidence >= 0.08 && sig.pSame < 0.50) regime = "條件斷點";
+  if (sig.shortSwitchPhase && sig.switchConsensus && sig.pSame < 0.50) regime = "短交錯切換";
+  else if (sig.state.length >= 3 && sig.cliffEvidence >= 0.08 && sig.pSame < 0.50) regime = "條件斷點";
   else if (sig.pSame >= 0.56) regime = "條件延續";
   else if (sig.pSame <= 0.44) regime = "條件切換";
 
   const strength = clip(0.42 + 0.36 * sig.support + 0.18 * Math.abs(sig.sameEdge) + 0.04 * Math.min(1, sig.state.length / 4));
+
+  const diag = {
+    version: VERSION,
+    baseGap: base.gap,
+    finalGap: gap,
+    pSame: sig.pSame,
+    pSwitch: sig.pSwitch,
+    currentSide,
+    currentLength: sig.state.length,
+    transitionToken: sig.depth.token,
+    transitionDepth: sig.depth.depth,
+    motifPSame: sig.motif.pSame,
+    motifSupport: sig.motif.support,
+    depthPSame: sig.depth.pSame,
+    depthSupport: sig.depth.support,
+    stagePSame: sig.stage.pSame,
+    nextStagePSame: sig.stage.nextPSame,
+    stageSupport: sig.stage.support,
+    contextPSame: sig.stage.contextPSame,
+    contextSupport: sig.stage.contextSupport,
+    survivalCliff: sig.stage.cliff,
+    cliffEvidence: sig.cliffEvidence,
+    formationBoost: sig.formationBoost,
+    hazardSupport: sig.hazardSupport,
+    backgroundWeight: sig.weights.backgroundWeight,
+    shortSwitchPhase: sig.shortSwitchPhase,
+    switchConsensus: sig.switchConsensus,
+    staleScale: sig.staleScale,
+    shortSwitchBoost: sig.shortSwitchBoost
+  };
 
   return {
     ...base,
@@ -274,31 +344,8 @@ function hazardChoose(seq) {
     regime,
     strength,
     singleHazard: sig,
-    v22: {
-      version: VERSION,
-      baseGap: base.gap,
-      finalGap: gap,
-      pSame: sig.pSame,
-      pSwitch: sig.pSwitch,
-      currentSide,
-      currentLength: sig.state.length,
-      transitionToken: sig.depth.token,
-      transitionDepth: sig.depth.depth,
-      motifPSame: sig.motif.pSame,
-      motifSupport: sig.motif.support,
-      depthPSame: sig.depth.pSame,
-      depthSupport: sig.depth.support,
-      stagePSame: sig.stage.pSame,
-      nextStagePSame: sig.stage.nextPSame,
-      stageSupport: sig.stage.support,
-      contextPSame: sig.stage.contextPSame,
-      contextSupport: sig.stage.contextSupport,
-      survivalCliff: sig.stage.cliff,
-      cliffEvidence: sig.cliffEvidence,
-      formationBoost: sig.formationBoost,
-      hazardSupport: sig.hazardSupport,
-      backgroundWeight: sig.weights.backgroundWeight
-    }
+    v22: diag,
+    v23: diag
   };
 }
 
