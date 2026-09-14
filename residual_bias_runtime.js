@@ -4,31 +4,32 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_RESIDUAL_BIAS_V2_DAMPER";
+const VERSION = "XGB_RESIDUAL_BIAS_V3_DUAL_WINDOW";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
   "round_index",
   "estimated_total_hands",
   "remaining_ratio",
-  "sx_markov_p_same",
   "stage",
   "depth",
-  "sx_entropy_8"
+  "sx_entropy_18",
+  "sx_transition_change_6"
 ];
+
 const MAX_DELTA_DEFAULT = 0.10;
-const REGULAR_ENTROPY_MAX_DEFAULT = 0.45;
+const ENTROPY_WINDOW_DEFAULT = 18;
+const ENTROPY_MIN_TOKENS_DEFAULT = 6;
+const TRANSITION_CHANGE_WINDOW_DEFAULT = 6;
+const TRANSITION_CHANGE_MIN_TOKENS_DEFAULT = 6;
+const REGULAR_ENTROPY_MAX_DEFAULT = 0.55;
 const HIGH_ENTROPY_START_DEFAULT = 0.85;
 const HIGH_DAMPER_MAX_DEFAULT = 0.40;
 const HIGH_DAMPER_MIN_DEFAULT = 0.20;
-const ENTROPY_WINDOW_DEFAULT = 8;
-const ENTROPY_MIN_TOKENS_DEFAULT = 4;
 const BET_WEIGHT_MIN_DEFAULT = 0.20;
 const BET_REFERENCE_EDGE_DEFAULT = 0.18;
 
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
-// Keep the V1 data key so already-collected rows remain usable. The Python
-// trainer backfills sx_entropy_8 from history_fingerprint for older rows.
 const TRAINING_KEY = "bgs_xgb_residual_training_v1";
 const PENDING_KEY = "bgs_xgb_residual_pending_v1";
 const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
@@ -36,6 +37,7 @@ const CUT_KEY = "bgs_xgb_estimated_total_hands_v1";
 const MAX_TRAINING_ROWS = 10000;
 
 const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
+const clipSigned = v => Math.max(-1, Math.min(1, Number.isFinite(+v) ? +v : 0));
 const bp = seq => seq.filter(x => x === "B" || x === "P");
 
 let modelBundle = null;
@@ -48,21 +50,7 @@ function transitionSequence(seq) {
   return out;
 }
 
-function sxMarkovPSame(seq, window = 24, prior = 1.0) {
-  const tokens = transitionSequence(seq);
-  if (!tokens.length) return 0.5;
-  const current = tokens.at(-1);
-  const start = Math.max(0, tokens.length - 1 - Math.max(2, window));
-  let same = 0, sw = 0;
-  for (let i = start; i < tokens.length - 1; i++) {
-    if (tokens[i] !== current) continue;
-    if (tokens[i + 1] === "S") same++;
-    else if (tokens[i + 1] === "X") sw++;
-  }
-  return clip((same + prior) / (same + sw + 2 * prior));
-}
-
-function sxEntropy(seq, window = ENTROPY_WINDOW_DEFAULT, minTokens = ENTROPY_MIN_TOKENS_DEFAULT) {
+function sxEntropy18(seq, window = ENTROPY_WINDOW_DEFAULT, minTokens = ENTROPY_MIN_TOKENS_DEFAULT) {
   const tokens = transitionSequence(seq).slice(-Math.max(2, Math.round(window)));
   if (tokens.length < Math.max(2, Math.round(minTokens))) return 0;
   const pS = tokens.filter(x => x === "S").length / tokens.length;
@@ -72,19 +60,32 @@ function sxEntropy(seq, window = ENTROPY_WINDOW_DEFAULT, minTokens = ENTROPY_MIN
   return clip(entropy);
 }
 
+function sxTransitionChange6(seq, window = TRANSITION_CHANGE_WINDOW_DEFAULT, minTokens = TRANSITION_CHANGE_MIN_TOKENS_DEFAULT) {
+  const width = Math.max(4, Math.round(window));
+  const tokens = transitionSequence(seq).slice(-width);
+  if (tokens.length < Math.max(4, Math.round(minTokens))) return 0;
+  const split = Math.floor(tokens.length / 2);
+  const older = tokens.slice(0, split);
+  const newer = tokens.slice(split);
+  if (!older.length || !newer.length) return 0;
+  const olderX = older.filter(x => x === "X").length / older.length;
+  const newerX = newer.filter(x => x === "X").length / newer.length;
+  return clipSigned(newerX - olderX);
+}
+
 function damperConfig() {
   const cfg = modelBundle?.damper || {};
   return {
     regularMax: clip(cfg.regular_max ?? REGULAR_ENTROPY_MAX_DEFAULT, 0, 0.95),
     highStart: clip(cfg.high_start ?? HIGH_ENTROPY_START_DEFAULT, 0.01, 0.999999),
-    highDamperMax: clip(cfg.high_damper_max ?? HIGH_DAMPER_MAX_DEFAULT, 0.2, 1.0),
+    highDamperMax: clip(cfg.high_damper_max ?? HIGH_DAMPER_MAX_DEFAULT, 0.20, 1.0),
     highDamperMin: clip(cfg.high_damper_min ?? HIGH_DAMPER_MIN_DEFAULT, 0, 1.0)
   };
 }
 
-function dynamicDamper(oscillation) {
+function dynamicDamper(entropy18) {
   const cfg = damperConfig();
-  const e = clip(oscillation);
+  const e = clip(entropy18);
   const regularMax = cfg.regularMax;
   const highStart = Math.max(regularMax + 1e-6, cfg.highStart);
   const highDamperMax = cfg.highDamperMax;
@@ -151,23 +152,11 @@ function buildFeatures(seq, corePrediction, signal = null) {
   const remainingRatio = clip((estimatedTotalHands - (roundIndex - 1)) / Math.max(1, estimatedTotalHands));
   const stage = Number.isFinite(+signal?.state?.length) ? +signal.state.length : currentStage(seq);
   const depth = Number.isFinite(+signal?.depth?.depth) ? +signal.depth.depth : currentDepth(seq);
-  return {
-    core_p_b: corePB,
-    round_index: roundIndex,
-    estimated_total_hands: estimatedTotalHands,
-    remaining_ratio: remainingRatio,
-    sx_markov_p_same: sxMarkovPSame(seq),
-    stage,
-    depth,
-    sx_entropy_8: sxEntropy(seq)
-  };
+  return { core_p_b: corePB, round_index: roundIndex, estimated_total_hands: estimatedTotalHands, remaining_ratio: remainingRatio, stage, depth, sx_entropy_18: sxEntropy18(seq), sx_transition_change_6: sxTransitionChange6(seq) };
 }
 
 function featureVector(features) {
-  return FEATURE_NAMES.map(name => {
-    const value = +features[name];
-    return Number.isFinite(value) ? value : 0;
-  });
+  return FEATURE_NAMES.map(name => Number.isFinite(+features[name]) ? +features[name] : 0);
 }
 
 function findChild(node, nodeId) {
@@ -189,9 +178,7 @@ function evaluateTree(tree, vector) {
     const index = splitIndex(node.split);
     const value = index >= 0 ? Math.fround(vector[index]) : NaN;
     const splitCondition = Math.fround(+node.split_condition);
-    let nextId;
-    if (!Number.isFinite(value)) nextId = node.missing;
-    else nextId = value < splitCondition ? node.yes : node.no;
+    const nextId = !Number.isFinite(value) ? node.missing : value < splitCondition ? node.yes : node.no;
     node = findChild(node, nextId);
   }
   return 0;
@@ -208,27 +195,26 @@ function predictRawDelta(features) {
 function applyCorrection(seq, corePrediction) {
   const signal = corePrediction?.singleHazard || null;
   const features = buildFeatures(seq, corePrediction, signal);
-  const rawDelta = predictRawDelta(features);
-  const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
-  const delta = clip(rawDelta, -maxDelta, maxDelta);
+  const active = Boolean(modelBundle?.trained);
+  const rawDelta = active ? predictRawDelta(features) : 0;
+  const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, MAX_DELTA_DEFAULT);
+  const delta = active ? clip(rawDelta, -maxDelta, maxDelta) : 0;
   const corePB = features.core_p_b;
-  const oscillation = features.sx_entropy_8;
-  const damper = dynamicDamper(oscillation);
+  const entropy18 = features.sx_entropy_18;
+  const transitionChange6 = features.sx_transition_change_6;
+  const damper = dynamicDamper(entropy18);
   const undampedPB = clip(corePB + delta, 0, 1);
   const finalPB = clip(0.5 + ((corePB - 0.5) + delta) * damper, 0, 1);
   const direction = finalPB > 0.5 ? "B" : "P";
   const finalPP = 1 - finalPB;
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
-  const active = Boolean(modelBundle?.trained);
   const flipped = direction !== coreDirection;
   const sizing = betWeightFromProbability(finalPB);
-
   let regime = corePrediction.regime;
   if (flipped) regime = "XGB殘差修正換邊";
-  else if (damper <= 0.40) regime = `${corePrediction.regime}｜高震盪阻尼`;
-  else if (damper < 1.0) regime = `${corePrediction.regime}｜動態阻尼`;
-
+  else if (damper <= 0.40) regime = `${corePrediction.regime}｜18局高震盪阻尼`;
+  else if (damper < 1.0) regime = `${corePrediction.regime}｜18局動態阻尼`;
   return {
     ...corePrediction,
     direction,
@@ -242,10 +228,11 @@ function applyCorrection(seq, corePrediction) {
       modelLoadError,
       coreDirection,
       corePB,
-      rawDelta: active ? rawDelta : 0,
-      delta: active ? delta : 0,
-      undampedPB: active ? undampedPB : corePB,
-      oscillationEntropy8: oscillation,
+      rawDelta,
+      delta,
+      undampedPB,
+      oscillationEntropy18: entropy18,
+      shortTransitionChange6: transitionChange6,
       damper,
       finalPB,
       finalDirection: direction,
@@ -260,11 +247,7 @@ function applyCorrection(seq, corePrediction) {
 
 function readHistory() {
   if (typeof localStorage === "undefined") return [];
-  for (const key of [
-    "bgs256d_frozen_6x15_forward_v18",
-    "bgs256d_frozen_6x15_sensitive_v17",
-    "bgs256d_frozen_6x15_bigroad_v16"
-  ]) {
+  for (const key of ["bgs256d_frozen_6x15_forward_v18", "bgs256d_frozen_6x15_sensitive_v17", "bgs256d_frozen_6x15_bigroad_v16"]) {
     try {
       const raw = JSON.parse(localStorage.getItem(key) || "null");
       if (raw && Array.isArray(raw.history)) return raw.history.filter(x => ["B", "P", "T"].includes(x)).slice(-500);
@@ -287,10 +270,7 @@ function getShoeId() {
 }
 
 function rotateShoeId() {
-  try {
-    localStorage.removeItem(SHOE_KEY);
-    localStorage.removeItem(PENDING_KEY);
-  } catch (_) {}
+  try { localStorage.removeItem(SHOE_KEY); localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
 
 function saveSelection(direction) {
@@ -317,7 +297,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = residual.active ? "XGB＋阻尼完成" : "動態阻尼完成";
+  if (el("modePill")) el("modePill").textContent = residual.active ? "XGB＋雙窗阻尼完成" : "雙窗阻尼完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) {
     const weight = Number.isFinite(+residual.betWeight) ? Math.round(+residual.betWeight * 100) : 20;
@@ -329,9 +309,7 @@ function readTrainingRows() {
   try {
     const rows = JSON.parse(localStorage.getItem(TRAINING_KEY) || "[]");
     return Array.isArray(rows) ? rows : [];
-  } catch (_) {
-    return [];
-  }
+  } catch (_) { return []; }
 }
 
 function writeTrainingRows(rows) {
@@ -341,14 +319,7 @@ function writeTrainingRows(rows) {
 function registerPrediction(seq, prediction) {
   const residual = prediction?.residualBias || {};
   const features = residual.features || buildFeatures(seq, prediction, prediction?.singleHazard || null);
-  const pending = {
-    shoe_id: getShoeId(),
-    created_at: Date.now(),
-    history_fingerprint: seq.join(""),
-    core_p_b: +features.core_p_b,
-    core_direction: residual.coreDirection || String(prediction?.direction || ""),
-    features
-  };
+  const pending = { shoe_id: getShoeId(), created_at: Date.now(), history_fingerprint: seq.join(""), core_p_b: +features.core_p_b, core_direction: residual.coreDirection || String(prediction?.direction || ""), features };
   try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (_) {}
 }
 
@@ -361,16 +332,7 @@ function settlePending(actualOutcome) {
   if (!pending?.features) return;
   const actualB = actual === "B" ? 1 : 0;
   const corePB = clip(+pending.features.core_p_b || 0.5);
-  const row = {
-    schema_version: 2,
-    shoe_id: String(pending.shoe_id || getShoeId()),
-    created_at: +pending.created_at || Date.now(),
-    history_fingerprint: String(pending.history_fingerprint || ""),
-    actual_outcome: actual,
-    actual_b: actualB,
-    residual_target: actualB - corePB,
-    ...pending.features
-  };
+  const row = { schema_version: 3, shoe_id: String(pending.shoe_id || getShoeId()), created_at: +pending.created_at || Date.now(), history_fingerprint: String(pending.history_fingerprint || ""), actual_outcome: actual, actual_b: actualB, residual_target: actualB - corePB, ...pending.features };
   const rows = readTrainingRows();
   const duplicate = rows.length && rows.at(-1)?.shoe_id === row.shoe_id && rows.at(-1)?.history_fingerprint === row.history_fingerprint;
   if (!duplicate) rows.push(row);
@@ -383,19 +345,12 @@ function rollbackTrainingIfNeeded() {
   const rows = readTrainingRows();
   if (!rows.length) return;
   const last = rows.at(-1);
-  if (last?.shoe_id === getShoeId() && +last.round_index > history.length) {
-    rows.pop();
-    writeTrainingRows(rows);
-  }
+  if (last?.shoe_id === getShoeId() && +last.round_index > history.length) { rows.pop(); writeTrainingRows(rows); }
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
 
 function exportTrainingData() {
-  return JSON.stringify({
-    schema_version: 2,
-    feature_names: FEATURE_NAMES,
-    rows: readTrainingRows()
-  }, null, 2);
+  return JSON.stringify({ schema_version: 3, feature_names: FEATURE_NAMES, rows: readTrainingRows() }, null, 2);
 }
 
 function downloadTrainingData() {
@@ -449,17 +404,14 @@ function installUIOverride() {
     registerPrediction(history, prediction);
     renderPrediction(prediction, history.length);
   });
-
   const b = document.getElementById("btnB");
   const p = document.getElementById("btnP");
   const t = document.getElementById("btnT");
   if (b) b.addEventListener("click", () => settlePending("B"));
   if (p) p.addEventListener("click", () => settlePending("P"));
   if (t) t.addEventListener("click", () => settlePending("T"));
-
   const back = document.getElementById("btnBack");
   if (back) back.addEventListener("click", () => setTimeout(rollbackTrainingIfNeeded, 0));
-
   const end = document.getElementById("btnEnd");
   if (end) end.addEventListener("click", rotateShoeId);
 }
@@ -469,8 +421,8 @@ if (typeof window !== "undefined") {
     version: VERSION,
     featureNames: FEATURE_NAMES,
     buildFeatures,
-    sxMarkovPSame,
-    sxEntropy,
+    sxEntropy18,
+    sxTransitionChange6,
     dynamicDamper,
     betWeightFromProbability,
     applyCorrection,
@@ -480,12 +432,7 @@ if (typeof window !== "undefined") {
     exportTrainingData,
     downloadTrainingData,
     getTrainingCount: () => readTrainingRows().length,
-    getModelStatus: () => ({
-      loaded: modelLoaded,
-      trained: Boolean(modelBundle?.trained),
-      error: modelLoadError,
-      version: VERSION
-    })
+    getModelStatus: () => ({ loaded: modelLoaded, trained: Boolean(modelBundle?.trained), error: modelLoadError, version: VERSION })
   };
 }
 
