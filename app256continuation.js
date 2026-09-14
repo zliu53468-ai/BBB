@@ -4,7 +4,7 @@
 const BASE = (typeof window !== "undefined") ? window.__BGS256_TEST__ : null;
 if (!BASE) return;
 
-const VERSION = "V23_SHORT_X_DYNAMIC_HAZARD";
+const VERSION = "V23_SHORT_X_DYNAMIC_HAZARD_R1";
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const PROB_MIN = 0.42;
 const PROB_MAX = 0.58;
@@ -185,10 +185,12 @@ function singleHazardSignals(seq, basePrediction) {
 
   const shortSwitchPhase = state.length === 1 && depth.token === "X";
   const switchConsensus = shortSwitchPhase && motif.pSwitch >= 0.54 && depth.pSwitch >= 0.54;
-  const consensusStrength = switchConsensus
+  const consensusSupport = Math.sqrt(clip(motif.support) * clip(depth.support));
+  const consensusStrengthRaw = switchConsensus
     ? clip(((motif.pSwitch - 0.50) + (depth.pSwitch - 0.50)) / 0.28)
     : 0;
-  const staleScale = switchConsensus ? clip(0.60 - 0.18 * consensusStrength, 0.42, 0.60) : 1;
+  const consensusStrength = consensusStrengthRaw * consensusSupport;
+  const staleScale = switchConsensus ? clip(1 - 0.58 * consensusStrength, 0.42, 1) : 1;
 
   const stageBase = shortSwitchPhase ? 0.17 : 0.30;
   const contextBase = shortSwitchPhase ? 0.12 : 0.20;
@@ -198,7 +200,7 @@ function singleHazardSignals(seq, basePrediction) {
 
   const stageWeight = stageBase * (0.28 + 0.72 * stage.support) * staleScale;
   const contextWeight = contextBase * (0.28 + 0.72 * stage.contextSupport) * staleScale;
-  const motifWeight = motifBase * (0.30 + 0.70 * motif.support) * (0.78 + 0.22 * motif.agreement);
+  const motifWeight = motifBase * (0.30 + 0.70 * motif.support) * (0.60 + 0.40 * motif.agreement);
   const depthWeight = depthBase * (0.30 + 0.70 * depth.support);
   const candidateWeight = candidateBase * (0.30 + 0.70 * candidate.support);
 
@@ -246,15 +248,20 @@ function singleHazardSignals(seq, basePrediction) {
       0.52 * clip((motif.pSwitch - 0.50) / 0.22) * (0.35 + 0.65 * motif.support) +
       0.48 * clip((depth.pSwitch - 0.50) / 0.22) * (0.35 + 0.65 * depth.support)
     );
-    shortSwitchBoost = 0.045 * evidence;
+    shortSwitchBoost = 0.045 * evidence * (0.25 + 0.75 * consensusSupport);
     pSame -= shortSwitchBoost;
   }
 
   let formationBoost = 0;
   if (state.length === 2) {
-    const agreement = Math.min(stage.pSame, stage.contextPSame);
-    const support = Math.min(1, 0.55 * stage.support + 0.45 * stage.contextSupport);
-    formationBoost = clip((agreement - 0.5) / 0.32) * support * 0.055;
+    const stageEdge = stage.pSame - 0.5;
+    const contextEdge = stage.contextPSame - 0.5;
+    const aligned = stageEdge * contextEdge > 0;
+    const agreementEdge = aligned
+      ? Math.sign(stageEdge) * Math.min(Math.abs(stageEdge), Math.abs(contextEdge))
+      : 0;
+    const formationSupport = Math.min(1, 0.55 * stage.support + 0.45 * stage.contextSupport);
+    formationBoost = signed(agreementEdge / 0.32) * formationSupport * 0.045;
     pSame += formationBoost;
   }
 
@@ -278,6 +285,8 @@ function singleHazardSignals(seq, basePrediction) {
     formationBoost,
     shortSwitchPhase,
     switchConsensus,
+    consensusSupport,
+    consensusStrengthRaw,
     consensusStrength,
     staleScale,
     shortSwitchBoost,
@@ -317,6 +326,7 @@ function hazardChoose(seq) {
     transitionDepth: sig.depth.depth,
     motifPSame: sig.motif.pSame,
     motifSupport: sig.motif.support,
+    motifAgreement: sig.motif.agreement,
     depthPSame: sig.depth.pSame,
     depthSupport: sig.depth.support,
     stagePSame: sig.stage.pSame,
@@ -331,6 +341,9 @@ function hazardChoose(seq) {
     backgroundWeight: sig.weights.backgroundWeight,
     shortSwitchPhase: sig.shortSwitchPhase,
     switchConsensus: sig.switchConsensus,
+    consensusSupport: sig.consensusSupport,
+    consensusStrengthRaw: sig.consensusStrengthRaw,
+    consensusStrength: sig.consensusStrength,
     staleScale: sig.staleScale,
     shortSwitchBoost: sig.shortSwitchBoost
   };
