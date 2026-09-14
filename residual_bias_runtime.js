@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_RESIDUAL_BIAS_V3_DUAL_WINDOW";
+const VERSION = "XGB_RESIDUAL_BIAS_V4_SPEED_TUNED";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -13,21 +13,21 @@ const FEATURE_NAMES = [
   "remaining_ratio",
   "stage",
   "depth",
-  "sx_entropy_18",
-  "sx_transition_change_6"
+  "sx_entropy_14",
+  "sx_transition_change_6",
+  "sx_velocity_3v6"
 ];
 
-const MAX_DELTA_DEFAULT = 0.10;
-const ENTROPY_WINDOW_DEFAULT = 18;
+const MAX_DELTA_DEFAULT = 0.12;
+const ENTROPY_WINDOW_DEFAULT = 14;
 const ENTROPY_MIN_TOKENS_DEFAULT = 6;
 const TRANSITION_CHANGE_WINDOW_DEFAULT = 6;
-const TRANSITION_CHANGE_MIN_TOKENS_DEFAULT = 6;
-const REGULAR_ENTROPY_MAX_DEFAULT = 0.55;
-const HIGH_ENTROPY_START_DEFAULT = 0.85;
-const HIGH_DAMPER_MAX_DEFAULT = 0.40;
-const HIGH_DAMPER_MIN_DEFAULT = 0.20;
+const VELOCITY_SHORT_WINDOW_DEFAULT = 3;
+const VELOCITY_BASE_WINDOW_DEFAULT = 6;
+const TAIL_REMAINING_THRESHOLD_DEFAULT = 0.20;
+const TAIL_COMPENSATION_DEFAULT = 0.005;
 const BET_WEIGHT_MIN_DEFAULT = 0.20;
-const BET_REFERENCE_EDGE_DEFAULT = 0.18;
+const BET_REFERENCE_EDGE_DEFAULT = 0.10;
 
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const TRAINING_KEY = "bgs_xgb_residual_training_v1";
@@ -50,7 +50,12 @@ function transitionSequence(seq) {
   return out;
 }
 
-function sxEntropy18(seq, window = ENTROPY_WINDOW_DEFAULT, minTokens = ENTROPY_MIN_TOKENS_DEFAULT) {
+function xRate(tokens) {
+  if (!tokens.length) return 0;
+  return tokens.filter(x => x === "X").length / tokens.length;
+}
+
+function sxEntropy14(seq, window = ENTROPY_WINDOW_DEFAULT, minTokens = ENTROPY_MIN_TOKENS_DEFAULT) {
   const tokens = transitionSequence(seq).slice(-Math.max(2, Math.round(window)));
   if (tokens.length < Math.max(2, Math.round(minTokens))) return 0;
   const pS = tokens.filter(x => x === "S").length / tokens.length;
@@ -60,43 +65,54 @@ function sxEntropy18(seq, window = ENTROPY_WINDOW_DEFAULT, minTokens = ENTROPY_M
   return clip(entropy);
 }
 
-function sxTransitionChange6(seq, window = TRANSITION_CHANGE_WINDOW_DEFAULT, minTokens = TRANSITION_CHANGE_MIN_TOKENS_DEFAULT) {
-  const width = Math.max(4, Math.round(window));
-  const tokens = transitionSequence(seq).slice(-width);
-  if (tokens.length < Math.max(4, Math.round(minTokens))) return 0;
-  const split = Math.floor(tokens.length / 2);
-  const older = tokens.slice(0, split);
-  const newer = tokens.slice(split);
-  if (!older.length || !newer.length) return 0;
-  const olderX = older.filter(x => x === "X").length / older.length;
-  const newerX = newer.filter(x => x === "X").length / newer.length;
-  return clipSigned(newerX - olderX);
+function sxTransitionChange6(seq, window = TRANSITION_CHANGE_WINDOW_DEFAULT) {
+  const tokens = transitionSequence(seq).slice(-Math.max(6, Math.round(window)));
+  if (tokens.length < 6) return 0;
+  const recent6 = tokens.slice(-6);
+  return clipSigned(xRate(recent6.slice(3)) - xRate(recent6.slice(0, 3)));
 }
 
-function damperConfig() {
-  const cfg = modelBundle?.damper || {};
-  return {
-    regularMax: clip(cfg.regular_max ?? REGULAR_ENTROPY_MAX_DEFAULT, 0, 0.95),
-    highStart: clip(cfg.high_start ?? HIGH_ENTROPY_START_DEFAULT, 0.01, 0.999999),
-    highDamperMax: clip(cfg.high_damper_max ?? HIGH_DAMPER_MAX_DEFAULT, 0.20, 1.0),
-    highDamperMin: clip(cfg.high_damper_min ?? HIGH_DAMPER_MIN_DEFAULT, 0, 1.0)
-  };
+function sxVelocity3v6(seq, shortWindow = VELOCITY_SHORT_WINDOW_DEFAULT, baseWindow = VELOCITY_BASE_WINDOW_DEFAULT) {
+  const tokens = transitionSequence(seq);
+  const shortWidth = Math.max(1, Math.round(shortWindow));
+  const baseWidth = Math.max(shortWidth, Math.round(baseWindow));
+  if (tokens.length < baseWidth) return 0;
+  const recentBase = tokens.slice(-baseWidth);
+  const recentShort = recentBase.slice(-shortWidth);
+  return clipSigned(xRate(recentShort) - xRate(recentBase));
 }
 
-function dynamicDamper(entropy18) {
-  const cfg = damperConfig();
-  const e = clip(entropy18);
-  const regularMax = cfg.regularMax;
-  const highStart = Math.max(regularMax + 1e-6, cfg.highStart);
-  const highDamperMax = cfg.highDamperMax;
-  const highDamperMin = Math.min(highDamperMax, cfg.highDamperMin);
-  if (e <= regularMax) return 1.0;
-  if (e < highStart) {
-    const t = (e - regularMax) / (highStart - regularMax);
-    return clip(1 - t * (1 - highDamperMax), highDamperMax, 1.0);
-  }
-  const t = (e - highStart) / (1 - highStart);
-  return clip(highDamperMax - t * (highDamperMax - highDamperMin), highDamperMin, highDamperMax);
+function signedStage(seq) {
+  const values = bp(seq);
+  if (!values.length) return 0;
+  const side = values.at(-1);
+  let n = 1;
+  for (let i = values.length - 2; i >= 0 && values[i] === side; i--) n++;
+  return side === "B" ? n : -n;
+}
+
+function currentDepth(seq) {
+  const tokens = transitionSequence(seq);
+  if (!tokens.length) return 0;
+  const token = tokens.at(-1);
+  let n = 1;
+  for (let i = tokens.length - 2; i >= 0 && tokens[i] === token; i--) n++;
+  return n;
+}
+
+function dynamicDamper(entropy14) {
+  const e = clip(entropy14);
+  return clip(1 - 0.8 * e * e, 0.20, 1.00);
+}
+
+function tailDecisionCompensation(remainingRatio, stage) {
+  const cfg = modelBundle?.tail_compensation || {};
+  const threshold = clip(cfg.remaining_ratio_threshold ?? TAIL_REMAINING_THRESHOLD_DEFAULT);
+  const amount = Math.abs(+(cfg.amount ?? TAIL_COMPENSATION_DEFAULT));
+  if (clip(remainingRatio) >= threshold) return 0;
+  if (+stage > 0) return amount;
+  if (+stage < 0) return -amount;
+  return 0;
 }
 
 function betWeightFromProbability(finalPB) {
@@ -107,24 +123,6 @@ function betWeightFromProbability(finalPB) {
   const weight = minimum + (1 - minimum) * clip(edge / referenceEdge);
   const tier = weight < 0.40 ? "LOW" : weight < 0.70 ? "MEDIUM" : "HIGH";
   return { weight, tier, edge };
-}
-
-function currentStage(seq) {
-  const values = bp(seq);
-  if (!values.length) return 0;
-  const side = values.at(-1);
-  let n = 1;
-  for (let i = values.length - 2; i >= 0 && values[i] === side; i--) n++;
-  return n;
-}
-
-function currentDepth(seq) {
-  const tokens = transitionSequence(seq);
-  if (!tokens.length) return 0;
-  const token = tokens.at(-1);
-  let n = 1;
-  for (let i = tokens.length - 2; i >= 0 && tokens[i] === token; i--) n++;
-  return n;
 }
 
 function getEstimatedTotalHands() {
@@ -150,9 +148,22 @@ function buildFeatures(seq, corePrediction, signal = null) {
   const roundIndex = Math.max(1, Math.min(70, seq.length + 1));
   const estimatedTotalHands = getEstimatedTotalHands();
   const remainingRatio = clip((estimatedTotalHands - (roundIndex - 1)) / Math.max(1, estimatedTotalHands));
-  const stage = Number.isFinite(+signal?.state?.length) ? +signal.state.length : currentStage(seq);
+  const fallbackSignedStage = signedStage(seq);
+  const stateLength = Number.isFinite(+signal?.state?.length) ? +signal.state.length : Math.abs(fallbackSignedStage);
+  const stateSign = Number.isFinite(+signal?.state?.sign) ? +signal.state.sign : Math.sign(fallbackSignedStage);
+  const stage = stateLength * (stateSign || Math.sign(fallbackSignedStage) || 0);
   const depth = Number.isFinite(+signal?.depth?.depth) ? +signal.depth.depth : currentDepth(seq);
-  return { core_p_b: corePB, round_index: roundIndex, estimated_total_hands: estimatedTotalHands, remaining_ratio: remainingRatio, stage, depth, sx_entropy_18: sxEntropy18(seq), sx_transition_change_6: sxTransitionChange6(seq) };
+  return {
+    core_p_b: corePB,
+    round_index: roundIndex,
+    estimated_total_hands: estimatedTotalHands,
+    remaining_ratio: remainingRatio,
+    stage,
+    depth,
+    sx_entropy_14: sxEntropy14(seq),
+    sx_transition_change_6: sxTransitionChange6(seq),
+    sx_velocity_3v6: sxVelocity3v6(seq)
+  };
 }
 
 function featureVector(features) {
@@ -199,22 +210,31 @@ function applyCorrection(seq, corePrediction) {
   const rawDelta = active ? predictRawDelta(features) : 0;
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, MAX_DELTA_DEFAULT);
   const delta = active ? clip(rawDelta, -maxDelta, maxDelta) : 0;
+
   const corePB = features.core_p_b;
-  const entropy18 = features.sx_entropy_18;
+  const entropy14 = features.sx_entropy_14;
   const transitionChange6 = features.sx_transition_change_6;
-  const damper = dynamicDamper(entropy18);
+  const velocity3v6 = features.sx_velocity_3v6;
+  const damper = dynamicDamper(entropy14);
+  const tailComp = tailDecisionCompensation(features.remaining_ratio, features.stage);
+
   const undampedPB = clip(corePB + delta, 0, 1);
-  const finalPB = clip(0.5 + ((corePB - 0.5) + delta) * damper, 0, 1);
+  const dampedPB = clip(0.5 + ((corePB - 0.5) + delta) * damper, 0, 1);
+  const finalPB = clip(dampedPB + tailComp, 0, 1);
+
   const direction = finalPB > 0.5 ? "B" : "P";
   const finalPP = 1 - finalPB;
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
   const flipped = direction !== coreDirection;
   const sizing = betWeightFromProbability(finalPB);
+
   let regime = corePrediction.regime;
   if (flipped) regime = "XGB殘差修正換邊";
-  else if (damper <= 0.40) regime = `${corePrediction.regime}｜18局高震盪阻尼`;
-  else if (damper < 1.0) regime = `${corePrediction.regime}｜18局動態阻尼`;
+  else if (damper <= 0.40) regime = `${corePrediction.regime}｜14局高震盪阻尼`;
+  else if (damper < 0.90) regime = `${corePrediction.regime}｜14局非線性阻尼`;
+  if (tailComp !== 0) regime = `${regime}｜尾段補償`;
+
   return {
     ...corePrediction,
     direction,
@@ -231,9 +251,12 @@ function applyCorrection(seq, corePrediction) {
       rawDelta,
       delta,
       undampedPB,
-      oscillationEntropy18: entropy18,
+      dampedPB,
+      oscillationEntropy14: entropy14,
       shortTransitionChange6: transitionChange6,
+      microVelocity3v6: velocity3v6,
       damper,
+      tailCompensation: tailComp,
       finalPB,
       finalDirection: direction,
       flipped,
@@ -270,7 +293,10 @@ function getShoeId() {
 }
 
 function rotateShoeId() {
-  try { localStorage.removeItem(SHOE_KEY); localStorage.removeItem(PENDING_KEY); } catch (_) {}
+  try {
+    localStorage.removeItem(SHOE_KEY);
+    localStorage.removeItem(PENDING_KEY);
+  } catch (_) {}
 }
 
 function saveSelection(direction) {
@@ -297,7 +323,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = residual.active ? "XGB＋雙窗阻尼完成" : "雙窗阻尼完成";
+  if (el("modePill")) el("modePill").textContent = residual.active ? "XGB＋14/6/3提速完成" : "14/6/3阻尼完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) {
     const weight = Number.isFinite(+residual.betWeight) ? Math.round(+residual.betWeight * 100) : 20;
@@ -309,7 +335,9 @@ function readTrainingRows() {
   try {
     const rows = JSON.parse(localStorage.getItem(TRAINING_KEY) || "[]");
     return Array.isArray(rows) ? rows : [];
-  } catch (_) { return []; }
+  } catch (_) {
+    return [];
+  }
 }
 
 function writeTrainingRows(rows) {
@@ -319,7 +347,14 @@ function writeTrainingRows(rows) {
 function registerPrediction(seq, prediction) {
   const residual = prediction?.residualBias || {};
   const features = residual.features || buildFeatures(seq, prediction, prediction?.singleHazard || null);
-  const pending = { shoe_id: getShoeId(), created_at: Date.now(), history_fingerprint: seq.join(""), core_p_b: +features.core_p_b, core_direction: residual.coreDirection || String(prediction?.direction || ""), features };
+  const pending = {
+    shoe_id: getShoeId(),
+    created_at: Date.now(),
+    history_fingerprint: seq.join(""),
+    core_p_b: +features.core_p_b,
+    core_direction: residual.coreDirection || String(prediction?.direction || ""),
+    features
+  };
   try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (_) {}
 }
 
@@ -327,14 +362,28 @@ function settlePending(actualOutcome) {
   const actual = String(actualOutcome || "").toUpperCase();
   if (actual === "T") return;
   if (actual !== "B" && actual !== "P") return;
+
   let pending = null;
   try { pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); } catch (_) {}
   if (!pending?.features) return;
+
   const actualB = actual === "B" ? 1 : 0;
   const corePB = clip(+pending.features.core_p_b || 0.5);
-  const row = { schema_version: 3, shoe_id: String(pending.shoe_id || getShoeId()), created_at: +pending.created_at || Date.now(), history_fingerprint: String(pending.history_fingerprint || ""), actual_outcome: actual, actual_b: actualB, residual_target: actualB - corePB, ...pending.features };
+  const row = {
+    schema_version: 4,
+    shoe_id: String(pending.shoe_id || getShoeId()),
+    created_at: +pending.created_at || Date.now(),
+    history_fingerprint: String(pending.history_fingerprint || ""),
+    actual_outcome: actual,
+    actual_b: actualB,
+    residual_target: actualB - corePB,
+    ...pending.features
+  };
+
   const rows = readTrainingRows();
-  const duplicate = rows.length && rows.at(-1)?.shoe_id === row.shoe_id && rows.at(-1)?.history_fingerprint === row.history_fingerprint;
+  const duplicate = rows.length
+    && rows.at(-1)?.shoe_id === row.shoe_id
+    && rows.at(-1)?.history_fingerprint === row.history_fingerprint;
   if (!duplicate) rows.push(row);
   writeTrainingRows(rows);
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
@@ -345,12 +394,19 @@ function rollbackTrainingIfNeeded() {
   const rows = readTrainingRows();
   if (!rows.length) return;
   const last = rows.at(-1);
-  if (last?.shoe_id === getShoeId() && +last.round_index > history.length) { rows.pop(); writeTrainingRows(rows); }
+  if (last?.shoe_id === getShoeId() && +last.round_index > history.length) {
+    rows.pop();
+    writeTrainingRows(rows);
+  }
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
 
 function exportTrainingData() {
-  return JSON.stringify({ schema_version: 3, feature_names: FEATURE_NAMES, rows: readTrainingRows() }, null, 2);
+  return JSON.stringify({
+    schema_version: 4,
+    feature_names: FEATURE_NAMES,
+    rows: readTrainingRows()
+  }, null, 2);
 }
 
 function downloadTrainingData() {
@@ -389,13 +445,17 @@ function installUIOverride() {
   if (typeof document === "undefined") return;
   const oldBtn = document.getElementById("btnStart");
   if (!oldBtn) return;
+
   const btn = oldBtn.cloneNode(true);
   oldBtn.replaceWith(btn);
   btn.addEventListener("click", () => {
     const history = readHistory();
     if (!history.length) {
       const msg = document.getElementById("message");
-      if (msg) { msg.textContent = "請先輸入牌局紀錄"; msg.classList.add("warning"); }
+      if (msg) {
+        msg.textContent = "請先輸入牌局紀錄";
+        msg.classList.add("warning");
+      }
       return;
     }
     const corePrediction = CORE.hazardChoose(history);
@@ -404,14 +464,17 @@ function installUIOverride() {
     registerPrediction(history, prediction);
     renderPrediction(prediction, history.length);
   });
+
   const b = document.getElementById("btnB");
   const p = document.getElementById("btnP");
   const t = document.getElementById("btnT");
   if (b) b.addEventListener("click", () => settlePending("B"));
   if (p) p.addEventListener("click", () => settlePending("P"));
   if (t) t.addEventListener("click", () => settlePending("T"));
+
   const back = document.getElementById("btnBack");
   if (back) back.addEventListener("click", () => setTimeout(rollbackTrainingIfNeeded, 0));
+
   const end = document.getElementById("btnEnd");
   if (end) end.addEventListener("click", rotateShoeId);
 }
@@ -421,9 +484,11 @@ if (typeof window !== "undefined") {
     version: VERSION,
     featureNames: FEATURE_NAMES,
     buildFeatures,
-    sxEntropy18,
+    sxEntropy14,
     sxTransitionChange6,
+    sxVelocity3v6,
     dynamicDamper,
+    tailDecisionCompensation,
     betWeightFromProbability,
     applyCorrection,
     loadModel,
@@ -432,7 +497,12 @@ if (typeof window !== "undefined") {
     exportTrainingData,
     downloadTrainingData,
     getTrainingCount: () => readTrainingRows().length,
-    getModelStatus: () => ({ loaded: modelLoaded, trained: Boolean(modelBundle?.trained), error: modelLoadError, version: VERSION })
+    getModelStatus: () => ({
+      loaded: modelLoaded,
+      trained: Boolean(modelBundle?.trained),
+      error: modelLoadError,
+      version: VERSION
+    })
   };
 }
 
