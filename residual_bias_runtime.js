@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_RESIDUAL_BIAS_V1";
+const VERSION = "XGB_RESIDUAL_BIAS_V2_DAMPER";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -13,10 +13,22 @@ const FEATURE_NAMES = [
   "remaining_ratio",
   "sx_markov_p_same",
   "stage",
-  "depth"
+  "depth",
+  "sx_entropy_8"
 ];
 const MAX_DELTA_DEFAULT = 0.10;
+const REGULAR_ENTROPY_MAX_DEFAULT = 0.45;
+const HIGH_ENTROPY_START_DEFAULT = 0.85;
+const HIGH_DAMPER_MAX_DEFAULT = 0.40;
+const HIGH_DAMPER_MIN_DEFAULT = 0.20;
+const ENTROPY_WINDOW_DEFAULT = 8;
+const ENTROPY_MIN_TOKENS_DEFAULT = 4;
+const BET_WEIGHT_MIN_DEFAULT = 0.20;
+const BET_REFERENCE_EDGE_DEFAULT = 0.18;
+
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
+// Keep the V1 data key so already-collected rows remain usable. The Python
+// trainer backfills sx_entropy_8 from history_fingerprint for older rows.
 const TRAINING_KEY = "bgs_xgb_residual_training_v1";
 const PENDING_KEY = "bgs_xgb_residual_pending_v1";
 const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
@@ -48,6 +60,52 @@ function sxMarkovPSame(seq, window = 24, prior = 1.0) {
     else if (tokens[i + 1] === "X") sw++;
   }
   return clip((same + prior) / (same + sw + 2 * prior));
+}
+
+function sxEntropy(seq, window = ENTROPY_WINDOW_DEFAULT, minTokens = ENTROPY_MIN_TOKENS_DEFAULT) {
+  const tokens = transitionSequence(seq).slice(-Math.max(2, Math.round(window)));
+  if (tokens.length < Math.max(2, Math.round(minTokens))) return 0;
+  const pS = tokens.filter(x => x === "S").length / tokens.length;
+  const pX = 1 - pS;
+  let entropy = 0;
+  for (const p of [pS, pX]) if (p > 0) entropy -= p * Math.log2(p);
+  return clip(entropy);
+}
+
+function damperConfig() {
+  const cfg = modelBundle?.damper || {};
+  return {
+    regularMax: clip(cfg.regular_max ?? REGULAR_ENTROPY_MAX_DEFAULT, 0, 0.95),
+    highStart: clip(cfg.high_start ?? HIGH_ENTROPY_START_DEFAULT, 0.01, 0.999999),
+    highDamperMax: clip(cfg.high_damper_max ?? HIGH_DAMPER_MAX_DEFAULT, 0.2, 1.0),
+    highDamperMin: clip(cfg.high_damper_min ?? HIGH_DAMPER_MIN_DEFAULT, 0, 1.0)
+  };
+}
+
+function dynamicDamper(oscillation) {
+  const cfg = damperConfig();
+  const e = clip(oscillation);
+  const regularMax = cfg.regularMax;
+  const highStart = Math.max(regularMax + 1e-6, cfg.highStart);
+  const highDamperMax = cfg.highDamperMax;
+  const highDamperMin = Math.min(highDamperMax, cfg.highDamperMin);
+  if (e <= regularMax) return 1.0;
+  if (e < highStart) {
+    const t = (e - regularMax) / (highStart - regularMax);
+    return clip(1 - t * (1 - highDamperMax), highDamperMax, 1.0);
+  }
+  const t = (e - highStart) / (1 - highStart);
+  return clip(highDamperMax - t * (highDamperMax - highDamperMin), highDamperMin, highDamperMax);
+}
+
+function betWeightFromProbability(finalPB) {
+  const cfg = modelBundle?.bet_weight || {};
+  const minimum = clip(cfg.minimum ?? BET_WEIGHT_MIN_DEFAULT, 0, 1);
+  const referenceEdge = Math.max(1e-6, +(cfg.reference_edge ?? BET_REFERENCE_EDGE_DEFAULT));
+  const edge = Math.abs(clip(finalPB) - 0.5);
+  const weight = minimum + (1 - minimum) * clip(edge / referenceEdge);
+  const tier = weight < 0.40 ? "LOW" : weight < 0.70 ? "MEDIUM" : "HIGH";
+  return { weight, tier, edge };
 }
 
 function currentStage(seq) {
@@ -93,16 +151,16 @@ function buildFeatures(seq, corePrediction, signal = null) {
   const remainingRatio = clip((estimatedTotalHands - (roundIndex - 1)) / Math.max(1, estimatedTotalHands));
   const stage = Number.isFinite(+signal?.state?.length) ? +signal.state.length : currentStage(seq);
   const depth = Number.isFinite(+signal?.depth?.depth) ? +signal.depth.depth : currentDepth(seq);
-  const features = {
+  return {
     core_p_b: corePB,
     round_index: roundIndex,
     estimated_total_hands: estimatedTotalHands,
     remaining_ratio: remainingRatio,
     sx_markov_p_same: sxMarkovPSame(seq),
     stage,
-    depth
+    depth,
+    sx_entropy_8: sxEntropy(seq)
   };
-  return features;
 }
 
 function featureVector(features) {
@@ -154,50 +212,47 @@ function applyCorrection(seq, corePrediction) {
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
   const delta = clip(rawDelta, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
-  const finalPB = clip(corePB + delta, 0, 1);
+  const oscillation = features.sx_entropy_8;
+  const damper = dynamicDamper(oscillation);
+  const undampedPB = clip(corePB + delta, 0, 1);
+  const finalPB = clip(0.5 + ((corePB - 0.5) + delta) * damper, 0, 1);
   const direction = finalPB > 0.5 ? "B" : "P";
   const finalPP = 1 - finalPB;
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
   const active = Boolean(modelBundle?.trained);
-  if (!active) {
-    return {
-      ...corePrediction,
-      residualBias: {
-        version: VERSION,
-        active: false,
-        modelLoaded,
-        modelLoadError,
-        coreDirection,
-        corePB,
-        rawDelta: 0,
-        delta: 0,
-        finalPB: corePB,
-        finalDirection: coreDirection,
-        flipped: false,
-        features
-      }
-    };
-  }
   const flipped = direction !== coreDirection;
+  const sizing = betWeightFromProbability(finalPB);
+
+  let regime = corePrediction.regime;
+  if (flipped) regime = "XGB殘差修正換邊";
+  else if (damper <= 0.40) regime = `${corePrediction.regime}｜高震盪阻尼`;
+  else if (damper < 1.0) regime = `${corePrediction.regime}｜動態阻尼`;
+
   return {
     ...corePrediction,
     direction,
     confidence,
     probabilities: { B: finalPB, P: finalPP },
-    regime: flipped ? "XGB殘差修正換邊" : corePrediction.regime,
+    regime,
     residualBias: {
       version: VERSION,
-      active: true,
+      active,
       modelLoaded,
       modelLoadError,
       coreDirection,
       corePB,
-      rawDelta,
-      delta,
+      rawDelta: active ? rawDelta : 0,
+      delta: active ? delta : 0,
+      undampedPB: active ? undampedPB : corePB,
+      oscillationEntropy8: oscillation,
+      damper,
       finalPB,
       finalDirection: direction,
       flipped,
+      betWeight: sizing.weight,
+      betWeightTier: sizing.tier,
+      finalEdge: sizing.edge,
       features
     }
   };
@@ -246,20 +301,28 @@ function saveSelection(direction) {
   } catch (_) {}
 }
 
+function betTierZh(tier) {
+  return tier === "HIGH" ? "高" : tier === "MEDIUM" ? "中" : "低";
+}
+
 function renderPrediction(p, historyLength) {
   const el = id => document.getElementById(id);
   const orb = el("directionOrb");
   if (!orb) return;
   const isB = p.direction === "B";
+  const residual = p.residualBias || {};
   el("directionText").textContent = isB ? "莊" : "閒";
   el("directionCode").textContent = isB ? "BANKER" : "PLAYER";
   el("confidence").textContent = (p.confidence * 100).toFixed(1) + "%";
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "XGB 修正完成" : "分析完成";
+  if (el("modePill")) el("modePill").textContent = residual.active ? "XGB＋阻尼完成" : "動態阻尼完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
-  if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
+  if (el("message")) {
+    const weight = Number.isFinite(+residual.betWeight) ? Math.round(+residual.betWeight * 100) : 20;
+    el("message").textContent = `第 ${historyLength + 1} 局分析完成｜注碼權重 ${weight}%（${betTierZh(residual.betWeightTier)}）`;
+  }
 }
 
 function readTrainingRows() {
@@ -299,7 +362,7 @@ function settlePending(actualOutcome) {
   const actualB = actual === "B" ? 1 : 0;
   const corePB = clip(+pending.features.core_p_b || 0.5);
   const row = {
-    schema_version: 1,
+    schema_version: 2,
     shoe_id: String(pending.shoe_id || getShoeId()),
     created_at: +pending.created_at || Date.now(),
     history_fingerprint: String(pending.history_fingerprint || ""),
@@ -329,7 +392,7 @@ function rollbackTrainingIfNeeded() {
 
 function exportTrainingData() {
   return JSON.stringify({
-    schema_version: 1,
+    schema_version: 2,
     feature_names: FEATURE_NAMES,
     rows: readTrainingRows()
   }, null, 2);
@@ -407,6 +470,9 @@ if (typeof window !== "undefined") {
     featureNames: FEATURE_NAMES,
     buildFeatures,
     sxMarkovPSame,
+    sxEntropy,
+    dynamicDamper,
+    betWeightFromProbability,
     applyCorrection,
     loadModel,
     setEstimatedTotalHands,
@@ -414,7 +480,12 @@ if (typeof window !== "undefined") {
     exportTrainingData,
     downloadTrainingData,
     getTrainingCount: () => readTrainingRows().length,
-    getModelStatus: () => ({ loaded: modelLoaded, trained: Boolean(modelBundle?.trained), error: modelLoadError })
+    getModelStatus: () => ({
+      loaded: modelLoaded,
+      trained: Boolean(modelBundle?.trained),
+      error: modelLoadError,
+      version: VERSION
+    })
   };
 }
 
