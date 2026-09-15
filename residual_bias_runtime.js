@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_RESIDUAL_BIAS_V4_SPEED_TUNED";
+const VERSION = "XGB_RESIDUAL_BIAS_V5_MULTI_SCALE";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -24,8 +24,6 @@ const ENTROPY_MIN_TOKENS_DEFAULT = 6;
 const TRANSITION_CHANGE_WINDOW_DEFAULT = 6;
 const VELOCITY_SHORT_WINDOW_DEFAULT = 3;
 const VELOCITY_BASE_WINDOW_DEFAULT = 6;
-const TAIL_REMAINING_THRESHOLD_DEFAULT = 0.20;
-const TAIL_COMPENSATION_DEFAULT = 0.005;
 const BET_WEIGHT_MIN_DEFAULT = 0.20;
 const BET_REFERENCE_EDGE_DEFAULT = 0.10;
 
@@ -82,13 +80,13 @@ function sxVelocity3v6(seq, shortWindow = VELOCITY_SHORT_WINDOW_DEFAULT, baseWin
   return clipSigned(xRate(recentShort) - xRate(recentBase));
 }
 
-function signedStage(seq) {
+function currentStage(seq) {
   const values = bp(seq);
   if (!values.length) return 0;
   const side = values.at(-1);
   let n = 1;
   for (let i = values.length - 2; i >= 0 && values[i] === side; i--) n++;
-  return side === "B" ? n : -n;
+  return n;
 }
 
 function currentDepth(seq) {
@@ -103,16 +101,6 @@ function currentDepth(seq) {
 function dynamicDamper(entropy14) {
   const e = clip(entropy14);
   return clip(1 - 0.8 * e * e, 0.20, 1.00);
-}
-
-function tailDecisionCompensation(remainingRatio, stage) {
-  const cfg = modelBundle?.tail_compensation || {};
-  const threshold = clip(cfg.remaining_ratio_threshold ?? TAIL_REMAINING_THRESHOLD_DEFAULT);
-  const amount = Math.abs(+(cfg.amount ?? TAIL_COMPENSATION_DEFAULT));
-  if (clip(remainingRatio) >= threshold) return 0;
-  if (+stage > 0) return amount;
-  if (+stage < 0) return -amount;
-  return 0;
 }
 
 function betWeightFromProbability(finalPB) {
@@ -148,10 +136,7 @@ function buildFeatures(seq, corePrediction, signal = null) {
   const roundIndex = Math.max(1, Math.min(70, seq.length + 1));
   const estimatedTotalHands = getEstimatedTotalHands();
   const remainingRatio = clip((estimatedTotalHands - (roundIndex - 1)) / Math.max(1, estimatedTotalHands));
-  const fallbackSignedStage = signedStage(seq);
-  const stateLength = Number.isFinite(+signal?.state?.length) ? +signal.state.length : Math.abs(fallbackSignedStage);
-  const stateSign = Number.isFinite(+signal?.state?.sign) ? +signal.state.sign : Math.sign(fallbackSignedStage);
-  const stage = stateLength * (stateSign || Math.sign(fallbackSignedStage) || 0);
+  const stage = Number.isFinite(+signal?.state?.length) ? Math.abs(+signal.state.length) : currentStage(seq);
   const depth = Number.isFinite(+signal?.depth?.depth) ? +signal.depth.depth : currentDepth(seq);
   return {
     core_p_b: corePB,
@@ -216,11 +201,8 @@ function applyCorrection(seq, corePrediction) {
   const transitionChange6 = features.sx_transition_change_6;
   const velocity3v6 = features.sx_velocity_3v6;
   const damper = dynamicDamper(entropy14);
-  const tailComp = tailDecisionCompensation(features.remaining_ratio, features.stage);
-
   const undampedPB = clip(corePB + delta, 0, 1);
-  const dampedPB = clip(0.5 + ((corePB - 0.5) + delta) * damper, 0, 1);
-  const finalPB = clip(dampedPB + tailComp, 0, 1);
+  const finalPB = clip(0.5 + ((corePB - 0.5) + delta) * damper, 0, 1);
 
   const direction = finalPB > 0.5 ? "B" : "P";
   const finalPP = 1 - finalPB;
@@ -232,8 +214,7 @@ function applyCorrection(seq, corePrediction) {
   let regime = corePrediction.regime;
   if (flipped) regime = "XGB殘差修正換邊";
   else if (damper <= 0.40) regime = `${corePrediction.regime}｜14局高震盪阻尼`;
-  else if (damper < 0.90) regime = `${corePrediction.regime}｜14局非線性阻尼`;
-  if (tailComp !== 0) regime = `${regime}｜尾段補償`;
+  else if (damper < 0.90) regime = `${corePrediction.regime}｜14局動態阻尼`;
 
   return {
     ...corePrediction,
@@ -251,12 +232,10 @@ function applyCorrection(seq, corePrediction) {
       rawDelta,
       delta,
       undampedPB,
-      dampedPB,
       oscillationEntropy14: entropy14,
       shortTransitionChange6: transitionChange6,
-      microVelocity3v6: velocity3v6,
+      velocity3v6,
       damper,
-      tailCompensation: tailComp,
       finalPB,
       finalDirection: direction,
       flipped,
@@ -270,10 +249,16 @@ function applyCorrection(seq, corePrediction) {
 
 function readHistory() {
   if (typeof localStorage === "undefined") return [];
-  for (const key of ["bgs256d_frozen_6x15_forward_v18", "bgs256d_frozen_6x15_sensitive_v17", "bgs256d_frozen_6x15_bigroad_v16"]) {
+  for (const key of [
+    "bgs256d_frozen_6x15_forward_v18",
+    "bgs256d_frozen_6x15_sensitive_v17",
+    "bgs256d_frozen_6x15_bigroad_v16"
+  ]) {
     try {
       const raw = JSON.parse(localStorage.getItem(key) || "null");
-      if (raw && Array.isArray(raw.history)) return raw.history.filter(x => ["B", "P", "T"].includes(x)).slice(-500);
+      if (raw && Array.isArray(raw.history)) {
+        return raw.history.filter(x => ["B", "P", "T"].includes(x)).slice(-500);
+      }
     } catch (_) {}
   }
   return [];
@@ -323,7 +308,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = residual.active ? "XGB＋14/6/3提速完成" : "14/6/3阻尼完成";
+  if (el("modePill")) el("modePill").textContent = residual.active ? "XGB＋多尺度阻尼完成" : "多尺度阻尼完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) {
     const weight = Number.isFinite(+residual.betWeight) ? Math.round(+residual.betWeight * 100) : 20;
@@ -362,7 +347,6 @@ function settlePending(actualOutcome) {
   const actual = String(actualOutcome || "").toUpperCase();
   if (actual === "T") return;
   if (actual !== "B" && actual !== "P") return;
-
   let pending = null;
   try { pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); } catch (_) {}
   if (!pending?.features) return;
@@ -370,7 +354,7 @@ function settlePending(actualOutcome) {
   const actualB = actual === "B" ? 1 : 0;
   const corePB = clip(+pending.features.core_p_b || 0.5);
   const row = {
-    schema_version: 4,
+    schema_version: 5,
     shoe_id: String(pending.shoe_id || getShoeId()),
     created_at: +pending.created_at || Date.now(),
     history_fingerprint: String(pending.history_fingerprint || ""),
@@ -379,11 +363,8 @@ function settlePending(actualOutcome) {
     residual_target: actualB - corePB,
     ...pending.features
   };
-
   const rows = readTrainingRows();
-  const duplicate = rows.length
-    && rows.at(-1)?.shoe_id === row.shoe_id
-    && rows.at(-1)?.history_fingerprint === row.history_fingerprint;
+  const duplicate = rows.length && rows.at(-1)?.shoe_id === row.shoe_id && rows.at(-1)?.history_fingerprint === row.history_fingerprint;
   if (!duplicate) rows.push(row);
   writeTrainingRows(rows);
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
@@ -403,7 +384,7 @@ function rollbackTrainingIfNeeded() {
 
 function exportTrainingData() {
   return JSON.stringify({
-    schema_version: 4,
+    schema_version: 5,
     feature_names: FEATURE_NAMES,
     rows: readTrainingRows()
   }, null, 2);
@@ -445,7 +426,6 @@ function installUIOverride() {
   if (typeof document === "undefined") return;
   const oldBtn = document.getElementById("btnStart");
   if (!oldBtn) return;
-
   const btn = oldBtn.cloneNode(true);
   oldBtn.replaceWith(btn);
   btn.addEventListener("click", () => {
@@ -488,7 +468,6 @@ if (typeof window !== "undefined") {
     sxTransitionChange6,
     sxVelocity3v6,
     dynamicDamper,
-    tailDecisionCompensation,
     betWeightFromProbability,
     applyCorrection,
     loadModel,

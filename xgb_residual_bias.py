@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
-"""BBB accelerated XGBoost residual-bias predictor with 14/6/3 regime features.
+"""BBB external XGBoost residual-bias predictor with multi-scale S/X damping.
 
-The deterministic 256D/V23 core remains untouched. XGBRegressor learns only the
-calibration residual, not the raw B/P class:
+The deterministic 256D/V23 Frozen Base is intentionally untouched. XGBRegressor
+learns only the residual calibration error of the core probability:
 
     residual = actual_B - core_p_B
 
-External features:
-- sx_entropy_14: long-window normalized Shannon entropy over the latest 14 S/X
-  transition states.
-- sx_transition_change_6: signed change in X frequency, comparing recent 3
-  S/X tokens with the preceding 3.
-- sx_velocity_3v6: recent-3 X frequency minus recent-6 X frequency.
+Production features add three S/X regime scales:
+- sx_entropy_14: long-window normalized Shannon entropy over the latest 14 S/X.
+- sx_transition_change_6: recent-3 X rate minus previous-3 X rate.
+- sx_velocity_3v6: recent-3 X rate minus recent-6 X rate.
 
-Production logic:
+Final decision:
 
     delta = clip(xgb_residual, -0.12, +0.12)
     damper = 1.0 - 0.8 * sx_entropy_14**2
-    tail_comp = +/-0.005 when remaining_ratio < 0.20, using signed Stage
-    final_p_B = 0.50 + ((core_p_B - 0.50) + delta) * damper + tail_comp
+    final_p_B = 0.50 + ((core_p_B - 0.50) + delta) * damper
     direction = "B" if final_p_B > 0.50 else "P"
 
-There is never a PASS state. Bet weight is derived from the absolute final edge
-around 0.50 and saturates at an edge of 0.10.
+There is never a PASS state. Bet weight is derived from |final_p_B - 0.50| and
+reaches full weight at an absolute edge of 0.10.
 """
 from __future__ import annotations
 
@@ -51,7 +48,7 @@ FEATURE_NAMES: tuple[str, ...] = (
     "sx_velocity_3v6",
 )
 MODEL_TYPE = "xgb_residual_regressor"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 DEFAULT_MAX_DELTA = 0.12
 DEFAULT_RANDOM_STATE = 20260915
 
@@ -61,14 +58,12 @@ DEFAULT_TRANSITION_CHANGE_WINDOW = 6
 DEFAULT_VELOCITY_SHORT_WINDOW = 3
 DEFAULT_VELOCITY_BASE_WINDOW = 6
 
-DEFAULT_TAIL_REMAINING_THRESHOLD = 0.20
-DEFAULT_TAIL_COMPENSATION = 0.005
-
 DEFAULT_BET_WEIGHT_MIN = 0.20
 DEFAULT_BET_REFERENCE_EDGE = 0.10
 
 
 def clip(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    """Finite numeric clamp used by both feature and probability paths."""
     value = float(value)
     if not math.isfinite(value):
         return lo
@@ -99,6 +94,7 @@ def normalize_history(history: str | Iterable[Any] | None) -> list[str]:
 
 
 def transition_sequence(history: Sequence[str]) -> list[str]:
+    """Convert B/P chronology into SAME/SWITCH tokens; ties do not create tokens."""
     values = [x for x in history if x in {"B", "P"}]
     return ["S" if values[i] == values[i - 1] else "X" for i in range(1, len(values))]
 
@@ -115,7 +111,7 @@ def sx_entropy(
     window: int = DEFAULT_ENTROPY_WINDOW,
     min_tokens: int = DEFAULT_ENTROPY_MIN_TOKENS,
 ) -> float:
-    """Normalized Shannon entropy of recent S/X tokens in [0, 1]."""
+    """Normalized Shannon entropy of the latest 14 S/X tokens in [0, 1]."""
     tokens = transition_sequence(history)[-max(2, int(window)) :]
     if len(tokens) < max(2, int(min_tokens)):
         return 0.0
@@ -133,14 +129,12 @@ def sx_transition_change(
     *,
     window: int = DEFAULT_TRANSITION_CHANGE_WINDOW,
 ) -> float:
-    """Recent-3 X rate minus previous-3 X rate over the latest six S/X tokens."""
+    """Six-token turning signal: recent-3 X rate minus previous-3 X rate."""
     tokens = transition_sequence(history)[-max(6, int(window)) :]
     if len(tokens) < 6:
         return 0.0
     recent6 = tokens[-6:]
-    older3 = recent6[:3]
-    newer3 = recent6[3:]
-    return clip_signed(_x_rate(newer3) - _x_rate(older3))
+    return clip_signed(_x_rate(recent6[3:]) - _x_rate(recent6[:3]))
 
 
 def sx_velocity(
@@ -149,7 +143,7 @@ def sx_velocity(
     short_window: int = DEFAULT_VELOCITY_SHORT_WINDOW,
     base_window: int = DEFAULT_VELOCITY_BASE_WINDOW,
 ) -> float:
-    """Micro velocity = recent-3 X rate minus recent-6 X rate."""
+    """Micro velocity: recent-3 X rate minus recent-6 X rate."""
     tokens = transition_sequence(history)
     short_window = max(1, int(short_window))
     base_window = max(short_window, int(base_window))
@@ -160,8 +154,8 @@ def sx_velocity(
     return clip_signed(_x_rate(recent_short) - _x_rate(recent_base))
 
 
-def signed_stage(history: Sequence[str]) -> int:
-    """Signed Stage: positive for B streak, negative for P streak."""
+def current_stage(history: Sequence[str]) -> int:
+    """Unsigned current B/P streak length. Side direction stays in the core model."""
     values = [x for x in history if x in {"B", "P"}]
     if not values:
         return 0
@@ -171,7 +165,7 @@ def signed_stage(history: Sequence[str]) -> int:
         if values[i] != side:
             break
         length += 1
-    return length if side == "B" else -length
+    return length
 
 
 def current_depth(history: Sequence[str]) -> int:
@@ -188,30 +182,13 @@ def current_depth(history: Sequence[str]) -> int:
 
 
 def _calculate_dynamic_damper(entropy_14: float) -> float:
-    """Non-linear fast-recovery damper: 1 - 0.8 * entropy^2."""
+    """Squared non-linear damper requested by the production specification."""
     e = clip(entropy_14)
     return clip(1.0 - 0.8 * (e * e), 0.20, 1.00)
 
 
-# Backward-compatible public name.
+# Public compatibility name used by earlier versions.
 dynamic_damper = _calculate_dynamic_damper
-
-
-def tail_decision_compensation(
-    remaining_ratio: float,
-    stage: float,
-    *,
-    threshold: float = DEFAULT_TAIL_REMAINING_THRESHOLD,
-    amount: float = DEFAULT_TAIL_COMPENSATION,
-) -> float:
-    """Apply a tiny side-signed late-shoe compensation near the cut."""
-    if clip(remaining_ratio) >= clip(threshold):
-        return 0.0
-    if stage > 0:
-        return abs(float(amount))
-    if stage < 0:
-        return -abs(float(amount))
-    return 0.0
 
 
 def bet_weight_from_probability(
@@ -220,16 +197,12 @@ def bet_weight_from_probability(
     minimum: float = DEFAULT_BET_WEIGHT_MIN,
     reference_edge: float = DEFAULT_BET_REFERENCE_EDGE,
 ) -> tuple[float, str]:
+    """Map final edge to 0.20..1.00; full weight at |p(B)-0.50| >= 0.10."""
     edge = abs(clip(final_p_b) - 0.5)
     minimum = clip(minimum)
     reference_edge = max(1e-6, float(reference_edge))
     weight = minimum + (1.0 - minimum) * clip(edge / reference_edge)
-    if weight < 0.40:
-        tier = "LOW"
-    elif weight < 0.70:
-        tier = "MEDIUM"
-    else:
-        tier = "HIGH"
+    tier = "LOW" if weight < 0.40 else "MEDIUM" if weight < 0.70 else "HIGH"
     return float(weight), tier
 
 
@@ -260,17 +233,17 @@ def build_features(
     stage: float | None = None,
     depth: float | None = None,
 ) -> ResidualFeatures:
+    """Assemble one deterministic feature row for the residual model."""
     seq = normalize_history(history)
     total_hands = clip(float(estimated_total_hands), 40.0, 90.0)
     round_index = float(max(1, min(70, len(seq) + 1)))
     remaining_ratio = clip((total_hands - (round_index - 1.0)) / max(1.0, total_hands))
-    stage_value = float(signed_stage(seq) if stage is None else stage)
     return ResidualFeatures(
         core_p_b=clip(float(core_p_b)),
         round_index=round_index,
         estimated_total_hands=total_hands,
         remaining_ratio=remaining_ratio,
-        stage=stage_value,
+        stage=float(current_stage(seq) if stage is None else abs(float(stage))),
         depth=float(current_depth(seq) if depth is None else depth),
         sx_entropy_14=sx_entropy(seq),
         sx_transition_change_6=sx_transition_change(seq),
@@ -279,6 +252,7 @@ def build_features(
 
 
 def build_regressor(*, random_state: int = DEFAULT_RANDOM_STATE) -> XGBRegressor:
+    """Conservative deterministic XGBRegressor for residual calibration."""
     return XGBRegressor(
         objective="reg:squarederror",
         n_estimators=240,
@@ -297,8 +271,8 @@ def build_regressor(*, random_state: int = DEFAULT_RANDOM_STATE) -> XGBRegressor
     )
 
 
-class AcceleratedResidualBiasPredictor:
-    """Residual XGB + 14/6/3 features + non-linear damper + late-shoe bias."""
+class MultiScaleResidualBiasPredictor:
+    """XGB residual predictor + 14/6/3 regime features + non-linear damper."""
 
     def __init__(
         self,
@@ -307,15 +281,11 @@ class AcceleratedResidualBiasPredictor:
         max_delta: float = DEFAULT_MAX_DELTA,
         bet_weight_min: float = DEFAULT_BET_WEIGHT_MIN,
         bet_reference_edge: float = DEFAULT_BET_REFERENCE_EDGE,
-        tail_remaining_threshold: float = DEFAULT_TAIL_REMAINING_THRESHOLD,
-        tail_compensation: float = DEFAULT_TAIL_COMPENSATION,
     ) -> None:
         self.model = model or build_regressor()
         self.max_delta = clip(float(max_delta), 0.0, DEFAULT_MAX_DELTA)
         self.bet_weight_min = float(bet_weight_min)
         self.bet_reference_edge = float(bet_reference_edge)
-        self.tail_remaining_threshold = float(tail_remaining_threshold)
-        self.tail_compensation = float(tail_compensation)
 
     def assemble_features(
         self,
@@ -338,9 +308,13 @@ class AcceleratedResidualBiasPredictor:
         self,
         feature_rows: np.ndarray,
         actual_b: Sequence[int],
-    ) -> "AcceleratedResidualBiasPredictor":
+    ) -> "MultiScaleResidualBiasPredictor":
         x = np.asarray(feature_rows, dtype=np.float32)
         y = np.asarray(actual_b, dtype=np.float32)
+        if x.ndim != 2 or x.shape[1] != len(FEATURE_NAMES):
+            raise ValueError(f"feature_rows must have {len(FEATURE_NAMES)} columns")
+        if len(x) != len(y):
+            raise ValueError("feature_rows and actual_b must have equal length")
         core_pb = x[:, FEATURE_NAMES.index("core_p_b")]
         residual = y - core_pb
         self.model.fit(x, residual)
@@ -348,28 +322,25 @@ class AcceleratedResidualBiasPredictor:
 
     def predict_delta(self, feature_row: Sequence[float]) -> float:
         x = np.asarray(feature_row, dtype=np.float32).reshape(1, -1)
+        if x.shape[1] != len(FEATURE_NAMES):
+            raise ValueError(f"feature_row must have {len(FEATURE_NAMES)} values")
         raw = float(self.model.predict(x)[0])
         return clip(raw, -self.max_delta, self.max_delta)
 
     def correct(self, feature_row: Sequence[float]) -> dict[str, Any]:
         x = np.asarray(feature_row, dtype=np.float32)
+        if x.size != len(FEATURE_NAMES):
+            raise ValueError(f"feature_row must have {len(FEATURE_NAMES)} values")
+
         core_pb = clip(float(x[FEATURE_NAMES.index("core_p_b")]))
-        remaining_ratio = clip(float(x[FEATURE_NAMES.index("remaining_ratio")]))
-        stage_value = float(x[FEATURE_NAMES.index("stage")])
         entropy_14 = clip(float(x[FEATURE_NAMES.index("sx_entropy_14")]))
         transition_change_6 = clip_signed(float(x[FEATURE_NAMES.index("sx_transition_change_6")]))
         velocity_3v6 = clip_signed(float(x[FEATURE_NAMES.index("sx_velocity_3v6")]))
+
         delta = self.predict_delta(x)
         damper = _calculate_dynamic_damper(entropy_14)
-        tail_comp = tail_decision_compensation(
-            remaining_ratio,
-            stage_value,
-            threshold=self.tail_remaining_threshold,
-            amount=self.tail_compensation,
-        )
         undamped_pb = clip(core_pb + delta)
-        damped_pb = clip(0.5 + ((core_pb - 0.5) + delta) * damper)
-        final_pb = clip(damped_pb + tail_comp)
+        final_pb = clip(0.5 + ((core_pb - 0.5) + delta) * damper)
         bet_weight, bet_tier = bet_weight_from_probability(
             final_pb,
             minimum=self.bet_weight_min,
@@ -382,9 +353,7 @@ class AcceleratedResidualBiasPredictor:
             "sx_transition_change_6": transition_change_6,
             "sx_velocity_3v6": velocity_3v6,
             "damper": damper,
-            "tail_compensation": tail_comp,
             "undamped_p_b": undamped_pb,
-            "damped_p_b": damped_pb,
             "final_p_b": final_pb,
             "direction": "B" if final_pb > 0.5 else "P",
             "bet_weight": bet_weight,
@@ -412,10 +381,11 @@ class AcceleratedResidualBiasPredictor:
         return result
 
 
-# Backward-compatible aliases.
-DualWindowResidualBiasPredictor = AcceleratedResidualBiasPredictor
-DynamicResidualBiasPredictor = AcceleratedResidualBiasPredictor
-ResidualBiasPredictor = AcceleratedResidualBiasPredictor
+# Backward-compatible aliases for existing imports.
+AcceleratedResidualBiasPredictor = MultiScaleResidualBiasPredictor
+DualWindowResidualBiasPredictor = MultiScaleResidualBiasPredictor
+DynamicResidualBiasPredictor = MultiScaleResidualBiasPredictor
+ResidualBiasPredictor = MultiScaleResidualBiasPredictor
 
 
 def _parse_actual_b(record: Mapping[str, Any]) -> int:
@@ -430,6 +400,7 @@ def _parse_actual_b(record: Mapping[str, Any]) -> int:
 
 
 def _feature_row(record: Mapping[str, Any]) -> dict[str, float]:
+    """Load v5 directly; deterministically rebuild regime features for older rows."""
     schema = int(float(record.get("schema_version", 0) or 0))
     if schema >= SCHEMA_VERSION and all(name in record for name in FEATURE_NAMES):
         return {name: float(record[name]) for name in FEATURE_NAMES}
@@ -442,8 +413,8 @@ def _feature_row(record: Mapping[str, Any]) -> dict[str, float]:
         depth=(float(record["depth"]) if record.get("depth") is not None else None),
     ).as_dict()
 
-    # Stable scalar fields can be migrated exactly. Stage and all regime
-    # features are recomputed for pre-v4 rows because v4 makes Stage signed.
+    # Preserve scalar values that did not change semantics. Stage is intentionally
+    # rebuilt because v4 temporarily used a signed Stage for a removed tail bias.
     for name in ("core_p_b", "round_index", "estimated_total_hands", "remaining_ratio", "depth"):
         if name in record and record.get(name) is not None:
             features[name] = float(record[name])
@@ -475,7 +446,7 @@ def make_training_arrays(
             actual_b = _parse_actual_b(record)
             row = _feature_row(record)
             vector = [float(row[name]) for name in FEATURE_NAMES]
-            if not all(math.isfinite(x) for x in vector):
+            if not all(math.isfinite(v) for v in vector):
                 continue
             core_p_b = clip(row["core_p_b"])
         except (TypeError, ValueError, KeyError):
@@ -519,19 +490,10 @@ def _apply_final_formula(
     core_pb: np.ndarray,
     delta: np.ndarray,
     entropy_14: np.ndarray,
-    remaining_ratio: np.ndarray,
-    stage: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     dampers = np.asarray([_calculate_dynamic_damper(float(x)) for x in entropy_14], dtype=float)
-    tail = np.asarray(
-        [
-            tail_decision_compensation(float(r), float(s))
-            for r, s in zip(remaining_ratio, stage, strict=False)
-        ],
-        dtype=float,
-    )
-    final_pb = np.clip(0.5 + ((core_pb - 0.5) + delta) * dampers + tail, 0.0, 1.0)
-    return final_pb, dampers, tail
+    final_pb = np.clip(0.5 + ((core_pb - 0.5) + delta) * dampers, 0.0, 1.0)
+    return final_pb, dampers
 
 
 def evaluate(
@@ -544,20 +506,12 @@ def evaluate(
     raw_delta = np.asarray(model.predict(x), dtype=float)
     delta = np.clip(raw_delta, -max_delta, max_delta)
     core_pb = x[:, FEATURE_NAMES.index("core_p_b")].astype(float)
-    remaining_ratio = x[:, FEATURE_NAMES.index("remaining_ratio")].astype(float)
-    stage = x[:, FEATURE_NAMES.index("stage")].astype(float)
     entropy_14 = x[:, FEATURE_NAMES.index("sx_entropy_14")].astype(float)
     transition_change_6 = x[:, FEATURE_NAMES.index("sx_transition_change_6")].astype(float)
     velocity_3v6 = x[:, FEATURE_NAMES.index("sx_velocity_3v6")].astype(float)
 
     residual_pb = np.clip(core_pb + delta, 0.0, 1.0)
-    final_pb, dampers, tail = _apply_final_formula(
-        core_pb,
-        delta,
-        entropy_14,
-        remaining_ratio,
-        stage,
-    )
+    final_pb, dampers = _apply_final_formula(core_pb, delta, entropy_14)
     return {
         "samples": float(len(x)),
         "core_accuracy": direction_accuracy(core_pb, actual_b),
@@ -572,7 +526,6 @@ def evaluate(
         "mean_abs_transition_change_6": float(np.mean(np.abs(transition_change_6))) if len(transition_change_6) else 0.0,
         "mean_abs_velocity_3v6": float(np.mean(np.abs(velocity_3v6))) if len(velocity_3v6) else 0.0,
         "mean_damper": float(np.mean(dampers)) if len(dampers) else 1.0,
-        "tail_compensation_rate": float(np.mean(np.abs(tail) > 0)) if len(tail) else 0.0,
     }
 
 
@@ -593,10 +546,8 @@ def _tree_leaf(tree: Mapping[str, Any], vector: Sequence[float]) -> float:
                 index = -1
         value = float(np.float32(vector[index])) if 0 <= index < len(vector) else math.nan
         split_condition = float(np.float32(node.get("split_condition", 0.0)))
-        next_id = (
-            node.get("missing")
-            if not math.isfinite(value)
-            else (node.get("yes") if value < split_condition else node.get("no"))
+        next_id = node.get("missing") if not math.isfinite(value) else (
+            node.get("yes") if value < split_condition else node.get("no")
         )
         children = node.get("children") or []
         found = next(
@@ -642,22 +593,20 @@ def export_portable_bundle(
         "windows": {
             "entropy_feature": "sx_entropy_14",
             "entropy_window": DEFAULT_ENTROPY_WINDOW,
+            "entropy_min_tokens": DEFAULT_ENTROPY_MIN_TOKENS,
             "transition_change_feature": "sx_transition_change_6",
             "transition_change_window": DEFAULT_TRANSITION_CHANGE_WINDOW,
+            "transition_change_definition": "recent_3_X_rate_minus_previous_3_X_rate",
             "velocity_feature": "sx_velocity_3v6",
             "velocity_short_window": DEFAULT_VELOCITY_SHORT_WINDOW,
             "velocity_base_window": DEFAULT_VELOCITY_BASE_WINDOW,
+            "velocity_definition": "recent_3_X_rate_minus_recent_6_X_rate",
         },
         "damper": {
             "feature": "sx_entropy_14",
             "formula": "1.0 - 0.8 * entropy^2",
             "minimum": 0.20,
             "maximum": 1.00,
-        },
-        "tail_compensation": {
-            "remaining_ratio_threshold": DEFAULT_TAIL_REMAINING_THRESHOLD,
-            "amount": DEFAULT_TAIL_COMPENSATION,
-            "stage_semantics": "B_positive_P_negative",
         },
         "bet_weight": {
             "minimum": DEFAULT_BET_WEIGHT_MIN,
@@ -668,7 +617,7 @@ def export_portable_bundle(
             "rows": int(training_rows),
             "target": "actual_B_minus_core_p_B",
             "decision_rule": "B if final_p_B > 0.50 else P",
-            "final_probability": "0.50 + ((core_p_B - 0.50) + delta) * damper + tail_compensation",
+            "final_probability": "0.50 + ((core_p_B - 0.50) + delta) * damper",
             "no_pass": True,
             "metrics": dict(metrics),
         },
@@ -706,7 +655,7 @@ def train_command(args: argparse.Namespace) -> int:
     print(json.dumps({"validation": validation_metrics, "accepted": accepted}, ensure_ascii=False, indent=2))
     if not accepted and not args.force:
         raise SystemExit(
-            "validation gate rejected accelerated residual+damper model; "
+            "validation gate rejected multi-scale residual+damper model; "
             "use --force only for diagnostics"
         )
 
@@ -726,7 +675,7 @@ def train_command(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="BBB XGBoost residual bias + accelerated 14/6/3 damper trainer"
+        description="BBB XGBoost residual bias + 14/6/3 multi-scale dynamic damper trainer"
     )
     sub = parser.add_subparsers(dest="command", required=True)
     train = sub.add_parser("train", help="train XGBRegressor and export browser model JSON")
