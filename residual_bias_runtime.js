@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_RESIDUAL_BIAS_V5_MULTI_SCALE";
+const VERSION = "XGB_RESIDUAL_BIAS_V6_SHORT_MEMORY_8X4";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -13,19 +13,21 @@ const FEATURE_NAMES = [
   "remaining_ratio",
   "stage",
   "depth",
-  "sx_entropy_14",
-  "sx_transition_change_6",
-  "sx_velocity_3v6"
+  "sx_volatility_8",
+  "sx_micro_run_4"
 ];
 
-const MAX_DELTA_DEFAULT = 0.12;
-const ENTROPY_WINDOW_DEFAULT = 14;
-const ENTROPY_MIN_TOKENS_DEFAULT = 6;
-const TRANSITION_CHANGE_WINDOW_DEFAULT = 6;
-const VELOCITY_SHORT_WINDOW_DEFAULT = 3;
-const VELOCITY_BASE_WINDOW_DEFAULT = 6;
+const MAX_DELTA_DEFAULT = 0.10;
+const VOLATILITY_WINDOW_DEFAULT = 8;
+const VOLATILITY_MIN_TOKENS_DEFAULT = 4;
+const MICRO_WINDOW_DEFAULT = 4;
+const REGULAR_VOLATILITY_MAX_DEFAULT = 0.35;
+const HIGH_VOLATILITY_START_DEFAULT = 0.85;
+const HIGH_DAMPER_MAX_DEFAULT = 0.40;
+const HIGH_DAMPER_MIN_DEFAULT = 0.20;
+const FAST_UNLOCK_RUN_DEFAULT = 0.75;
 const BET_WEIGHT_MIN_DEFAULT = 0.20;
-const BET_REFERENCE_EDGE_DEFAULT = 0.10;
+const BET_REFERENCE_EDGE_DEFAULT = 0.08;
 
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const TRAINING_KEY = "bgs_xgb_residual_training_v1";
@@ -34,8 +36,10 @@ const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
 const CUT_KEY = "bgs_xgb_estimated_total_hands_v1";
 const MAX_TRAINING_ROWS = 10000;
 
-const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
-const clipSigned = v => Math.max(-1, Math.min(1, Number.isFinite(+v) ? +v : 0));
+const clip = (v, lo = 0, hi = 1) =>
+  Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
+const clipSigned = v =>
+  Math.max(-1, Math.min(1, Number.isFinite(+v) ? +v : 0));
 const bp = seq => seq.filter(x => x === "B" || x === "P");
 
 let modelBundle = null;
@@ -43,41 +47,39 @@ let modelLoaded = false;
 let modelLoadError = "";
 
 function transitionSequence(seq) {
-  const values = bp(seq), out = [];
-  for (let i = 1; i < values.length; i++) out.push(values[i] === values[i - 1] ? "S" : "X");
+  const values = bp(seq);
+  const out = [];
+  for (let i = 1; i < values.length; i++) {
+    out.push(values[i] === values[i - 1] ? "S" : "X");
+  }
   return out;
 }
 
-function xRate(tokens) {
-  if (!tokens.length) return 0;
-  return tokens.filter(x => x === "X").length / tokens.length;
-}
-
-function sxEntropy14(seq, window = ENTROPY_WINDOW_DEFAULT, minTokens = ENTROPY_MIN_TOKENS_DEFAULT) {
+function sxVolatility8(
+  seq,
+  window = VOLATILITY_WINDOW_DEFAULT,
+  minTokens = VOLATILITY_MIN_TOKENS_DEFAULT
+) {
   const tokens = transitionSequence(seq).slice(-Math.max(2, Math.round(window)));
   if (tokens.length < Math.max(2, Math.round(minTokens))) return 0;
-  const pS = tokens.filter(x => x === "S").length / tokens.length;
-  const pX = 1 - pS;
-  let entropy = 0;
-  for (const p of [pS, pX]) if (p > 0) entropy -= p * Math.log2(p);
-  return clip(entropy);
+  const values = tokens.map(token => token === "S" ? 1 : 0);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return clip(Math.sqrt(variance) / 0.5);
 }
 
-function sxTransitionChange6(seq, window = TRANSITION_CHANGE_WINDOW_DEFAULT) {
-  const tokens = transitionSequence(seq).slice(-Math.max(6, Math.round(window)));
-  if (tokens.length < 6) return 0;
-  const recent6 = tokens.slice(-6);
-  return clipSigned(xRate(recent6.slice(3)) - xRate(recent6.slice(0, 3)));
-}
-
-function sxVelocity3v6(seq, shortWindow = VELOCITY_SHORT_WINDOW_DEFAULT, baseWindow = VELOCITY_BASE_WINDOW_DEFAULT) {
-  const tokens = transitionSequence(seq);
-  const shortWidth = Math.max(1, Math.round(shortWindow));
-  const baseWidth = Math.max(shortWidth, Math.round(baseWindow));
-  if (tokens.length < baseWidth) return 0;
-  const recentBase = tokens.slice(-baseWidth);
-  const recentShort = recentBase.slice(-shortWidth);
-  return clipSigned(xRate(recentShort) - xRate(recentBase));
+function sxMicroRun4(seq, window = MICRO_WINDOW_DEFAULT) {
+  const width = Math.max(2, Math.round(window));
+  const tokens = transitionSequence(seq).slice(-width);
+  if (tokens.length < width) return 0;
+  const latest = tokens.at(-1);
+  let run = 1;
+  for (let i = tokens.length - 2; i >= 0; i--) {
+    if (tokens[i] !== latest) break;
+    run++;
+  }
+  const sign = latest === "S" ? 1 : -1;
+  return clipSigned(sign * (run / width));
 }
 
 function currentStage(seq) {
@@ -98,15 +100,75 @@ function currentDepth(seq) {
   return n;
 }
 
-function dynamicDamper(entropy14) {
-  const e = clip(entropy14);
-  return clip(1 - 0.8 * e * e, 0.20, 1.00);
+function damperConfig() {
+  const cfg = modelBundle?.damper || {};
+  return {
+    regularMax: clip(
+      cfg.regular_volatility_max ?? REGULAR_VOLATILITY_MAX_DEFAULT,
+      0,
+      0.95
+    ),
+    highStart: clip(
+      cfg.high_volatility_start ?? HIGH_VOLATILITY_START_DEFAULT,
+      0.01,
+      0.999999
+    ),
+    highDamperMax: clip(
+      cfg.high_damper_max ?? HIGH_DAMPER_MAX_DEFAULT,
+      0.20,
+      1.0
+    ),
+    highDamperMin: clip(
+      cfg.high_damper_min ?? HIGH_DAMPER_MIN_DEFAULT,
+      0,
+      1.0
+    ),
+    fastUnlockRun: clip(
+      cfg.fast_unlock_run ?? FAST_UNLOCK_RUN_DEFAULT,
+      0,
+      1.0
+    )
+  };
+}
+
+function dynamicDamper(volatility8, microRun4 = 0) {
+  const cfg = damperConfig();
+  const v = clip(volatility8);
+  const microStrength = Math.abs(clipSigned(microRun4));
+
+  if (microStrength >= cfg.fastUnlockRun) return 1.0;
+
+  const regularMax = cfg.regularMax;
+  const highStart = Math.max(regularMax + 1e-6, cfg.highStart);
+  const highDamperMax = cfg.highDamperMax;
+  const highDamperMin = Math.min(highDamperMax, cfg.highDamperMin);
+
+  if (v <= regularMax) return 1.0;
+
+  if (v < highStart) {
+    const t = (v - regularMax) / (highStart - regularMax);
+    return clip(
+      1 - (1 - highDamperMax) * t * t,
+      highDamperMax,
+      1.0
+    );
+  }
+
+  const t = (v - highStart) / (1 - highStart);
+  return clip(
+    highDamperMax - (highDamperMax - highDamperMin) * t * t,
+    highDamperMin,
+    highDamperMax
+  );
 }
 
 function betWeightFromProbability(finalPB) {
   const cfg = modelBundle?.bet_weight || {};
   const minimum = clip(cfg.minimum ?? BET_WEIGHT_MIN_DEFAULT, 0, 1);
-  const referenceEdge = Math.max(1e-6, +(cfg.reference_edge ?? BET_REFERENCE_EDGE_DEFAULT));
+  const referenceEdge = Math.max(
+    1e-6,
+    +(cfg.reference_edge ?? BET_REFERENCE_EDGE_DEFAULT)
+  );
   const edge = Math.abs(clip(finalPB) - 0.5);
   const weight = minimum + (1 - minimum) * clip(edge / referenceEdge);
   const tier = weight < 0.40 ? "LOW" : weight < 0.70 ? "MEDIUM" : "HIGH";
@@ -125,7 +187,9 @@ function getEstimatedTotalHands() {
 
 function setEstimatedTotalHands(value) {
   const parsed = Math.round(+value || 0);
-  if (parsed < 40 || parsed > 90) throw new Error("estimatedTotalHands must be between 40 and 90");
+  if (parsed < 40 || parsed > 90) {
+    throw new Error("estimatedTotalHands must be between 40 and 90");
+  }
   try { localStorage.setItem(CUT_KEY, String(parsed)); } catch (_) {}
   return parsed;
 }
@@ -135,9 +199,16 @@ function buildFeatures(seq, corePrediction, signal = null) {
   const corePB = clip(+probabilities.B || 0.5, 0, 1);
   const roundIndex = Math.max(1, Math.min(70, seq.length + 1));
   const estimatedTotalHands = getEstimatedTotalHands();
-  const remainingRatio = clip((estimatedTotalHands - (roundIndex - 1)) / Math.max(1, estimatedTotalHands));
-  const stage = Number.isFinite(+signal?.state?.length) ? Math.abs(+signal.state.length) : currentStage(seq);
-  const depth = Number.isFinite(+signal?.depth?.depth) ? +signal.depth.depth : currentDepth(seq);
+  const remainingRatio = clip(
+    (estimatedTotalHands - (roundIndex - 1)) / Math.max(1, estimatedTotalHands)
+  );
+  const stage = Number.isFinite(+signal?.state?.length)
+    ? Math.abs(+signal.state.length)
+    : currentStage(seq);
+  const depth = Number.isFinite(+signal?.depth?.depth)
+    ? +signal.depth.depth
+    : currentDepth(seq);
+
   return {
     core_p_b: corePB,
     round_index: roundIndex,
@@ -145,14 +216,15 @@ function buildFeatures(seq, corePrediction, signal = null) {
     remaining_ratio: remainingRatio,
     stage,
     depth,
-    sx_entropy_14: sxEntropy14(seq),
-    sx_transition_change_6: sxTransitionChange6(seq),
-    sx_velocity_3v6: sxVelocity3v6(seq)
+    sx_volatility_8: sxVolatility8(seq),
+    sx_micro_run_4: sxMicroRun4(seq)
   };
 }
 
 function featureVector(features) {
-  return FEATURE_NAMES.map(name => Number.isFinite(+features[name]) ? +features[name] : 0);
+  return FEATURE_NAMES.map(name =>
+    Number.isFinite(+features[name]) ? +features[name] : 0
+  );
 }
 
 function findChild(node, nodeId) {
@@ -170,11 +242,17 @@ function evaluateTree(tree, vector) {
   let node = tree;
   let guard = 0;
   while (node && guard++ < 256) {
-    if (Object.prototype.hasOwnProperty.call(node, "leaf")) return +node.leaf || 0;
+    if (Object.prototype.hasOwnProperty.call(node, "leaf")) {
+      return +node.leaf || 0;
+    }
     const index = splitIndex(node.split);
     const value = index >= 0 ? Math.fround(vector[index]) : NaN;
     const splitCondition = Math.fround(+node.split_condition);
-    const nextId = !Number.isFinite(value) ? node.missing : value < splitCondition ? node.yes : node.no;
+    const nextId = !Number.isFinite(value)
+      ? node.missing
+      : value < splitCondition
+      ? node.yes
+      : node.no;
     node = findChild(node, nextId);
   }
   return 0;
@@ -192,29 +270,41 @@ function applyCorrection(seq, corePrediction) {
   const signal = corePrediction?.singleHazard || null;
   const features = buildFeatures(seq, corePrediction, signal);
   const active = Boolean(modelBundle?.trained);
+
   const rawDelta = active ? predictRawDelta(features) : 0;
-  const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, MAX_DELTA_DEFAULT);
+  const maxDelta = clip(
+    modelBundle?.max_delta ?? MAX_DELTA_DEFAULT,
+    0,
+    MAX_DELTA_DEFAULT
+  );
   const delta = active ? clip(rawDelta, -maxDelta, maxDelta) : 0;
 
   const corePB = features.core_p_b;
-  const entropy14 = features.sx_entropy_14;
-  const transitionChange6 = features.sx_transition_change_6;
-  const velocity3v6 = features.sx_velocity_3v6;
-  const damper = dynamicDamper(entropy14);
+  const volatility8 = features.sx_volatility_8;
+  const microRun4 = features.sx_micro_run_4;
+  const damper = dynamicDamper(volatility8, microRun4);
   const undampedPB = clip(corePB + delta, 0, 1);
-  const finalPB = clip(0.5 + ((corePB - 0.5) + delta) * damper, 0, 1);
+  const finalPB = clip(
+    0.5 + ((corePB - 0.5) + delta) * damper,
+    0,
+    1
+  );
 
   const direction = finalPB > 0.5 ? "B" : "P";
   const finalPP = 1 - finalPB;
   const confidence = direction === "B" ? finalPB : finalPP;
-  const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
+  const coreDirection = String(
+    corePrediction?.direction || (corePB > 0.5 ? "B" : "P")
+  );
   const flipped = direction !== coreDirection;
   const sizing = betWeightFromProbability(finalPB);
+  const fastUnlocked = Math.abs(microRun4) >= damperConfig().fastUnlockRun;
 
   let regime = corePrediction.regime;
   if (flipped) regime = "XGB殘差修正換邊";
-  else if (damper <= 0.40) regime = `${corePrediction.regime}｜14局高震盪阻尼`;
-  else if (damper < 0.90) regime = `${corePrediction.regime}｜14局動態阻尼`;
+  else if (fastUnlocked) regime = `${corePrediction.regime}｜4局快速解鎖`;
+  else if (damper <= 0.40) regime = `${corePrediction.regime}｜8局高震盪阻尼`;
+  else if (damper < 1.0) regime = `${corePrediction.regime}｜8局動態阻尼`;
 
   return {
     ...corePrediction,
@@ -232,10 +322,10 @@ function applyCorrection(seq, corePrediction) {
       rawDelta,
       delta,
       undampedPB,
-      oscillationEntropy14: entropy14,
-      shortTransitionChange6: transitionChange6,
-      velocity3v6,
+      volatility8,
+      microRun4,
       damper,
+      fastUnlocked,
       finalPB,
       finalDirection: direction,
       flipped,
@@ -257,7 +347,9 @@ function readHistory() {
     try {
       const raw = JSON.parse(localStorage.getItem(key) || "null");
       if (raw && Array.isArray(raw.history)) {
-        return raw.history.filter(x => ["B", "P", "T"].includes(x)).slice(-500);
+        return raw.history
+          .filter(x => ["B", "P", "T"].includes(x))
+          .slice(-500);
       }
     } catch (_) {}
   }
@@ -287,8 +379,17 @@ function rotateShoeId() {
 function saveSelection(direction) {
   try {
     const old = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || {};
-    const streak = old.last_selected === direction ? Math.max(1, (+old.selection_streak || 0) + 1) : 1;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ last_selected: direction, selection_streak: streak }));
+    const streak =
+      old.last_selected === direction
+        ? Math.max(1, (+old.selection_streak || 0) + 1)
+        : 1;
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        last_selected: direction,
+        selection_streak: streak
+      })
+    );
   } catch (_) {}
 }
 
@@ -300,19 +401,30 @@ function renderPrediction(p, historyLength) {
   const el = id => document.getElementById(id);
   const orb = el("directionOrb");
   if (!orb) return;
+
   const isB = p.direction === "B";
   const residual = p.residualBias || {};
   el("directionText").textContent = isB ? "莊" : "閒";
   el("directionCode").textContent = isB ? "BANKER" : "PLAYER";
   el("confidence").textContent = (p.confidence * 100).toFixed(1) + "%";
   el("regime").textContent = p.regime;
-  el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
+  el("strength").textContent =
+    p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = residual.active ? "XGB＋多尺度阻尼完成" : "多尺度阻尼完成";
+
+  if (el("modePill")) {
+    el("modePill").textContent = residual.active
+      ? "XGB＋8/4短窗阻尼完成"
+      : "8/4短窗阻尼完成";
+  }
   if (el("roundCount")) el("roundCount").textContent = historyLength;
+
   if (el("message")) {
-    const weight = Number.isFinite(+residual.betWeight) ? Math.round(+residual.betWeight * 100) : 20;
-    el("message").textContent = `第 ${historyLength + 1} 局分析完成｜注碼權重 ${weight}%（${betTierZh(residual.betWeightTier)}）`;
+    const weight = Number.isFinite(+residual.betWeight)
+      ? Math.round(+residual.betWeight * 100)
+      : 20;
+    el("message").textContent =
+      `第 ${historyLength + 1} 局分析完成｜注碼權重 ${weight}%（${betTierZh(residual.betWeightTier)}）`;
   }
 }
 
@@ -326,35 +438,49 @@ function readTrainingRows() {
 }
 
 function writeTrainingRows(rows) {
-  try { localStorage.setItem(TRAINING_KEY, JSON.stringify(rows.slice(-MAX_TRAINING_ROWS))); } catch (_) {}
+  try {
+    localStorage.setItem(
+      TRAINING_KEY,
+      JSON.stringify(rows.slice(-MAX_TRAINING_ROWS))
+    );
+  } catch (_) {}
 }
 
 function registerPrediction(seq, prediction) {
   const residual = prediction?.residualBias || {};
-  const features = residual.features || buildFeatures(seq, prediction, prediction?.singleHazard || null);
+  const features =
+    residual.features ||
+    buildFeatures(seq, prediction, prediction?.singleHazard || null);
+
   const pending = {
     shoe_id: getShoeId(),
     created_at: Date.now(),
     history_fingerprint: seq.join(""),
     core_p_b: +features.core_p_b,
-    core_direction: residual.coreDirection || String(prediction?.direction || ""),
+    core_direction:
+      residual.coreDirection || String(prediction?.direction || ""),
     features
   };
-  try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (_) {}
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+  } catch (_) {}
 }
 
 function settlePending(actualOutcome) {
   const actual = String(actualOutcome || "").toUpperCase();
   if (actual === "T") return;
   if (actual !== "B" && actual !== "P") return;
+
   let pending = null;
-  try { pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); } catch (_) {}
+  try {
+    pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "null");
+  } catch (_) {}
   if (!pending?.features) return;
 
   const actualB = actual === "B" ? 1 : 0;
   const corePB = clip(+pending.features.core_p_b || 0.5);
   const row = {
-    schema_version: 5,
+    schema_version: 6,
     shoe_id: String(pending.shoe_id || getShoeId()),
     created_at: +pending.created_at || Date.now(),
     history_fingerprint: String(pending.history_fingerprint || ""),
@@ -363,8 +489,13 @@ function settlePending(actualOutcome) {
     residual_target: actualB - corePB,
     ...pending.features
   };
+
   const rows = readTrainingRows();
-  const duplicate = rows.length && rows.at(-1)?.shoe_id === row.shoe_id && rows.at(-1)?.history_fingerprint === row.history_fingerprint;
+  const duplicate =
+    rows.length &&
+    rows.at(-1)?.shoe_id === row.shoe_id &&
+    rows.at(-1)?.history_fingerprint === row.history_fingerprint;
+
   if (!duplicate) rows.push(row);
   writeTrainingRows(rows);
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
@@ -383,15 +514,22 @@ function rollbackTrainingIfNeeded() {
 }
 
 function exportTrainingData() {
-  return JSON.stringify({
-    schema_version: 5,
-    feature_names: FEATURE_NAMES,
-    rows: readTrainingRows()
-  }, null, 2);
+  return JSON.stringify(
+    {
+      schema_version: 6,
+      feature_names: FEATURE_NAMES,
+      rows: readTrainingRows()
+    },
+    null,
+    2
+  );
 }
 
 function downloadTrainingData() {
-  const blob = new Blob([exportTrainingData()], { type: "application/json;charset=utf-8" });
+  const blob = new Blob(
+    [exportTrainingData()],
+    { type: "application/json;charset=utf-8" }
+  );
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -409,15 +547,23 @@ async function loadModel(url = MODEL_URL) {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const bundle = await response.json();
-    if (!bundle || bundle.model_type !== "xgb_residual_regressor") throw new Error("invalid_model_bundle");
-    const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
-    if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("feature_schema_mismatch");
+    if (!bundle || bundle.model_type !== "xgb_residual_regressor") {
+      throw new Error("invalid_model_bundle");
+    }
+    const names = Array.isArray(bundle.feature_names)
+      ? bundle.feature_names
+      : [];
+    if (names.join("|") !== FEATURE_NAMES.join("|")) {
+      throw new Error("feature_schema_mismatch");
+    }
     modelBundle = bundle;
     modelLoaded = true;
     return bundle;
   } catch (error) {
     modelBundle = null;
-    modelLoadError = String(error?.message || error || "model_load_failed");
+    modelLoadError = String(
+      error?.message || error || "model_load_failed"
+    );
     return null;
   }
 }
@@ -426,8 +572,10 @@ function installUIOverride() {
   if (typeof document === "undefined") return;
   const oldBtn = document.getElementById("btnStart");
   if (!oldBtn) return;
+
   const btn = oldBtn.cloneNode(true);
   oldBtn.replaceWith(btn);
+
   btn.addEventListener("click", () => {
     const history = readHistory();
     if (!history.length) {
@@ -438,6 +586,7 @@ function installUIOverride() {
       }
       return;
     }
+
     const corePrediction = CORE.hazardChoose(history);
     const prediction = applyCorrection(history, corePrediction);
     saveSelection(prediction.direction);
@@ -453,7 +602,11 @@ function installUIOverride() {
   if (t) t.addEventListener("click", () => settlePending("T"));
 
   const back = document.getElementById("btnBack");
-  if (back) back.addEventListener("click", () => setTimeout(rollbackTrainingIfNeeded, 0));
+  if (back) {
+    back.addEventListener("click", () =>
+      setTimeout(rollbackTrainingIfNeeded, 0)
+    );
+  }
 
   const end = document.getElementById("btnEnd");
   if (end) end.addEventListener("click", rotateShoeId);
@@ -464,9 +617,8 @@ if (typeof window !== "undefined") {
     version: VERSION,
     featureNames: FEATURE_NAMES,
     buildFeatures,
-    sxEntropy14,
-    sxTransitionChange6,
-    sxVelocity3v6,
+    sxVolatility8,
+    sxMicroRun4,
     dynamicDamper,
     betWeightFromProbability,
     applyCorrection,

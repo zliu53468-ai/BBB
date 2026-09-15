@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
-"""BBB external XGBoost residual-bias predictor with multi-scale S/X damping.
+"""BBB short-memory XGBoost residual-bias predictor with 8/4 S/X damping.
 
-The deterministic 256D/V23 Frozen Base is intentionally untouched. XGBRegressor
-learns only the residual calibration error of the core probability:
+The deterministic 256D/V23 Frozen Base is intentionally untouched.
+XGBRegressor learns only the residual calibration error:
 
     residual = actual_B - core_p_B
 
-Production features add three S/X regime scales:
-- sx_entropy_14: long-window normalized Shannon entropy over the latest 14 S/X.
-- sx_transition_change_6: recent-3 X rate minus previous-3 X rate.
-- sx_velocity_3v6: recent-3 X rate minus recent-6 X rate.
+The external layer deliberately avoids half-shoe B/P quantity memories. Its
+regime features are local:
+- sx_volatility_8: normalized population standard deviation of the latest
+  eight S/X tokens, with SAME=1 and SWITCH=0. A balanced S/X window approaches
+  1.0; a stable one-state window approaches 0.0.
+- sx_micro_run_4: signed suffix-run strength inside the latest four S/X tokens.
+  SAME is positive, SWITCH is negative; three/four identical recent states
+  produce +/-0.75 or +/-1.00 and trigger an immediate damper unlock.
 
-Final decision:
+Production decision:
 
-    delta = clip(xgb_residual, -0.12, +0.12)
-    damper = 1.0 - 0.8 * sx_entropy_14**2
+    delta = clip(xgb_residual, -0.10, +0.10)
     final_p_B = 0.50 + ((core_p_B - 0.50) + delta) * damper
     direction = "B" if final_p_B > 0.50 else "P"
 
-There is never a PASS state. Bet weight is derived from |final_p_B - 0.50| and
-reaches full weight at an absolute edge of 0.10.
+There is never a PASS state. Bet weight is derived from |final_p_B - 0.50|,
+with full weight at an absolute edge of 0.08.
 """
 from __future__ import annotations
 
@@ -43,27 +46,29 @@ FEATURE_NAMES: tuple[str, ...] = (
     "remaining_ratio",
     "stage",
     "depth",
-    "sx_entropy_14",
-    "sx_transition_change_6",
-    "sx_velocity_3v6",
+    "sx_volatility_8",
+    "sx_micro_run_4",
 )
 MODEL_TYPE = "xgb_residual_regressor"
-SCHEMA_VERSION = 5
-DEFAULT_MAX_DELTA = 0.12
+SCHEMA_VERSION = 6
+DEFAULT_MAX_DELTA = 0.10
 DEFAULT_RANDOM_STATE = 20260915
 
-DEFAULT_ENTROPY_WINDOW = 14
-DEFAULT_ENTROPY_MIN_TOKENS = 6
-DEFAULT_TRANSITION_CHANGE_WINDOW = 6
-DEFAULT_VELOCITY_SHORT_WINDOW = 3
-DEFAULT_VELOCITY_BASE_WINDOW = 6
+DEFAULT_VOLATILITY_WINDOW = 8
+DEFAULT_VOLATILITY_MIN_TOKENS = 4
+DEFAULT_MICRO_WINDOW = 4
+
+DEFAULT_REGULAR_VOLATILITY_MAX = 0.35
+DEFAULT_HIGH_VOLATILITY_START = 0.85
+DEFAULT_HIGH_DAMPER_MAX = 0.40
+DEFAULT_HIGH_DAMPER_MIN = 0.20
+DEFAULT_FAST_UNLOCK_RUN = 0.75
 
 DEFAULT_BET_WEIGHT_MIN = 0.20
-DEFAULT_BET_REFERENCE_EDGE = 0.10
+DEFAULT_BET_REFERENCE_EDGE = 0.08
 
 
 def clip(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
-    """Finite numeric clamp used by both feature and probability paths."""
     value = float(value)
     if not math.isfinite(value):
         return lo
@@ -99,63 +104,53 @@ def transition_sequence(history: Sequence[str]) -> list[str]:
     return ["S" if values[i] == values[i - 1] else "X" for i in range(1, len(values))]
 
 
-def _x_rate(tokens: Sequence[str]) -> float:
-    if not tokens:
-        return 0.0
-    return sum(token == "X" for token in tokens) / len(tokens)
-
-
-def sx_entropy(
+def sx_volatility(
     history: Sequence[str],
     *,
-    window: int = DEFAULT_ENTROPY_WINDOW,
-    min_tokens: int = DEFAULT_ENTROPY_MIN_TOKENS,
+    window: int = DEFAULT_VOLATILITY_WINDOW,
+    min_tokens: int = DEFAULT_VOLATILITY_MIN_TOKENS,
 ) -> float:
-    """Normalized Shannon entropy of the latest 14 S/X tokens in [0, 1]."""
+    """Normalized rolling standard deviation of recent S/X in [0, 1].
+
+    SAME=1 and SWITCH=0. Binary population std reaches 0.5 at a 50/50 window,
+    so division by 0.5 normalizes it to 1.0.
+    """
     tokens = transition_sequence(history)[-max(2, int(window)) :]
     if len(tokens) < max(2, int(min_tokens)):
         return 0.0
-    p_s = sum(token == "S" for token in tokens) / len(tokens)
-    p_x = 1.0 - p_s
-    entropy = 0.0
-    for p in (p_s, p_x):
-        if p > 0.0:
-            entropy -= p * math.log2(p)
-    return clip(entropy)
+    values = [1.0 if token == "S" else 0.0 for token in tokens]
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    return clip(math.sqrt(variance) / 0.5)
 
 
-def sx_transition_change(
+def sx_micro_run(
     history: Sequence[str],
     *,
-    window: int = DEFAULT_TRANSITION_CHANGE_WINDOW,
+    window: int = DEFAULT_MICRO_WINDOW,
 ) -> float:
-    """Six-token turning signal: recent-3 X rate minus previous-3 X rate."""
-    tokens = transition_sequence(history)[-max(6, int(window)) :]
-    if len(tokens) < 6:
-        return 0.0
-    recent6 = tokens[-6:]
-    return clip_signed(_x_rate(recent6[3:]) - _x_rate(recent6[:3]))
+    """Signed suffix-run strength in the latest four S/X tokens.
 
-
-def sx_velocity(
-    history: Sequence[str],
-    *,
-    short_window: int = DEFAULT_VELOCITY_SHORT_WINDOW,
-    base_window: int = DEFAULT_VELOCITY_BASE_WINDOW,
-) -> float:
-    """Micro velocity: recent-3 X rate minus recent-6 X rate."""
-    tokens = transition_sequence(history)
-    short_window = max(1, int(short_window))
-    base_window = max(short_window, int(base_window))
-    if len(tokens) < base_window:
+    Latest SAME -> positive, latest SWITCH -> negative. The magnitude equals
+    suffix_run_length / 4. Thus XSSS -> +0.75 and SXXX -> -0.75; SSSS/XXXX
+    saturate at +/-1.0.
+    """
+    width = max(2, int(window))
+    tokens = transition_sequence(history)[-width:]
+    if len(tokens) < width:
         return 0.0
-    recent_base = tokens[-base_window:]
-    recent_short = recent_base[-short_window:]
-    return clip_signed(_x_rate(recent_short) - _x_rate(recent_base))
+    latest = tokens[-1]
+    run = 1
+    for token in reversed(tokens[:-1]):
+        if token != latest:
+            break
+        run += 1
+    sign = 1.0 if latest == "S" else -1.0
+    return clip_signed(sign * (run / width))
 
 
 def current_stage(history: Sequence[str]) -> int:
-    """Unsigned current B/P streak length. Side direction stays in the core model."""
+    """Current B/P streak length; local suffix only, never half-shoe totals."""
     values = [x for x in history if x in {"B", "P"}]
     if not values:
         return 0
@@ -169,6 +164,7 @@ def current_stage(history: Sequence[str]) -> int:
 
 
 def current_depth(history: Sequence[str]) -> int:
+    """Current S/X suffix depth."""
     tokens = transition_sequence(history)
     if not tokens:
         return 0
@@ -181,14 +177,49 @@ def current_depth(history: Sequence[str]) -> int:
     return depth
 
 
-def _calculate_dynamic_damper(entropy_14: float) -> float:
-    """Squared non-linear damper requested by the production specification."""
-    e = clip(entropy_14)
-    return clip(1.0 - 0.8 * (e * e), 0.20, 1.00)
+def dynamic_damper(
+    volatility_8: float,
+    micro_run_4: float = 0.0,
+    *,
+    regular_max: float = DEFAULT_REGULAR_VOLATILITY_MAX,
+    high_start: float = DEFAULT_HIGH_VOLATILITY_START,
+    high_damper_max: float = DEFAULT_HIGH_DAMPER_MAX,
+    high_damper_min: float = DEFAULT_HIGH_DAMPER_MIN,
+    fast_unlock_run: float = DEFAULT_FAST_UNLOCK_RUN,
+) -> float:
+    """Short-memory non-linear dynamic damper.
 
+    1) A fresh three/four-token SAME or SWITCH suffix immediately unlocks 1.0.
+    2) Low 8-token volatility keeps full speed at 1.0.
+    3) Medium volatility uses quadratic damping toward 0.4.
+    4) The highest volatility zone maps non-linearly from 0.4 down to 0.2.
+    """
+    v = clip(volatility_8)
+    micro_strength = abs(clip_signed(micro_run_4))
+    if micro_strength >= clip(fast_unlock_run):
+        return 1.0
 
-# Public compatibility name used by earlier versions.
-dynamic_damper = _calculate_dynamic_damper
+    regular_max = clip(regular_max, 0.0, 0.95)
+    high_start = clip(high_start, regular_max + 1e-6, 0.999999)
+    high_damper_max = clip(high_damper_max, 0.20, 1.0)
+    high_damper_min = clip(high_damper_min, 0.0, high_damper_max)
+
+    if v <= regular_max:
+        return 1.0
+    if v < high_start:
+        t = (v - regular_max) / (high_start - regular_max)
+        return clip(
+            1.0 - (1.0 - high_damper_max) * (t * t),
+            high_damper_max,
+            1.0,
+        )
+
+    t = (v - high_start) / (1.0 - high_start)
+    return clip(
+        high_damper_max - (high_damper_max - high_damper_min) * (t * t),
+        high_damper_min,
+        high_damper_max,
+    )
 
 
 def bet_weight_from_probability(
@@ -197,7 +228,7 @@ def bet_weight_from_probability(
     minimum: float = DEFAULT_BET_WEIGHT_MIN,
     reference_edge: float = DEFAULT_BET_REFERENCE_EDGE,
 ) -> tuple[float, str]:
-    """Map final edge to 0.20..1.00; full weight at |p(B)-0.50| >= 0.10."""
+    """Map final edge to minimum..1.0; full weight at |p(B)-0.50| >= 0.08."""
     edge = abs(clip(final_p_b) - 0.5)
     minimum = clip(minimum)
     reference_edge = max(1e-6, float(reference_edge))
@@ -214,9 +245,8 @@ class ResidualFeatures:
     remaining_ratio: float
     stage: float
     depth: float
-    sx_entropy_14: float
-    sx_transition_change_6: float
-    sx_velocity_3v6: float
+    sx_volatility_8: float
+    sx_micro_run_4: float
 
     def as_dict(self) -> dict[str, float]:
         return {name: float(getattr(self, name)) for name in FEATURE_NAMES}
@@ -233,11 +263,13 @@ def build_features(
     stage: float | None = None,
     depth: float | None = None,
 ) -> ResidualFeatures:
-    """Assemble one deterministic feature row for the residual model."""
+    """Assemble one deterministic short-memory feature row."""
     seq = normalize_history(history)
     total_hands = clip(float(estimated_total_hands), 40.0, 90.0)
     round_index = float(max(1, min(70, len(seq) + 1)))
-    remaining_ratio = clip((total_hands - (round_index - 1.0)) / max(1.0, total_hands))
+    remaining_ratio = clip(
+        (total_hands - (round_index - 1.0)) / max(1.0, total_hands)
+    )
     return ResidualFeatures(
         core_p_b=clip(float(core_p_b)),
         round_index=round_index,
@@ -245,14 +277,13 @@ def build_features(
         remaining_ratio=remaining_ratio,
         stage=float(current_stage(seq) if stage is None else abs(float(stage))),
         depth=float(current_depth(seq) if depth is None else depth),
-        sx_entropy_14=sx_entropy(seq),
-        sx_transition_change_6=sx_transition_change(seq),
-        sx_velocity_3v6=sx_velocity(seq),
+        sx_volatility_8=sx_volatility(seq),
+        sx_micro_run_4=sx_micro_run(seq),
     )
 
 
 def build_regressor(*, random_state: int = DEFAULT_RANDOM_STATE) -> XGBRegressor:
-    """Conservative deterministic XGBRegressor for residual calibration."""
+    """Deterministic XGBRegressor used only for residual calibration."""
     return XGBRegressor(
         objective="reg:squarederror",
         n_estimators=240,
@@ -271,19 +302,29 @@ def build_regressor(*, random_state: int = DEFAULT_RANDOM_STATE) -> XGBRegressor
     )
 
 
-class MultiScaleResidualBiasPredictor:
-    """XGB residual predictor + 14/6/3 regime features + non-linear damper."""
+class ShortMemoryResidualBiasPredictor:
+    """XGB residual + 8-token volatility + 4-token fast-unlock damper."""
 
     def __init__(
         self,
         model: XGBRegressor | None = None,
         *,
         max_delta: float = DEFAULT_MAX_DELTA,
+        regular_volatility_max: float = DEFAULT_REGULAR_VOLATILITY_MAX,
+        high_volatility_start: float = DEFAULT_HIGH_VOLATILITY_START,
+        high_damper_max: float = DEFAULT_HIGH_DAMPER_MAX,
+        high_damper_min: float = DEFAULT_HIGH_DAMPER_MIN,
+        fast_unlock_run: float = DEFAULT_FAST_UNLOCK_RUN,
         bet_weight_min: float = DEFAULT_BET_WEIGHT_MIN,
         bet_reference_edge: float = DEFAULT_BET_REFERENCE_EDGE,
     ) -> None:
         self.model = model or build_regressor()
         self.max_delta = clip(float(max_delta), 0.0, DEFAULT_MAX_DELTA)
+        self.regular_volatility_max = float(regular_volatility_max)
+        self.high_volatility_start = float(high_volatility_start)
+        self.high_damper_max = float(high_damper_max)
+        self.high_damper_min = float(high_damper_min)
+        self.fast_unlock_run = float(fast_unlock_run)
         self.bet_weight_min = float(bet_weight_min)
         self.bet_reference_edge = float(bet_reference_edge)
 
@@ -308,7 +349,7 @@ class MultiScaleResidualBiasPredictor:
         self,
         feature_rows: np.ndarray,
         actual_b: Sequence[int],
-    ) -> "MultiScaleResidualBiasPredictor":
+    ) -> "ShortMemoryResidualBiasPredictor":
         x = np.asarray(feature_rows, dtype=np.float32)
         y = np.asarray(actual_b, dtype=np.float32)
         if x.ndim != 2 or x.shape[1] != len(FEATURE_NAMES):
@@ -327,18 +368,28 @@ class MultiScaleResidualBiasPredictor:
         raw = float(self.model.predict(x)[0])
         return clip(raw, -self.max_delta, self.max_delta)
 
+    def damper(self, volatility_8: float, micro_run_4: float) -> float:
+        return dynamic_damper(
+            volatility_8,
+            micro_run_4,
+            regular_max=self.regular_volatility_max,
+            high_start=self.high_volatility_start,
+            high_damper_max=self.high_damper_max,
+            high_damper_min=self.high_damper_min,
+            fast_unlock_run=self.fast_unlock_run,
+        )
+
     def correct(self, feature_row: Sequence[float]) -> dict[str, Any]:
         x = np.asarray(feature_row, dtype=np.float32)
         if x.size != len(FEATURE_NAMES):
             raise ValueError(f"feature_row must have {len(FEATURE_NAMES)} values")
 
         core_pb = clip(float(x[FEATURE_NAMES.index("core_p_b")]))
-        entropy_14 = clip(float(x[FEATURE_NAMES.index("sx_entropy_14")]))
-        transition_change_6 = clip_signed(float(x[FEATURE_NAMES.index("sx_transition_change_6")]))
-        velocity_3v6 = clip_signed(float(x[FEATURE_NAMES.index("sx_velocity_3v6")]))
+        volatility_8 = clip(float(x[FEATURE_NAMES.index("sx_volatility_8")]))
+        micro_run_4 = clip_signed(float(x[FEATURE_NAMES.index("sx_micro_run_4")]))
 
         delta = self.predict_delta(x)
-        damper = _calculate_dynamic_damper(entropy_14)
+        damper = self.damper(volatility_8, micro_run_4)
         undamped_pb = clip(core_pb + delta)
         final_pb = clip(0.5 + ((core_pb - 0.5) + delta) * damper)
         bet_weight, bet_tier = bet_weight_from_probability(
@@ -349,9 +400,8 @@ class MultiScaleResidualBiasPredictor:
         return {
             "core_p_b": core_pb,
             "delta": delta,
-            "sx_entropy_14": entropy_14,
-            "sx_transition_change_6": transition_change_6,
-            "sx_velocity_3v6": velocity_3v6,
+            "sx_volatility_8": volatility_8,
+            "sx_micro_run_4": micro_run_4,
             "damper": damper,
             "undamped_p_b": undamped_pb,
             "final_p_b": final_pb,
@@ -381,11 +431,11 @@ class MultiScaleResidualBiasPredictor:
         return result
 
 
-# Backward-compatible aliases for existing imports.
-AcceleratedResidualBiasPredictor = MultiScaleResidualBiasPredictor
-DualWindowResidualBiasPredictor = MultiScaleResidualBiasPredictor
-DynamicResidualBiasPredictor = MultiScaleResidualBiasPredictor
-ResidualBiasPredictor = MultiScaleResidualBiasPredictor
+DynamicResidualBiasPredictor = ShortMemoryResidualBiasPredictor
+MultiScaleResidualBiasPredictor = ShortMemoryResidualBiasPredictor
+AcceleratedResidualBiasPredictor = ShortMemoryResidualBiasPredictor
+DualWindowResidualBiasPredictor = ShortMemoryResidualBiasPredictor
+ResidualBiasPredictor = ShortMemoryResidualBiasPredictor
 
 
 def _parse_actual_b(record: Mapping[str, Any]) -> int:
@@ -400,7 +450,7 @@ def _parse_actual_b(record: Mapping[str, Any]) -> int:
 
 
 def _feature_row(record: Mapping[str, Any]) -> dict[str, float]:
-    """Load v5 directly; deterministically rebuild regime features for older rows."""
+    """Load v6 directly; rebuild short-window features for all older rows."""
     schema = int(float(record.get("schema_version", 0) or 0))
     if schema >= SCHEMA_VERSION and all(name in record for name in FEATURE_NAMES):
         return {name: float(record[name]) for name in FEATURE_NAMES}
@@ -410,14 +460,20 @@ def _feature_row(record: Mapping[str, Any]) -> dict[str, float]:
         core_p_b=float(record.get("core_p_b", record.get("core_pb", 0.5))),
         history=history,
         estimated_total_hands=float(record.get("estimated_total_hands", 60.0) or 60.0),
+        stage=(float(record["stage"]) if record.get("stage") is not None else None),
         depth=(float(record["depth"]) if record.get("depth") is not None else None),
     ).as_dict()
 
-    # Preserve scalar values that did not change semantics. Stage is intentionally
-    # rebuilt because v4 temporarily used a signed Stage for a removed tail bias.
-    for name in ("core_p_b", "round_index", "estimated_total_hands", "remaining_ratio", "depth"):
+    for name in (
+        "core_p_b",
+        "round_index",
+        "estimated_total_hands",
+        "remaining_ratio",
+        "stage",
+        "depth",
+    ):
         if name in record and record.get(name) is not None:
-            features[name] = float(record[name])
+            features[name] = abs(float(record[name])) if name == "stage" else float(record[name])
     return features
 
 
@@ -441,22 +497,26 @@ def make_training_arrays(
     residuals: list[float] = []
     actuals: list[int] = []
     shoes: list[str] = []
+
     for idx, record in enumerate(records):
         try:
             actual_b = _parse_actual_b(record)
             row = _feature_row(record)
             vector = [float(row[name]) for name in FEATURE_NAMES]
-            if not all(math.isfinite(v) for v in vector):
+            if not all(math.isfinite(value) for value in vector):
                 continue
             core_p_b = clip(row["core_p_b"])
         except (TypeError, ValueError, KeyError):
             continue
+
         vectors.append(vector)
         residuals.append(float(actual_b) - core_p_b)
         actuals.append(actual_b)
         shoes.append(str(record.get("shoe_id") or f"row_{idx}"))
+
     if not vectors:
         raise ValueError("no valid B/P training rows")
+
     return (
         np.asarray(vectors, dtype=np.float32),
         np.asarray(residuals, dtype=np.float32),
@@ -465,10 +525,17 @@ def make_training_arrays(
     )
 
 
-def deterministic_validation_mask(shoes: Sequence[str], *, fraction: float = 0.20) -> np.ndarray:
+def deterministic_validation_mask(
+    shoes: Sequence[str],
+    *,
+    fraction: float = 0.20,
+) -> np.ndarray:
     threshold = int(256 * clip(fraction, 0.05, 0.50))
     result = np.asarray(
-        [hashlib.sha256(str(shoe).encode("utf-8")).digest()[0] < threshold for shoe in shoes],
+        [
+            hashlib.sha256(str(shoe).encode("utf-8")).digest()[0] < threshold
+            for shoe in shoes
+        ],
         dtype=bool,
     )
     if result.all() or (~result).all():
@@ -489,10 +556,21 @@ def brier(prob_b: np.ndarray, actual_b: np.ndarray) -> float:
 def _apply_final_formula(
     core_pb: np.ndarray,
     delta: np.ndarray,
-    entropy_14: np.ndarray,
+    volatility_8: np.ndarray,
+    micro_run_4: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    dampers = np.asarray([_calculate_dynamic_damper(float(x)) for x in entropy_14], dtype=float)
-    final_pb = np.clip(0.5 + ((core_pb - 0.5) + delta) * dampers, 0.0, 1.0)
+    dampers = np.asarray(
+        [
+            dynamic_damper(float(v), float(m))
+            for v, m in zip(volatility_8, micro_run_4, strict=False)
+        ],
+        dtype=float,
+    )
+    final_pb = np.clip(
+        0.5 + ((core_pb - 0.5) + delta) * dampers,
+        0.0,
+        1.0,
+    )
     return final_pb, dampers
 
 
@@ -506,12 +584,16 @@ def evaluate(
     raw_delta = np.asarray(model.predict(x), dtype=float)
     delta = np.clip(raw_delta, -max_delta, max_delta)
     core_pb = x[:, FEATURE_NAMES.index("core_p_b")].astype(float)
-    entropy_14 = x[:, FEATURE_NAMES.index("sx_entropy_14")].astype(float)
-    transition_change_6 = x[:, FEATURE_NAMES.index("sx_transition_change_6")].astype(float)
-    velocity_3v6 = x[:, FEATURE_NAMES.index("sx_velocity_3v6")].astype(float)
+    volatility_8 = x[:, FEATURE_NAMES.index("sx_volatility_8")].astype(float)
+    micro_run_4 = x[:, FEATURE_NAMES.index("sx_micro_run_4")].astype(float)
 
     residual_pb = np.clip(core_pb + delta, 0.0, 1.0)
-    final_pb, dampers = _apply_final_formula(core_pb, delta, entropy_14)
+    final_pb, dampers = _apply_final_formula(
+        core_pb,
+        delta,
+        volatility_8,
+        micro_run_4,
+    )
     return {
         "samples": float(len(x)),
         "core_accuracy": direction_accuracy(core_pb, actual_b),
@@ -522,10 +604,12 @@ def evaluate(
         "corrected_brier": brier(final_pb, actual_b),
         "mean_abs_delta": float(np.mean(np.abs(delta))),
         "max_abs_delta": float(np.max(np.abs(delta))) if len(delta) else 0.0,
-        "mean_entropy_14": float(np.mean(entropy_14)) if len(entropy_14) else 0.0,
-        "mean_abs_transition_change_6": float(np.mean(np.abs(transition_change_6))) if len(transition_change_6) else 0.0,
-        "mean_abs_velocity_3v6": float(np.mean(np.abs(velocity_3v6))) if len(velocity_3v6) else 0.0,
+        "mean_volatility_8": float(np.mean(volatility_8)) if len(volatility_8) else 0.0,
+        "mean_abs_micro_run_4": float(np.mean(np.abs(micro_run_4))) if len(micro_run_4) else 0.0,
         "mean_damper": float(np.mean(dampers)) if len(dampers) else 1.0,
+        "fast_unlock_rate": float(np.mean(np.abs(micro_run_4) >= DEFAULT_FAST_UNLOCK_RUN))
+        if len(micro_run_4)
+        else 0.0,
     }
 
 
@@ -544,14 +628,25 @@ def _tree_leaf(tree: Mapping[str, Any], vector: Sequence[float]) -> float:
                 index = FEATURE_NAMES.index(split)
             except ValueError:
                 index = -1
-        value = float(np.float32(vector[index])) if 0 <= index < len(vector) else math.nan
+
+        value = (
+            float(np.float32(vector[index]))
+            if 0 <= index < len(vector)
+            else math.nan
+        )
         split_condition = float(np.float32(node.get("split_condition", 0.0)))
-        next_id = node.get("missing") if not math.isfinite(value) else (
-            node.get("yes") if value < split_condition else node.get("no")
+        next_id = (
+            node.get("missing")
+            if not math.isfinite(value)
+            else (node.get("yes") if value < split_condition else node.get("no"))
         )
         children = node.get("children") or []
         found = next(
-            (child for child in children if int(child.get("nodeid", -999)) == int(next_id)),
+            (
+                child
+                for child in children
+                if int(child.get("nodeid", -999)) == int(next_id)
+            ),
             None,
         )
         if found is None:
@@ -590,23 +685,21 @@ def export_portable_bundle(
         "feature_names": list(FEATURE_NAMES),
         "base_score": float(base_score),
         "max_delta": float(max_delta),
-        "windows": {
-            "entropy_feature": "sx_entropy_14",
-            "entropy_window": DEFAULT_ENTROPY_WINDOW,
-            "entropy_min_tokens": DEFAULT_ENTROPY_MIN_TOKENS,
-            "transition_change_feature": "sx_transition_change_6",
-            "transition_change_window": DEFAULT_TRANSITION_CHANGE_WINDOW,
-            "transition_change_definition": "recent_3_X_rate_minus_previous_3_X_rate",
-            "velocity_feature": "sx_velocity_3v6",
-            "velocity_short_window": DEFAULT_VELOCITY_SHORT_WINDOW,
-            "velocity_base_window": DEFAULT_VELOCITY_BASE_WINDOW,
-            "velocity_definition": "recent_3_X_rate_minus_recent_6_X_rate",
+        "short_memory": {
+            "volatility_feature": "sx_volatility_8",
+            "volatility_window": DEFAULT_VOLATILITY_WINDOW,
+            "volatility_definition": "normalized_population_std_S1_X0",
+            "micro_feature": "sx_micro_run_4",
+            "micro_window": DEFAULT_MICRO_WINDOW,
+            "micro_definition": "signed_suffix_run_length_div_4",
+            "fast_unlock_run": DEFAULT_FAST_UNLOCK_RUN,
         },
         "damper": {
-            "feature": "sx_entropy_14",
-            "formula": "1.0 - 0.8 * entropy^2",
-            "minimum": 0.20,
-            "maximum": 1.00,
+            "regular_volatility_max": DEFAULT_REGULAR_VOLATILITY_MAX,
+            "high_volatility_start": DEFAULT_HIGH_VOLATILITY_START,
+            "high_damper_max": DEFAULT_HIGH_DAMPER_MAX,
+            "high_damper_min": DEFAULT_HIGH_DAMPER_MIN,
+            "fast_unlock_run": DEFAULT_FAST_UNLOCK_RUN,
         },
         "bet_weight": {
             "minimum": DEFAULT_BET_WEIGHT_MIN,
@@ -633,9 +726,14 @@ def train_command(args: argparse.Namespace) -> int:
     records = load_training_records(Path(args.input))
     x, residual, actual_b, shoes = make_training_arrays(records)
     if len(x) < args.min_samples:
-        raise SystemExit(f"need at least {args.min_samples} valid rows; got {len(x)}")
+        raise SystemExit(
+            f"need at least {args.min_samples} valid rows; got {len(x)}"
+        )
 
-    validation = deterministic_validation_mask(shoes, fraction=args.validation_fraction)
+    validation = deterministic_validation_mask(
+        shoes,
+        fraction=args.validation_fraction,
+    )
     train = ~validation
     model = build_regressor(random_state=args.random_state)
     model.fit(x[train], residual[train])
@@ -652,10 +750,16 @@ def train_command(args: argparse.Namespace) -> int:
         and validation_metrics["corrected_accuracy"]
         >= validation_metrics["core_accuracy"] - args.max_accuracy_regression
     )
-    print(json.dumps({"validation": validation_metrics, "accepted": accepted}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {"validation": validation_metrics, "accepted": accepted},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     if not accepted and not args.force:
         raise SystemExit(
-            "validation gate rejected multi-scale residual+damper model; "
+            "validation gate rejected short-memory residual+damper model; "
             "use --force only for diagnostics"
         )
 
@@ -675,10 +779,13 @@ def train_command(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="BBB XGBoost residual bias + 14/6/3 multi-scale dynamic damper trainer"
+        description="BBB XGBoost residual bias + 8/4 short-memory dynamic damper"
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    train = sub.add_parser("train", help="train XGBRegressor and export browser model JSON")
+    train = sub.add_parser(
+        "train",
+        help="train XGBRegressor and export browser model JSON",
+    )
     train.add_argument("--input", required=True, help="browser-exported JSON or CSV")
     train.add_argument("--output", default="residual_bias_model.json")
     train.add_argument("--min-samples", type=int, default=500)
