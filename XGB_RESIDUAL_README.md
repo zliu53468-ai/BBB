@@ -1,183 +1,67 @@
-# BBB XGBoost Residual Bias + Dual-Window Dynamic Damper
+# BBB XGBoost Residual Bias Layer
 
-The deterministic `256D / V23 R1` core remains the base predictor. This layer is external and does not modify `app256forward.js` or `app256continuation.js`.
+This repository is deployed as static GitHub Pages, so Python/XGBoost cannot run directly inside the browser. The integration is split into two deterministic parts:
 
-BBB is deployed through static GitHub Pages, so training happens offline with Python/XGBoost, while the browser evaluates the exported XGBoost trees deterministically.
+1. `xgb_residual_bias.py` trains `XGBRegressor` offline on labeled B/P outcomes and exports the trees to `residual_bias_model.json`.
+2. `residual_bias_runtime.js` evaluates that exported tree bundle in the browser and applies the bounded residual correction to the existing deterministic V23 R1 core.
 
-## Production chain
-
-```text
-256D / V23 R1 core
-  -> XGBRegressor residual delta
-  -> 18-token S/X entropy damper
-  -> final B/P probability
-  -> relative bet-weight signal
-```
-
-XGBoost does **not** train on a raw B/P classifier target. The target is:
+The 256D/V23 R1 core remains the base predictor. XGBoost does **not** replace it and does **not** directly train on a B/P class target. The regression target is:
 
 ```text
 residual = actual_B - core_p_B
 ```
 
-The residual is clipped to `[-0.10, +0.10]`.
-
-## V3 feature schema
-
-Python and browser use the same eight features, in this exact order:
-
-1. `core_p_b`
-2. `round_index`
-3. `estimated_total_hands`
-4. `remaining_ratio`
-5. `stage`
-6. `depth`
-7. `sx_entropy_18`
-8. `sx_transition_change_6`
-
-### Long window: `sx_entropy_18`
-
-Normalized Shannon entropy of the most recent 18 S/X transition tokens.
-
-- near `0`: one S/X state dominates, so the regime is comparatively structured
-- near `1`: S and X are close to balanced, so the regime is treated as highly oscillatory
-
-Before 6 S/X tokens exist, entropy is forced to `0.0` so an opening tiny sample cannot trigger aggressive damping.
-
-### Short window: `sx_transition_change_6`
-
-The latest six S/X tokens are split into:
-
-```text
-older 3 | newer 3
-```
-
-The feature is:
-
-```text
-newer X-frequency - older X-frequency
-```
-
-Range: `[-1, +1]`.
-
-Positive values mean local switching frequency is accelerating. Negative values mean the local road is becoming more persistent. This short-window feature goes into XGBoost; it does not directly control the deterministic damper.
-
-The old `sx_markov_p_same` and `sx_entropy_8` are not part of the V3 model schema.
-
-## Dynamic damper
-
-Production probability:
+Production correction:
 
 ```text
 delta = clip(xgb_residual, -0.10, +0.10)
-
-final_p_B =
-    0.50
-    + ((core_p_B - 0.50) + delta)
-    * damper
+final_p_B = core_p_B + delta
+B if final_p_B > 0.50 else P
 ```
 
-Default 18-token entropy mapping:
+There is no PASS state.
 
-```text
-entropy <= 0.55      -> damper = 1.0
-0.55 < entropy < .85 -> linearly falls from 1.0 to 0.4
-0.85 <= entropy <= 1 -> linearly falls from 0.4 to 0.2
-```
+## Feature order
 
-The damper is always positive, so it only contracts the adjusted edge toward 50%. Direction changes can occur when the XGBoost residual itself moves the adjusted edge across 50%.
+The browser and Python trainer use the exact same seven features:
 
-There is no PASS state:
+1. `core_p_b` - current deterministic core B probability.
+2. `round_index` - next round index, capped to 1..70.
+3. `estimated_total_hands` - cut/shoe-length estimate (default 60; accepted 40..90).
+4. `remaining_ratio` - derived from round index and estimated shoe length.
+5. `sx_markov_p_same` - local first-order S/X Markov probability of next token being SAME.
+6. `stage` - current B/P streak length.
+7. `depth` - current repeated S/X token depth.
 
-```text
-final_p_B > 0.50 -> B
-final_p_B <= 0.50 -> P
-```
+## Collect labeled production rows
 
-## Bet-weight output
+The browser runtime stores local labeled rows after a prediction is followed by an actual B/P result. Ties are non-directional and are not used as labels.
 
-The output also contains a continuous relative sizing signal:
-
-```text
-edge = abs(final_p_B - 0.50)
-
-bet_weight =
-    0.20
-    + 0.80 * clip(edge / 0.18, 0, 1)
-```
-
-Default tiers:
-
-```text
-LOW    < 0.40
-MEDIUM < 0.70
-HIGH   >= 0.70
-```
-
-`0.20` is the relative bottom-weight floor. This layer does not define a currency amount.
-
-## Python API
-
-`xgb_residual_bias.py` exposes:
-
-```python
-DualWindowResidualBiasPredictor
-```
-
-It includes:
-
-- `assemble_features()`
-- `fit()`
-- `predict_delta()`
-- `damper()`
-- `correct()`
-- `predict_from_context()`
-
-For compatibility, these names still resolve to the same V3 class:
-
-```python
-DynamicResidualBiasPredictor
-ResidualBiasPredictor
-```
-
-## Existing V1/V2 training rows
-
-The browser intentionally retains the original local-storage training key.
-
-Older rows that do not contain `sx_entropy_18` or `sx_transition_change_6` can still be used because the Python trainer rebuilds the new V3 features from `history_fingerprint`. Old `sx_markov_p_same` / `sx_entropy_8` values are ignored by the V3 feature vector.
-
-## Collect labeled rows
-
-Browser console:
+From the browser console:
 
 ```js
 __BGS_RESIDUAL_BIAS__.getTrainingCount()
 __BGS_RESIDUAL_BIAS__.downloadTrainingData()
 ```
 
-Optional estimated shoe length:
+To set the current cut/shoe-length estimate:
 
 ```js
 __BGS_RESIDUAL_BIAS__.setEstimatedTotalHands(60)
 ```
 
+The value is saved in local storage for subsequent predictions.
+
 ## Train and export
 
 ```bash
 python -m pip install -r requirements-xgb.txt
-
 python xgb_residual_bias.py train \
   --input bgs_xgb_residual_training.json \
   --output residual_bias_model.json \
   --min-samples 500
 ```
 
-Training uses:
+The trainer uses a deterministic shoe-level validation split, `n_jobs=1`, fixed random state, and a conservative regularized `XGBRegressor`. It refuses to export a production model when held-out Brier/accuracy gates regress unless `--force` is explicitly used for diagnostics.
 
-- deterministic shoe-level validation split
-- fixed random state
-- `n_jobs=1`
-- conservative regularization
-- held-out Brier and directional-accuracy gates
-
-The checked-in model placeholder remains `trained:false` until enough real labeled B/P rows exist. Until then XGBoost Delta is `0`, while the deterministic 18-token damper and bet-weight output still operate.
+After a validated `residual_bias_model.json` is committed, the static BBB page loads it automatically. Until then the checked-in placeholder has `trained:false`, so `delta=0` and the existing V23 R1 output is preserved exactly.
