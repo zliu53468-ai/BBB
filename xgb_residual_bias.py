@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
-"""BBB external XGBoost residual-bias predictor with oscillation damping.
+"""External XGBoost residual-bias model for the BBB 256D/V23 core.
 
-The deterministic 256D/V23 core stays untouched. XGBRegressor learns only the
-core residual rather than a raw B/P label:
+The XGBRegressor does not replace the deterministic core and does not train on a
+raw B/P class target. It learns the residual:
 
     residual = actual_B - core_p_B
 
-The production decision then applies a deterministic oscillation damper based on
-the normalized Shannon entropy of the most recent eight S/X transition tokens:
+Production logic is always decisive (no PASS):
 
     delta = clip(xgb_residual, -0.10, +0.10)
-    damper = f(sx_entropy_8)  # 1.0 in regular regimes, 0.2..0.4 when highly noisy
-    final_p_B = 0.50 + ((core_p_B - 0.50) + delta) * damper
+    final_p_B = core_p_B + delta
     direction = B if final_p_B > 0.50 else P
 
-There is never a PASS state. A continuous bet-weight recommendation is derived
-from the absolute distance of final_p_B from 0.50. The browser runtime uses the
-same feature order and formulas and evaluates exported XGBoost trees directly.
+The browser runtime exports labeled feature rows. This script trains offline and
+exports XGBoost trees to residual_bias_model.json so static GitHub Pages can
+perform deterministic inference without Python in the browser.
 """
 from __future__ import annotations
 
@@ -40,28 +38,11 @@ FEATURE_NAMES: tuple[str, ...] = (
     "sx_markov_p_same",
     "stage",
     "depth",
-    "sx_entropy_8",
 )
 MODEL_TYPE = "xgb_residual_regressor"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 1
 DEFAULT_MAX_DELTA = 0.10
 DEFAULT_RANDOM_STATE = 20260915
-
-# Dynamic damper: regular regime is untouched. Between REGULAR_MAX and
-# HIGH_START it falls smoothly from 1.0 to HIGH_DAMPER_MAX. In the highest
-# entropy zone it falls from 0.4 toward 0.2.
-DEFAULT_REGULAR_ENTROPY_MAX = 0.45
-DEFAULT_HIGH_ENTROPY_START = 0.85
-DEFAULT_HIGH_DAMPER_MAX = 0.40
-DEFAULT_HIGH_DAMPER_MIN = 0.20
-DEFAULT_ENTROPY_WINDOW = 8
-DEFAULT_ENTROPY_MIN_TOKENS = 4
-
-# The core is 0.42..0.58 and residual is capped at +/-0.10, so 0.18 is the
-# natural maximum undamped distance from 0.50. Keep a non-zero minimum weight
-# because the product requires a B/P output every round rather than PASS.
-DEFAULT_BET_WEIGHT_MIN = 0.20
-DEFAULT_BET_REFERENCE_EDGE = 0.18
 
 
 def clip(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
@@ -92,7 +73,6 @@ def transition_sequence(history: Sequence[str]) -> list[str]:
 
 
 def sx_markov_p_same(history: Sequence[str], *, window: int = 24, prior: float = 1.0) -> float:
-    """First-order local S/X transition probability that the next token is S."""
     tokens = transition_sequence(history)
     if not tokens:
         return 0.5
@@ -107,79 +87,6 @@ def sx_markov_p_same(history: Sequence[str], *, window: int = 24, prior: float =
         elif tokens[i + 1] == "X":
             switch += 1.0
     return clip((same + prior) / (same + switch + 2.0 * prior))
-
-
-def sx_entropy(
-    history: Sequence[str],
-    *,
-    window: int = DEFAULT_ENTROPY_WINDOW,
-    min_tokens: int = DEFAULT_ENTROPY_MIN_TOKENS,
-) -> float:
-    """Normalized Shannon entropy of recent S/X tokens in [0, 1].
-
-    A short history is treated as low-confidence for oscillation detection and
-    therefore returns 0 until at least ``min_tokens`` transition tokens exist.
-    This prevents the first few hands from being aggressively damped because of
-    a tiny balanced sample.
-    """
-    tokens = transition_sequence(history)[-max(2, int(window)) :]
-    if len(tokens) < max(2, int(min_tokens)):
-        return 0.0
-    p_s = sum(token == "S" for token in tokens) / len(tokens)
-    p_x = 1.0 - p_s
-    entropy = 0.0
-    for p in (p_s, p_x):
-        if p > 0.0:
-            entropy -= p * math.log2(p)
-    return clip(entropy)
-
-
-def dynamic_damper(
-    oscillation: float,
-    *,
-    regular_max: float = DEFAULT_REGULAR_ENTROPY_MAX,
-    high_start: float = DEFAULT_HIGH_ENTROPY_START,
-    high_damper_max: float = DEFAULT_HIGH_DAMPER_MAX,
-    high_damper_min: float = DEFAULT_HIGH_DAMPER_MIN,
-) -> float:
-    """Map oscillation entropy to a deterministic damping coefficient.
-
-    - entropy <= 0.45: 1.0
-    - 0.45..0.85: smoothly falls from 1.0 to 0.4
-    - 0.85..1.00: smoothly falls from 0.4 to 0.2
-    """
-    e = clip(oscillation)
-    regular_max = clip(regular_max, 0.0, 0.95)
-    high_start = clip(high_start, regular_max + 1e-6, 0.999999)
-    high_damper_max = clip(high_damper_max, 0.2, 1.0)
-    high_damper_min = clip(high_damper_min, 0.0, high_damper_max)
-    if e <= regular_max:
-        return 1.0
-    if e < high_start:
-        t = (e - regular_max) / (high_start - regular_max)
-        return clip(1.0 - t * (1.0 - high_damper_max), high_damper_max, 1.0)
-    t = (e - high_start) / (1.0 - high_start)
-    return clip(high_damper_max - t * (high_damper_max - high_damper_min), high_damper_min, high_damper_max)
-
-
-def bet_weight_from_probability(
-    final_p_b: float,
-    *,
-    minimum: float = DEFAULT_BET_WEIGHT_MIN,
-    reference_edge: float = DEFAULT_BET_REFERENCE_EDGE,
-) -> tuple[float, str]:
-    """Return a continuous 0.20..1.00 suggestion and LOW/MEDIUM/HIGH tier."""
-    edge = abs(clip(final_p_b) - 0.5)
-    minimum = clip(minimum, 0.0, 1.0)
-    reference_edge = max(1e-6, float(reference_edge))
-    weight = minimum + (1.0 - minimum) * clip(edge / reference_edge)
-    if weight < 0.40:
-        tier = "LOW"
-    elif weight < 0.70:
-        tier = "MEDIUM"
-    else:
-        tier = "HIGH"
-    return float(weight), tier
 
 
 def current_stage(history: Sequence[str]) -> int:
@@ -217,7 +124,6 @@ class ResidualFeatures:
     sx_markov_p_same: float
     stage: float
     depth: float
-    sx_entropy_8: float
 
     def as_dict(self) -> dict[str, float]:
         return {name: float(getattr(self, name)) for name in FEATURE_NAMES}
@@ -246,13 +152,12 @@ def build_features(
         sx_markov_p_same=sx_markov_p_same(seq),
         stage=float(current_stage(seq) if stage is None else stage),
         depth=float(current_depth(seq) if depth is None else depth),
-        sx_entropy_8=sx_entropy(seq),
     )
 
 
 def build_regressor(*, random_state: int = DEFAULT_RANDOM_STATE) -> XGBRegressor:
-    # Conservative deterministic settings. n_jobs=1 and fixed random_state keep
-    # repeated training reproducible given the same XGBoost version and data.
+    # Conservative, deterministic settings. n_jobs=1 avoids parallel tree-build
+    # nondeterminism and the fixed random_state makes repeated training reproducible.
     return XGBRegressor(
         objective="reg:squarederror",
         n_estimators=240,
@@ -271,31 +176,14 @@ def build_regressor(*, random_state: int = DEFAULT_RANDOM_STATE) -> XGBRegressor
     )
 
 
-class DynamicResidualBiasPredictor:
-    """XGB residual model + entropy-based dynamic damper + B/P sizing output."""
+class ResidualBiasPredictor:
+    """Reusable Python API around the residual XGBRegressor."""
 
-    def __init__(
-        self,
-        model: XGBRegressor | None = None,
-        *,
-        max_delta: float = DEFAULT_MAX_DELTA,
-        regular_entropy_max: float = DEFAULT_REGULAR_ENTROPY_MAX,
-        high_entropy_start: float = DEFAULT_HIGH_ENTROPY_START,
-        high_damper_max: float = DEFAULT_HIGH_DAMPER_MAX,
-        high_damper_min: float = DEFAULT_HIGH_DAMPER_MIN,
-        bet_weight_min: float = DEFAULT_BET_WEIGHT_MIN,
-        bet_reference_edge: float = DEFAULT_BET_REFERENCE_EDGE,
-    ) -> None:
+    def __init__(self, model: XGBRegressor | None = None, *, max_delta: float = DEFAULT_MAX_DELTA) -> None:
         self.model = model or build_regressor()
         self.max_delta = clip(float(max_delta), 0.0, DEFAULT_MAX_DELTA)
-        self.regular_entropy_max = float(regular_entropy_max)
-        self.high_entropy_start = float(high_entropy_start)
-        self.high_damper_max = float(high_damper_max)
-        self.high_damper_min = float(high_damper_min)
-        self.bet_weight_min = float(bet_weight_min)
-        self.bet_reference_edge = float(bet_reference_edge)
 
-    def fit(self, feature_rows: np.ndarray, actual_b: Sequence[int]) -> "DynamicResidualBiasPredictor":
+    def fit(self, feature_rows: np.ndarray, actual_b: Sequence[int]) -> "ResidualBiasPredictor":
         x = np.asarray(feature_rows, dtype=np.float32)
         y = np.asarray(actual_b, dtype=np.float32)
         core_pb = x[:, FEATURE_NAMES.index("core_p_b")]
@@ -308,43 +196,17 @@ class DynamicResidualBiasPredictor:
         raw = float(self.model.predict(x)[0])
         return clip(raw, -self.max_delta, self.max_delta)
 
-    def damper(self, oscillation: float) -> float:
-        return dynamic_damper(
-            oscillation,
-            regular_max=self.regular_entropy_max,
-            high_start=self.high_entropy_start,
-            high_damper_max=self.high_damper_max,
-            high_damper_min=self.high_damper_min,
-        )
-
     def correct(self, feature_row: Sequence[float]) -> dict[str, Any]:
         x = np.asarray(feature_row, dtype=np.float32)
         core_pb = clip(float(x[FEATURE_NAMES.index("core_p_b")]))
-        entropy = clip(float(x[FEATURE_NAMES.index("sx_entropy_8")]))
         delta = self.predict_delta(x)
-        damper = self.damper(entropy)
-        undamped_pb = clip(core_pb + delta)
-        final_pb = clip(0.5 + ((core_pb - 0.5) + delta) * damper)
-        bet_weight, bet_tier = bet_weight_from_probability(
-            final_pb,
-            minimum=self.bet_weight_min,
-            reference_edge=self.bet_reference_edge,
-        )
+        final_pb = clip(core_pb + delta)
         return {
             "core_p_b": core_pb,
             "delta": delta,
-            "sx_entropy_8": entropy,
-            "damper": damper,
-            "undamped_p_b": undamped_pb,
             "final_p_b": final_pb,
             "direction": "B" if final_pb > 0.5 else "P",
-            "bet_weight": bet_weight,
-            "bet_weight_tier": bet_tier,
         }
-
-
-# Backward-compatible name for callers that imported the V1 class.
-ResidualBiasPredictor = DynamicResidualBiasPredictor
 
 
 def _parse_actual_b(record: Mapping[str, Any]) -> int:
@@ -361,22 +223,14 @@ def _parse_actual_b(record: Mapping[str, Any]) -> int:
 def _feature_row(record: Mapping[str, Any]) -> dict[str, float]:
     if all(name in record for name in FEATURE_NAMES):
         return {name: float(record[name]) for name in FEATURE_NAMES}
-
-    # Backfill V1 browser rows. They contain history_fingerprint plus the seven
-    # old feature values, so sx_entropy_8 can be reconstructed deterministically.
     features = build_features(
         core_p_b=float(record.get("core_p_b", record.get("core_pb", 0.5))),
         history=record.get("history") or record.get("history_fingerprint") or "",
         estimated_total_hands=float(record.get("estimated_total_hands", 60.0) or 60.0),
         stage=(float(record["stage"]) if record.get("stage") is not None else None),
         depth=(float(record["depth"]) if record.get("depth") is not None else None),
-    ).as_dict()
-    # Prefer stored values where available so migrated rows retain their exact
-    # V1 feature values; only the new entropy feature must be derived.
-    for name in FEATURE_NAMES:
-        if name in record and record.get(name) is not None:
-            features[name] = float(record[name])
-    return features
+    )
+    return features.as_dict()
 
 
 def load_training_records(path: Path) -> list[dict[str, Any]]:
@@ -436,6 +290,7 @@ def deterministic_validation_mask(shoes: Sequence[str], *, fraction: float = 0.2
 
 
 def direction_accuracy(prob_b: np.ndarray, actual_b: np.ndarray) -> float:
+    # Explicit requirement: > 50% => B; <= 50% => P.
     return float(np.mean((prob_b > 0.5) == (actual_b > 0)))
 
 
@@ -443,31 +298,19 @@ def brier(prob_b: np.ndarray, actual_b: np.ndarray) -> float:
     return float(np.mean((prob_b.astype(float) - actual_b.astype(float)) ** 2))
 
 
-def _damp_array(core_pb: np.ndarray, delta: np.ndarray, entropy: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    dampers = np.asarray([dynamic_damper(float(x)) for x in entropy], dtype=float)
-    final_pb = np.clip(0.5 + ((core_pb - 0.5) + delta) * dampers, 0.0, 1.0)
-    return final_pb, dampers
-
-
 def evaluate(model: XGBRegressor, x: np.ndarray, actual_b: np.ndarray, *, max_delta: float) -> dict[str, float]:
     raw_delta = np.asarray(model.predict(x), dtype=float)
     delta = np.clip(raw_delta, -max_delta, max_delta)
     core_pb = x[:, FEATURE_NAMES.index("core_p_b")].astype(float)
-    entropy = x[:, FEATURE_NAMES.index("sx_entropy_8")].astype(float)
-    undamped_pb = np.clip(core_pb + delta, 0.0, 1.0)
-    final_pb, dampers = _damp_array(core_pb, delta, entropy)
+    final_pb = np.clip(core_pb + delta, 0.0, 1.0)
     return {
         "samples": float(len(x)),
         "core_accuracy": direction_accuracy(core_pb, actual_b),
-        "residual_accuracy": direction_accuracy(undamped_pb, actual_b),
         "corrected_accuracy": direction_accuracy(final_pb, actual_b),
         "core_brier": brier(core_pb, actual_b),
-        "residual_brier": brier(undamped_pb, actual_b),
         "corrected_brier": brier(final_pb, actual_b),
         "mean_abs_delta": float(np.mean(np.abs(delta))),
         "max_abs_delta": float(np.max(np.abs(delta))) if len(delta) else 0.0,
-        "mean_entropy_8": float(np.mean(entropy)) if len(entropy) else 0.0,
-        "mean_damper": float(np.mean(dampers)) if len(dampers) else 1.0,
     }
 
 
@@ -486,6 +329,8 @@ def _tree_leaf(tree: Mapping[str, Any], vector: Sequence[float]) -> float:
                 index = FEATURE_NAMES.index(split)
             except ValueError:
                 index = -1
+        # XGBoost hist split thresholds are float32. Matching that precision is
+        # required for exact portable/browser traversal on boundary values.
         value = float(np.float32(vector[index])) if 0 <= index < len(vector) else math.nan
         split_condition = float(np.float32(node.get("split_condition", 0.0)))
         next_id = node.get("missing") if not math.isfinite(value) else (
@@ -511,11 +356,15 @@ def export_portable_bundle(
     booster = model.get_booster()
     trees = [json.loads(text) for text in booster.get_dump(dump_format="json")]
 
+    # Recover the constant prediction offset empirically; this stays robust
+    # across XGBoost versions whose base_score config format differs.
     reference = np.asarray(reference_x[0], dtype=float)
     tree_sum = sum(_tree_leaf(tree, reference) for tree in trees)
     model_reference = float(model.predict(reference.reshape(1, -1))[0])
     base_score = model_reference - tree_sum
 
+    # Export is rejected unless browser-style tree traversal matches native
+    # XGBRegressor predictions on a sample of rows.
     for vector in np.asarray(reference_x[: min(64, len(reference_x))], dtype=float):
         portable = base_score + sum(_tree_leaf(tree, vector) for tree in trees)
         native = float(model.predict(vector.reshape(1, -1))[0])
@@ -529,25 +378,11 @@ def export_portable_bundle(
         "feature_names": list(FEATURE_NAMES),
         "base_score": float(base_score),
         "max_delta": float(max_delta),
-        "damper": {
-            "feature": "sx_entropy_8",
-            "regular_max": DEFAULT_REGULAR_ENTROPY_MAX,
-            "high_start": DEFAULT_HIGH_ENTROPY_START,
-            "high_damper_max": DEFAULT_HIGH_DAMPER_MAX,
-            "high_damper_min": DEFAULT_HIGH_DAMPER_MIN,
-            "entropy_window": DEFAULT_ENTROPY_WINDOW,
-            "entropy_min_tokens": DEFAULT_ENTROPY_MIN_TOKENS,
-        },
-        "bet_weight": {
-            "minimum": DEFAULT_BET_WEIGHT_MIN,
-            "reference_edge": DEFAULT_BET_REFERENCE_EDGE,
-        },
         "trees": trees,
         "training": {
             "rows": int(training_rows),
             "target": "actual_B_minus_core_p_B",
             "decision_rule": "B if final_p_B > 0.50 else P",
-            "final_probability": "0.50 + ((core_p_B - 0.50) + delta) * damper",
             "no_pass": True,
             "metrics": dict(metrics),
         },
@@ -574,7 +409,7 @@ def train_command(args: argparse.Namespace) -> int:
     )
     print(json.dumps({"validation": validation_metrics, "accepted": accepted}, ensure_ascii=False, indent=2))
     if not accepted and not args.force:
-        raise SystemExit("validation gate rejected residual+damper model; use --force only for diagnostics")
+        raise SystemExit("validation gate rejected residual model; use --force only for diagnostics")
 
     final_model = build_regressor(random_state=args.random_state)
     final_model.fit(x, residual)
@@ -591,7 +426,7 @@ def train_command(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="BBB XGBoost residual bias + dynamic damper trainer")
+    parser = argparse.ArgumentParser(description="BBB XGBoost residual bias trainer")
     sub = parser.add_subparsers(dest="command", required=True)
     train = sub.add_parser("train", help="train XGBRegressor and export browser model JSON")
     train.add_argument("--input", required=True, help="browser-exported JSON or CSV")
