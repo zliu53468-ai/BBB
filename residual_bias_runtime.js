@@ -4,8 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_RESIDUAL_BIAS_V1_1";
-const EXPECTED_CORE_VERSION = "V23_SHORT_X_DYNAMIC_HAZARD_R1";
+const VERSION = "XGB_RESIDUAL_BIAS_V1";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -29,7 +28,6 @@ const bp = seq => seq.filter(x => x === "B" || x === "P");
 
 let modelBundle = null;
 let modelLoaded = false;
-let modelCompatible = false;
 let modelLoadError = "";
 
 function transitionSequence(seq) {
@@ -95,7 +93,7 @@ function buildFeatures(seq, corePrediction, signal = null) {
   const remainingRatio = clip((estimatedTotalHands - (roundIndex - 1)) / Math.max(1, estimatedTotalHands));
   const stage = Number.isFinite(+signal?.state?.length) ? +signal.state.length : currentStage(seq);
   const depth = Number.isFinite(+signal?.depth?.depth) ? +signal.depth.depth : currentDepth(seq);
-  return {
+  const features = {
     core_p_b: corePB,
     round_index: roundIndex,
     estimated_total_hands: estimatedTotalHands,
@@ -104,6 +102,7 @@ function buildFeatures(seq, corePrediction, signal = null) {
     stage,
     depth
   };
+  return features;
 }
 
 function featureVector(features) {
@@ -141,7 +140,7 @@ function evaluateTree(tree, vector) {
 }
 
 function predictRawDelta(features) {
-  if (!modelCompatible || !modelBundle?.trained || !Array.isArray(modelBundle.trees)) return 0;
+  if (!modelBundle?.trained || !Array.isArray(modelBundle.trees)) return 0;
   const vector = featureVector(features);
   let result = +modelBundle.base_score || 0;
   for (const tree of modelBundle.trees) result += evaluateTree(tree, vector);
@@ -153,16 +152,14 @@ function applyCorrection(seq, corePrediction) {
   const features = buildFeatures(seq, corePrediction, signal);
   const rawDelta = predictRawDelta(features);
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
-  const deltaScale = clip(modelBundle?.delta_scale ?? 1.0, 0, 1.0);
-  const delta = clip(rawDelta * deltaScale, -maxDelta, maxDelta);
+  const delta = clip(rawDelta, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
   const finalPB = clip(corePB + delta, 0, 1);
   const direction = finalPB > 0.5 ? "B" : "P";
   const finalPP = 1 - finalPB;
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
-  const active = Boolean(modelBundle?.trained && modelCompatible);
-
+  const active = Boolean(modelBundle?.trained);
   if (!active) {
     return {
       ...corePrediction,
@@ -170,13 +167,10 @@ function applyCorrection(seq, corePrediction) {
         version: VERSION,
         active: false,
         modelLoaded,
-        modelCompatible,
         modelLoadError,
-        coreVersion: String(CORE.version || ""),
         coreDirection,
         corePB,
         rawDelta: 0,
-        deltaScale,
         delta: 0,
         finalPB: corePB,
         finalDirection: coreDirection,
@@ -185,7 +179,6 @@ function applyCorrection(seq, corePrediction) {
       }
     };
   }
-
   const flipped = direction !== coreDirection;
   return {
     ...corePrediction,
@@ -197,13 +190,10 @@ function applyCorrection(seq, corePrediction) {
       version: VERSION,
       active: true,
       modelLoaded,
-      modelCompatible,
       modelLoadError,
-      coreVersion: String(CORE.version || ""),
       coreDirection,
       corePB,
       rawDelta,
-      deltaScale,
       delta,
       finalPB,
       finalDirection: direction,
@@ -267,7 +257,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "XGB V1.1 修正完成" : "分析完成";
+  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "XGB 修正完成" : "分析完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
 }
@@ -281,32 +271,15 @@ function readTrainingRows() {
   }
 }
 
-function dedupeTrainingRows(rows) {
-  const seen = new Set(), out = [];
-  for (const row of rows) {
-    if (!row || typeof row !== "object") continue;
-    const key = `${String(row.shoe_id || "")}\u0000${String(row.history_fingerprint || "")}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(row);
-  }
-  return out;
-}
-
 function writeTrainingRows(rows) {
-  try {
-    const clean = dedupeTrainingRows(rows).slice(-MAX_TRAINING_ROWS);
-    localStorage.setItem(TRAINING_KEY, JSON.stringify(clean));
-  } catch (_) {}
+  try { localStorage.setItem(TRAINING_KEY, JSON.stringify(rows.slice(-MAX_TRAINING_ROWS))); } catch (_) {}
 }
 
 function registerPrediction(seq, prediction) {
   const residual = prediction?.residualBias || {};
   const features = residual.features || buildFeatures(seq, prediction, prediction?.singleHazard || null);
   const pending = {
-    schema_version: 2,
     shoe_id: getShoeId(),
-    core_version: String(CORE.version || EXPECTED_CORE_VERSION),
     created_at: Date.now(),
     history_fingerprint: seq.join(""),
     core_p_b: +features.core_p_b,
@@ -318,10 +291,7 @@ function registerPrediction(seq, prediction) {
 
 function settlePending(actualOutcome) {
   const actual = String(actualOutcome || "").toUpperCase();
-  if (actual === "T") {
-    try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
-    return;
-  }
+  if (actual === "T") return;
   if (actual !== "B" && actual !== "P") return;
   let pending = null;
   try { pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); } catch (_) {}
@@ -329,9 +299,8 @@ function settlePending(actualOutcome) {
   const actualB = actual === "B" ? 1 : 0;
   const corePB = clip(+pending.features.core_p_b || 0.5);
   const row = {
-    schema_version: 2,
+    schema_version: 1,
     shoe_id: String(pending.shoe_id || getShoeId()),
-    core_version: String(pending.core_version || CORE.version || EXPECTED_CORE_VERSION),
     created_at: +pending.created_at || Date.now(),
     history_fingerprint: String(pending.history_fingerprint || ""),
     actual_outcome: actual,
@@ -340,7 +309,8 @@ function settlePending(actualOutcome) {
     ...pending.features
   };
   const rows = readTrainingRows();
-  rows.push(row);
+  const duplicate = rows.length && rows.at(-1)?.shoe_id === row.shoe_id && rows.at(-1)?.history_fingerprint === row.history_fingerprint;
+  if (!duplicate) rows.push(row);
   writeTrainingRows(rows);
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
@@ -358,13 +328,10 @@ function rollbackTrainingIfNeeded() {
 }
 
 function exportTrainingData() {
-  const rows = dedupeTrainingRows(readTrainingRows());
   return JSON.stringify({
-    schema_version: 2,
-    model_version: VERSION,
-    core_version: String(CORE.version || EXPECTED_CORE_VERSION),
+    schema_version: 1,
     feature_names: FEATURE_NAMES,
-    rows
+    rows: readTrainingRows()
   }, null, 2);
 }
 
@@ -382,7 +349,6 @@ function downloadTrainingData() {
 
 async function loadModel(url = MODEL_URL) {
   modelLoaded = false;
-  modelCompatible = false;
   modelLoadError = "";
   try {
     const response = await fetch(url, { cache: "no-store" });
@@ -391,11 +357,8 @@ async function loadModel(url = MODEL_URL) {
     if (!bundle || bundle.model_type !== "xgb_residual_regressor") throw new Error("invalid_model_bundle");
     const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
     if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("feature_schema_mismatch");
-    if (String(CORE.version || "") !== EXPECTED_CORE_VERSION) throw new Error("runtime_core_version_mismatch");
-    if (String(bundle.base_core_version || "") !== String(CORE.version || "")) throw new Error("model_core_version_mismatch");
     modelBundle = bundle;
     modelLoaded = true;
-    modelCompatible = true;
     return bundle;
   } catch (error) {
     modelBundle = null;
@@ -441,7 +404,6 @@ function installUIOverride() {
 if (typeof window !== "undefined") {
   window.__BGS_RESIDUAL_BIAS__ = {
     version: VERSION,
-    expectedCoreVersion: EXPECTED_CORE_VERSION,
     featureNames: FEATURE_NAMES,
     buildFeatures,
     sxMarkovPSame,
@@ -451,16 +413,8 @@ if (typeof window !== "undefined") {
     getEstimatedTotalHands,
     exportTrainingData,
     downloadTrainingData,
-    getTrainingCount: () => dedupeTrainingRows(readTrainingRows()).length,
-    getModelStatus: () => ({
-      loaded: modelLoaded,
-      compatible: modelCompatible,
-      trained: Boolean(modelBundle?.trained && modelCompatible),
-      modelVersion: String(modelBundle?.model_version || ""),
-      coreVersion: String(CORE.version || ""),
-      deltaScale: clip(modelBundle?.delta_scale ?? 1.0, 0, 1),
-      error: modelLoadError
-    })
+    getTrainingCount: () => readTrainingRows().length,
+    getModelStatus: () => ({ loaded: modelLoaded, trained: Boolean(modelBundle?.trained), error: modelLoadError })
   };
 }
 
