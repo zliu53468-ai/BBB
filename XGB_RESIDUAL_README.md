@@ -16,34 +16,40 @@ Both models train on the exact same 7D feature matrix and the exact same label:
 residual = actual_B - core_p_B
 ```
 
-## Tuned XGBoost parameters
+## Adaptive XGBoost parameters
 
 ```text
-n_estimators=65
-learning_rate=0.015
+n_estimators=50
+learning_rate=0.025
 max_depth=3
-min_child_weight=3
-subsample=0.75
-colsample_bytree=0.85
+min_child_weight=2.5
+alpha=0.1
+lambda=0.3
+subsample=0.8
+colsample_bytree=0.8
 random_state=42
 ```
 
-## Tuned LightGBM parameters
+In the Python API, XGBoost regularization is passed as the canonical scikit names `reg_alpha=0.1` and `reg_lambda=0.3`.
+
+## Adaptive LightGBM parameters
 
 ```text
-n_estimators=65
-learning_rate=0.015
+n_estimators=50
+learning_rate=0.025
 max_depth=3
 num_leaves=6
-min_data_in_leaf=4
-bagging_fraction=0.75
-feature_fraction=0.85
-colsample_bytree=0.8
-subsample=0.8
+min_data_in_leaf=3
+reg_alpha=0.1
+reg_lambda=0.3
+bagging_fraction=0.8
+feature_fraction=0.8
 bagging_freq=1
 verbosity=-1
 random_state=42
 ```
+
+`bagging_freq=1` keeps the requested `bagging_fraction=0.8` sampling active.
 
 ## 7D feature order
 
@@ -82,7 +88,7 @@ python dual_residual_ensemble.py train \
   --min-samples 500
 ```
 
-The same `X_train` and the same residual `y_train` are passed to XGBoost and LightGBM. The existing deterministic shoe-level validation split is reused. Validation reports Core, XGBoost-only, LightGBM-only and fused accuracy/Brier, and the production gate is applied to the fused result.
+The same `X_train` and the same residual `y_train` are passed to XGBoost and LightGBM. The deterministic shoe-level validation split is reused. Validation reports Core, XGBoost-only, LightGBM-only and fused accuracy/Brier, and the production gate is applied to the fused result.
 
 ## Static browser deployment
 
