@@ -9,12 +9,16 @@ class Residual17DSchemaTests(unittest.TestCase):
         self.assertEqual(len(ext.FEATURE_NAMES), 17)
         self.assertEqual(ext.FEATURE_NAMES[:7], ext._BASE_FEATURE_NAMES)
 
-    def test_build_features_contains_lower_roads(self):
-        row = ext.build_features(core_p_b=0.52, history="BBPPBPB").as_dict()
+    def test_build_features_contains_turn_state_not_raw_colors(self):
+        row = ext.build_features(core_p_b=0.52, history="BBPBBB").as_dict()
         self.assertEqual(set(row), set(ext.FEATURE_NAMES))
-        self.assertIn(row["big_eye_color"], {-1.0, 0.0, 1.0})
-        self.assertIn(row["small_road_color"], {-1.0, 0.0, 1.0})
-        self.assertIn(row["cockroach_color"], {-1.0, 0.0, 1.0})
+        self.assertIn("big_eye_turn_now", row)
+        self.assertIn("small_road_turn_now", row)
+        self.assertIn("cockroach_turn_now", row)
+        self.assertIn("derived_turn_sync", row)
+        self.assertNotIn("big_eye_color", row)
+        self.assertNotIn("small_road_color", row)
+        self.assertNotIn("cockroach_color", row)
 
     def test_old_v1_row_can_be_upgraded_from_history_fingerprint(self):
         old = {
