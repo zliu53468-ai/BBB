@@ -1,4 +1,4 @@
-# BBB XGBoost + Particle Filter Residual Layer
+# BBB Particle Filter State -> 8D XGBoost Residual Layer
 
 The upstream pipeline is frozen and unchanged:
 
@@ -6,17 +6,24 @@ The upstream pipeline is frozen and unchanged:
 牌路歷史 -> 256D/V23 core -> Core P(B) -> fixed 7D features
 ```
 
-Only the downstream residual correction layer is expanded. No LightGBM or LSTM is used.
+The Particle Filter is inserted only after the fixed 7D features. It does not replace or modify the 256D/V23 core and it does not alter the original seven feature definitions.
 
-## Residual target
-
-The XGBoost model still learns:
+## Serial downstream architecture
 
 ```text
-residual = actual_B - core_p_B
+fixed 7D features
+      +
+current pf_state
+      -> 8D model vector
+      -> XGBoost residual prediction
+      -> clip residual to +/-0.10
+      -> Final P(B)
+      -> B if > 0.50 else P
 ```
 
-The seven features are unchanged and remain in the exact same order:
+There is no LightGBM, no LSTM, no parallel 50/50 XGB/PF averaging, and no PASS state.
+
+## Fixed upstream 7D
 
 1. `core_p_b`
 2. `round_index`
@@ -26,23 +33,11 @@ The seven features are unchanged and remain in the exact same order:
 6. `stage`
 7. `depth`
 
-## XGBoost configuration
+The downstream XGBoost model sees one additional feature:
 
-```text
-n_estimators=50
-learning_rate=0.02
-max_depth=3
-min_child_weight=3.5
-alpha=0.1
-lambda=0.4
-random_state=42
-```
+8. `pf_state` - the current shoe's causal Particle Filter latent residual state.
 
-Python uses the sklearn aliases `reg_alpha=0.1` and `reg_lambda=0.4`.
-
-## Particle Filter configuration
-
-The particle filter tracks one latent state: the current shoe's hidden residual drift.
+## Particle Filter
 
 ```text
 n_particles=1000
@@ -51,26 +46,35 @@ Q=0.005
 R=0.25
 resample_threshold=500
 resampling=systematic
+random_state=42
 ```
 
-A new shoe resets the particle filter. After each actual B/P result, the browser computes `actual_B - core_p_b`, updates particle weights, performs systematic resampling when effective sample size is below 500, then applies one process transition to project the latent state for the next round. Ties do not update the directional residual filter.
+A new shoe resets the Particle Filter to a zero-centered 1000-particle state. For round t, `pf_state_t` is read before the outcome of round t is known. After the actual B/P result arrives, the observation `actual_B - core_p_b` updates the PF, systematic resampling runs when ESS < 500, and one process transition projects the state used by round t+1. Ties do not update the directional residual filter.
 
-## Fusion inference
+## XGBoost
 
 ```text
-delta_xgb = XGBoost(features_7d)
-delta_pf = current particle-filter latent residual estimate
-delta_final = (delta_xgb + delta_pf) / 2.0
-delta_clipped = clip(delta_final, -0.10, +0.10)
-final_p_B = clip(core_p_B + delta_clipped, 0.0, 1.0)
-B if final_p_B > 0.50 else P
+n_estimators=65
+learning_rate=0.03
+max_depth=4
+min_child_weight=2.0
+alpha=0.05
+lambda=0.2
+random_state=42
 ```
 
-There is no PASS state.
+Python uses `reg_alpha=0.05` and `reg_lambda=0.2`.
 
-## Training and online update
+## Training
 
-XGBoost is trained offline on the existing browser-exported 7D rows:
+Training replays every shoe causally. Each row is built as:
+
+```text
+features_8d_t = [features_7d_t, pf_state_t]
+y_t = actual_B_t - core_p_b_t
+```
+
+Only after `features_8d_t` is recorded is `y_t` fed back into the PF to prepare `pf_state_(t+1)`. This prevents the current label from leaking into its own PF feature.
 
 ```bash
 python -m pip install -r requirements-xgb.txt
@@ -80,11 +84,21 @@ python xgb_particle_filter_residual.py train \
   --min-samples 500
 ```
 
-The particle filter is not batch-fit. It updates online inside `residual_bias_runtime.js` as the current shoe advances.
+The existing shoe-level validation split remains in place. The checked-in model bundle stays `trained:false` until real labeled rows are trained and exported.
 
-The trainer keeps the existing deterministic shoe-level validation split and validates the fused XGB + PF correction. The checked-in model bundle remains `trained:false` until real labeled data is trained. While XGBoost is untrained, the runtime continues collecting/updating PF state but does not apply downstream correction to the displayed prediction, preserving the current V23 core output.
+## Browser runtime
 
-Browser console helpers:
+At prediction time:
+
+```text
+pf_state = current Particle Filter estimate
+features_8d = [features_7d, pf_state]
+raw_delta = XGBoost(features_8d)
+delta = clip(raw_delta, -0.10, +0.10)
+final_p_B = clip(core_p_B + delta, 0.0, 1.0)
+```
+
+Browser helpers:
 
 ```js
 __BGS_RESIDUAL_BIAS__.getTrainingCount()
