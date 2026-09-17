@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_RESIDUAL_BIAS_V1";
+const VERSION = "XGB_LGBM_RESIDUAL_ENSEMBLE_V1";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -15,6 +15,7 @@ const FEATURE_NAMES = [
   "stage",
   "depth"
 ];
+const MODEL_TYPE = "xgb_lgb_residual_ensemble";
 const MAX_DELTA_DEFAULT = 0.10;
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const TRAINING_KEY = "bgs_xgb_residual_training_v1";
@@ -93,7 +94,7 @@ function buildFeatures(seq, corePrediction, signal = null) {
   const remainingRatio = clip((estimatedTotalHands - (roundIndex - 1)) / Math.max(1, estimatedTotalHands));
   const stage = Number.isFinite(+signal?.state?.length) ? +signal.state.length : currentStage(seq);
   const depth = Number.isFinite(+signal?.depth?.depth) ? +signal.depth.depth : currentDepth(seq);
-  const features = {
+  return {
     core_p_b: corePB,
     round_index: roundIndex,
     estimated_total_hands: estimatedTotalHands,
@@ -102,7 +103,6 @@ function buildFeatures(seq, corePrediction, signal = null) {
     stage,
     depth
   };
-  return features;
 }
 
 function featureVector(features) {
@@ -112,47 +112,97 @@ function featureVector(features) {
   });
 }
 
-function findChild(node, nodeId) {
+function findXgbChild(node, nodeId) {
   const children = Array.isArray(node?.children) ? node.children : [];
   return children.find(child => +child.nodeid === +nodeId) || null;
 }
 
-function splitIndex(split) {
+function xgbSplitIndex(split) {
   const text = String(split ?? "");
   if (/^f\d+$/.test(text)) return +text.slice(1);
   return FEATURE_NAMES.indexOf(text);
 }
 
-function evaluateTree(tree, vector) {
+function evaluateXgbTree(tree, vector) {
   let node = tree;
   let guard = 0;
   while (node && guard++ < 256) {
     if (Object.prototype.hasOwnProperty.call(node, "leaf")) return +node.leaf || 0;
-    const index = splitIndex(node.split);
+    const index = xgbSplitIndex(node.split);
     const value = index >= 0 ? Math.fround(vector[index]) : NaN;
     const splitCondition = Math.fround(+node.split_condition);
     let nextId;
     if (!Number.isFinite(value)) nextId = node.missing;
     else nextId = value < splitCondition ? node.yes : node.no;
-    node = findChild(node, nextId);
+    node = findXgbChild(node, nextId);
   }
   return 0;
 }
 
-function predictRawDelta(features) {
-  if (!modelBundle?.trained || !Array.isArray(modelBundle.trees)) return 0;
-  const vector = featureVector(features);
-  let result = +modelBundle.base_score || 0;
-  for (const tree of modelBundle.trees) result += evaluateTree(tree, vector);
+function predictXgbDelta(vector) {
+  const xgb = modelBundle?.xgb;
+  if (!modelBundle?.trained || !xgb || !Array.isArray(xgb.trees)) return 0;
+  let result = +xgb.base_score || 0;
+  for (const tree of xgb.trees) result += evaluateXgbTree(tree, vector);
   return Number.isFinite(result) ? result : 0;
+}
+
+function evaluateLgbTree(tree, vector) {
+  let node = tree;
+  let guard = 0;
+  while (node && guard++ < 256) {
+    if (Object.prototype.hasOwnProperty.call(node, "leaf_value")) return +node.leaf_value || 0;
+
+    const index = Math.trunc(+node.split_feature);
+    const value = index >= 0 && index < vector.length ? +vector[index] : NaN;
+    let goLeft;
+
+    if (!Number.isFinite(value)) {
+      goLeft = node.default_left !== false;
+    } else {
+      const decisionType = String(node.decision_type || "<=");
+      if (decisionType === "==") {
+        const choices = String(node.threshold ?? "").split("||");
+        goLeft = choices.includes(String(value));
+      } else {
+        goLeft = value <= +node.threshold;
+      }
+    }
+
+    node = goLeft ? node.left_child : node.right_child;
+  }
+  return 0;
+}
+
+function predictLgbDelta(vector) {
+  const lgb = modelBundle?.lgb;
+  if (!modelBundle?.trained || !lgb || !Array.isArray(lgb.trees)) return 0;
+  let result = 0;
+  for (const tree of lgb.trees) result += evaluateLgbTree(tree, vector);
+  return Number.isFinite(result) ? result : 0;
+}
+
+function predictRawDelta(features) {
+  if (!modelBundle?.trained) {
+    return { deltaXgb: 0, deltaLgb: 0, deltaFinal: 0 };
+  }
+  const vector = featureVector(features);
+  const deltaXgb = predictXgbDelta(vector);
+  const deltaLgb = predictLgbDelta(vector);
+  const deltaFinal = (deltaXgb + deltaLgb) / 2.0;
+  return {
+    deltaXgb,
+    deltaLgb,
+    deltaFinal: Number.isFinite(deltaFinal) ? deltaFinal : 0
+  };
 }
 
 function applyCorrection(seq, corePrediction) {
   const signal = corePrediction?.singleHazard || null;
   const features = buildFeatures(seq, corePrediction, signal);
-  const rawDelta = predictRawDelta(features);
+  const raw = predictRawDelta(features);
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
-  const delta = clip(rawDelta, -maxDelta, maxDelta);
+  const delta = clip(raw.deltaFinal, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
   const finalPB = clip(corePB + delta, 0, 1);
   const direction = finalPB > 0.5 ? "B" : "P";
@@ -160,6 +210,7 @@ function applyCorrection(seq, corePrediction) {
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
   const active = Boolean(modelBundle?.trained);
+
   if (!active) {
     return {
       ...corePrediction,
@@ -170,6 +221,9 @@ function applyCorrection(seq, corePrediction) {
         modelLoadError,
         coreDirection,
         corePB,
+        deltaXgb: 0,
+        deltaLgb: 0,
+        deltaFinal: 0,
         rawDelta: 0,
         delta: 0,
         finalPB: corePB,
@@ -179,13 +233,14 @@ function applyCorrection(seq, corePrediction) {
       }
     };
   }
+
   const flipped = direction !== coreDirection;
   return {
     ...corePrediction,
     direction,
     confidence,
     probabilities: { B: finalPB, P: finalPP },
-    regime: flipped ? "XGB殘差修正換邊" : corePrediction.regime,
+    regime: flipped ? "XGB+LightGBM殘差修正換邊" : corePrediction.regime,
     residualBias: {
       version: VERSION,
       active: true,
@@ -193,7 +248,10 @@ function applyCorrection(seq, corePrediction) {
       modelLoadError,
       coreDirection,
       corePB,
-      rawDelta,
+      deltaXgb: raw.deltaXgb,
+      deltaLgb: raw.deltaLgb,
+      deltaFinal: raw.deltaFinal,
+      rawDelta: raw.deltaFinal,
       delta,
       finalPB,
       finalDirection: direction,
@@ -257,7 +315,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "XGB 修正完成" : "分析完成";
+  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "XGB+LGBM 修正完成" : "分析完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
 }
@@ -354,9 +412,12 @@ async function loadModel(url = MODEL_URL) {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const bundle = await response.json();
-    if (!bundle || bundle.model_type !== "xgb_residual_regressor") throw new Error("invalid_model_bundle");
+    if (!bundle || bundle.model_type !== MODEL_TYPE) throw new Error("invalid_model_bundle");
     const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
     if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("feature_schema_mismatch");
+    if (bundle.trained && (!Array.isArray(bundle?.xgb?.trees) || !Array.isArray(bundle?.lgb?.trees))) {
+      throw new Error("ensemble_models_missing");
+    }
     modelBundle = bundle;
     modelLoaded = true;
     return bundle;
@@ -414,7 +475,13 @@ if (typeof window !== "undefined") {
     exportTrainingData,
     downloadTrainingData,
     getTrainingCount: () => readTrainingRows().length,
-    getModelStatus: () => ({ loaded: modelLoaded, trained: Boolean(modelBundle?.trained), error: modelLoadError })
+    getModelStatus: () => ({
+      loaded: modelLoaded,
+      trained: Boolean(modelBundle?.trained),
+      modelType: modelBundle?.model_type || "",
+      fusion: modelBundle?.fusion?.method || "",
+      error: modelLoadError
+    })
   };
 }
 
