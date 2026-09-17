@@ -9,20 +9,20 @@ class ResidualRoadProbabilitySchemaTests(unittest.TestCase):
         self.assertEqual(len(ext.FEATURE_NAMES), 23)
         self.assertEqual(ext.FEATURE_NAMES[:7], ext._BASE_FEATURE_NAMES)
 
-    def test_build_features_contains_continue_turn_probabilities(self):
+    def test_build_features_contains_bigroad_continue_turn_probabilities(self):
         row = ext.build_features(core_p_b=0.52, history="BBPBBBPPBBPBPBB").as_dict()
         self.assertEqual(set(row), set(ext.FEATURE_NAMES))
         for name in (
-            "big_eye_p_continue",
-            "big_eye_p_turn",
-            "small_road_p_continue",
-            "small_road_p_turn",
-            "cockroach_p_continue",
-            "cockroach_p_turn",
+            "big_eye_p_bigroad_continue",
+            "big_eye_p_bigroad_turn",
+            "small_road_p_bigroad_continue",
+            "small_road_p_bigroad_turn",
+            "cockroach_p_bigroad_continue",
+            "cockroach_p_bigroad_turn",
             "big_road_p_continue",
             "big_road_p_turn",
-            "derived_p_continue",
-            "derived_p_turn",
+            "derived_p_bigroad_continue",
+            "derived_p_bigroad_turn",
         ):
             self.assertIn(name, row)
         self.assertNotIn("big_eye_color", row)
