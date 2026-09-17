@@ -1,4 +1,4 @@
-# BBB XGBoost Residual Bias Layer — 23D Continuation / Reversal
+# BBB XGBoost Residual Bias Layer — 23D Big Road Continuation / Turn
 
 BBB remains a static GitHub Pages application. The 256D/V23 R1 core is still the base predictor and XGBoost still learns only the core residual:
 
@@ -32,50 +32,64 @@ Sixteen continuation/reversal features are appended:
 
 8. `big_eye_continue_now`
 9. `big_eye_turn_now`
-10. `big_eye_p_continue`
-11. `big_eye_p_turn`
+10. `big_eye_p_bigroad_continue`
+11. `big_eye_p_bigroad_turn`
 12. `small_road_continue_now`
 13. `small_road_turn_now`
-14. `small_road_p_continue`
-15. `small_road_p_turn`
+14. `small_road_p_bigroad_continue`
+15. `small_road_p_bigroad_turn`
 16. `cockroach_continue_now`
 17. `cockroach_turn_now`
-18. `cockroach_p_continue`
-19. `cockroach_p_turn`
+18. `cockroach_p_bigroad_continue`
+19. `cockroach_p_bigroad_turn`
 20. `big_road_p_continue`
 21. `big_road_p_turn`
-22. `derived_p_continue`
-23. `derived_p_turn`
+22. `derived_p_bigroad_continue`
+23. `derived_p_bigroad_turn`
 
-The lower-road red/blue markers are **not** passed to XGBoost as color identity. They are generated internally only to determine whether each lower road is structurally continuing or turning.
+Raw lower-road red/blue markers are **not** exported to XGBoost. They are used only internally as structural states so the system can estimate what those states historically implied for the next Big Road continuation or turn.
 
-## Continuation / reversal probability
+## What the new probabilities mean
 
-For each lower road the code tracks the current same-structure run depth. It estimates the probability that the current run continues one more marker by comparing that depth with previously completed runs in the same road:
+The feature reader now answers two related questions.
 
-```text
-P(continue | current depth)
-```
-
-Previous runs that reached the current depth are eligible. Runs longer than the current depth count as historical continuations; runs that stopped exactly at that depth count as historical turns. A Beta(1,1) prior is applied so small samples do not create extreme probabilities.
-
-When there are not enough completed runs at the current depth, the estimator falls back to a Bayesian-smoothed recent transition rate over the latest 12 transitions. With insufficient history it returns 50/50.
+First, the Big Road itself gets a causal run-survival estimate:
 
 ```text
-p_turn = 1 - p_continue
+P(Big Road continues one more B/P)
+P(Big Road turns on the next B/P)
 ```
 
-The Big Road uses the same causal run-survival logic on B/P streaks. Therefore XGBoost can compare:
+At the current streak depth, previously completed streaks that reached the same depth are compared. Runs that continued beyond the depth count as continuation; runs that stopped at that depth count as turns. A Beta(1,1) prior prevents very small samples from creating extreme probabilities. If there are too few comparable runs, the estimator falls back to a Bayesian-smoothed recent transition rate over the latest 12 transitions. With insufficient history it returns 50/50.
+
+Second, each lower road estimates the historical conditional probability of the **next Big Road** result continuing or turning while that lower road is in a comparable current structural state:
 
 ```text
-Big Road P(continue) / P(turn)
-Big Eye P(continue) / P(turn)
-Small Road P(continue) / P(turn)
-Cockroach P(continue) / P(turn)
-Mean lower-road P(continue) / P(turn)
+P(next Big Road continues | current Big Eye state)
+P(next Big Road turns     | current Big Eye state)
+
+P(next Big Road continues | current Small Road state)
+P(next Big Road turns     | current Small Road state)
+
+P(next Big Road continues | current Cockroach state)
+P(next Big Road turns     | current Cockroach state)
 ```
 
-This is designed to answer whether the current table structure is more consistent with continuation or reversal. It does not assume that a raw red marker means Banker or that a raw blue marker means Player.
+The code first matches historical prefixes with the same internal lower-road signal and the same lower-road continue/turn state. If there are fewer than three exact matches, it backs off to matching the same internal signal only. If that is still too sparse, it falls back to the Big Road base continuation probability. Only past information is used, so the feature is causal and does not peek at future outcomes.
+
+`derived_p_bigroad_continue` is the mean of the currently available Big Eye / Small Road / Cockroach conditional continuation probabilities. `derived_p_bigroad_turn` is its complement.
+
+This allows XGBoost to learn interactions such as:
+
+```text
+Big Road currently has high continuation probability
++ Big Eye historically supports Big Road continuation
++ Small Road is neutral
++ Cockroach recently turned and historically supports reversal
+=> residual correction can learn whether the V23 core is under/over-estimating B
+```
+
+The model is still trained on residual error, not on a hand-written rule such as red=Banker or blue=Player.
 
 ## Lower-road calculation
 
@@ -126,4 +140,4 @@ python xgb_residual_bias_17d.py train \
 
 It reuses the original V1 XGBRegressor parameters, deterministic validation split, Brier/accuracy gates and portable-tree exporter. Only the feature schema/build step changes.
 
-The checked-in `residual_bias_model.json` intentionally remains `trained:false`. The 23D reader therefore does not silently change the current 256D/V23 prediction until real labeled data is trained and a validated 23D model bundle is committed.
+The checked-in `residual_bias_model.json` intentionally remains `trained:false`. The new 23D reader therefore does not silently change the current 256D/V23 prediction until real labeled data is trained and a validated 23D model bundle is committed.
