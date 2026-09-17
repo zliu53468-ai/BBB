@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """XGBoost + LightGBM residual ensemble for BBB.
 
-This module deliberately reuses the frozen V1 data/feature pipeline from
-xgb_residual_bias.py. Both regressors receive the exact same 7D matrix and the
-exact same residual target:
+The upstream pipeline is frozen:
+    history -> 256D/V23 core -> core_p_b -> fixed 7D features
+
+Only the residual layer is trained here. Both models consume the exact same
+7D matrix and the exact same residual target:
 
     residual = actual_B - core_p_B
 
-Inference fuses the two residual predictions with a 50/50 arithmetic mean,
-clips the fused delta to +/-10%, then adds it back to core_p_B.
+Inference:
+    delta_xgb = XGB(features_7d)
+    delta_lgb = LGBM(features_7d)
+    delta_final = (delta_xgb + delta_lgb) / 2
+    delta_clipped = clip(delta_final, -0.10, +0.10)
+    final_p_b = clip(core_p_b + delta_clipped, 0, 1)
 """
 from __future__ import annotations
 
@@ -29,29 +35,54 @@ MODEL_TYPE = "xgb_lgb_residual_ensemble"
 SCHEMA_VERSION = 2
 FUSION_METHOD = "arithmetic_mean"
 DEFAULT_MAX_DELTA = base.DEFAULT_MAX_DELTA
-DEFAULT_LGB_RANDOM_STATE = 42
+DEFAULT_RANDOM_STATE = 42
+
+XGB_PARAMS: dict[str, Any] = {
+    "objective": "reg:squarederror",
+    "n_estimators": 65,
+    "learning_rate": 0.015,
+    "max_depth": 3,
+    "min_child_weight": 3,
+    "subsample": 0.75,
+    "colsample_bytree": 0.85,
+    "random_state": DEFAULT_RANDOM_STATE,
+    "n_jobs": 1,
+    "tree_method": "hist",
+    "verbosity": 0,
+}
+
+LGB_PARAMS: dict[str, Any] = {
+    "objective": "regression",
+    "n_estimators": 65,
+    "learning_rate": 0.015,
+    "max_depth": 3,
+    "num_leaves": 6,
+    "min_data_in_leaf": 4,
+    "bagging_fraction": 0.75,
+    "feature_fraction": 0.85,
+    "colsample_bytree": 0.8,
+    "subsample": 0.8,
+    "bagging_freq": 1,
+    "verbosity": -1,
+    "random_state": DEFAULT_RANDOM_STATE,
+    "n_jobs": 1,
+}
 
 
-def build_lgb_regressor() -> LGBMRegressor:
-    """LightGBM parameters requested for 50-70 hand short-shoe data."""
-    return LGBMRegressor(
-        objective="regression",
-        n_estimators=50,
-        learning_rate=0.01,
-        max_depth=3,
-        num_leaves=7,
-        min_data_in_leaf=3,
-        bagging_fraction=0.7,
-        bagging_freq=1,
-        feature_fraction=0.8,
-        verbosity=-1,
-        random_state=DEFAULT_LGB_RANDOM_STATE,
-        n_jobs=1,
-    )
+def build_xgb_regressor(*, random_state: int = DEFAULT_RANDOM_STATE) -> XGBRegressor:
+    params = dict(XGB_PARAMS)
+    params["random_state"] = int(random_state)
+    return XGBRegressor(**params)
+
+
+def build_lgb_regressor(*, random_state: int = DEFAULT_RANDOM_STATE) -> LGBMRegressor:
+    params = dict(LGB_PARAMS)
+    params["random_state"] = int(random_state)
+    return LGBMRegressor(**params)
 
 
 class DualResidualBiasPredictor:
-    """Reusable Python API for the 50/50 XGBoost + LightGBM residual ensemble."""
+    """Reusable 50/50 XGBoost + LightGBM residual ensemble."""
 
     def __init__(
         self,
@@ -59,10 +90,10 @@ class DualResidualBiasPredictor:
         lgb_model: LGBMRegressor | None = None,
         *,
         max_delta: float = DEFAULT_MAX_DELTA,
-        xgb_random_state: int = base.DEFAULT_RANDOM_STATE,
+        random_state: int = DEFAULT_RANDOM_STATE,
     ) -> None:
-        self.xgb_model = xgb_model or base.build_regressor(random_state=xgb_random_state)
-        self.lgb_model = lgb_model or build_lgb_regressor()
+        self.xgb_model = xgb_model or build_xgb_regressor(random_state=random_state)
+        self.lgb_model = lgb_model or build_lgb_regressor(random_state=random_state)
         self.max_delta = base.clip(float(max_delta), 0.0, DEFAULT_MAX_DELTA)
 
     def fit(self, feature_rows: np.ndarray, actual_b: Sequence[int]) -> "DualResidualBiasPredictor":
@@ -70,10 +101,11 @@ class DualResidualBiasPredictor:
         y = np.asarray(actual_b, dtype=np.float32)
         if x.ndim != 2 or x.shape[1] != len(FEATURE_NAMES):
             raise ValueError(f"feature_rows must be N x {len(FEATURE_NAMES)}")
+
         core_pb = x[:, FEATURE_NAMES.index("core_p_b")]
         residual = y - core_pb
 
-        # Same 7D matrix, same rows, same residual label for both models.
+        # Exact same 7D rows and exact same residual target for both models.
         self.xgb_model.fit(x, residual)
         self.lgb_model.fit(x, residual)
         return self
@@ -96,6 +128,9 @@ class DualResidualBiasPredictor:
 
     def correct(self, features_7d: Sequence[float]) -> dict[str, Any]:
         x = np.asarray(features_7d, dtype=np.float32)
+        if x.shape[0] != len(FEATURE_NAMES):
+            raise ValueError(f"features_7d must contain {len(FEATURE_NAMES)} values")
+
         core_pb = base.clip(float(x[FEATURE_NAMES.index("core_p_b")]), 0.0, 1.0)
         parts = self.predict_components(x)
         final_pb = base.clip(core_pb + parts["delta_clipped"], 0.0, 1.0)
@@ -172,7 +207,19 @@ def _xgb_payload(model: XGBRegressor, reference_x: np.ndarray) -> dict[str, Any]
         if abs(portable - native) > 1e-5:
             raise RuntimeError(f"XGBoost portable export mismatch: {portable} vs {native}")
 
-    return {"base_score": float(base_score), "trees": trees}
+    return {
+        "base_score": float(base_score),
+        "trees": trees,
+        "params": {
+            "n_estimators": 65,
+            "learning_rate": 0.015,
+            "max_depth": 3,
+            "min_child_weight": 3,
+            "subsample": 0.75,
+            "colsample_bytree": 0.85,
+            "random_state": DEFAULT_RANDOM_STATE,
+        },
+    }
 
 
 def _lgb_tree_leaf(node: Mapping[str, Any], vector: Sequence[float]) -> float:
@@ -185,6 +232,7 @@ def _lgb_tree_leaf(node: Mapping[str, Any], vector: Sequence[float]) -> float:
 
         index = int(current.get("split_feature", -1))
         value = float(vector[index]) if 0 <= index < len(vector) else math.nan
+
         if not math.isfinite(value):
             go_left = bool(current.get("default_left", True))
         else:
@@ -199,6 +247,7 @@ def _lgb_tree_leaf(node: Mapping[str, Any], vector: Sequence[float]) -> float:
         if not isinstance(next_node, Mapping):
             return 0.0
         current = next_node
+
     return 0.0
 
 
@@ -215,16 +264,17 @@ def _lgb_payload(model: LGBMRegressor, reference_x: np.ndarray) -> dict[str, Any
     return {
         "trees": trees,
         "params": {
-            "n_estimators": 50,
-            "learning_rate": 0.01,
+            "n_estimators": 65,
+            "learning_rate": 0.015,
             "max_depth": 3,
-            "num_leaves": 7,
-            "min_data_in_leaf": 3,
-            "bagging_fraction": 0.7,
-            "bagging_freq": 1,
-            "feature_fraction": 0.8,
+            "num_leaves": 6,
+            "min_data_in_leaf": 4,
+            "bagging_fraction": 0.75,
+            "feature_fraction": 0.85,
+            "colsample_bytree": 0.8,
+            "subsample": 0.8,
             "verbosity": -1,
-            "random_state": DEFAULT_LGB_RANDOM_STATE,
+            "random_state": DEFAULT_RANDOM_STATE,
         },
     }
 
@@ -276,11 +326,14 @@ def train_command(args: argparse.Namespace) -> int:
     validation = base.deterministic_validation_mask(shoes, fraction=args.validation_fraction)
     train = ~validation
 
-    # Parallel training on the exact same rows and residual labels.
-    xgb_model = base.build_regressor(random_state=args.random_state)
-    lgb_model = build_lgb_regressor()
-    xgb_model.fit(x[train], residual[train])
-    lgb_model.fit(x[train], residual[train])
+    xgb_model = build_xgb_regressor(random_state=args.random_state)
+    lgb_model = build_lgb_regressor(random_state=args.random_state)
+
+    # Same X_train and same y_train for both residual regressors.
+    x_train = x[train]
+    y_train = residual[train]
+    xgb_model.fit(x_train, y_train)
+    lgb_model.fit(x_train, y_train)
 
     validation_metrics = evaluate_ensemble(
         xgb_model,
@@ -300,8 +353,8 @@ def train_command(args: argparse.Namespace) -> int:
     if not accepted and not args.force:
         raise SystemExit("validation gate rejected dual residual model; use --force only for diagnostics")
 
-    final_xgb = base.build_regressor(random_state=args.random_state)
-    final_lgb = build_lgb_regressor()
+    final_xgb = build_xgb_regressor(random_state=args.random_state)
+    final_lgb = build_lgb_regressor(random_state=args.random_state)
     final_xgb.fit(x, residual)
     final_lgb.fit(x, residual)
 
@@ -327,7 +380,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--min-samples", type=int, default=500)
     train.add_argument("--validation-fraction", type=float, default=0.20)
     train.add_argument("--max-delta", type=float, default=DEFAULT_MAX_DELTA)
-    train.add_argument("--random-state", type=int, default=base.DEFAULT_RANDOM_STATE)
+    train.add_argument("--random-state", type=int, default=DEFAULT_RANDOM_STATE)
     train.add_argument("--max-brier-regression", type=float, default=0.0)
     train.add_argument("--max-accuracy-regression", type=float, default=0.005)
     train.add_argument("--force", action="store_true")
