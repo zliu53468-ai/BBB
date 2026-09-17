@@ -4,23 +4,31 @@ import xgb_residual_bias as base
 import xgb_residual_bias_17d as ext
 
 
-class Residual17DSchemaTests(unittest.TestCase):
-    def test_feature_schema_has_17_fields(self):
-        self.assertEqual(len(ext.FEATURE_NAMES), 17)
+class ResidualRoadProbabilitySchemaTests(unittest.TestCase):
+    def test_feature_schema_has_23_fields(self):
+        self.assertEqual(len(ext.FEATURE_NAMES), 23)
         self.assertEqual(ext.FEATURE_NAMES[:7], ext._BASE_FEATURE_NAMES)
 
-    def test_build_features_contains_turn_state_not_raw_colors(self):
-        row = ext.build_features(core_p_b=0.52, history="BBPBBB").as_dict()
+    def test_build_features_contains_bigroad_continue_turn_probabilities(self):
+        row = ext.build_features(core_p_b=0.52, history="BBPBBBPPBBPBPBB").as_dict()
         self.assertEqual(set(row), set(ext.FEATURE_NAMES))
-        self.assertIn("big_eye_turn_now", row)
-        self.assertIn("small_road_turn_now", row)
-        self.assertIn("cockroach_turn_now", row)
-        self.assertIn("derived_turn_sync", row)
+        for name in (
+            "big_eye_p_bigroad_continue",
+            "big_eye_p_bigroad_turn",
+            "small_road_p_bigroad_continue",
+            "small_road_p_bigroad_turn",
+            "cockroach_p_bigroad_continue",
+            "cockroach_p_bigroad_turn",
+            "big_road_p_continue",
+            "big_road_p_turn",
+            "derived_p_bigroad_continue",
+            "derived_p_bigroad_turn",
+        ):
+            self.assertIn(name, row)
         self.assertNotIn("big_eye_color", row)
-        self.assertNotIn("small_road_color", row)
-        self.assertNotIn("cockroach_color", row)
+        self.assertNotIn("derived_turn_sync", row)
 
-    def test_old_v1_row_can_be_upgraded_from_history_fingerprint(self):
+    def test_old_row_can_be_upgraded_from_history_fingerprint(self):
         old = {
             "core_p_b": 0.49,
             "round_index": 8,
@@ -32,14 +40,14 @@ class Residual17DSchemaTests(unittest.TestCase):
             "history_fingerprint": "BBPPBPB",
         }
         upgraded = ext.feature_row(old)
-        self.assertEqual(len(upgraded), 17)
+        self.assertEqual(len(upgraded), 23)
         self.assertEqual(set(upgraded), set(ext.FEATURE_NAMES))
 
     def test_install_patches_base_export_schema_without_breaking_build(self):
-        ext.install_17d_schema()
-        self.assertEqual(len(base.FEATURE_NAMES), 17)
+        ext.install_road_probability_schema()
+        self.assertEqual(len(base.FEATURE_NAMES), 23)
         built = base.build_features(core_p_b=0.51, history="BPBPPB").as_dict()
-        self.assertEqual(len(built), 17)
+        self.assertEqual(len(built), 23)
 
 
 if __name__ == "__main__":

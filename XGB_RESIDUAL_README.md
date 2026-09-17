@@ -1,4 +1,4 @@
-# BBB XGBoost Residual Bias Layer — 17D Derived-Road Turns
+# BBB XGBoost Residual Bias Layer — 23D Big Road Continuation / Turn
 
 BBB remains a static GitHub Pages application. The 256D/V23 R1 core is still the base predictor and XGBoost still learns only the core residual:
 
@@ -14,9 +14,9 @@ final_p_B = core_p_B + delta
 B if final_p_B > 0.50 else P
 ```
 
-There is no PASS state and no second model.
+There is no PASS state, no LightGBM, and no second model.
 
-## 17D feature schema
+## 23D feature schema
 
 The original 7 features are preserved:
 
@@ -28,20 +28,68 @@ The original 7 features are preserved:
 6. `stage`
 7. `depth`
 
-Ten lower-road **turn-state** features are appended:
+Sixteen continuation/reversal features are appended:
 
-8. `big_eye_turn_now` — newest Big Eye marker just changed color (0/1)
-9. `big_eye_steps_since_turn` — length of the current Big Eye structural segment
-10. `big_eye_turn_rate_6` — turn density over the most recent 6 Big Eye markers
-11. `small_road_turn_now`
-12. `small_road_steps_since_turn`
-13. `small_road_turn_rate_6`
-14. `cockroach_turn_now`
-15. `cockroach_steps_since_turn`
-16. `cockroach_turn_rate_6`
-17. `derived_turn_sync` — share of currently available lower roads that turned on the newest marker
+8. `big_eye_continue_now`
+9. `big_eye_turn_now`
+10. `big_eye_p_bigroad_continue`
+11. `big_eye_p_bigroad_turn`
+12. `small_road_continue_now`
+13. `small_road_turn_now`
+14. `small_road_p_bigroad_continue`
+15. `small_road_p_bigroad_turn`
+16. `cockroach_continue_now`
+17. `cockroach_turn_now`
+18. `cockroach_p_bigroad_continue`
+19. `cockroach_p_bigroad_turn`
+20. `big_road_p_continue`
+21. `big_road_p_turn`
+22. `derived_p_bigroad_continue`
+23. `derived_p_bigroad_turn`
 
-Raw red/blue color is **not** exported to XGBoost. The standard red/blue lower-road markers are generated only internally so the code can detect structural turning points. The model therefore learns whether the three lower roads are turning, how recently they turned, and whether turns are synchronizing; it does not learn a rule such as red=Banker or blue=Player.
+Raw lower-road red/blue markers are **not** exported to XGBoost. They are used only internally as structural states so the system can estimate what those states historically implied for the next Big Road continuation or turn.
+
+## What the new probabilities mean
+
+The feature reader now answers two related questions.
+
+First, the Big Road itself gets a causal run-survival estimate:
+
+```text
+P(Big Road continues one more B/P)
+P(Big Road turns on the next B/P)
+```
+
+At the current streak depth, previously completed streaks that reached the same depth are compared. Runs that continued beyond the depth count as continuation; runs that stopped at that depth count as turns. A Beta(1,1) prior prevents very small samples from creating extreme probabilities. If there are too few comparable runs, the estimator falls back to a Bayesian-smoothed recent transition rate over the latest 12 transitions. With insufficient history it returns 50/50.
+
+Second, each lower road estimates the historical conditional probability of the **next Big Road** result continuing or turning while that lower road is in a comparable current structural state:
+
+```text
+P(next Big Road continues | current Big Eye state)
+P(next Big Road turns     | current Big Eye state)
+
+P(next Big Road continues | current Small Road state)
+P(next Big Road turns     | current Small Road state)
+
+P(next Big Road continues | current Cockroach state)
+P(next Big Road turns     | current Cockroach state)
+```
+
+The code first matches historical prefixes with the same internal lower-road signal and the same lower-road continue/turn state. If there are fewer than three exact matches, it backs off to matching the same internal signal only. If that is still too sparse, it falls back to the Big Road base continuation probability. Only past information is used, so the feature is causal and does not peek at future outcomes.
+
+`derived_p_bigroad_continue` is the mean of the currently available Big Eye / Small Road / Cockroach conditional continuation probabilities. `derived_p_bigroad_turn` is its complement.
+
+This allows XGBoost to learn interactions such as:
+
+```text
+Big Road currently has high continuation probability
++ Big Eye historically supports Big Road continuation
++ Small Road is neutral
++ Cockroach recently turned and historically supports reversal
+=> residual correction can learn whether the V23 core is under/over-estimating B
+```
+
+The model is still trained on residual error, not on a hand-written rule such as red=Banker or blue=Player.
 
 ## Lower-road calculation
 
@@ -58,26 +106,16 @@ derived_road_features.py
 derived_road_features.js
 ```
 
-For each road, the internal marker stream is converted to:
-
-```text
-turn_now          = newest marker != previous marker
-steps_since_turn  = current same-color segment length
-turn_rate_6       = switches / transitions across the latest up-to-6 markers
-```
-
-`derived_turn_sync` is computed only across lower roads that have enough markers to determine whether the latest marker is a turn.
-
 ## Browser runtime
 
-The page loads:
+The page continues to load:
 
 ```text
 derived_road_features.js
 residual_bias_runtime_17d.js
 ```
 
-The runtime collects labeled rows using the 17D schema. Existing V1 7D rows remain usable when their `history_fingerprint` is present, because the trainer can reconstruct the ten turn-state features from that history.
+The runtime builds its feature order dynamically from `derived_road_features.js`, so the legacy runtime filename can serve the new 23D schema. Existing older labeled rows remain usable when their `history_fingerprint` is present because the trainer reconstructs the 16 road probability features from historical B/P data.
 
 Useful browser-console helpers:
 
@@ -90,16 +128,16 @@ __BGS_RESIDUAL_BIAS__.getModelStatus()
 
 ## Train and export
 
-Use the 17D wrapper, not the original 7D trainer:
+The compatibility wrapper filename is still `xgb_residual_bias_17d.py`, but its schema is now 23D:
 
 ```bash
 python -m pip install -r requirements-xgb.txt
 python xgb_residual_bias_17d.py train \
-  --input bgs_xgb_residual_17d_training.json \
+  --input bgs_xgb_residual_training.json \
   --output residual_bias_model.json \
   --min-samples 500
 ```
 
-`xgb_residual_bias_17d.py` reuses the original V1 XGBRegressor parameters, validation split, Brier/accuracy gates and portable-tree exporter. It changes only the feature build/schema from 7D to 17D.
+It reuses the original V1 XGBRegressor parameters, deterministic validation split, Brier/accuracy gates and portable-tree exporter. Only the feature schema/build step changes.
 
-The checked-in `residual_bias_model.json` intentionally remains `trained:false`. Therefore changing the reader to turn-state features does not invent a win-rate increase or silently change the current 256D/V23 output. XGB becomes active only after real labeled data is trained and a validated 17D model bundle is committed.
+The checked-in `residual_bias_model.json` intentionally remains `trained:false`. The new 23D reader therefore does not silently change the current 256D/V23 prediction until real labeled data is trained and a validated 23D model bundle is committed.

@@ -11,16 +11,49 @@ assert.deepStrictEqual(roads.derivedMarkers("BPP", 1), [-1]);
 assert.deepStrictEqual(roads.derivedMarkers("BBPP", 1), [1]);
 assert.deepStrictEqual(roads.derivedMarkers("BTPB", 1), roads.derivedMarkers("BPB", 1));
 
-assert.strictEqual(roads.turnNow([-1, -1, 1]), 1);
-assert.strictEqual(roads.turnNow([-1, 1, 1]), 0);
-assert.strictEqual(roads.stepsSinceTurn([-1, -1, 1]), 1);
-assert.strictEqual(roads.stepsSinceTurn([-1, 1, 1]), 2);
-assert.strictEqual(roads.turnRate([-1, 1, -1, -1], 6), 2 / 3);
+const features = roads.buildFeatures("BBPBBBPPBBPBPBB");
+for (const prefix of ["big_eye", "small_road", "cockroach"]) {
+  assert.ok(
+    Math.abs(
+      features[`${prefix}_p_bigroad_continue`] +
+      features[`${prefix}_p_bigroad_turn`] - 1
+    ) < 1e-12
+  );
+}
+assert.ok(Math.abs(features.big_road_p_continue + features.big_road_p_turn - 1) < 1e-12);
+assert.ok(
+  Math.abs(
+    features.derived_p_bigroad_continue +
+    features.derived_p_bigroad_turn - 1
+  ) < 1e-12
+);
 
-const features = roads.buildFeatures("BBPBBB");
-assert.ok(!Object.prototype.hasOwnProperty.call(features, "big_eye_color"));
-assert.strictEqual(features.big_eye_turn_now, 1);
-assert.strictEqual(features.small_road_turn_now, 1);
-assert.strictEqual(features.derived_turn_sync, 1);
+const state = roads.roadProbabilityState("BBPBBBPPBBPBPBB", 1);
+if (state.available) {
+  assert.strictEqual(state.continue_now + state.turn_now, 1);
+}
 
-console.log("derived-road turn-state JS tests passed");
+const sparse = roads.buildFeatures("B");
+assert.strictEqual(sparse.big_road_p_continue, 0.5);
+assert.strictEqual(sparse.derived_p_bigroad_continue, 0.5);
+
+for (const legacy of [
+  "big_eye_color",
+  "small_road_color",
+  "cockroach_color",
+  "derived_turn_sync"
+]) {
+  assert.ok(!Object.prototype.hasOwnProperty.call(features, legacy));
+}
+
+for (const name of roads.featureNames) {
+  assert.ok(Number.isFinite(features[name]), `${name} should be finite`);
+}
+
+const history = "BBPBBBPPBBPBPBBPBPBBPP";
+assert.strictEqual(
+  roads.derivedToBigRoadContinueProb(history, 1),
+  roads.derivedToBigRoadContinueProb(history, 1)
+);
+
+console.log("derived-road to Big Road continuation/reversal JS tests passed");
