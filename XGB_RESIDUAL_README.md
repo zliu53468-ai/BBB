@@ -1,67 +1,95 @@
-# BBB XGBoost Residual Bias Layer
+# BBB XGBoost + Particle Filter Residual Layer
 
-This repository is deployed as static GitHub Pages, so Python/XGBoost cannot run directly inside the browser. The integration is split into two deterministic parts:
+The upstream pipeline is frozen and unchanged:
 
-1. `xgb_residual_bias.py` trains `XGBRegressor` offline on labeled B/P outcomes and exports the trees to `residual_bias_model.json`.
-2. `residual_bias_runtime.js` evaluates that exported tree bundle in the browser and applies the bounded residual correction to the existing deterministic V23 R1 core.
+```text
+牌路歷史 -> 256D/V23 core -> Core P(B) -> fixed 7D features
+```
 
-The 256D/V23 R1 core remains the base predictor. XGBoost does **not** replace it and does **not** directly train on a B/P class target. The regression target is:
+Only the downstream residual correction layer is expanded. No LightGBM or LSTM is used.
+
+## Residual target
+
+The XGBoost model still learns:
 
 ```text
 residual = actual_B - core_p_B
 ```
 
-Production correction:
+The seven features are unchanged and remain in the exact same order:
+
+1. `core_p_b`
+2. `round_index`
+3. `estimated_total_hands`
+4. `remaining_ratio`
+5. `sx_markov_p_same`
+6. `stage`
+7. `depth`
+
+## XGBoost configuration
 
 ```text
-delta = clip(xgb_residual, -0.10, +0.10)
-final_p_B = core_p_B + delta
+n_estimators=50
+learning_rate=0.02
+max_depth=3
+min_child_weight=3.5
+alpha=0.1
+lambda=0.4
+random_state=42
+```
+
+Python uses the sklearn aliases `reg_alpha=0.1` and `reg_lambda=0.4`.
+
+## Particle Filter configuration
+
+The particle filter tracks one latent state: the current shoe's hidden residual drift.
+
+```text
+n_particles=1000
+state_dim=1
+Q=0.005
+R=0.25
+resample_threshold=500
+resampling=systematic
+```
+
+A new shoe resets the particle filter. After each actual B/P result, the browser computes `actual_B - core_p_b`, updates particle weights, performs systematic resampling when effective sample size is below 500, then applies one process transition to project the latent state for the next round. Ties do not update the directional residual filter.
+
+## Fusion inference
+
+```text
+delta_xgb = XGBoost(features_7d)
+delta_pf = current particle-filter latent residual estimate
+delta_final = (delta_xgb + delta_pf) / 2.0
+delta_clipped = clip(delta_final, -0.10, +0.10)
+final_p_B = clip(core_p_B + delta_clipped, 0.0, 1.0)
 B if final_p_B > 0.50 else P
 ```
 
 There is no PASS state.
 
-## Feature order
+## Training and online update
 
-The browser and Python trainer use the exact same seven features:
-
-1. `core_p_b` - current deterministic core B probability.
-2. `round_index` - next round index, capped to 1..70.
-3. `estimated_total_hands` - cut/shoe-length estimate (default 60; accepted 40..90).
-4. `remaining_ratio` - derived from round index and estimated shoe length.
-5. `sx_markov_p_same` - local first-order S/X Markov probability of next token being SAME.
-6. `stage` - current B/P streak length.
-7. `depth` - current repeated S/X token depth.
-
-## Collect labeled production rows
-
-The browser runtime stores local labeled rows after a prediction is followed by an actual B/P result. Ties are non-directional and are not used as labels.
-
-From the browser console:
-
-```js
-__BGS_RESIDUAL_BIAS__.getTrainingCount()
-__BGS_RESIDUAL_BIAS__.downloadTrainingData()
-```
-
-To set the current cut/shoe-length estimate:
-
-```js
-__BGS_RESIDUAL_BIAS__.setEstimatedTotalHands(60)
-```
-
-The value is saved in local storage for subsequent predictions.
-
-## Train and export
+XGBoost is trained offline on the existing browser-exported 7D rows:
 
 ```bash
 python -m pip install -r requirements-xgb.txt
-python xgb_residual_bias.py train \
+python xgb_particle_filter_residual.py train \
   --input bgs_xgb_residual_training.json \
   --output residual_bias_model.json \
   --min-samples 500
 ```
 
-The trainer uses a deterministic shoe-level validation split, `n_jobs=1`, fixed random state, and a conservative regularized `XGBRegressor`. It refuses to export a production model when held-out Brier/accuracy gates regress unless `--force` is explicitly used for diagnostics.
+The particle filter is not batch-fit. It updates online inside `residual_bias_runtime.js` as the current shoe advances.
 
-After a validated `residual_bias_model.json` is committed, the static BBB page loads it automatically. Until then the checked-in placeholder has `trained:false`, so `delta=0` and the existing V23 R1 output is preserved exactly.
+The trainer keeps the existing deterministic shoe-level validation split and validates the fused XGB + PF correction. The checked-in model bundle remains `trained:false` until real labeled data is trained. While XGBoost is untrained, the runtime continues collecting/updating PF state but does not apply downstream correction to the displayed prediction, preserving the current V23 core output.
+
+Browser console helpers:
+
+```js
+__BGS_RESIDUAL_BIAS__.getTrainingCount()
+__BGS_RESIDUAL_BIAS__.downloadTrainingData()
+__BGS_RESIDUAL_BIAS__.getParticleFilterStatus()
+__BGS_RESIDUAL_BIAS__.getParticleFilterEstimate()
+__BGS_RESIDUAL_BIAS__.resetParticleFilter()
+```
