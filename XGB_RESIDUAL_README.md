@@ -16,40 +16,40 @@ Both models train on the exact same 7D feature matrix and the exact same label:
 residual = actual_B - core_p_B
 ```
 
-## Adaptive XGBoost parameters
+## High-sensitivity XGBoost parameters
 
 ```text
-n_estimators=50
-learning_rate=0.025
-max_depth=3
-min_child_weight=2.5
-alpha=0.1
-lambda=0.3
-subsample=0.8
-colsample_bytree=0.8
+n_estimators=75
+learning_rate=0.035
+max_depth=4
+min_child_weight=1.5
+alpha=0.01
+lambda=0.05
+subsample=0.85
+colsample_bytree=0.9
 random_state=42
 ```
 
-In the Python API, XGBoost regularization is passed as the canonical scikit names `reg_alpha=0.1` and `reg_lambda=0.3`.
+In the Python API, XGBoost regularization is passed as `reg_alpha=0.01` and `reg_lambda=0.05`.
 
-## Adaptive LightGBM parameters
+## High-sensitivity LightGBM parameters
 
 ```text
-n_estimators=50
-learning_rate=0.025
-max_depth=3
-num_leaves=6
-min_data_in_leaf=3
-reg_alpha=0.1
-reg_lambda=0.3
-bagging_fraction=0.8
-feature_fraction=0.8
+n_estimators=75
+learning_rate=0.035
+max_depth=4
+num_leaves=10
+min_data_in_leaf=2
+reg_alpha=0.01
+reg_lambda=0.05
+bagging_fraction=0.85
+feature_fraction=0.9
 bagging_freq=1
 verbosity=-1
 random_state=42
 ```
 
-`bagging_freq=1` keeps the requested `bagging_fraction=0.8` sampling active.
+`bagging_freq=1` keeps the requested `bagging_fraction=0.85` sampling active.
 
 ## 7D feature order
 
@@ -63,7 +63,7 @@ The feature dimension is unchanged:
 6. `stage`
 7. `depth`
 
-No additional road feature is added.
+No additional feature is added.
 
 ## Fusion inference
 
