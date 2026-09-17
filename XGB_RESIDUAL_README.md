@@ -1,4 +1,4 @@
-# BBB XGBoost Residual Bias Layer — 17D Derived-Road Turns
+# BBB XGBoost Residual Bias Layer — 23D Continuation / Reversal
 
 BBB remains a static GitHub Pages application. The 256D/V23 R1 core is still the base predictor and XGBoost still learns only the core residual:
 
@@ -14,9 +14,9 @@ final_p_B = core_p_B + delta
 B if final_p_B > 0.50 else P
 ```
 
-There is no PASS state and no second model.
+There is no PASS state, no LightGBM, and no second model.
 
-## 17D feature schema
+## 23D feature schema
 
 The original 7 features are preserved:
 
@@ -28,20 +28,54 @@ The original 7 features are preserved:
 6. `stage`
 7. `depth`
 
-Ten lower-road **turn-state** features are appended:
+Sixteen continuation/reversal features are appended:
 
-8. `big_eye_turn_now` — newest Big Eye marker just changed color (0/1)
-9. `big_eye_steps_since_turn` — length of the current Big Eye structural segment
-10. `big_eye_turn_rate_6` — turn density over the most recent 6 Big Eye markers
-11. `small_road_turn_now`
-12. `small_road_steps_since_turn`
-13. `small_road_turn_rate_6`
-14. `cockroach_turn_now`
-15. `cockroach_steps_since_turn`
-16. `cockroach_turn_rate_6`
-17. `derived_turn_sync` — share of currently available lower roads that turned on the newest marker
+8. `big_eye_continue_now`
+9. `big_eye_turn_now`
+10. `big_eye_p_continue`
+11. `big_eye_p_turn`
+12. `small_road_continue_now`
+13. `small_road_turn_now`
+14. `small_road_p_continue`
+15. `small_road_p_turn`
+16. `cockroach_continue_now`
+17. `cockroach_turn_now`
+18. `cockroach_p_continue`
+19. `cockroach_p_turn`
+20. `big_road_p_continue`
+21. `big_road_p_turn`
+22. `derived_p_continue`
+23. `derived_p_turn`
 
-Raw red/blue color is **not** exported to XGBoost. The standard red/blue lower-road markers are generated only internally so the code can detect structural turning points. The model therefore learns whether the three lower roads are turning, how recently they turned, and whether turns are synchronizing; it does not learn a rule such as red=Banker or blue=Player.
+The lower-road red/blue markers are **not** passed to XGBoost as color identity. They are generated internally only to determine whether each lower road is structurally continuing or turning.
+
+## Continuation / reversal probability
+
+For each lower road the code tracks the current same-structure run depth. It estimates the probability that the current run continues one more marker by comparing that depth with previously completed runs in the same road:
+
+```text
+P(continue | current depth)
+```
+
+Previous runs that reached the current depth are eligible. Runs longer than the current depth count as historical continuations; runs that stopped exactly at that depth count as historical turns. A Beta(1,1) prior is applied so small samples do not create extreme probabilities.
+
+When there are not enough completed runs at the current depth, the estimator falls back to a Bayesian-smoothed recent transition rate over the latest 12 transitions. With insufficient history it returns 50/50.
+
+```text
+p_turn = 1 - p_continue
+```
+
+The Big Road uses the same causal run-survival logic on B/P streaks. Therefore XGBoost can compare:
+
+```text
+Big Road P(continue) / P(turn)
+Big Eye P(continue) / P(turn)
+Small Road P(continue) / P(turn)
+Cockroach P(continue) / P(turn)
+Mean lower-road P(continue) / P(turn)
+```
+
+This is designed to answer whether the current table structure is more consistent with continuation or reversal. It does not assume that a raw red marker means Banker or that a raw blue marker means Player.
 
 ## Lower-road calculation
 
@@ -58,26 +92,16 @@ derived_road_features.py
 derived_road_features.js
 ```
 
-For each road, the internal marker stream is converted to:
-
-```text
-turn_now          = newest marker != previous marker
-steps_since_turn  = current same-color segment length
-turn_rate_6       = switches / transitions across the latest up-to-6 markers
-```
-
-`derived_turn_sync` is computed only across lower roads that have enough markers to determine whether the latest marker is a turn.
-
 ## Browser runtime
 
-The page loads:
+The page continues to load:
 
 ```text
 derived_road_features.js
 residual_bias_runtime_17d.js
 ```
 
-The runtime collects labeled rows using the 17D schema. Existing V1 7D rows remain usable when their `history_fingerprint` is present, because the trainer can reconstruct the ten turn-state features from that history.
+The runtime builds its feature order dynamically from `derived_road_features.js`, so the legacy runtime filename can serve the new 23D schema. Existing older labeled rows remain usable when their `history_fingerprint` is present because the trainer reconstructs the 16 road probability features from historical B/P data.
 
 Useful browser-console helpers:
 
@@ -90,16 +114,16 @@ __BGS_RESIDUAL_BIAS__.getModelStatus()
 
 ## Train and export
 
-Use the 17D wrapper, not the original 7D trainer:
+The compatibility wrapper filename is still `xgb_residual_bias_17d.py`, but its schema is now 23D:
 
 ```bash
 python -m pip install -r requirements-xgb.txt
 python xgb_residual_bias_17d.py train \
-  --input bgs_xgb_residual_17d_training.json \
+  --input bgs_xgb_residual_training.json \
   --output residual_bias_model.json \
   --min-samples 500
 ```
 
-`xgb_residual_bias_17d.py` reuses the original V1 XGBRegressor parameters, validation split, Brier/accuracy gates and portable-tree exporter. It changes only the feature build/schema from 7D to 17D.
+It reuses the original V1 XGBRegressor parameters, deterministic validation split, Brier/accuracy gates and portable-tree exporter. Only the feature schema/build step changes.
 
-The checked-in `residual_bias_model.json` intentionally remains `trained:false`. Therefore changing the reader to turn-state features does not invent a win-rate increase or silently change the current 256D/V23 output. XGB becomes active only after real labeled data is trained and a validated 17D model bundle is committed.
+The checked-in `residual_bias_model.json` intentionally remains `trained:false`. The 23D reader therefore does not silently change the current 256D/V23 prediction until real labeled data is trained and a validated 23D model bundle is committed.
