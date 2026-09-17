@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_RESIDUAL_BIAS_V1";
+const VERSION = "XGB_TWIN_RESIDUAL_V1";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -93,7 +93,7 @@ function buildFeatures(seq, corePrediction, signal = null) {
   const remainingRatio = clip((estimatedTotalHands - (roundIndex - 1)) / Math.max(1, estimatedTotalHands));
   const stage = Number.isFinite(+signal?.state?.length) ? +signal.state.length : currentStage(seq);
   const depth = Number.isFinite(+signal?.depth?.depth) ? +signal.depth.depth : currentDepth(seq);
-  const features = {
+  return {
     core_p_b: corePB,
     round_index: roundIndex,
     estimated_total_hands: estimatedTotalHands,
@@ -102,7 +102,6 @@ function buildFeatures(seq, corePrediction, signal = null) {
     stage,
     depth
   };
-  return features;
 }
 
 function featureVector(features) {
@@ -139,20 +138,34 @@ function evaluateTree(tree, vector) {
   return 0;
 }
 
-function predictRawDelta(features) {
-  if (!modelBundle?.trained || !Array.isArray(modelBundle.trees)) return 0;
-  const vector = featureVector(features);
-  let result = +modelBundle.base_score || 0;
-  for (const tree of modelBundle.trees) result += evaluateTree(tree, vector);
+function predictModelDelta(model, vector) {
+  if (!model || !Array.isArray(model.trees)) return 0;
+  let result = +model.base_score || 0;
+  for (const tree of model.trees) result += evaluateTree(tree, vector);
   return Number.isFinite(result) ? result : 0;
+}
+
+function predictRawDelta(features) {
+  if (!modelBundle?.trained) {
+    return { deltaSensitive: 0, deltaRobust: 0, deltaFinal: 0 };
+  }
+  const vector = featureVector(features);
+  const deltaSensitive = predictModelDelta(modelBundle.sensitive, vector);
+  const deltaRobust = predictModelDelta(modelBundle.robust, vector);
+  const deltaFinal = (deltaSensitive + deltaRobust) / 2.0;
+  return {
+    deltaSensitive,
+    deltaRobust,
+    deltaFinal: Number.isFinite(deltaFinal) ? deltaFinal : 0
+  };
 }
 
 function applyCorrection(seq, corePrediction) {
   const signal = corePrediction?.singleHazard || null;
   const features = buildFeatures(seq, corePrediction, signal);
-  const rawDelta = predictRawDelta(features);
+  const raw = predictRawDelta(features);
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
-  const delta = clip(rawDelta, -maxDelta, maxDelta);
+  const delta = clip(raw.deltaFinal, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
   const finalPB = clip(corePB + delta, 0, 1);
   const direction = finalPB > 0.5 ? "B" : "P";
@@ -160,6 +173,7 @@ function applyCorrection(seq, corePrediction) {
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
   const active = Boolean(modelBundle?.trained);
+
   if (!active) {
     return {
       ...corePrediction,
@@ -170,6 +184,9 @@ function applyCorrection(seq, corePrediction) {
         modelLoadError,
         coreDirection,
         corePB,
+        deltaSensitive: 0,
+        deltaRobust: 0,
+        deltaFinal: 0,
         rawDelta: 0,
         delta: 0,
         finalPB: corePB,
@@ -179,13 +196,14 @@ function applyCorrection(seq, corePrediction) {
       }
     };
   }
+
   const flipped = direction !== coreDirection;
   return {
     ...corePrediction,
     direction,
     confidence,
     probabilities: { B: finalPB, P: finalPP },
-    regime: flipped ? "XGB殘差修正換邊" : corePrediction.regime,
+    regime: flipped ? "XGB雙子星殘差修正換邊" : corePrediction.regime,
     residualBias: {
       version: VERSION,
       active: true,
@@ -193,7 +211,10 @@ function applyCorrection(seq, corePrediction) {
       modelLoadError,
       coreDirection,
       corePB,
-      rawDelta,
+      deltaSensitive: raw.deltaSensitive,
+      deltaRobust: raw.deltaRobust,
+      deltaFinal: raw.deltaFinal,
+      rawDelta: raw.deltaFinal,
       delta,
       finalPB,
       finalDirection: direction,
@@ -257,7 +278,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "XGB 修正完成" : "分析完成";
+  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "XGB雙子星修正完成" : "分析完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
 }
@@ -354,7 +375,7 @@ async function loadModel(url = MODEL_URL) {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const bundle = await response.json();
-    if (!bundle || bundle.model_type !== "xgb_residual_regressor") throw new Error("invalid_model_bundle");
+    if (!bundle || bundle.model_type !== "xgb_twin_residual_ensemble") throw new Error("invalid_model_bundle");
     const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
     if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("feature_schema_mismatch");
     modelBundle = bundle;
