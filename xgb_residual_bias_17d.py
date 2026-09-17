@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""17D BBB XGBoost residual trainer: original 7D + 10 derived-road features.
+"""23D BBB XGBoost residual trainer.
 
-This intentionally reuses the original XGBoost residual model class, training
-procedure, validation gate and portable-tree exporter from xgb_residual_bias.py.
-Only the feature schema/build step is extended.
+Schema:
+- original 7D core/residual features
+- 16 road continuation/reversal features from Big Road + derived roads
+
+The underlying XGBRegressor, residual target, validation gate and portable-tree
+export remain the original V1 implementation. Only the feature schema/build step
+is extended.
 """
 from __future__ import annotations
 
@@ -18,11 +22,11 @@ from derived_road_features import DERIVED_FEATURE_NAMES, build_derived_road_feat
 _BASE_FEATURE_NAMES = tuple(base.FEATURE_NAMES)
 _BASE_BUILD_FEATURES = base.build_features
 FEATURE_NAMES: tuple[str, ...] = _BASE_FEATURE_NAMES + tuple(DERIVED_FEATURE_NAMES)
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
-class ResidualFeatures17D:
+class ResidualFeaturesRoadProb:
     values: Mapping[str, float]
 
     def as_dict(self) -> dict[str, float]:
@@ -40,7 +44,7 @@ def build_features(
     estimated_total_hands: float = 60.0,
     stage: float | None = None,
     depth: float | None = None,
-) -> ResidualFeatures17D:
+) -> ResidualFeaturesRoadProb:
     base_object = _BASE_BUILD_FEATURES(
         core_p_b=core_p_b,
         history=history,
@@ -48,17 +52,14 @@ def build_features(
         stage=stage,
         depth=depth,
     )
-    # Do not call the V1 object's as_dict() after FEATURE_NAMES is patched to
-    # 17D: that method reads the module global dynamically. Read the original
-    # seven dataclass attributes explicitly, then append the ten road features.
     combined = {name: float(getattr(base_object, name)) for name in _BASE_FEATURE_NAMES}
     combined.update(build_derived_road_features(history))
-    return ResidualFeatures17D(combined)
+    return ResidualFeaturesRoadProb(combined)
 
 
 def feature_row(record: Mapping[str, Any]) -> dict[str, float]:
-    # Native 17D rows are used as-is. Older V1 rows can be upgraded from their
-    # history/history_fingerprint so already-collected labels remain usable.
+    # Native 23D rows are used as-is. Older rows can be rebuilt from their
+    # history/history_fingerprint so previously collected labels remain useful.
     if all(name in record for name in FEATURE_NAMES):
         return {name: float(record[name]) for name in FEATURE_NAMES}
 
@@ -72,10 +73,7 @@ def feature_row(record: Mapping[str, Any]) -> dict[str, float]:
     return features.as_dict()
 
 
-def install_17d_schema() -> None:
-    # The original module's training/evaluation/export functions reference these
-    # globals at call time, so patching them keeps the original V1 algorithm while
-    # extending only the input schema.
+def install_road_probability_schema() -> None:
     base.FEATURE_NAMES = FEATURE_NAMES
     base.SCHEMA_VERSION = SCHEMA_VERSION
     base.build_features = build_features
@@ -83,7 +81,7 @@ def install_17d_schema() -> None:
 
 
 def main() -> int:
-    install_17d_schema()
+    install_road_probability_schema()
     return int(base.main())
 
 
