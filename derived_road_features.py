@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Deterministic continuation/reversal features from baccarat Big Road + derived roads.
+"""Continuation/reversal features from Baccarat Big Road + three derived roads.
 
-Raw red/blue lower-road markers are used only internally to build structural
-continuation/reversal states. XGBoost receives probabilities and state flags,
-not raw color identity.
+Raw lower-road red/blue markers are used only internally as structural signals.
+XGBoost is not given raw color identity or color distribution.
 
-For each lower road:
-- continue_now: newest marker continued the previous marker color.
-- turn_now: newest marker flipped from the previous marker color.
-- p_continue: Bayesian-smoothed probability that the current structural run continues.
-- p_turn: complement of p_continue.
+For each derived road the exported features are:
+- continue_now / turn_now: whether the newest derived marker continued or flipped.
+- p_bigroad_continue / p_bigroad_turn: causal, Bayesian-smoothed historical
+  probability that the *next Big Road B/P result* continues or turns when this
+  derived road is in a comparable current structural state.
 
-The Big Road receives the same continuation/turn probability treatment using
-B/P streaks. Cross-road means summarize the three lower roads.
+Big Road also gets its own run-survival P(continue)/P(turn). Cross-road features
+average the three derived-road conditional probabilities.
 """
 from __future__ import annotations
 
@@ -21,24 +20,26 @@ from typing import Any, Iterable, Sequence
 DERIVED_FEATURE_NAMES: tuple[str, ...] = (
     "big_eye_continue_now",
     "big_eye_turn_now",
-    "big_eye_p_continue",
-    "big_eye_p_turn",
+    "big_eye_p_bigroad_continue",
+    "big_eye_p_bigroad_turn",
     "small_road_continue_now",
     "small_road_turn_now",
-    "small_road_p_continue",
-    "small_road_p_turn",
+    "small_road_p_bigroad_continue",
+    "small_road_p_bigroad_turn",
     "cockroach_continue_now",
     "cockroach_turn_now",
-    "cockroach_p_continue",
-    "cockroach_p_turn",
+    "cockroach_p_bigroad_continue",
+    "cockroach_p_bigroad_turn",
     "big_road_p_continue",
     "big_road_p_turn",
-    "derived_p_continue",
-    "derived_p_turn",
+    "derived_p_bigroad_continue",
+    "derived_p_bigroad_turn",
 )
 
 PRIOR = 1.0
 LOCAL_WINDOW = 12
+CONDITIONAL_WINDOW = 24
+MIN_EXACT_MATCHES = 3
 
 
 def normalize_bp(history: str | Iterable[Any] | None) -> list[str]:
@@ -99,7 +100,6 @@ def _run_lengths(values: Sequence[Any]) -> list[int]:
 
 
 def recent_continue_rate(values: Sequence[Any], window: int = LOCAL_WINDOW, prior: float = PRIOR) -> float:
-    """Smoothed local frequency of same-state transitions."""
     if len(values) < 2:
         return 0.5
     recent = list(values[-max(2, int(window) + 1):])
@@ -109,17 +109,10 @@ def recent_continue_rate(values: Sequence[Any], window: int = LOCAL_WINDOW, prio
 
 
 def survival_continue_prob(values: Sequence[Any], prior: float = PRIOR) -> float:
-    """Estimate P(current run continues one more step) from previous run lengths.
-
-    At current depth d, previous completed runs that reached depth d are eligible.
-    Runs longer than d are continuations; runs ending exactly at d are turns.
-    Falls back to the local transition rate when history is sparse.
-    """
+    """Estimate P(current run continues one more result) from prior run lengths."""
     if len(values) < 2:
         return 0.5
     runs = _run_lengths(values)
-    if not runs:
-        return 0.5
     depth = runs[-1]
     completed = runs[:-1]
     eligible = [length for length in completed if length >= depth]
@@ -130,64 +123,132 @@ def survival_continue_prob(values: Sequence[Any], prior: float = PRIOR) -> float
     return float((continued + prior) / (continued + stopped + 2.0 * prior))
 
 
-def continuation_state(values: Sequence[Any]) -> dict[str, float]:
-    if len(values) < 2:
-        return {
-            "continue_now": 0.0,
-            "turn_now": 0.0,
-            "p_continue": 0.5,
-            "p_turn": 0.5,
-            "available": 0.0,
-        }
-    continued_now = 1.0 if values[-1] == values[-2] else 0.0
-    turned_now = 1.0 - continued_now
-    p_continue = max(0.0, min(1.0, survival_continue_prob(values)))
+def marker_continue_turn(markers: Sequence[int]) -> tuple[float, float]:
+    if len(markers) < 2:
+        return 0.0, 0.0
+    continued = 1.0 if int(markers[-1]) == int(markers[-2]) else 0.0
+    return continued, 1.0 - continued
+
+
+def _smoothed_binary_prob(outcomes: Sequence[int], prior: float = PRIOR) -> float:
+    if not outcomes:
+        return 0.5
+    positives = sum(1 for value in outcomes if int(value) == 1)
+    negatives = len(outcomes) - positives
+    return float((positives + prior) / (positives + negatives + 2.0 * prior))
+
+
+def derived_to_bigroad_continue_prob(
+    history: str | Sequence[Any] | None,
+    offset: int,
+    *,
+    window: int = CONDITIONAL_WINDOW,
+) -> float:
+    """Estimate P(next Big Road continues | current derived-road structural state).
+
+    The current raw marker color is never exported. It is used internally to find
+    comparable historical prefixes. We first match both current marker identity
+    and whether that derived road just continued/turned. If too few exact matches
+    exist, we back off to marker identity only, then to the Big Road base rate.
+    """
+    seq = normalize_bp(history)
+    if len(seq) < 2:
+        return 0.5
+
+    current_markers = derived_markers(seq, offset)
+    if not current_markers:
+        return survival_continue_prob(seq)
+
+    current_signal = int(current_markers[-1])
+    current_continue, _ = marker_continue_turn(current_markers)
+    current_transition = int(current_continue) if len(current_markers) >= 2 else None
+
+    exact: list[int] = []
+    signal_only: list[int] = []
+
+    for t in range(1, len(seq)):
+        prefix = seq[:t]
+        markers = derived_markers(prefix, offset)
+        if not markers or int(markers[-1]) != current_signal:
+            continue
+
+        bigroad_continued = 1 if seq[t] == seq[t - 1] else 0
+        signal_only.append(bigroad_continued)
+
+        if current_transition is not None and len(markers) >= 2:
+            continued, _ = marker_continue_turn(markers)
+            if int(continued) == current_transition:
+                exact.append(bigroad_continued)
+
+    exact = exact[-max(1, int(window)):]
+    signal_only = signal_only[-max(1, int(window)):]
+
+    if len(exact) >= MIN_EXACT_MATCHES:
+        return _smoothed_binary_prob(exact)
+    if len(signal_only) >= 2:
+        return _smoothed_binary_prob(signal_only)
+    return survival_continue_prob(seq)
+
+
+def road_probability_state(history: str | Sequence[Any] | None, offset: int) -> dict[str, float]:
+    markers = derived_markers(history, offset)
+    continue_now, turn_now = marker_continue_turn(markers)
+    p_bigroad_continue = max(0.0, min(1.0, derived_to_bigroad_continue_prob(history, offset)))
     return {
-        "continue_now": continued_now,
-        "turn_now": turned_now,
-        "p_continue": p_continue,
-        "p_turn": 1.0 - p_continue,
-        "available": 1.0,
+        "continue_now": continue_now,
+        "turn_now": turn_now,
+        "p_bigroad_continue": p_bigroad_continue,
+        "p_bigroad_turn": 1.0 - p_bigroad_continue,
+        "available": 1.0 if markers else 0.0,
     }
 
 
-def road_continuation_state(history: str | Sequence[Any] | None, offset: int) -> dict[str, float]:
-    return continuation_state(derived_markers(history, offset))
-
-
 def big_road_continuation_state(history: str | Sequence[Any] | None) -> dict[str, float]:
-    return continuation_state(normalize_bp(history))
+    seq = normalize_bp(history)
+    p_continue = max(0.0, min(1.0, survival_continue_prob(seq)))
+    continue_now = 0.0
+    turn_now = 0.0
+    if len(seq) >= 2:
+        continue_now = 1.0 if seq[-1] == seq[-2] else 0.0
+        turn_now = 1.0 - continue_now
+    return {
+        "continue_now": continue_now,
+        "turn_now": turn_now,
+        "p_continue": p_continue,
+        "p_turn": 1.0 - p_continue,
+        "available": 1.0 if len(seq) >= 2 else 0.0,
+    }
 
 
 def build_derived_road_features(history: str | Sequence[Any] | None) -> dict[str, float]:
-    big_eye = road_continuation_state(history, 1)
-    small = road_continuation_state(history, 2)
-    cockroach = road_continuation_state(history, 3)
+    big_eye = road_probability_state(history, 1)
+    small = road_probability_state(history, 2)
+    cockroach = road_probability_state(history, 3)
     big_road = big_road_continuation_state(history)
 
     states = (big_eye, small, cockroach)
     available_states = [state for state in states if state["available"] > 0]
     if available_states:
-        derived_p_continue = sum(state["p_continue"] for state in available_states) / len(available_states)
+        derived_p_continue = sum(state["p_bigroad_continue"] for state in available_states) / len(available_states)
     else:
-        derived_p_continue = 0.5
+        derived_p_continue = big_road["p_continue"]
     derived_p_turn = 1.0 - derived_p_continue
 
     return {
         "big_eye_continue_now": big_eye["continue_now"],
         "big_eye_turn_now": big_eye["turn_now"],
-        "big_eye_p_continue": big_eye["p_continue"],
-        "big_eye_p_turn": big_eye["p_turn"],
+        "big_eye_p_bigroad_continue": big_eye["p_bigroad_continue"],
+        "big_eye_p_bigroad_turn": big_eye["p_bigroad_turn"],
         "small_road_continue_now": small["continue_now"],
         "small_road_turn_now": small["turn_now"],
-        "small_road_p_continue": small["p_continue"],
-        "small_road_p_turn": small["p_turn"],
+        "small_road_p_bigroad_continue": small["p_bigroad_continue"],
+        "small_road_p_bigroad_turn": small["p_bigroad_turn"],
         "cockroach_continue_now": cockroach["continue_now"],
         "cockroach_turn_now": cockroach["turn_now"],
-        "cockroach_p_continue": cockroach["p_continue"],
-        "cockroach_p_turn": cockroach["p_turn"],
+        "cockroach_p_bigroad_continue": cockroach["p_bigroad_continue"],
+        "cockroach_p_bigroad_turn": cockroach["p_bigroad_turn"],
         "big_road_p_continue": big_road["p_continue"],
         "big_road_p_turn": big_road["p_turn"],
-        "derived_p_continue": float(derived_p_continue),
-        "derived_p_turn": float(derived_p_turn),
+        "derived_p_bigroad_continue": float(derived_p_continue),
+        "derived_p_bigroad_turn": float(derived_p_turn),
     }
