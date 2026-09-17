@@ -41,14 +41,17 @@ def build_features(
     stage: float | None = None,
     depth: float | None = None,
 ) -> ResidualFeatures17D:
-    base_features = _BASE_BUILD_FEATURES(
+    base_object = _BASE_BUILD_FEATURES(
         core_p_b=core_p_b,
         history=history,
         estimated_total_hands=estimated_total_hands,
         stage=stage,
         depth=depth,
-    ).as_dict()
-    combined = dict(base_features)
+    )
+    # Do not call the V1 object's as_dict() after FEATURE_NAMES is patched to
+    # 17D: that method reads the module global dynamically. Read the original
+    # seven dataclass attributes explicitly, then append the ten road features.
+    combined = {name: float(getattr(base_object, name)) for name in _BASE_FEATURE_NAMES}
     combined.update(build_derived_road_features(history))
     return ResidualFeatures17D(combined)
 
