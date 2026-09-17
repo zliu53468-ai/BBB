@@ -39,14 +39,14 @@ DEFAULT_RANDOM_STATE = 42
 
 XGB_PARAMS: dict[str, Any] = {
     "objective": "reg:squarederror",
-    "n_estimators": 50,
-    "learning_rate": 0.025,
-    "max_depth": 3,
-    "min_child_weight": 2.5,
-    "reg_alpha": 0.1,
-    "reg_lambda": 0.3,
-    "subsample": 0.8,
-    "colsample_bytree": 0.8,
+    "n_estimators": 75,
+    "learning_rate": 0.035,
+    "max_depth": 4,
+    "min_child_weight": 1.5,
+    "reg_alpha": 0.01,
+    "reg_lambda": 0.05,
+    "subsample": 0.85,
+    "colsample_bytree": 0.9,
     "random_state": DEFAULT_RANDOM_STATE,
     "n_jobs": 1,
     "tree_method": "hist",
@@ -55,15 +55,15 @@ XGB_PARAMS: dict[str, Any] = {
 
 LGB_PARAMS: dict[str, Any] = {
     "objective": "regression",
-    "n_estimators": 50,
-    "learning_rate": 0.025,
-    "max_depth": 3,
-    "num_leaves": 6,
-    "min_data_in_leaf": 3,
-    "reg_alpha": 0.1,
-    "reg_lambda": 0.3,
-    "bagging_fraction": 0.8,
-    "feature_fraction": 0.8,
+    "n_estimators": 75,
+    "learning_rate": 0.035,
+    "max_depth": 4,
+    "num_leaves": 10,
+    "min_data_in_leaf": 2,
+    "reg_alpha": 0.01,
+    "reg_lambda": 0.05,
+    "bagging_fraction": 0.85,
+    "feature_fraction": 0.9,
     "bagging_freq": 1,
     "verbosity": -1,
     "random_state": DEFAULT_RANDOM_STATE,
@@ -107,7 +107,6 @@ class DualResidualBiasPredictor:
         core_pb = x[:, FEATURE_NAMES.index("core_p_b")]
         residual = y - core_pb
 
-        # Exact same 7D rows and exact same residual target for both models.
         self.xgb_model.fit(x, residual)
         self.lgb_model.fit(x, residual)
         return self
@@ -213,14 +212,14 @@ def _xgb_payload(model: XGBRegressor, reference_x: np.ndarray) -> dict[str, Any]
         "base_score": float(base_score),
         "trees": trees,
         "params": {
-            "n_estimators": 50,
-            "learning_rate": 0.025,
-            "max_depth": 3,
-            "min_child_weight": 2.5,
-            "alpha": 0.1,
-            "lambda": 0.3,
-            "subsample": 0.8,
-            "colsample_bytree": 0.8,
+            "n_estimators": 75,
+            "learning_rate": 0.035,
+            "max_depth": 4,
+            "min_child_weight": 1.5,
+            "alpha": 0.01,
+            "lambda": 0.05,
+            "subsample": 0.85,
+            "colsample_bytree": 0.9,
             "random_state": DEFAULT_RANDOM_STATE,
         },
     }
@@ -268,15 +267,15 @@ def _lgb_payload(model: LGBMRegressor, reference_x: np.ndarray) -> dict[str, Any
     return {
         "trees": trees,
         "params": {
-            "n_estimators": 50,
-            "learning_rate": 0.025,
-            "max_depth": 3,
-            "num_leaves": 6,
-            "min_data_in_leaf": 3,
-            "reg_alpha": 0.1,
-            "reg_lambda": 0.3,
-            "bagging_fraction": 0.8,
-            "feature_fraction": 0.8,
+            "n_estimators": 75,
+            "learning_rate": 0.035,
+            "max_depth": 4,
+            "num_leaves": 10,
+            "min_data_in_leaf": 2,
+            "reg_alpha": 0.01,
+            "reg_lambda": 0.05,
+            "bagging_fraction": 0.85,
+            "feature_fraction": 0.9,
             "bagging_freq": 1,
             "verbosity": -1,
             "random_state": DEFAULT_RANDOM_STATE,
@@ -334,7 +333,6 @@ def train_command(args: argparse.Namespace) -> int:
     xgb_model = build_xgb_regressor(random_state=args.random_state)
     lgb_model = build_lgb_regressor(random_state=args.random_state)
 
-    # Same X_train and same y_train for both residual regressors.
     x_train = x[train]
     y_train = residual[train]
     xgb_model.fit(x_train, y_train)
