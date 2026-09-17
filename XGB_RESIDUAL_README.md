@@ -1,67 +1,90 @@
-# BBB XGBoost Residual Bias Layer
+# BBB Dual Residual Ensemble — XGBoost + LightGBM
 
-This repository is deployed as static GitHub Pages, so Python/XGBoost cannot run directly inside the browser. The integration is split into two deterministic parts:
+The upstream pipeline is frozen and unchanged:
 
-1. `xgb_residual_bias.py` trains `XGBRegressor` offline on labeled B/P outcomes and exports the trees to `residual_bias_model.json`.
-2. `residual_bias_runtime.js` evaluates that exported tree bundle in the browser and applies the bounded residual correction to the existing deterministic V23 R1 core.
+```text
+牌路歷史 -> 256D/V23 core -> Core P(B) -> fixed 7D features
+```
 
-The 256D/V23 R1 core remains the base predictor. XGBoost does **not** replace it and does **not** directly train on a B/P class target. The regression target is:
+Only the residual correction layer is upgraded.
+
+## Residual target
+
+Both models train on the exact same 7D feature matrix and the exact same label:
 
 ```text
 residual = actual_B - core_p_B
 ```
 
-Production correction:
+XGBoost keeps the original V1 training logic and parameters in `xgb_residual_bias.py`.
+LightGBM is added in `dual_residual_ensemble.py`.
+
+## LightGBM short-shoe parameters
 
 ```text
-delta = clip(xgb_residual, -0.10, +0.10)
-final_p_B = core_p_B + delta
+n_estimators=50
+learning_rate=0.01
+max_depth=3
+num_leaves=7
+min_data_in_leaf=3
+bagging_fraction=0.7
+bagging_freq=1
+feature_fraction=0.8
+verbosity=-1
+random_state=42
+```
+
+`bagging_freq=1` activates the requested `bagging_fraction=0.7` sampling.
+
+## 7D feature order
+
+The feature dimension is unchanged:
+
+1. `core_p_b`
+2. `round_index`
+3. `estimated_total_hands`
+4. `remaining_ratio`
+5. `sx_markov_p_same`
+6. `stage`
+7. `depth`
+
+No additional road feature is added.
+
+## Fusion inference
+
+```text
+delta_xgb = XGBoost(features_7d)
+delta_lgb = LightGBM(features_7d)
+delta_final = (delta_xgb + delta_lgb) / 2.0
+delta_clipped = clip(delta_final, -0.10, +0.10)
+final_p_B = clip(core_p_B + delta_clipped, 0.0, 1.0)
 B if final_p_B > 0.50 else P
 ```
 
 There is no PASS state.
 
-## Feature order
+## Training
 
-The browser and Python trainer use the exact same seven features:
-
-1. `core_p_b` - current deterministic core B probability.
-2. `round_index` - next round index, capped to 1..70.
-3. `estimated_total_hands` - cut/shoe-length estimate (default 60; accepted 40..90).
-4. `remaining_ratio` - derived from round index and estimated shoe length.
-5. `sx_markov_p_same` - local first-order S/X Markov probability of next token being SAME.
-6. `stage` - current B/P streak length.
-7. `depth` - current repeated S/X token depth.
-
-## Collect labeled production rows
-
-The browser runtime stores local labeled rows after a prediction is followed by an actual B/P result. Ties are non-directional and are not used as labels.
-
-From the browser console:
-
-```js
-__BGS_RESIDUAL_BIAS__.getTrainingCount()
-__BGS_RESIDUAL_BIAS__.downloadTrainingData()
-```
-
-To set the current cut/shoe-length estimate:
-
-```js
-__BGS_RESIDUAL_BIAS__.setEstimatedTotalHands(60)
-```
-
-The value is saved in local storage for subsequent predictions.
-
-## Train and export
+Install dependencies:
 
 ```bash
 python -m pip install -r requirements-xgb.txt
-python xgb_residual_bias.py train \
+```
+
+Train both residual models from the same browser-exported rows:
+
+```bash
+python dual_residual_ensemble.py train \
   --input bgs_xgb_residual_training.json \
   --output residual_bias_model.json \
   --min-samples 500
 ```
 
-The trainer uses a deterministic shoe-level validation split, `n_jobs=1`, fixed random state, and a conservative regularized `XGBRegressor`. It refuses to export a production model when held-out Brier/accuracy gates regress unless `--force` is explicitly used for diagnostics.
+The existing deterministic shoe-level validation split is reused. Validation reports Core, XGBoost-only, LightGBM-only and fused accuracy/Brier. The production gate is applied to the fused prediction.
 
-After a validated `residual_bias_model.json` is committed, the static BBB page loads it automatically. Until then the checked-in placeholder has `trained:false`, so `delta=0` and the existing V23 R1 output is preserved exactly.
+## Static browser deployment
+
+`dual_residual_ensemble.py` exports both tree sets into `residual_bias_model.json`.
+`residual_bias_runtime.js` evaluates XGBoost and LightGBM in parallel in the browser, takes the arithmetic mean, clips the fused residual to +/-10%, and applies it to the unchanged Core P(B).
+
+The checked-in model bundle remains `trained:false` until real labeled data is trained. While `trained:false`, delta stays zero and the frozen V23 core output is preserved.
