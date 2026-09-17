@@ -2,16 +2,16 @@
 "use strict";
 
 const FEATURE_NAMES = [
-  "big_eye_color",
-  "big_eye_run",
-  "big_eye_switch_rate_6",
-  "small_road_color",
-  "small_road_run",
-  "small_road_switch_rate_6",
-  "cockroach_color",
-  "cockroach_run",
-  "cockroach_switch_rate_6",
-  "derived_road_agreement"
+  "big_eye_turn_now",
+  "big_eye_steps_since_turn",
+  "big_eye_turn_rate_6",
+  "small_road_turn_now",
+  "small_road_steps_since_turn",
+  "small_road_turn_rate_6",
+  "cockroach_turn_now",
+  "cockroach_steps_since_turn",
+  "cockroach_turn_rate_6",
+  "derived_turn_sync"
 ];
 
 function normalizeBP(history) {
@@ -56,64 +56,76 @@ function derivedMarkers(history, offset) {
   return markers;
 }
 
-function currentMarkerRun(markers) {
-  if (!markers.length) return 0;
-  const color = +markers.at(-1);
-  let run = 1;
-  for (let i = markers.length - 2; i >= 0; i--) {
-    if (+markers[i] !== color) break;
-    run += 1;
-  }
-  return run;
+function turnNow(markers) {
+  if (markers.length < 2) return 0;
+  return +markers.at(-1) !== +markers.at(-2) ? 1 : 0;
 }
 
-function switchRate(markers, window = 6) {
+function stepsSinceTurn(markers) {
+  if (!markers.length) return 0;
+  const current = +markers.at(-1);
+  let steps = 1;
+  for (let i = markers.length - 2; i >= 0; i--) {
+    if (+markers[i] !== current) break;
+    steps += 1;
+  }
+  return steps;
+}
+
+function turnRate(markers, window = 6) {
   if (markers.length < 2) return 0;
   const recent = markers.slice(-Math.max(2, Math.trunc(+window || 6)));
-  let changes = 0;
+  let turns = 0;
   for (let i = 1; i < recent.length; i++) {
-    if (+recent[i] !== +recent[i - 1]) changes += 1;
+    if (+recent[i] !== +recent[i - 1]) turns += 1;
   }
-  return changes / Math.max(1, recent.length - 1);
+  return turns / Math.max(1, recent.length - 1);
 }
 
-function roadState(history, offset) {
+function roadTurnState(history, offset) {
   const markers = derivedMarkers(history, offset);
   return {
-    color: markers.length ? +markers.at(-1) : 0,
-    run: currentMarkerRun(markers),
-    switch_rate_6: switchRate(markers, 6)
+    turn_now: turnNow(markers),
+    steps_since_turn: stepsSinceTurn(markers),
+    turn_rate_6: turnRate(markers, 6),
+    available: markers.length >= 2 ? 1 : 0
   };
 }
 
 function buildFeatures(history) {
-  const bigEye = roadState(history, 1);
-  const small = roadState(history, 2);
-  const cockroach = roadState(history, 3);
-  const agreement = (bigEye.color + small.color + cockroach.color) / 3;
+  const bigEye = roadTurnState(history, 1);
+  const small = roadTurnState(history, 2);
+  const cockroach = roadTurnState(history, 3);
+  const states = [bigEye, small, cockroach];
+  const available = states.reduce((sum, state) => sum + state.available, 0);
+  const turnSync = available
+    ? states.reduce((sum, state) => sum + state.turn_now, 0) / available
+    : 0;
+
   return {
-    big_eye_color: bigEye.color,
-    big_eye_run: bigEye.run,
-    big_eye_switch_rate_6: bigEye.switch_rate_6,
-    small_road_color: small.color,
-    small_road_run: small.run,
-    small_road_switch_rate_6: small.switch_rate_6,
-    cockroach_color: cockroach.color,
-    cockroach_run: cockroach.run,
-    cockroach_switch_rate_6: cockroach.switch_rate_6,
-    derived_road_agreement: agreement
+    big_eye_turn_now: bigEye.turn_now,
+    big_eye_steps_since_turn: bigEye.steps_since_turn,
+    big_eye_turn_rate_6: bigEye.turn_rate_6,
+    small_road_turn_now: small.turn_now,
+    small_road_steps_since_turn: small.steps_since_turn,
+    small_road_turn_rate_6: small.turn_rate_6,
+    cockroach_turn_now: cockroach.turn_now,
+    cockroach_steps_since_turn: cockroach.steps_since_turn,
+    cockroach_turn_rate_6: cockroach.turn_rate_6,
+    derived_turn_sync: turnSync
   };
 }
 
 if (typeof window !== "undefined") {
   window.__BGS_DERIVED_ROADS__ = {
-    version: "DERIVED_ROADS_17D_V1",
+    version: "DERIVED_ROADS_TURN_17D_V2",
     featureNames: FEATURE_NAMES,
     normalizeBP,
     derivedMarkers,
-    currentMarkerRun,
-    switchRate,
-    roadState,
+    turnNow,
+    stepsSinceTurn,
+    turnRate,
+    roadTurnState,
     buildFeatures
   };
 }
