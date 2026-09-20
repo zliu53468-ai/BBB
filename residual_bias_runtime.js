@@ -654,6 +654,8 @@ function rotateShoeId() {
     localStorage.removeItem(PENDING_KEY);
     localStorage.removeItem(SHOE_PF_STATE_KEY);
     localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY);
+    localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY_V2);
+    localStorage.removeItem(PHYSICAL_OBS_KEY);
     localStorage.removeItem(LEGACY_REGIME_STATE_KEY);
     localStorage.removeItem(LEGACY_PF_STATE_KEY);
   } catch (_) {}
@@ -678,7 +680,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "PF Base-Margin 7D-XGB 修正完成" : "分析完成";
+  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "Enhanced PF 11D-XGB 修正完成" : "分析完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
 }
@@ -696,22 +698,65 @@ function writeTrainingRows(rows) {
   try { localStorage.setItem(TRAINING_KEY, JSON.stringify(rows.slice(-MAX_TRAINING_ROWS))); } catch (_) {}
 }
 
+function normalizePhysicalObservation(value) {
+  if (!value || typeof value !== "object") return null;
+  const totalCards = [4, 5, 6].includes(+value.totalCards) ? +value.totalCards : null;
+  const playerPoint = Number.isInteger(+value.playerPoint) && +value.playerPoint >= 0 && +value.playerPoint <= 9 ? +value.playerPoint : null;
+  const bankerPoint = Number.isInteger(+value.bankerPoint) && +value.bankerPoint >= 0 && +value.bankerPoint <= 9 ? +value.bankerPoint : null;
+  if (totalCards === null && playerPoint === null && bankerPoint === null) return null;
+  return { totalCards, playerPoint, bankerPoint };
+}
+
+function setPhysicalObservation(value) {
+  const normalized = normalizePhysicalObservation(value);
+  if (!normalized) throw new Error("physical observation requires totalCards 4/5/6 and/or Player/Banker points 0..9");
+  try { localStorage.setItem(PHYSICAL_OBS_KEY, JSON.stringify(normalized)); } catch (_) {}
+  return normalized;
+}
+
+function consumePhysicalObservation(explicitValue = null) {
+  const direct = normalizePhysicalObservation(explicitValue);
+  if (direct) return direct;
+
+  try {
+    const fromWindow = normalizePhysicalObservation(window.__BGS_RESIDUAL_PHYSICAL_OBSERVATION__);
+    if (fromWindow) {
+      window.__BGS_RESIDUAL_PHYSICAL_OBSERVATION__ = null;
+      return fromWindow;
+    }
+  } catch (_) {}
+
+  try {
+    const stored = normalizePhysicalObservation(JSON.parse(localStorage.getItem(PHYSICAL_OBS_KEY) || "null"));
+    localStorage.removeItem(PHYSICAL_OBS_KEY);
+    return stored;
+  } catch (_) {
+    return null;
+  }
+}
+
 function registerPrediction(seq, prediction) {
   const residual = prediction?.residualBias || {};
   const features = residual.features || buildFeatures(seq, prediction, prediction?.singleHazard || null);
+  const tensor = residual.pseudoCardFeature || {};
   const pending = {
     shoe_id: getShoeId(),
     created_at: Date.now(),
     history_fingerprint: seq.join(""),
     core_p_b: +features.core_p_b,
     core_direction: residual.coreDirection || String(prediction?.direction || ""),
-    pf_delta: Number.isFinite(+residual.pfDelta) ? +residual.pfDelta : shoePFDelta(),
+    pseudo_card_feature: {
+      p_4cards: Number.isFinite(+tensor.p_4cards) ? +tensor.p_4cards : 0,
+      p_6cards: Number.isFinite(+tensor.p_6cards) ? +tensor.p_6cards : 0,
+      win_point: Number.isFinite(+tensor.win_point) ? +tensor.win_point : 0,
+      lose_point: Number.isFinite(+tensor.lose_point) ? +tensor.lose_point : 0
+    },
     features
   };
   try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (_) {}
 }
 
-function settlePending(actualOutcome) {
+function settlePending(actualOutcome, physicalObservation = null) {
   const actual = String(actualOutcome || "").toUpperCase();
   if (actual === "T") return;
   if (actual !== "B" && actual !== "P") return;
@@ -723,15 +768,24 @@ function settlePending(actualOutcome) {
   const actualB = actual === "B" ? 1 : 0;
   const corePB = clip(+pending.features.core_p_b || 0.5);
   const residualTarget = actualB - corePB;
+  const physical = consumePhysicalObservation(physicalObservation);
+  const tensor = pending.pseudo_card_feature || {};
+
   const row = {
-    schema_version: 5,
+    schema_version: 6,
     shoe_id: String(pending.shoe_id || getShoeId()),
     created_at: +pending.created_at || Date.now(),
     history_fingerprint: String(pending.history_fingerprint || ""),
     actual_outcome: actual,
     actual_b: actualB,
     residual_target: residualTarget,
-    pf_delta: Number.isFinite(+pending.pf_delta) ? +pending.pf_delta : 0,
+    p_4cards: Number.isFinite(+tensor.p_4cards) ? +tensor.p_4cards : 0,
+    p_6cards: Number.isFinite(+tensor.p_6cards) ? +tensor.p_6cards : 0,
+    win_point: Number.isFinite(+tensor.win_point) ? +tensor.win_point : 0,
+    lose_point: Number.isFinite(+tensor.lose_point) ? +tensor.lose_point : 0,
+    observed_total_cards: physical?.totalCards ?? null,
+    observed_player_point: physical?.playerPoint ?? null,
+    observed_banker_point: physical?.bankerPoint ?? null,
     ...pending.features
   };
 
@@ -742,7 +796,12 @@ function settlePending(actualOutcome) {
 
   if (!duplicate) {
     rows.push(row);
-    updateShoeParticleFilter(actualB, corePB, +pending.features.round_index || 1);
+    updateShoeParticleFilter(
+      actualB,
+      corePB,
+      +pending.features.round_index || 1,
+      physical
+    );
   }
   writeTrainingRows(rows);
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
@@ -756,10 +815,16 @@ function rebuildShoeParticleFilter(rows = readTrainingRows()) {
     const actualB = Number.isFinite(+row?.actual_b)
       ? +row.actual_b
       : (String(row?.actual_outcome || "").toUpperCase() === "B" ? 1 : 0);
+    const physical = normalizePhysicalObservation({
+      totalCards: row?.observed_total_cards,
+      playerPoint: row?.observed_player_point,
+      bankerPoint: row?.observed_banker_point
+    });
     updateShoeParticleFilter(
       actualB,
       clip(+row?.core_p_b || 0.5),
-      +row?.round_index || 1
+      +row?.round_index || 1,
+      physical
     );
   }
 }
@@ -779,10 +844,11 @@ function rollbackTrainingIfNeeded() {
 
 function exportTrainingData() {
   return JSON.stringify({
-    schema_version: 5,
+    schema_version: 6,
     feature_names: FEATURE_NAMES,
+    pseudo_card_feature_names: PSEUDO_CARD_FEATURE_NAMES,
     model_feature_names: MODEL_FEATURE_NAMES,
-    feature_schema: "7D_WITH_PF_BASE_MARGIN",
+    feature_schema: "7D_PLUS_4D_PSEUDO_CARD_TENSOR",
     rows: readTrainingRows()
   }, null, 2);
 }
@@ -792,7 +858,7 @@ function downloadTrainingData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `bgs_xgb_pf_base_margin_7d_training_${Date.now()}.json`;
+  a.download = `bgs_xgb_enhanced_pf_11d_training_${Date.now()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -806,7 +872,7 @@ async function loadModel(url = MODEL_URL) {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const bundle = await response.json();
-    if (!bundle || bundle.model_type !== "xgb_pf_base_margin_residual") throw new Error("invalid_model_bundle");
+    if (!bundle || bundle.model_type !== "xgb_enhanced_pf_tensor_residual") throw new Error("invalid_model_bundle");
     const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
     if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("upstream_feature_schema_mismatch");
     const modelNames = Array.isArray(bundle.model_feature_names) ? bundle.model_feature_names : [];
