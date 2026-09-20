@@ -1,20 +1,23 @@
-# BBB Shoe Regime PF -> 8D XGBoost Residual Layer
+# BBB Blind Shoe Particle Filter -> 8D XGBoost Residual Layer
 
 The upstream pipeline is frozen and unchanged:
 
 ```text
-牌路歷史 -> 256D/V23 Core -> Core P(B) -> fixed 7D features
+牌路歷史
+-> 256D / V23 Core
+-> Core P(B)
+-> fixed 7D features
 ```
 
-Only the downstream correction layer is modified. The Particle Filter does not perform card counting, card-composition estimation, or remaining-card inference.
+Only the downstream correction layer changes.
 
 ## Architecture
 
 ```text
 fixed 7D
-  -> Shoe Regime Particle Filter
-  -> regime_state
-  -> [fixed 7D + regime_state] = 8D
+  -> Shoe Particle Filter
+  -> pseudo_count
+  -> [fixed 7D + pseudo_count] = 8D
   -> XGBoost residual model
   -> residual Delta
   -> clip Delta to +/-0.10
@@ -22,7 +25,7 @@ fixed 7D
   -> B / P
 ```
 
-The fixed upstream seven features remain:
+The original seven upstream features remain unchanged:
 
 1. `core_p_b`
 2. `round_index`
@@ -34,62 +37,81 @@ The fixed upstream seven features remain:
 
 The only downstream feature added for XGBoost is:
 
-8. `regime_state`
+8. `pseudo_count`
 
-## Shoe Regime Particle Filter
+## Important limitation
+
+The application does not see actual card identities or point totals.
+
+Therefore `pseudo_count` is **not a true remaining-card count**. It is the
+weighted expectation across 1000 plausible hidden eight-deck shoes that remain
+consistent with the observed B/P sequence under the Monte Carlo model.
+
+## Shoe Particle Filter
+
+Each particle is one virtual remaining shoe represented by point-value counts
+for baccarat values 0 through 9.
+
+Fresh eight-deck shoe:
+
+```text
+0-point cards = 128
+1-point cards = 32
+2-point cards = 32
+...
+9-point cards = 32
+
+total cards = 416
+```
+
+The 0-point bin contains 10/J/Q/K.
+
+Configuration:
 
 ```text
 n_particles = 1000
-state_dim = 1
 R = 0.25
 ESS threshold = 500
 resampling = systematic
-state_clip = [-1.0, +1.0]
 random_state = 42
+pseudo_count range = [-1.0, +1.0]
 ```
 
-A new shoe calls `reset()`. All particles are initialized exactly at zero and `regime_state = 0`.
+### Virtual round propagation
 
-### Three-dimensional likelihood
+For each settled real B/P round, every particle:
 
-After each settled B/P round:
+1. samples cards without replacement from its own remaining point counts;
+2. deals Player/Banker in normal baccarat order;
+3. applies natural 8/9 handling;
+4. applies Player third-card rules;
+5. applies Banker third-card rules;
+6. consumes the sampled cards from that virtual shoe;
+7. produces a simulated B/P/T result and simulated final point margin.
+
+The particle is then weighted against the real B/P result.
+
+### Core residual likelihood
 
 ```text
 actual_residual = actual_B - core_p_b
-
-directionality
-= +1 if Core direction matched the result
-= -1 otherwise
-
-residual_alignment
-= clip(1 - 2 * abs(actual_residual), -1, +1)
-
-persistence
-= current directionality if the correct/miss state repeats
-= 0 otherwise
 ```
 
-Likelihood weights:
+The observed B/P direction plus residual magnitude determine how strongly the
+real result selects among virtual shoes.
 
-```text
-directionality     0.55
-residual_alignment 0.30
-persistence        0.15
-```
+Particles whose simulated outcome and simulated point-margin behavior are more
+compatible with the observed result receive higher Gaussian likelihood under
+`R=0.25`.
 
-Each particle is scored against all three measurements using Gaussian likelihood with `R=0.25`.
+This uses the Core residual only as an observation-strength signal; it does not
+alter the frozen Core or fixed 7D features.
 
-If the correct/miss state suddenly flips, the round is treated as a turbulence break:
+### Adaptive particle rejuvenation
 
-```text
-measurements = [0, 0, 0]
-particle weights are reset to uniform
-then the neutral R=0.25 likelihood is applied
-```
-
-This pulls the environment estimate back toward the neutral turbulence zone instead of immediately declaring a new persistent regime.
-
-### Round-adaptive process noise
+Q is used as the fraction of particles that receive one feasible hidden-card
+point-bin swap after each observed round. The swap preserves the total number of
+remaining cards and keeps each point bin inside the original eight-deck bounds.
 
 ```text
 current_round < 15:
@@ -102,7 +124,28 @@ current_round > 45:
     Q = 0.020
 ```
 
-The round number controls only PF responsiveness. It does not directly choose Banker or Player.
+This increases latent-shoe diversity near the tail/cut-card region.
+
+### pseudo_count
+
+After filtering, all weighted particles simulate the next virtual round without
+mutating their stored remaining shoe.
+
+```text
+banker_mass = weighted forecast mass for B
+player_mass = weighted forecast mass for P
+
+pseudo_count =
+    (banker_mass - player_mass)
+    / (banker_mass + player_mass)
+```
+
+Ties are excluded from the denominator.
+
+The result is clipped to `[-1, +1]`.
+
+A new shoe calls `reset()`, restores all 1000 particles to the fresh
+eight-deck point counts, and sets `pseudo_count = 0`.
 
 ## 8D XGBoost residual model
 
@@ -120,22 +163,26 @@ Python uses `reg_alpha=0.05` and `reg_lambda=0.25`.
 
 ## Causal training
 
-Historical training is replayed shoe by shoe.
+Training is replayed shoe by shoe.
 
 For round `t`:
 
 ```text
-regime_state_t = PF state before outcome t is known
-features_8d_t = [features_7d_t, regime_state_t]
+pseudo_count_t = PF state before outcome t is known
+features_8d_t = [features_7d_t, pseudo_count_t]
 target_t = actual_B_t - core_p_b_t
 ```
 
-Only after the 8D row is captured does outcome `t` update the PF for round `t+1`. This prevents current-label leakage.
+Only after the 8D row is captured does the real result for round `t` update the
+1000 virtual shoes and produce `pseudo_count_(t+1)`.
+
+This prevents current-label leakage.
 
 Training:
 
 ```bash
 python -m pip install -r requirements-xgb.txt
+
 python xgb_particle_filter_residual.py train \
   --input bgs_xgb_residual_training.json \
   --output residual_bias_model.json \
@@ -145,28 +192,34 @@ python xgb_particle_filter_residual.py train \
 ## Inference
 
 ```text
-regime_state = current PF estimate
-features_8d = [features_7d, regime_state]
+pseudo_count = current Shoe Particle Filter estimate
+features_8d = [features_7d, pseudo_count]
 raw_delta = XGBoost(features_8d)
 delta = clip(raw_delta, -0.10, +0.10)
 final_p_B = clip(core_p_B + delta, 0.0, 1.0)
 direction = B if final_p_B > 0.50 else P
 ```
 
-## Module separation
+## Modules
 
 ```text
-shoe_regime_filter.py
-  -> Shoe Regime PF only
-  -> outputs regime_state
+shoe_particle_filter.py
+  -> 1000 latent eight-deck virtual shoes
+  -> sampling without replacement
+  -> baccarat drawing rules
+  -> B/P observation weighting
+  -> pseudo_count
 
 xgb_particle_filter_residual.py
-  -> causal 8D training
-  -> XGBoost residual fit/predict/export
+  -> causal historical PF replay
+  -> fixed 7D + pseudo_count = 8D
+  -> XGBoost residual training/inference/export
   -> Delta +/-0.10 safety clip
 
 residual_bias_runtime.js
-  -> browser runtime implementation matching the same PF rules
+  -> browser implementation of the same virtual-shoe PF
+  -> persists particle state per shoe
 ```
 
-The checked-in `residual_bias_model.json` remains `trained:false` until real labeled B/P rows are trained and exported.
+The checked-in `residual_bias_model.json` remains `trained:false` until real
+labeled B/P training rows are fitted and exported.
