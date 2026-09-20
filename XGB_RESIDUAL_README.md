@@ -1,29 +1,28 @@
-# BBB Shoe Regime Filter -> 8D XGBoost Residual Layer
+# BBB Shoe Regime PF -> 8D XGBoost Residual Layer
 
 The upstream pipeline is frozen and unchanged:
 
 ```text
-牌路歷史 -> 256D/V23 core -> Core P(B) -> fixed 7D features
+牌路歷史 -> 256D/V23 Core -> Core P(B) -> fixed 7D features
 ```
 
-The Particle Filter is now used only as a **shoe-environment state tracker** after the fixed 7D output. It is not a card-composition or remaining-card counter, and it does not modify the 256D/V23 core or the definitions of the original seven features.
+Only the downstream correction layer is modified. The Particle Filter does not perform card counting, card-composition estimation, or remaining-card inference.
 
-## Downstream architecture
+## Architecture
 
 ```text
-fixed 7D features
-      +
-Shoe Regime Filter -> regime_state
-      -> 8D model vector
-      -> XGBoost residual prediction
-      -> clip residual to +/-0.10
-      -> Final P(B)
-      -> B if > 0.50 else P
+fixed 7D
+  -> Shoe Regime Particle Filter
+  -> regime_state
+  -> [fixed 7D + regime_state] = 8D
+  -> XGBoost residual model
+  -> residual Delta
+  -> clip Delta to +/-0.10
+  -> Final P(B)
+  -> B / P
 ```
 
-There is no LightGBM, no LSTM, no parallel XGB/PF averaging, and no PASS state.
-
-## Fixed upstream 7D
+The fixed upstream seven features remain:
 
 1. `core_p_b`
 2. `round_index`
@@ -33,85 +32,107 @@ There is no LightGBM, no LSTM, no parallel XGB/PF averaging, and no PASS state.
 6. `stage`
 7. `depth`
 
-XGBoost receives one downstream latent feature:
+The only downstream feature added for XGBoost is:
 
 8. `regime_state`
-
-`regime_state` is bounded to approximately `[-1,+1]`:
-
-```text
-+1  = sustained Core-aligned / structured regime
- 0  = turbulence, mixed evidence, or insufficient evidence
--1  = sustained Core-opposed / degraded regime
-```
-
-The state is environmental context. It never directly chooses Banker or Player.
 
 ## Shoe Regime Particle Filter
 
 ```text
-n_particles=1000
-state_dim=1
-Q_start=0.005\nQ_end=0.02
-R=0.25
-resample_threshold=500
-resampling=systematic
-random_state=42
-state_clip=1.0
+n_particles = 1000
+state_dim = 1
+R = 0.25
+ESS threshold = 500
+resampling = systematic
+state_clip = [-1.0, +1.0]
+random_state = 42
 ```
 
-Each settled B/P round creates a regime observation from:
+A new shoe calls `reset()`. All particles are initialized exactly at zero and `regime_state = 0`.
+
+### Three-dimensional likelihood
+
+After each settled B/P round:
 
 ```text
-direction_alignment  weight 0.55
-confidence_alignment weight 0.30
-persistence          weight 0.15
+actual_residual = actual_B - core_p_b
+
+directionality
+= +1 if Core direction matched the result
+= -1 otherwise
+
+residual_alignment
+= clip(1 - 2 * abs(actual_residual), -1, +1)
+
+persistence
+= current directionality if the correct/miss state repeats
+= 0 otherwise
 ```
 
-- `direction_alignment`: Core direction must match the settled B/P result to build positive regularity.
-- `confidence_alignment`: correctly aligned probability margin strengthens the observation.
-- `persistence`: consecutive aligned outcomes accelerate movement toward +1. A single sudden break is treated as turbulence and uses observation 0 instead of instantly declaring a reversal. Only sustained repeated misses are allowed to move the state into the negative regime.
-
-This makes abrupt breaks and mixed/alternating behavior pull the filter toward the turbulence zone around zero, while sustained alignment can accumulate toward strong regularity.
-
-## Cut-card / shoe-depth handling
-
-Cut-card position is treated as an **environment lifecycle variable**, not a Banker/Player signal.
-
-The existing upstream `round_index`, `estimated_total_hands`, and `remaining_ratio` are unchanged. Inside the Shoe Regime Filter, shoe progress only scales process noise:
+Likelihood weights:
 
 ```text
-shoe start: Q = 0.005
-shoe tail : Q = 0.020
+directionality     0.55
+residual_alignment 0.30
+persistence        0.15
 ```
 
-The state is steadier early in a shoe and stale regime assumptions can decay faster near the cut-card tail. A new shoe or shuffle resets `regime_state` to zero.
+Each particle is scored against all three measurements using Gaussian likelihood with `R=0.25`.
 
-## XGBoost
+If the correct/miss state suddenly flips, the round is treated as a turbulence break:
 
 ```text
-n_estimators=65
-learning_rate=0.03
-max_depth=4
-min_child_weight=2.0
-alpha=0.05
-lambda=0.25
-random_state=42
+measurements = [0, 0, 0]
+particle weights are reset to uniform
+then the neutral R=0.25 likelihood is applied
+```
+
+This pulls the environment estimate back toward the neutral turbulence zone instead of immediately declaring a new persistent regime.
+
+### Round-adaptive process noise
+
+```text
+current_round < 15:
+    Q = 0.005
+
+15 <= current_round <= 45:
+    Q transitions linearly from 0.005 to 0.020
+
+current_round > 45:
+    Q = 0.020
+```
+
+The round number controls only PF responsiveness. It does not directly choose Banker or Player.
+
+## 8D XGBoost residual model
+
+```text
+n_estimators = 65
+learning_rate = 0.03
+max_depth = 4
+min_child_weight = 2.0
+alpha = 0.05
+lambda = 0.25
+random_state = 42
 ```
 
 Python uses `reg_alpha=0.05` and `reg_lambda=0.25`.
 
 ## Causal training
 
+Historical training is replayed shoe by shoe.
+
 For round `t`:
 
 ```text
-regime_state_t = filter state before outcome t is known
+regime_state_t = PF state before outcome t is known
 features_8d_t = [features_7d_t, regime_state_t]
-y_t = actual_B_t - core_p_b_t
+target_t = actual_B_t - core_p_b_t
 ```
 
-Only after `features_8d_t` is recorded does outcome `t` update the Shoe Regime Filter for round `t+1`. This prevents current-result leakage.
+Only after the 8D row is captured does outcome `t` update the PF for round `t+1`. This prevents current-label leakage.
+
+Training:
 
 ```bash
 python -m pip install -r requirements-xgb.txt
@@ -121,46 +142,31 @@ python xgb_particle_filter_residual.py train \
   --min-samples 500
 ```
 
-The deterministic shoe-level validation split remains. The checked-in model bundle stays `trained:false` until real labeled rows are trained and exported.
-
-
-
-## Python module separation
-
-The downstream Python code is now split by responsibility:
+## Inference
 
 ```text
-shoe_regime_filter.py
-  -> only maintains Shoe Regime PF state
-  -> outputs regime_state
-
-xgb_particle_filter_residual.py
-  -> keeps the fixed 7D input untouched
-  -> appends regime_state as feature 8
-  -> trains/runs XGBoost residual correction
-  -> clips Delta to +/-0.10
-```
-
-The Particle Filter does not perform card counting or remaining-card inference.
-
-## Browser runtime
-
-```text
-regime_state = current Shoe Regime Filter estimate
+regime_state = current PF estimate
 features_8d = [features_7d, regime_state]
 raw_delta = XGBoost(features_8d)
 delta = clip(raw_delta, -0.10, +0.10)
 final_p_B = clip(core_p_B + delta, 0.0, 1.0)
+direction = B if final_p_B > 0.50 else P
 ```
 
-Ties are non-directional and do not update the regime observation.
+## Module separation
 
-Browser helpers:
+```text
+shoe_regime_filter.py
+  -> Shoe Regime PF only
+  -> outputs regime_state
 
-```js
-__BGS_RESIDUAL_BIAS__.getTrainingCount()
-__BGS_RESIDUAL_BIAS__.downloadTrainingData()
-__BGS_RESIDUAL_BIAS__.getShoeRegimeState()
-__BGS_RESIDUAL_BIAS__.getShoeRegimeStatus()
-__BGS_RESIDUAL_BIAS__.resetShoeRegimeFilter()
+xgb_particle_filter_residual.py
+  -> causal 8D training
+  -> XGBoost residual fit/predict/export
+  -> Delta +/-0.10 safety clip
+
+residual_bias_runtime.js
+  -> browser runtime implementation matching the same PF rules
 ```
+
+The checked-in `residual_bias_model.json` remains `trained:false` until real labeled B/P rows are trained and exported.
