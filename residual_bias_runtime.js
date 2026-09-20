@@ -305,11 +305,19 @@ function predictTransformerDelta(rows) {
     mask[start + i] = true;
   }
 
-  const hidden = padded.map(row => linearVector(
-    row,
-    w.input_projection_weight,
-    w.input_projection_bias
-  ));
+  const hidden = padded.map((row, positionIndex) => {
+    const projected = linearVector(
+      row,
+      w.input_projection_weight,
+      w.input_projection_bias
+    );
+    for (let d = 0; d < cfg.d_model; d += 2) {
+      const div = Math.exp((-Math.log(10000) * d) / cfg.d_model);
+      projected[d] += Math.sin(positionIndex * div);
+      if (d + 1 < cfg.d_model) projected[d + 1] += Math.cos(positionIndex * div);
+    }
+    return projected;
+  });
 
   const qWeight = w.in_proj_weight.slice(0, cfg.d_model);
   const kWeight = w.in_proj_weight.slice(cfg.d_model, 2 * cfg.d_model);
@@ -1022,8 +1030,8 @@ function rollbackTrainingIfNeeded() {
     rows.pop();
     writeTrainingRows(rows);
     rebuildShoeParticleFilter(rows);
-    rebuildTransformerWindow(rows);
   }
+  rebuildTransformerWindow(rows);
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
 
