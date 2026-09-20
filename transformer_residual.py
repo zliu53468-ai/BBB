@@ -189,9 +189,10 @@ def train_transformer(
 
     best_state = copy.deepcopy(model.state_dict())
     best_loss = math.inf
+    best_epoch = 1
     stale_epochs = 0
 
-    for _ in range(max(1, int(cfg.epochs))):
+    for epoch in range(1, max(1, int(cfg.epochs)) + 1):
         model.train()
         for batch_x, batch_m, batch_y in loader:
             optimizer.zero_grad(set_to_none=True)
@@ -208,6 +209,7 @@ def train_transformer(
         if val_loss < best_loss - 1e-7:
             best_loss = val_loss
             best_state = copy.deepcopy(model.state_dict())
+            best_epoch = epoch
             stale_epochs = 0
         else:
             stale_epochs += 1
@@ -216,6 +218,59 @@ def train_transformer(
 
     model.load_state_dict(best_state)
     model.eval()
+    model.best_epoch = int(best_epoch)
+    return model
+
+
+def train_transformer_full(
+    windows: np.ndarray,
+    valid_masks: np.ndarray,
+    residual_targets: np.ndarray,
+    *,
+    epochs: int,
+    config: TransformerTrainConfig | None = None,
+) -> TemporalResidualTransformer:
+    cfg = config or TransformerTrainConfig()
+    set_deterministic_seed(RANDOM_STATE)
+
+    x = np.asarray(windows, dtype=np.float32)
+    m = np.asarray(valid_masks, dtype=np.bool_)
+    y = np.asarray(residual_targets, dtype=np.float32).reshape(-1)
+    if not (len(x) == len(m) == len(y)):
+        raise ValueError("full-training arrays must align")
+
+    model = TemporalResidualTransformer()
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=cfg.learning_rate,
+        weight_decay=cfg.weight_decay,
+    )
+    loss_fn = nn.MSELoss()
+    dataset = TensorDataset(
+        torch.as_tensor(x, dtype=torch.float32),
+        torch.as_tensor(m, dtype=torch.bool),
+        torch.as_tensor(y, dtype=torch.float32),
+    )
+    generator = torch.Generator()
+    generator.manual_seed(RANDOM_STATE)
+    loader = DataLoader(
+        dataset,
+        batch_size=max(1, int(cfg.batch_size)),
+        shuffle=True,
+        generator=generator,
+    )
+
+    for _ in range(max(1, int(epochs))):
+        model.train()
+        for batch_x, batch_m, batch_y in loader:
+            optimizer.zero_grad(set_to_none=True)
+            pred = model(batch_x, batch_m)
+            loss = loss_fn(pred, batch_y)
+            loss.backward()
+            optimizer.step()
+
+    model.eval()
+    model.best_epoch = int(max(1, int(epochs)))
     return model
 
 
