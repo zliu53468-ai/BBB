@@ -49,6 +49,7 @@ from transformer_residual import (
     predict_transformer,
     train_transformer,
     train_transformer_full,
+    validate_transformer_payload,
 )
 
 UPSTREAM_FEATURE_NAMES: tuple[str, ...] = base.FEATURE_NAMES
@@ -481,11 +482,21 @@ def export_portable_bundle(
     transformer_model: TemporalResidualTransformer,
     *,
     reference_x: np.ndarray,
+    reference_windows: np.ndarray,
+    reference_masks: np.ndarray,
     output_path: Path,
     max_delta: float,
     metrics: Mapping[str, Any],
     training_rows: int,
 ) -> dict[str, Any]:
+    transformer_payload = export_transformer_payload(transformer_model)
+    validate_transformer_payload(
+        transformer_model,
+        transformer_payload,
+        reference_windows,
+        reference_masks,
+    )
+
     bundle = {
         "schema_version": SCHEMA_VERSION,
         "model_type": MODEL_TYPE,
@@ -502,7 +513,7 @@ def export_portable_bundle(
             "formula": "(delta_xgb + delta_transformer) / 2",
         },
         "xgb": _portable_xgb_payload(xgb_model, reference_x),
-        "transformer": export_transformer_payload(transformer_model),
+        "transformer": transformer_payload,
         "shoe_particle_filter": dict(PF_CONFIG),
         "training": {
             "rows": int(training_rows),
@@ -614,6 +625,8 @@ def train_command(args: argparse.Namespace) -> int:
         final_xgb,
         final_transformer,
         reference_x=x10,
+        reference_windows=windows,
+        reference_masks=valid_masks,
         output_path=Path(args.output),
         max_delta=args.max_delta,
         metrics=validation_metrics,
