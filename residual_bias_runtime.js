@@ -397,8 +397,8 @@ function particleLogLikelihood(simulated, actualB, corePB, physicalObservation =
   const actual = +actualB >= 0.5 ? 1 : 0;
   const observedSign = actual >= 0.5 ? 1 : -1;
   const observedTotalCards = [4, 5, 6].includes(+physicalObservation?.totalCards) ? +physicalObservation.totalCards : null;
-  const observedPlayerPoint = Number.isInteger(+physicalObservation?.playerPoint) && +physicalObservation.playerPoint >= 0 && +physicalObservation.playerPoint <= 9 ? +physicalObservation.playerPoint : null;
-  const observedBankerPoint = Number.isInteger(+physicalObservation?.bankerPoint) && +physicalObservation.bankerPoint >= 0 && +physicalObservation.bankerPoint <= 9 ? +physicalObservation.bankerPoint : null;
+  const observedPlayerPoint = physicalObservation?.playerPoint !== null && physicalObservation?.playerPoint !== undefined && Number.isInteger(+physicalObservation.playerPoint) && +physicalObservation.playerPoint >= 0 && +physicalObservation.playerPoint <= 9 ? +physicalObservation.playerPoint : null;
+  const observedBankerPoint = physicalObservation?.bankerPoint !== null && physicalObservation?.bankerPoint !== undefined && Number.isInteger(+physicalObservation.bankerPoint) && +physicalObservation.bankerPoint >= 0 && +physicalObservation.bankerPoint <= 9 ? +physicalObservation.bankerPoint : null;
 
   const w = cfg.likelihood_weights;
   let weightedError = w.outcome * Math.pow((observedSign - simulated.sign) / 2, 2);
@@ -701,8 +701,8 @@ function writeTrainingRows(rows) {
 function normalizePhysicalObservation(value) {
   if (!value || typeof value !== "object") return null;
   const totalCards = [4, 5, 6].includes(+value.totalCards) ? +value.totalCards : null;
-  const playerPoint = Number.isInteger(+value.playerPoint) && +value.playerPoint >= 0 && +value.playerPoint <= 9 ? +value.playerPoint : null;
-  const bankerPoint = Number.isInteger(+value.bankerPoint) && +value.bankerPoint >= 0 && +value.bankerPoint <= 9 ? +value.bankerPoint : null;
+  const playerPoint = value.playerPoint !== null && value.playerPoint !== undefined && Number.isInteger(+value.playerPoint) && +value.playerPoint >= 0 && +value.playerPoint <= 9 ? +value.playerPoint : null;
+  const bankerPoint = value.bankerPoint !== null && value.bankerPoint !== undefined && Number.isInteger(+value.bankerPoint) && +value.bankerPoint >= 0 && +value.bankerPoint <= 9 ? +value.bankerPoint : null;
   if (totalCards === null && playerPoint === null && bankerPoint === null) return null;
   return { totalCards, playerPoint, bankerPoint };
 }
