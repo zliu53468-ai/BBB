@@ -52,7 +52,7 @@ The state is environmental context. It never directly chooses Banker or Player.
 ```text
 n_particles=1000
 state_dim=1
-Q=0.005
+Q_start=0.005\nQ_end=0.02
 R=0.25
 resample_threshold=500
 resampling=systematic
@@ -68,11 +68,11 @@ confidence_alignment weight 0.30
 persistence          weight 0.15
 ```
 
-- `direction_alignment`: +1 when the frozen Core direction matches the result, -1 otherwise.
-- `confidence_alignment`: rewards correctly aligned probability margin and penalizes confident misses.
-- `persistence`: reinforces only repeated relationships; repeated correct alignment is positive, repeated misses are negative, and flips add zero persistence.
+- `direction_alignment`: Core direction must match the settled B/P result to build positive regularity.
+- `confidence_alignment`: correctly aligned probability margin strengthens the observation.
+- `persistence`: consecutive aligned outcomes accelerate movement toward +1. A single sudden break is treated as turbulence and uses observation 0 instead of instantly declaring a reversal. Only sustained repeated misses are allowed to move the state into the negative regime.
 
-Mixed or alternating behavior therefore tends to cancel toward zero instead of becoming a fake trend.
+This makes abrupt breaks and mixed/alternating behavior pull the filter toward the turbulence zone around zero, while sustained alignment can accumulate toward strong regularity.
 
 ## Cut-card / shoe-depth handling
 
@@ -81,8 +81,8 @@ Cut-card position is treated as an **environment lifecycle variable**, not a Ban
 The existing upstream `round_index`, `estimated_total_hands`, and `remaining_ratio` are unchanged. Inside the Shoe Regime Filter, shoe progress only scales process noise:
 
 ```text
-shoe start: Q x 0.75
-shoe tail : Q x 1.50
+shoe start: Q = 0.005
+shoe tail : Q = 0.020
 ```
 
 The state is steadier early in a shoe and stale regime assumptions can decay faster near the cut-card tail. A new shoe or shuffle resets `regime_state` to zero.
@@ -95,11 +95,11 @@ learning_rate=0.03
 max_depth=4
 min_child_weight=2.0
 alpha=0.05
-lambda=0.2
+lambda=0.25
 random_state=42
 ```
 
-Python uses `reg_alpha=0.05` and `reg_lambda=0.2`.
+Python uses `reg_alpha=0.05` and `reg_lambda=0.25`.
 
 ## Causal training
 
