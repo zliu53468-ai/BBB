@@ -62,7 +62,7 @@ class TemporalResidualTransformer(nn.Module):
         self.attention = nn.MultiheadAttention(
             embed_dim=self.d_model,
             num_heads=self.num_heads,
-            dropout=float(dropout),
+            dropout=0.0,
             batch_first=True,
         )
         self.dropout = nn.Dropout(float(dropout))
