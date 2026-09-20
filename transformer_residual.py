@@ -6,7 +6,7 @@ import copy
 import math
 import random
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 import torch
@@ -302,6 +302,127 @@ def export_transformer_payload(
             "dense_bias": tensor("output.bias"),
         },
     }
+
+
+
+def _np_linear(
+    x: np.ndarray,
+    weight: np.ndarray,
+    bias: np.ndarray,
+) -> np.ndarray:
+    return x @ weight.T + bias
+
+
+def portable_transformer_predict(
+    payload: Mapping[str, Any],
+    windows: np.ndarray,
+    valid_masks: np.ndarray,
+) -> np.ndarray:
+    """Pure NumPy inference matching eval-mode PyTorch attention."""
+    cfg = payload
+    weights = cfg["weights"]
+    x = np.asarray(windows, dtype=np.float32)
+    masks = np.asarray(valid_masks, dtype=np.bool_)
+
+    in_w = np.asarray(weights["input_projection_weight"], dtype=np.float32)
+    in_b = np.asarray(weights["input_projection_bias"], dtype=np.float32)
+    qkv_w = np.asarray(weights["in_proj_weight"], dtype=np.float32)
+    qkv_b = np.asarray(weights["in_proj_bias"], dtype=np.float32)
+    out_w = np.asarray(weights["out_proj_weight"], dtype=np.float32)
+    out_b = np.asarray(weights["out_proj_bias"], dtype=np.float32)
+    dense_w = np.asarray(weights["dense_weight"], dtype=np.float32)
+    dense_b = np.asarray(weights["dense_bias"], dtype=np.float32)
+
+    d_model = int(cfg["d_model"])
+    num_heads = int(cfg["num_heads"])
+    key_dim = int(cfg["key_dim"])
+    scale = math.sqrt(float(key_dim))
+
+    outputs: list[float] = []
+    for sample, mask in zip(x, masks):
+        hidden = _np_linear(sample, in_w, in_b)
+        q = _np_linear(hidden, qkv_w[:d_model], qkv_b[:d_model])
+        k = _np_linear(
+            hidden,
+            qkv_w[d_model : 2 * d_model],
+            qkv_b[d_model : 2 * d_model],
+        )
+        v = _np_linear(
+            hidden,
+            qkv_w[2 * d_model : 3 * d_model],
+            qkv_b[2 * d_model : 3 * d_model],
+        )
+
+        attended = np.zeros_like(hidden, dtype=np.float32)
+        valid_indexes = np.flatnonzero(mask)
+        if len(valid_indexes) == 0:
+            outputs.append(float(dense_b.reshape(-1)[0]))
+            continue
+
+        for qi in valid_indexes:
+            concat_heads: list[np.ndarray] = []
+            for head in range(num_heads):
+                start = head * key_dim
+                end = start + key_dim
+                scores = np.asarray(
+                    [
+                        float(np.dot(q[qi, start:end], k[kj, start:end]) / scale)
+                        for kj in valid_indexes
+                    ],
+                    dtype=np.float32,
+                )
+                scores -= float(np.max(scores))
+                probs = np.exp(scores)
+                probs /= max(float(np.sum(probs)), 1e-12)
+                context = np.zeros(key_dim, dtype=np.float32)
+                for prob, kj in zip(probs, valid_indexes):
+                    context += float(prob) * v[kj, start:end]
+                concat_heads.append(context)
+
+            concat = np.concatenate(concat_heads, axis=0)
+            attended[qi] = _np_linear(
+                concat.reshape(1, -1),
+                out_w,
+                out_b,
+            ).reshape(-1)
+
+        pooled = np.mean(attended[valid_indexes], axis=0)
+        result = _np_linear(
+            pooled.reshape(1, -1),
+            dense_w,
+            dense_b,
+        ).reshape(-1)[0]
+        outputs.append(float(result))
+
+    return np.asarray(outputs, dtype=np.float32)
+
+
+def validate_transformer_payload(
+    model: TemporalResidualTransformer,
+    payload: Mapping[str, Any],
+    windows: np.ndarray,
+    valid_masks: np.ndarray,
+    *,
+    atol: float = 2e-5,
+) -> None:
+    if len(windows) == 0:
+        return
+    count = min(32, len(windows))
+    native = predict_transformer(
+        model,
+        np.asarray(windows[:count], dtype=np.float32),
+        np.asarray(valid_masks[:count], dtype=np.bool_),
+    )
+    portable = portable_transformer_predict(
+        payload,
+        np.asarray(windows[:count], dtype=np.float32),
+        np.asarray(valid_masks[:count], dtype=np.bool_),
+    )
+    if not np.allclose(native, portable, atol=atol, rtol=1e-5):
+        worst = float(np.max(np.abs(native - portable)))
+        raise RuntimeError(
+            f"portable Transformer export mismatch; max abs error={worst}"
+        )
 
 
 class TemporalWindowBuffer:
