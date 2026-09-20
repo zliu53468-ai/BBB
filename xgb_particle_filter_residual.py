@@ -135,7 +135,7 @@ class ShoeRegimeParticleFilter:
         self.updates = 0
         self.last_alignment = None
         self.last_observation = 0.0
-        self.last_effective_q = self.q
+        self.last_effective_q = self.q_start
 
     def estimate(self) -> float:
         value = float(np.sum(self.particles * self.weights))
