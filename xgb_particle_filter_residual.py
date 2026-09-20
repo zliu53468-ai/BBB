@@ -437,7 +437,8 @@ def evaluate_8d(model: XGBRegressor, x8: np.ndarray, actual_b: np.ndarray, *, ma
         "corrected_brier": base.brier(final_pb, actual_b),
         "mean_abs_delta": float(np.mean(np.abs(delta))),
         "max_abs_delta": float(np.max(np.abs(delta))) if len(delta) else 0.0,
-        "mean_abs_regime_state": float(np.mean(np.abs(regime_state))) if len(regime_state) else 0.0,\n        "mean_regime_state": float(np.mean(regime_state)) if len(regime_state) else 0.0,
+        "mean_abs_regime_state": float(np.mean(np.abs(regime_state))) if len(regime_state) else 0.0,
+        "mean_regime_state": float(np.mean(regime_state)) if len(regime_state) else 0.0,
     }
 
 
@@ -463,7 +464,8 @@ def export_portable_bundle(
         "training": {
             "rows": int(training_rows),
             "target": "actual_B_minus_core_p_B",
-            "regime_state_timing": "state_before_current_outcome",\n            "regime_state_meaning": "+1 core-aligned, 0 turbulent, -1 core-opposed",
+            "regime_state_timing": "state_before_current_outcome",
+            "regime_state_meaning": "+1 core-aligned, 0 turbulent, -1 core-opposed",
             "decision_rule": "B if final_p_B > 0.50 else P",
             "no_pass": True,
             "metrics": dict(metrics),
