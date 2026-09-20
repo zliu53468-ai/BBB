@@ -454,42 +454,103 @@ function rejuvenateParticles(state, qEff) {
   }
 }
 
-function forecastPFDelta(state) {
+function applyPhysicalConstraint(state, roundIndex) {
   const cfg = shoePFConfig();
-  let bankerMass = 0;
-  let playerMass = 0;
+  const expectedRemaining = 416 - cfg.expected_cards_per_round * Math.max(1, +roundIndex || 1);
+  const sigma = Math.max(3, cfg.constraint_sigma_per_sqrt_round * Math.sqrt(Math.max(1, +roundIndex || 1)));
+  const hardZ = cfg.constraint_hard_z;
+  const survivors = new Array(state.particles.length);
+  let survivorCount = 0;
+
+  for (let i = 0; i < state.particles.length; i++) {
+    const remaining = state.particles[i].reduce((sum, value) => sum + (+value || 0), 0);
+    const z = Math.abs(remaining - expectedRemaining) / sigma;
+    survivors[i] = z <= hardZ;
+    if (survivors[i]) survivorCount++;
+  }
+
+  state.last_constraint_survival = survivorCount / Math.max(1, state.particles.length);
+
+  if (survivorCount > 0) {
+    let total = 0;
+    for (let i = 0; i < state.weights.length; i++) {
+      if (!survivors[i]) state.weights[i] = 0;
+      total += +state.weights[i] || 0;
+    }
+    if (total > 0) {
+      for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
+      return;
+    }
+  }
+
+  let total = 0;
+  for (let i = 0; i < state.weights.length; i++) {
+    const remaining = state.particles[i].reduce((sum, value) => sum + (+value || 0), 0);
+    const z = Math.min(hardZ, Math.abs(remaining - expectedRemaining) / sigma);
+    state.weights[i] *= Math.exp(-0.5 * z * z);
+    total += +state.weights[i] || 0;
+  }
+  if (!Number.isFinite(total) || total <= 0) {
+    state.weights = Array(state.weights.length).fill(1 / state.weights.length);
+  } else {
+    for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
+  }
+}
+
+function forecastTensor(state) {
+  let p4Mass = 0;
+  let p6Mass = 0;
+  let decisiveMass = 0;
+  let winPointMass = 0;
+  let losePointMass = 0;
+  let totalWeight = 0;
+
   for (let i = 0; i < state.particles.length; i++) {
     const counts = state.particles[i].slice();
     const simulated = simulateVirtualRound(counts, state);
     const weight = +state.weights[i] || 0;
-    if (simulated.sign > 0) bankerMass += weight;
-    else if (simulated.sign < 0) playerMass += weight;
+    totalWeight += weight;
+
+    if (simulated.totalCards === 4) p4Mass += weight;
+    if (simulated.totalCards === 6) p6Mass += weight;
+
+    if (simulated.sign !== 0) {
+      decisiveMass += weight;
+      winPointMass += weight * simulated.winnerPoint;
+      losePointMass += weight * simulated.loserPoint;
+    }
   }
-  const decisiveMass = bankerMass + playerMass;
-  if (decisiveMass <= 1e-12) return 0;
-  const physicalBias = (bankerMass - playerMass) / decisiveMass;
-  return clip(0.10 * physicalBias, -cfg.pf_delta_clip, cfg.pf_delta_clip);
+
+  if (totalWeight <= 1e-12) return [0, 0, 0, 0];
+  return [
+    clip(p4Mass / totalWeight, 0, 1),
+    clip(p6Mass / totalWeight, 0, 1),
+    decisiveMass > 1e-12 ? clip(winPointMass / decisiveMass, 0, 9) : 0,
+    decisiveMass > 1e-12 ? clip(losePointMass / decisiveMass, 0, 9) : 0
+  ];
 }
 
-function shoePFDelta() {
+function currentPseudoCardTensor() {
   const state = readShoePFState();
-  const cfg = shoePFConfig();
-  return clip(+state.pf_delta || 0, -cfg.pf_delta_clip, cfg.pf_delta_clip);
+  return Array.isArray(state.tensor) && state.tensor.length === 4 ? state.tensor.slice() : [0, 0, 0, 0];
 }
 
-function updateShoeParticleFilter(actualB, corePB, roundIndex) {
+
+
+function updateShoeParticleFilter(actualB, corePB, roundIndex, physicalObservation = null) {
   const state = readShoePFState();
   const logs = new Array(state.particles.length);
   let maxLog = -Infinity;
+  let infoMultiplier = 1;
 
   for (let i = 0; i < state.particles.length; i++) {
     const counts = state.particles[i].slice();
     const simulated = simulateVirtualRound(counts, state);
     state.particles[i] = counts;
-    const likelihood = proposalLikelihood(simulated, actualB, corePB);
-    const logLike = Math.log(Math.max(likelihood, 1e-300));
-    logs[i] = logLike;
-    if (logLike > maxLog) maxLog = logLike;
+    const likelihood = particleLogLikelihood(simulated, actualB, corePB, physicalObservation);
+    logs[i] = likelihood.logLike;
+    infoMultiplier = likelihood.infoMultiplier;
+    if (logs[i] > maxLog) maxLog = logs[i];
   }
 
   let total = 0;
@@ -504,6 +565,9 @@ function updateShoeParticleFilter(actualB, corePB, roundIndex) {
     for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
   }
 
+  state.last_information_multiplier = infoMultiplier;
+  applyPhysicalConstraint(state, roundIndex);
+
   const ess = effectiveSampleSize(state);
   state.last_ess = ess;
   state.last_resampled = false;
@@ -514,10 +578,8 @@ function updateShoeParticleFilter(actualB, corePB, roundIndex) {
 
   const qEff = effectiveProcessNoise(roundIndex);
   rejuvenateParticles(state, qEff);
-  state.pf_delta = forecastPFDelta(state);
+  state.tensor = forecastTensor(state);
   state.last_effective_q = qEff;
-  state.last_residual = (+actualB >= 0.5 ? 1 : 0) - clip(+corePB || 0.5, 0, 1);
-  state.last_observed_outcome = +actualB >= 0.5 ? 1 : 0;
   state.updates = Math.max(0, +state.updates || 0) + 1;
   writeShoePFState(state);
   return state;
@@ -526,10 +588,10 @@ function updateShoeParticleFilter(actualB, corePB, roundIndex) {
 function applyCorrection(seq, corePrediction) {
   const signal = corePrediction?.singleHazard || null;
   const features = buildFeatures(seq, corePrediction, signal);
-  const pfDelta = shoePFDelta();
-  const totalDelta = predictXGBDelta(features, pfDelta);
+  const tensor = currentPseudoCardTensor();
+  const rawDelta = predictXGBDelta(features, tensor);
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
-  const delta = clip(totalDelta, -maxDelta, maxDelta);
+  const delta = clip(rawDelta, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
   const finalPB = clip(corePB + delta, 0, 1);
   const direction = finalPB > 0.5 ? "B" : "P";
@@ -537,14 +599,20 @@ function applyCorrection(seq, corePrediction) {
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
   const active = Boolean(modelBundle?.trained);
+  const pseudoCardFeature = {
+    p_4cards: tensor[0],
+    p_6cards: tensor[1],
+    win_point: tensor[2],
+    lose_point: tensor[3]
+  };
 
   if (!active) {
     return {
       ...corePrediction,
       residualBias: {
         version: VERSION, active: false, modelLoaded, modelLoadError,
-        coreDirection, corePB, pfDelta,
-        totalDelta: 0, delta: 0, finalPB: corePB, finalDirection: coreDirection,
+        coreDirection, corePB, pseudoCardFeature,
+        rawDelta: 0, delta: 0, finalPB: corePB, finalDirection: coreDirection,
         flipped: false, features
       }
     };
@@ -556,11 +624,11 @@ function applyCorrection(seq, corePrediction) {
     direction,
     confidence,
     probabilities: { B: finalPB, P: finalPP },
-    regime: flipped ? "PF Base-Margin 7D-XGB殘差修正換邊" : corePrediction.regime,
+    regime: flipped ? "Enhanced PF 11D-XGB殘差修正換邊" : corePrediction.regime,
     residualBias: {
       version: VERSION, active: true, modelLoaded, modelLoadError,
-      coreDirection, corePB, pfDelta,
-      totalDelta, delta, finalPB, finalDirection: direction, flipped, features
+      coreDirection, corePB, pseudoCardFeature,
+      rawDelta, delta, finalPB, finalDirection: direction, flipped, features
     }
   };
 }
