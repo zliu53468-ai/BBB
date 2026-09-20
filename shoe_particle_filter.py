@@ -4,7 +4,8 @@
 The filter never observes actual card identities. Each particle is one plausible
 remaining eight-deck shoe represented by baccarat point values 0..9. Particles
 are propagated by standard baccarat drawing rules with sampling without
-replacement, then reweighted from the observed B/P result and Core residual. The public\noutput is pf_delta in [-0.10, +0.10], intended for XGBoost base_margin.
+replacement, then reweighted from the observed B/P result and Core residual. The public
+output is pf_delta in [-0.10, +0.10], intended for XGBoost base_margin.
 
 This is a probabilistic latent-shoe simulation, not knowledge of the true
 remaining cards.
