@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
-"""Blind 3D physical PF -> 10D XGBoost residual correction for BBB.
+"""BBB dual-brain residual correction: XGBoost + temporal Transformer.
 
 Frozen upstream:
     history -> 256D/V23 Core -> core_p_b -> fixed 7D features
 
 Downstream:
-    ShoeParticleFilter -> [pred_card_count, pred_banker_point, pred_player_point]
-    features_10d = fixed_7d + physical_3d
-    delta = XGBoost(features_10d)
-    delta_clipped = clip(delta, -0.10, +0.10)
+    ShoeParticleFilter -> 3D blind physical forecast
+    fixed 7D + physical 3D = 10D
+
+Parallel residual brains:
+    delta_xgb   = XGBoost(current 10D)
+    delta_trans = Transformer(last 10 x 10D)
+    delta_final = 0.5 * delta_xgb + 0.5 * delta_trans
+
+Safety:
+    delta_clipped = clip(delta_final, -0.10, +0.10)
     final_p_b = clip(core_p_b + delta_clipped, 0, 1)
 
-Training is causal: physical features for row t are generated from the PF state
-and core_p_b_t before outcome t is used to update the particle population.
+Training is causal: row t physical features are generated before outcome t
+updates the particle filter. Transformer windows include current row t plus up
+to nine earlier rows from the same shoe, with left zero-padding.
 """
 from __future__ import annotations
 
@@ -32,15 +39,28 @@ from shoe_particle_filter import (
     ShoeParticleFilter,
     new_shoe_particle_filter,
 )
+from transformer_residual import (
+    WINDOW_SIZE,
+    TemporalResidualTransformer,
+    TemporalWindowBuffer,
+    TransformerTrainConfig,
+    build_sequence_windows,
+    export_transformer_payload,
+    predict_transformer,
+    train_transformer,
+    train_transformer_full,
+)
 
 UPSTREAM_FEATURE_NAMES: tuple[str, ...] = base.FEATURE_NAMES
 MODEL_FEATURE_NAMES: tuple[str, ...] = (
     *UPSTREAM_FEATURE_NAMES,
     *PHYSICAL_FEATURE_NAMES,
 )
-MODEL_TYPE = "xgb_blind_physical_10d_residual"
-SCHEMA_VERSION = 10
+MODEL_TYPE = "xgb_transformer_dual_residual"
+SCHEMA_VERSION = 11
 DEFAULT_MAX_DELTA = base.DEFAULT_MAX_DELTA
+FUSION_XGB_WEIGHT = 0.50
+FUSION_TRANSFORMER_WEIGHT = 0.50
 
 XGB_PARAMS: dict[str, Any] = {
     "objective": "reg:squarederror",
@@ -113,7 +133,6 @@ def combine_features_10d(
 ) -> np.ndarray:
     x7 = np.asarray(features_7d, dtype=np.float32).reshape(-1)
     x3 = np.asarray(physical_3d, dtype=np.float32).reshape(-1)
-
     if x7.shape[0] != len(UPSTREAM_FEATURE_NAMES):
         raise ValueError(
             f"features_7d must contain {len(UPSTREAM_FEATURE_NAMES)} values"
@@ -122,7 +141,6 @@ def combine_features_10d(
         raise ValueError(
             f"physical_3d must contain {len(PHYSICAL_FEATURE_NAMES)} values"
         )
-
     return np.concatenate([x7, x3]).astype(np.float32, copy=False)
 
 
@@ -153,14 +171,13 @@ def make_training_arrays_10d(
             particle_filter = new_shoe_particle_filter()
             filters[shoe_id] = particle_filter
 
-        # Causal forecast: current outcome is not known yet.
         physical_3d = particle_filter.predict_physical_features(
             core_pb=core_p_b,
             current_round=round_index,
         )
+        vector10 = combine_features_10d(vector7, physical_3d)
         residual_target = float(actual_b) - core_p_b
 
-        vector10 = combine_features_10d(vector7, physical_3d)
         vectors.append(vector10.astype(float).tolist())
         residuals.append(residual_target)
         actuals.append(actual_b)
@@ -189,49 +206,28 @@ def make_training_arrays_10d(
     )
 
 
-class BlindPhysicalXGBResidualPredictor:
-    """Blind PF physical 3D + frozen 7D -> 10D XGBoost residual model."""
+class DualBrainResidualPredictor:
+    """PF 10D feature builder + XGBoost/Transformer 50:50 residual fusion."""
 
     def __init__(
         self,
-        xgb_model: XGBRegressor | None = None,
+        xgb_model: XGBRegressor,
+        transformer_model: TemporalResidualTransformer,
         particle_filter: ShoeParticleFilter | None = None,
         *,
         max_delta: float = DEFAULT_MAX_DELTA,
     ) -> None:
-        self.xgb_model = xgb_model or build_xgb_regressor()
+        self.xgb_model = xgb_model
+        self.transformer_model = transformer_model
         self.particle_filter = particle_filter or new_shoe_particle_filter()
+        self.window_buffer = TemporalWindowBuffer(WINDOW_SIZE)
         self.max_delta = base.clip(float(max_delta), 0.0, DEFAULT_MAX_DELTA)
-
-    def fit(
-        self,
-        feature_rows_10d: np.ndarray,
-        residual_targets: Sequence[float],
-    ) -> "BlindPhysicalXGBResidualPredictor":
-        x = np.asarray(feature_rows_10d, dtype=np.float32)
-        y = np.asarray(residual_targets, dtype=np.float32)
-        if x.ndim != 2 or x.shape[1] != len(MODEL_FEATURE_NAMES):
-            raise ValueError(
-                f"feature_rows_10d must be N x {len(MODEL_FEATURE_NAMES)}"
-            )
-        if len(x) != len(y):
-            raise ValueError("feature_rows_10d and residual_targets must align")
-        self.xgb_model.fit(x, y)
-        return self
+        self._last_round_index: float | None = None
 
     def reset_shoe(self) -> None:
         self.particle_filter.reset()
-
-    def predict_physical_features(
-        self,
-        *,
-        core_pb: float,
-        round_index: float,
-    ) -> np.ndarray:
-        return self.particle_filter.predict_physical_features(
-            core_pb=core_pb,
-            current_round=round_index,
-        )
+        self.window_buffer.reset()
+        self._last_round_index = None
 
     def update_after_outcome(
         self,
@@ -252,6 +248,27 @@ class BlindPhysicalXGBResidualPredictor:
             observed_banker_point=observed_banker_point,
         )
 
+    def _current_10d(
+        self,
+        features_7d: Sequence[float],
+        *,
+        core_pb: float,
+        round_index: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        physical_3d = self.particle_filter.predict_physical_features(
+            core_pb=core_pb,
+            current_round=round_index,
+        )
+        x10 = combine_features_10d(features_7d, physical_3d)
+
+        if self._last_round_index == float(round_index) and self.window_buffer.rows:
+            self.window_buffer.rows[-1] = x10.copy()
+        else:
+            self.window_buffer.push(x10)
+            self._last_round_index = float(round_index)
+
+        return x10, physical_3d
+
     def predict_delta(
         self,
         features_7d: Sequence[float],
@@ -259,21 +276,37 @@ class BlindPhysicalXGBResidualPredictor:
         core_pb: float,
         round_index: float,
     ) -> dict[str, Any]:
-        physical_3d = self.predict_physical_features(
+        x10, physical_3d = self._current_10d(
+            features_7d,
             core_pb=core_pb,
             round_index=round_index,
         )
-        x10 = combine_features_10d(features_7d, physical_3d).reshape(1, 10)
-        raw_delta = float(self.xgb_model.predict(x10)[0])
+        delta_xgb = float(self.xgb_model.predict(x10.reshape(1, 10))[0])
+
+        window, valid_mask = self.window_buffer.as_arrays()
+        delta_trans = float(
+            predict_transformer(
+                self.transformer_model,
+                window,
+                valid_mask,
+            )[0]
+        )
+
+        delta_final = (
+            FUSION_XGB_WEIGHT * delta_xgb
+            + FUSION_TRANSFORMER_WEIGHT * delta_trans
+        )
         delta_clipped = float(
-            np.clip(raw_delta, -self.max_delta, self.max_delta)
+            np.clip(delta_final, -self.max_delta, self.max_delta)
         )
         return {
             "physical_prediction": {
                 name: float(value)
                 for name, value in zip(PHYSICAL_FEATURE_NAMES, physical_3d)
             },
-            "delta_raw": raw_delta,
+            "delta_xgb": delta_xgb,
+            "delta_transformer": delta_trans,
+            "delta_final": delta_final,
             "delta_clipped": delta_clipped,
         }
 
@@ -287,7 +320,6 @@ class BlindPhysicalXGBResidualPredictor:
             raise ValueError(
                 f"features_7d must contain {len(UPSTREAM_FEATURE_NAMES)} values"
             )
-
         core_value = (
             base.clip(float(core_pb), 0.0, 1.0)
             if core_pb is not None
@@ -399,40 +431,54 @@ def _portable_xgb_payload(
     }
 
 
-def evaluate_10d(
-    model: XGBRegressor,
+def evaluate_dual(
+    xgb_model: XGBRegressor,
+    transformer_model: TemporalResidualTransformer,
     x10: np.ndarray,
+    windows: np.ndarray,
+    valid_masks: np.ndarray,
     actual_b: np.ndarray,
     *,
     max_delta: float,
 ) -> dict[str, float]:
-    raw_delta = np.asarray(model.predict(x10), dtype=float)
-    delta = np.clip(raw_delta, -max_delta, max_delta)
+    delta_xgb = np.asarray(xgb_model.predict(x10), dtype=float)
+    delta_trans = np.asarray(
+        predict_transformer(transformer_model, windows, valid_masks),
+        dtype=float,
+    )
+    delta_fused_raw = (
+        FUSION_XGB_WEIGHT * delta_xgb
+        + FUSION_TRANSFORMER_WEIGHT * delta_trans
+    )
+
     core_pb = x10[:, MODEL_FEATURE_NAMES.index("core_p_b")].astype(float)
-    final_pb = np.clip(core_pb + delta, 0.0, 1.0)
+    xgb_pb = np.clip(core_pb + np.clip(delta_xgb, -max_delta, max_delta), 0, 1)
+    trans_pb = np.clip(core_pb + np.clip(delta_trans, -max_delta, max_delta), 0, 1)
+    fused_delta = np.clip(delta_fused_raw, -max_delta, max_delta)
+    fused_pb = np.clip(core_pb + fused_delta, 0, 1)
 
     return {
         "samples": float(len(x10)),
         "core_accuracy": base.direction_accuracy(core_pb, actual_b),
-        "corrected_accuracy": base.direction_accuracy(final_pb, actual_b),
+        "xgb_accuracy": base.direction_accuracy(xgb_pb, actual_b),
+        "transformer_accuracy": base.direction_accuracy(trans_pb, actual_b),
+        "fused_accuracy": base.direction_accuracy(fused_pb, actual_b),
         "core_brier": base.brier(core_pb, actual_b),
-        "corrected_brier": base.brier(final_pb, actual_b),
-        "mean_abs_delta": float(np.mean(np.abs(delta))),
-        "max_abs_delta": float(np.max(np.abs(delta))) if len(delta) else 0.0,
-        "mean_pred_card_count": float(
-            np.mean(x10[:, MODEL_FEATURE_NAMES.index("pred_card_count")])
-        ),
-        "mean_pred_banker_point": float(
-            np.mean(x10[:, MODEL_FEATURE_NAMES.index("pred_banker_point")])
-        ),
-        "mean_pred_player_point": float(
-            np.mean(x10[:, MODEL_FEATURE_NAMES.index("pred_player_point")])
+        "xgb_brier": base.brier(xgb_pb, actual_b),
+        "transformer_brier": base.brier(trans_pb, actual_b),
+        "fused_brier": base.brier(fused_pb, actual_b),
+        "mean_abs_delta_xgb": float(np.mean(np.abs(delta_xgb))),
+        "mean_abs_delta_transformer": float(np.mean(np.abs(delta_trans))),
+        "mean_abs_delta_fused": float(np.mean(np.abs(fused_delta))),
+        "max_abs_delta_fused": (
+            float(np.max(np.abs(fused_delta))) if len(fused_delta) else 0.0
         ),
     }
 
 
 def export_portable_bundle(
-    model: XGBRegressor,
+    xgb_model: XGBRegressor,
+    transformer_model: TemporalResidualTransformer,
     *,
     reference_x: np.ndarray,
     output_path: Path,
@@ -448,13 +494,21 @@ def export_portable_bundle(
         "model_feature_names": list(MODEL_FEATURE_NAMES),
         "physical_feature_names": list(PHYSICAL_FEATURE_NAMES),
         "feature_schema": "7D_PLUS_3D_BLIND_PHYSICAL",
+        "window_size": WINDOW_SIZE,
         "max_delta": float(max_delta),
-        "xgb": _portable_xgb_payload(model, reference_x),
+        "fusion": {
+            "xgb_weight": FUSION_XGB_WEIGHT,
+            "transformer_weight": FUSION_TRANSFORMER_WEIGHT,
+            "formula": "(delta_xgb + delta_transformer) / 2",
+        },
+        "xgb": _portable_xgb_payload(xgb_model, reference_x),
+        "transformer": export_transformer_payload(transformer_model),
         "shoe_particle_filter": dict(PF_CONFIG),
         "training": {
             "rows": int(training_rows),
             "target": "actual_B_minus_core_p_B",
             "physical_feature_timing": "forecast_before_current_outcome",
+            "transformer_window": "current_10D_plus_previous_9_same_shoe_left_zero_padding",
             "blind_mode": "B/P + current_round + core_pb; card count/points optional",
             "decision_rule": "B if final_p_B > 0.50 else P",
             "no_pass": True,
@@ -477,31 +531,62 @@ def train_command(args: argparse.Namespace) -> int:
             f"need at least {args.min_samples} valid rows; got {len(x10)}"
         )
 
+    windows, valid_masks = build_sequence_windows(
+        x10,
+        shoes,
+        window_size=WINDOW_SIZE,
+    )
     validation = base.deterministic_validation_mask(
         shoes,
         fraction=args.validation_fraction,
     )
     train = ~validation
 
-    model = build_xgb_regressor()
-    model.fit(x10[train], residual[train])
-    validation_metrics = evaluate_10d(
-        model,
+    xgb_model = build_xgb_regressor()
+    xgb_model.fit(x10[train], residual[train])
+
+    transformer_cfg = TransformerTrainConfig(
+        epochs=args.transformer_epochs,
+        batch_size=args.transformer_batch_size,
+        learning_rate=args.transformer_learning_rate,
+        weight_decay=args.transformer_weight_decay,
+        patience=args.transformer_patience,
+    )
+    transformer_model = train_transformer(
+        windows,
+        valid_masks,
+        residual,
+        train,
+        validation,
+        config=transformer_cfg,
+    )
+
+    validation_metrics = evaluate_dual(
+        xgb_model,
+        transformer_model,
         x10[validation],
+        windows[validation],
+        valid_masks[validation],
         actual_b[validation],
         max_delta=args.max_delta,
     )
 
     accepted = (
-        validation_metrics["corrected_brier"]
+        validation_metrics["fused_brier"]
         <= validation_metrics["core_brier"] + args.max_brier_regression
-        and validation_metrics["corrected_accuracy"]
+        and validation_metrics["fused_accuracy"]
         >= validation_metrics["core_accuracy"] - args.max_accuracy_regression
     )
 
     print(
         json.dumps(
-            {"validation": validation_metrics, "accepted": accepted},
+            {
+                "validation": validation_metrics,
+                "transformer_best_epoch": int(
+                    getattr(transformer_model, "best_epoch", 1)
+                ),
+                "accepted": accepted,
+            },
             ensure_ascii=False,
             indent=2,
         )
@@ -509,14 +594,25 @@ def train_command(args: argparse.Namespace) -> int:
 
     if not accepted and not args.force:
         raise SystemExit(
-            "validation gate rejected blind-physical 10D XGBoost model; "
+            "validation gate rejected dual-brain model; "
             "use --force only for diagnostics"
         )
 
-    final_model = build_xgb_regressor()
-    final_model.fit(x10, residual)
+    final_xgb = build_xgb_regressor()
+    final_xgb.fit(x10, residual)
+
+    best_epoch = int(getattr(transformer_model, "best_epoch", 1))
+    final_transformer = train_transformer_full(
+        windows,
+        valid_masks,
+        residual,
+        epochs=best_epoch,
+        config=transformer_cfg,
+    )
+
     export_portable_bundle(
-        final_model,
+        final_xgb,
+        final_transformer,
         reference_x=x10,
         output_path=Path(args.output),
         max_delta=args.max_delta,
@@ -529,7 +625,7 @@ def train_command(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="BBB blind physical 3D -> 10D XGBoost residual trainer"
+        description="BBB PF 10D XGBoost + Transformer dual-brain trainer"
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -541,6 +637,11 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--max-delta", type=float, default=DEFAULT_MAX_DELTA)
     train.add_argument("--max-brier-regression", type=float, default=0.0)
     train.add_argument("--max-accuracy-regression", type=float, default=0.005)
+    train.add_argument("--transformer-epochs", type=int, default=120)
+    train.add_argument("--transformer-batch-size", type=int, default=64)
+    train.add_argument("--transformer-learning-rate", type=float, default=1e-3)
+    train.add_argument("--transformer-weight-decay", type=float, default=1e-4)
+    train.add_argument("--transformer-patience", type=int, default=15)
     train.add_argument("--force", action="store_true")
     train.set_defaults(func=train_command)
     return parser
