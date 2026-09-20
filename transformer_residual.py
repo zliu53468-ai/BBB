@@ -49,6 +49,16 @@ class TemporalResidualTransformer(nn.Module):
         self.d_model = self.num_heads * self.key_dim
 
         self.input_projection = nn.Linear(self.input_dim, self.d_model)
+        position = torch.arange(WINDOW_SIZE, dtype=torch.float32).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, self.d_model, 2, dtype=torch.float32)
+            * (-math.log(10000.0) / self.d_model)
+        )
+        positional_encoding = torch.zeros(WINDOW_SIZE, self.d_model)
+        positional_encoding[:, 0::2] = torch.sin(position * div_term)
+        positional_encoding[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("positional_encoding", positional_encoding)
+
         self.attention = nn.MultiheadAttention(
             embed_dim=self.d_model,
             num_heads=self.num_heads,
@@ -69,6 +79,7 @@ class TemporalResidualTransformer(nn.Module):
             raise ValueError("valid_mask must have shape (batch, window)")
 
         h = self.input_projection(x)
+        h = h + self.positional_encoding[: x.shape[1]].unsqueeze(0)
         key_padding_mask = ~valid_mask.bool()
         attended, _ = self.attention(
             h,
@@ -291,6 +302,7 @@ def export_transformer_payload(
         "d_model": D_MODEL,
         "dropout": DROPOUT,
         "padding": "left_zero_padding_with_valid_mask",
+        "positional_encoding": "fixed_sinusoidal",
         "weights": {
             "input_projection_weight": tensor("input_projection.weight"),
             "input_projection_bias": tensor("input_projection.bias"),
@@ -341,6 +353,16 @@ def portable_transformer_predict(
     outputs: list[float] = []
     for sample, mask in zip(x, masks):
         hidden = _np_linear(sample, in_w, in_b)
+        positions = np.arange(sample.shape[0], dtype=np.float32)[:, None]
+        div_term = np.exp(
+            np.arange(0, d_model, 2, dtype=np.float32)
+            * (-math.log(10000.0) / d_model)
+        )
+        positional = np.zeros((sample.shape[0], d_model), dtype=np.float32)
+        positional[:, 0::2] = np.sin(positions * div_term)
+        positional[:, 1::2] = np.cos(positions * div_term)
+        hidden = hidden + positional
+
         q = _np_linear(hidden, qkv_w[:d_model], qkv_b[:d_model])
         k = _np_linear(
             hidden,
