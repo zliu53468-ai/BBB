@@ -22,7 +22,8 @@ const TRAINING_KEY = "bgs_xgb_residual_training_v1";
 const PENDING_KEY = "bgs_xgb_residual_pending_v1";
 const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
 const CUT_KEY = "bgs_xgb_estimated_total_hands_v1";
-const SHOE_PF_STATE_KEY = "bgs_xgb_shoe_particle_filter_state_v1";
+const SHOE_PF_STATE_KEY = "bgs_xgb_shoe_particle_filter_state_v2";
+const LEGACY_SHOE_PF_STATE_KEY = "bgs_xgb_shoe_particle_filter_state_v1";
 const LEGACY_REGIME_STATE_KEY = "bgs_xgb_shoe_regime_state_v1";
 const LEGACY_PF_STATE_KEY = "bgs_xgb_particle_filter_state_v1";
 const MAX_TRAINING_ROWS = 10000;
@@ -522,6 +523,7 @@ function rotateShoeId() {
     localStorage.removeItem(SHOE_KEY);
     localStorage.removeItem(PENDING_KEY);
     localStorage.removeItem(SHOE_PF_STATE_KEY);
+    localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY);
     localStorage.removeItem(LEGACY_REGIME_STATE_KEY);
     localStorage.removeItem(LEGACY_PF_STATE_KEY);
   } catch (_) {}
