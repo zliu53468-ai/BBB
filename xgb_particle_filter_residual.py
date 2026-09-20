@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""Particle-filter state injection into downstream XGBoost for BBB.
+"""Shoe-regime Particle Filter state injection into downstream XGBoost for BBB.
 
 Frozen upstream pipeline:
     history -> 256D/V23 core -> core_p_b -> fixed 7D features
 
 Downstream only:
-    pf_state = online ParticleFilter latent residual state
-    features_8d = [features_7d..., pf_state]
+    regime_state = online ShoeRegimeParticleFilter latent environment state
+    features_8d = [features_7d..., regime_state]
     delta = XGBoost(features_8d)
     delta_clipped = clip(delta, -0.10, +0.10)
     final_p_b = clip(core_p_b + delta_clipped, 0, 1)
 
-Training replays the particle filter causally within each shoe. The pf_state
-attached to row t is computed only from outcomes before row t; row t's residual
-is used only after its 8D feature vector has been recorded.
+The filter tracks within-shoe regime quality, not card composition. Cut-card /
+shoe depth changes state-transition responsiveness only and never directly
+selects Banker or Player. Training is causal: row t's regime_state uses only
+outcomes before row t.
 """
 from __future__ import annotations
 
@@ -29,9 +30,9 @@ from xgboost import XGBRegressor
 import xgb_residual_bias as base
 
 UPSTREAM_FEATURE_NAMES: tuple[str, ...] = base.FEATURE_NAMES
-MODEL_FEATURE_NAMES: tuple[str, ...] = (*UPSTREAM_FEATURE_NAMES, "pf_state")
-MODEL_TYPE = "xgb_pf_state_feature_residual"
-SCHEMA_VERSION = 3
+MODEL_FEATURE_NAMES: tuple[str, ...] = (*UPSTREAM_FEATURE_NAMES, "regime_state")
+MODEL_TYPE = "xgb_shoe_regime_feature_residual"
+SCHEMA_VERSION = 4
 DEFAULT_MAX_DELTA = base.DEFAULT_MAX_DELTA
 
 XGB_PARAMS: dict[str, Any] = {
@@ -56,6 +57,16 @@ PF_CONFIG: dict[str, Any] = {
     "resample_threshold": 500.0,
     "resampling": "systematic",
     "random_state": 42,
+    "state_clip": 1.0,
+    "observation_weights": {
+        "direction_alignment": 0.55,
+        "confidence_alignment": 0.30,
+        "persistence": 0.15,
+    },
+    "phase_q_scale": {
+        "shoe_start": 0.75,
+        "shoe_end": 1.50,
+    },
 }
 
 _UINT32_MASK = 0xFFFFFFFF
@@ -82,8 +93,13 @@ def build_xgb_regressor() -> XGBRegressor:
     return XGBRegressor(**XGB_PARAMS)
 
 
-class ResidualParticleFilter:
-    """One-dimensional bootstrap PF tracking within-shoe residual drift."""
+class ShoeRegimeParticleFilter:
+    """One-dimensional PF tracking the current shoe's structural regime.
+
+    +1 = sustained core-aligned structure
+     0 = turbulence / mixed evidence
+    -1 = sustained core-opposed structure
+    """
 
     def __init__(
         self,
@@ -93,28 +109,38 @@ class ResidualParticleFilter:
         r: float = 0.25,
         resample_threshold: float = 500.0,
         random_state: int = 42,
+        state_clip: float = 1.0,
     ) -> None:
         self.n_particles = int(n_particles)
         self.q = float(q)
         self.r = float(r)
         self.resample_threshold = float(resample_threshold)
         self.random_state = int(random_state)
+        self.state_clip = float(state_clip)
         self.rng = DeterministicRNG(self.random_state)
         self.particles = np.zeros(self.n_particles, dtype=np.float64)
         self.weights = np.full(self.n_particles, 1.0 / self.n_particles, dtype=np.float64)
+        self.updates = 0
+        self.last_alignment: float | None = None
+        self.last_observation = 0.0
+        self.last_effective_q = self.q
         self.reset()
 
     def reset(self) -> None:
-        """Start a new shoe with pf_state exactly centered at zero."""
         self.rng = DeterministicRNG(self.random_state)
         std = math.sqrt(max(self.q, 1e-12))
         draws = np.asarray([self.rng.normal() * std for _ in range(self.n_particles)], dtype=np.float64)
         draws -= float(np.mean(draws))
-        self.particles = draws
+        self.particles = np.clip(draws, -self.state_clip, self.state_clip)
         self.weights = np.full(self.n_particles, 1.0 / self.n_particles, dtype=np.float64)
+        self.updates = 0
+        self.last_alignment = None
+        self.last_observation = 0.0
+        self.last_effective_q = self.q
 
     def estimate(self) -> float:
-        return float(np.sum(self.particles * self.weights))
+        value = float(np.sum(self.particles * self.weights))
+        return float(np.clip(value, -self.state_clip, self.state_clip))
 
     def effective_sample_size(self) -> float:
         denom = float(np.sum(self.weights * self.weights))
@@ -128,8 +154,38 @@ class ResidualParticleFilter:
         self.particles = self.particles[indexes]
         self.weights.fill(1.0 / self.n_particles)
 
-    def update(self, residual_observation: float) -> float:
-        measurement = float(residual_observation)
+    @staticmethod
+    def shoe_progress(round_index: float, estimated_total_hands: float) -> float:
+        total = max(2.0, float(estimated_total_hands))
+        return float(np.clip((float(round_index) - 1.0) / (total - 1.0), 0.0, 1.0))
+
+    def effective_q(self, round_index: float, estimated_total_hands: float) -> float:
+        phase_cfg = PF_CONFIG["phase_q_scale"]
+        start = float(phase_cfg["shoe_start"])
+        end = float(phase_cfg["shoe_end"])
+        progress = self.shoe_progress(round_index, estimated_total_hands)
+        return max(1e-12, self.q * (start + (end - start) * progress))
+
+    def make_observation(self, *, actual_b: float, core_pb: float) -> tuple[float, float]:
+        actual_is_b = float(actual_b) >= 0.5
+        p_b = base.clip(float(core_pb), 0.0, 1.0)
+        core_is_b = p_b > 0.5
+        alignment = 1.0 if core_is_b == actual_is_b else -1.0
+        actual_probability = p_b if actual_is_b else (1.0 - p_b)
+        confidence_alignment = float(np.clip(2.0 * (actual_probability - 0.5), -1.0, 1.0))
+        persistence = 0.0
+        if self.last_alignment is not None and alignment == self.last_alignment:
+            persistence = alignment
+        weights = PF_CONFIG["observation_weights"]
+        observation = (
+            float(weights["direction_alignment"]) * alignment
+            + float(weights["confidence_alignment"]) * confidence_alignment
+            + float(weights["persistence"]) * persistence
+        )
+        return float(np.clip(observation, -1.0, 1.0)), alignment
+
+    def update_observation(self, observation: float) -> float:
+        measurement = float(np.clip(observation, -1.0, 1.0))
         variance = max(self.r, 1e-12)
         error = measurement - self.particles
         log_likelihood = -0.5 * (error * error) / variance
@@ -142,45 +198,62 @@ class ResidualParticleFilter:
             self.weights /= total
         if self.effective_sample_size() < self.resample_threshold:
             self.systematic_resample()
+        self.last_observation = measurement
         return self.estimate()
 
-    def predict(self) -> float:
-        std = math.sqrt(max(self.q, 1e-12))
+    def predict(self, *, round_index: float, estimated_total_hands: float) -> float:
+        q_eff = self.effective_q(round_index, estimated_total_hands)
+        std = math.sqrt(q_eff)
         noise = np.asarray([self.rng.normal() * std for _ in range(self.n_particles)], dtype=np.float64)
-        self.particles += noise
+        self.particles = np.clip(self.particles + noise, -self.state_clip, self.state_clip)
+        self.last_effective_q = q_eff
         return self.estimate()
 
-    def observe_and_project(self, residual_observation: float) -> float:
-        self.update(residual_observation)
-        return self.predict()
+    def observe_and_project(
+        self,
+        *,
+        actual_b: float,
+        core_pb: float,
+        round_index: float,
+        estimated_total_hands: float,
+    ) -> float:
+        observation, alignment = self.make_observation(actual_b=actual_b, core_pb=core_pb)
+        self.update_observation(observation)
+        self.last_alignment = alignment
+        self.updates += 1
+        return self.predict(
+            round_index=float(round_index) + 1.0,
+            estimated_total_hands=estimated_total_hands,
+        )
 
 
-def _new_particle_filter() -> ResidualParticleFilter:
-    return ResidualParticleFilter(
+def _new_particle_filter() -> ShoeRegimeParticleFilter:
+    return ShoeRegimeParticleFilter(
         n_particles=PF_CONFIG["n_particles"],
         q=PF_CONFIG["Q"],
         r=PF_CONFIG["R"],
         resample_threshold=PF_CONFIG["resample_threshold"],
         random_state=PF_CONFIG["random_state"],
+        state_clip=PF_CONFIG["state_clip"],
     )
 
 
-def combine_features_8d(features_7d: Sequence[float], pf_state: float) -> np.ndarray:
+def combine_features_8d(features_7d: Sequence[float], regime_state: float) -> np.ndarray:
     base_vector = np.asarray(features_7d, dtype=np.float32).reshape(-1)
     if base_vector.shape[0] != len(UPSTREAM_FEATURE_NAMES):
         raise ValueError(f"features_7d must contain {len(UPSTREAM_FEATURE_NAMES)} values")
-    return np.concatenate([base_vector, np.asarray([float(pf_state)], dtype=np.float32)])
+    return np.concatenate([base_vector, np.asarray([float(regime_state)], dtype=np.float32)])
 
 
 def make_training_arrays_8d(
     records: Sequence[Mapping[str, Any]],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
-    """Build causal 8D rows: capture PF state before updating with current label."""
+    """Build causal 8D rows with pre-outcome Shoe Regime state."""
     vectors: list[list[float]] = []
     residuals: list[float] = []
     actuals: list[int] = []
     shoes: list[str] = []
-    filters: dict[str, ResidualParticleFilter] = {}
+    filters: dict[str, ShoeRegimeParticleFilter] = {}
 
     for idx, record in enumerate(records):
         try:
@@ -190,6 +263,8 @@ def make_training_arrays_8d(
             if not all(math.isfinite(value) for value in vector7):
                 continue
             core_p_b = base.clip(float(row["core_p_b"]))
+            round_index = float(row["round_index"])
+            estimated_total_hands = float(row["estimated_total_hands"])
         except (TypeError, ValueError, KeyError):
             continue
 
@@ -199,15 +274,19 @@ def make_training_arrays_8d(
             pf = _new_particle_filter()
             filters[shoe_id] = pf
 
-        pf_state = pf.estimate()
+        regime_state = pf.estimate()
         residual = float(actual_b) - core_p_b
-        vectors.append([*vector7, float(pf_state)])
+        vectors.append([*vector7, float(regime_state)])
         residuals.append(residual)
         actuals.append(actual_b)
         shoes.append(shoe_id)
 
-        # Current outcome is used only to prepare the next row's state.
-        pf.observe_and_project(residual)
+        pf.observe_and_project(
+            actual_b=actual_b,
+            core_pb=core_p_b,
+            round_index=round_index,
+            estimated_total_hands=estimated_total_hands,
+        )
 
     if not vectors:
         raise ValueError("no valid B/P training rows")
@@ -218,14 +297,13 @@ def make_training_arrays_8d(
         shoes,
     )
 
-
-class PFStateXGBResidualPredictor:
-    """Online PF state -> eighth feature -> single XGBoost residual correction."""
+class ShoeRegimeXGBResidualPredictor:
+    """Shoe Regime state -> eighth feature -> single XGBoost residual correction."""
 
     def __init__(
         self,
         xgb_model: XGBRegressor | None = None,
-        particle_filter: ResidualParticleFilter | None = None,
+        particle_filter: ShoeRegimeParticleFilter | None = None,
         *,
         max_delta: float = DEFAULT_MAX_DELTA,
     ) -> None:
@@ -233,7 +311,7 @@ class PFStateXGBResidualPredictor:
         self.particle_filter = particle_filter or _new_particle_filter()
         self.max_delta = base.clip(float(max_delta), 0.0, DEFAULT_MAX_DELTA)
 
-    def fit(self, feature_rows_8d: np.ndarray, residual_targets: Sequence[float]) -> "PFStateXGBResidualPredictor":
+    def fit(self, feature_rows_8d: np.ndarray, residual_targets: Sequence[float]) -> "ShoeRegimeXGBResidualPredictor":
         x = np.asarray(feature_rows_8d, dtype=np.float32)
         y = np.asarray(residual_targets, dtype=np.float32)
         if x.ndim != 2 or x.shape[1] != len(MODEL_FEATURE_NAMES):
@@ -246,18 +324,30 @@ class PFStateXGBResidualPredictor:
     def reset_shoe(self) -> None:
         self.particle_filter.reset()
 
-    def current_pf_state(self) -> float:
+    def current_regime_state(self) -> float:
         return self.particle_filter.estimate()
 
-    def update_after_outcome(self, actual_b: int | float, core_pb: float) -> float:
-        return self.particle_filter.observe_and_project(float(actual_b) - float(core_pb))
+    def update_after_outcome(
+        self,
+        *,
+        actual_b: int | float,
+        core_pb: float,
+        round_index: float,
+        estimated_total_hands: float,
+    ) -> float:
+        return self.particle_filter.observe_and_project(
+            actual_b=float(actual_b),
+            core_pb=float(core_pb),
+            round_index=float(round_index),
+            estimated_total_hands=float(estimated_total_hands),
+        )
 
     def predict_delta(self, features_7d: Sequence[float]) -> dict[str, float]:
-        pf_state = self.current_pf_state()
-        x8 = combine_features_8d(features_7d, pf_state).reshape(1, -1)
+        regime_state = self.current_regime_state()
+        x8 = combine_features_8d(features_7d, regime_state).reshape(1, -1)
         raw_delta = float(self.xgb_model.predict(x8)[0])
         delta_clipped = float(np.clip(raw_delta, -self.max_delta, self.max_delta))
-        return {"pf_state": pf_state, "delta_raw": raw_delta, "delta_clipped": delta_clipped}
+        return {"regime_state": regime_state, "delta_raw": raw_delta, "delta_clipped": delta_clipped}
 
     def correct(self, features_7d: Sequence[float], core_pb: float | None = None) -> dict[str, Any]:
         x7 = np.asarray(features_7d, dtype=np.float32).reshape(-1)
@@ -338,7 +428,7 @@ def evaluate_8d(model: XGBRegressor, x8: np.ndarray, actual_b: np.ndarray, *, ma
     delta = np.clip(raw_delta, -max_delta, max_delta)
     core_pb = x8[:, MODEL_FEATURE_NAMES.index("core_p_b")].astype(float)
     final_pb = np.clip(core_pb + delta, 0.0, 1.0)
-    pf_state = x8[:, MODEL_FEATURE_NAMES.index("pf_state")].astype(float)
+    regime_state = x8[:, MODEL_FEATURE_NAMES.index("regime_state")].astype(float)
     return {
         "samples": float(len(x8)),
         "core_accuracy": base.direction_accuracy(core_pb, actual_b),
@@ -347,7 +437,7 @@ def evaluate_8d(model: XGBRegressor, x8: np.ndarray, actual_b: np.ndarray, *, ma
         "corrected_brier": base.brier(final_pb, actual_b),
         "mean_abs_delta": float(np.mean(np.abs(delta))),
         "max_abs_delta": float(np.max(np.abs(delta))) if len(delta) else 0.0,
-        "mean_abs_pf_state": float(np.mean(np.abs(pf_state))) if len(pf_state) else 0.0,
+        "mean_abs_regime_state": float(np.mean(np.abs(regime_state))) if len(regime_state) else 0.0,\n        "mean_regime_state": float(np.mean(regime_state)) if len(regime_state) else 0.0,
     }
 
 
@@ -366,14 +456,14 @@ def export_portable_bundle(
         "trained": True,
         "feature_names": list(UPSTREAM_FEATURE_NAMES),
         "model_feature_names": list(MODEL_FEATURE_NAMES),
-        "feature_schema": "7D_UPSTREAM_PLUS_1D_PF_STATE",
+        "feature_schema": "7D_UPSTREAM_PLUS_1D_SHOE_REGIME",
         "max_delta": float(max_delta),
         "xgb": _portable_xgb_payload(model, reference_x),
-        "particle_filter": dict(PF_CONFIG),
+        "shoe_regime_filter": dict(PF_CONFIG),
         "training": {
             "rows": int(training_rows),
             "target": "actual_B_minus_core_p_B",
-            "pf_state_timing": "state_before_current_outcome",
+            "regime_state_timing": "state_before_current_outcome",\n            "regime_state_meaning": "+1 core-aligned, 0 turbulent, -1 core-opposed",
             "decision_rule": "B if final_p_B > 0.50 else P",
             "no_pass": True,
             "metrics": dict(metrics),
@@ -400,7 +490,7 @@ def train_command(args: argparse.Namespace) -> int:
     )
     print(json.dumps({"validation": validation_metrics, "accepted": accepted}, ensure_ascii=False, indent=2))
     if not accepted and not args.force:
-        raise SystemExit("validation gate rejected PF-state 8D XGBoost model; use --force only for diagnostics")
+        raise SystemExit("validation gate rejected Shoe-Regime 8D XGBoost model; use --force only for diagnostics")
 
     final_model = build_xgb_regressor()
     final_model.fit(x8, residual)
@@ -417,7 +507,7 @@ def train_command(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="BBB PF-state injected 8D XGBoost residual trainer")
+    parser = argparse.ArgumentParser(description="BBB Shoe-Regime-filter injected 8D XGBoost residual trainer")
     sub = parser.add_subparsers(dest="command", required=True)
     train = sub.add_parser("train")
     train.add_argument("--input", required=True)
