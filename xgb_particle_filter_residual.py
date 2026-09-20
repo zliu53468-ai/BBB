@@ -122,7 +122,7 @@ class ShoeRegimeParticleFilter:
         self.updates = 0
         self.last_alignment: float | None = None
         self.last_observation = 0.0
-        self.last_effective_q = self.q_start_start
+        self.last_effective_q = self.q_start_start_start
         self.reset()
 
     def reset(self) -> None:
