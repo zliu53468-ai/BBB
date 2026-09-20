@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_PF_BASE_MARGIN_V1";
+const VERSION = "XGB_ENHANCED_PF_TENSOR_11D_V1";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -15,14 +15,17 @@ const FEATURE_NAMES = [
   "stage",
   "depth"
 ];
-const MODEL_FEATURE_NAMES = [...FEATURE_NAMES];
+const PSEUDO_CARD_FEATURE_NAMES = ["p_4cards", "p_6cards", "win_point", "lose_point"];
+const MODEL_FEATURE_NAMES = [...FEATURE_NAMES, ...PSEUDO_CARD_FEATURE_NAMES];
 const MAX_DELTA_DEFAULT = 0.10;
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const TRAINING_KEY = "bgs_xgb_residual_training_v1";
 const PENDING_KEY = "bgs_xgb_residual_pending_v1";
 const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
 const CUT_KEY = "bgs_xgb_estimated_total_hands_v1";
-const SHOE_PF_STATE_KEY = "bgs_xgb_shoe_particle_filter_state_v2";
+const SHOE_PF_STATE_KEY = "bgs_xgb_enhanced_shoe_particle_filter_state_v3";
+const PHYSICAL_OBS_KEY = "bgs_xgb_physical_observation_v1";
+const LEGACY_SHOE_PF_STATE_KEY_V2 = "bgs_xgb_shoe_particle_filter_state_v2";
 const LEGACY_SHOE_PF_STATE_KEY = "bgs_xgb_shoe_particle_filter_state_v1";
 const LEGACY_REGIME_STATE_KEY = "bgs_xgb_shoe_regime_state_v1";
 const LEGACY_PF_STATE_KEY = "bgs_xgb_particle_filter_state_v1";
@@ -33,14 +36,23 @@ const PF_DEFAULTS = {
   point_bins: 10,
   initial_point_counts: [128, 32, 32, 32, 32, 32, 32, 32, 32, 32],
   Q_early: 0.005,
-  Q_late: 0.02,
+  Q_late: 0.025,
   early_round_end: 15,
   late_round_start: 45,
   R: 0.25,
   resample_threshold: 500,
   resampling: "systematic",
   random_state: 42,
-  pf_delta_clip: 0.10
+  info_gain_multiplier: 1.5,
+  expected_cards_per_round: 4.8,
+  constraint_sigma_per_sqrt_round: 0.85,
+  constraint_hard_z: 3.5,
+  likelihood_weights: {
+    outcome: 0.40,
+    total_cards: 0.22,
+    points: 0.23,
+    core_residual: 0.15
+  }
 };
 
 const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
@@ -124,11 +136,17 @@ function buildFeatures(seq, corePrediction, signal = null) {
   };
 }
 
-function modelFeatureVector(features) {
-  return FEATURE_NAMES.map(name => {
+function modelFeatureVector(features, tensor) {
+  const vector = FEATURE_NAMES.map(name => {
     const value = +features[name];
     return Number.isFinite(value) ? value : 0;
   });
+  const physical = Array.isArray(tensor) ? tensor : [0, 0, 0, 0];
+  for (let i = 0; i < 4; i++) {
+    const value = +physical[i];
+    vector.push(Number.isFinite(value) ? value : 0);
+  }
+  return vector;
 }
 
 function findChild(node, nodeId) {
@@ -158,13 +176,13 @@ function evaluateTree(tree, vector) {
   return 0;
 }
 
-function predictXGBDelta(features, pfDelta) {
+function predictXGBDelta(features, tensor) {
   const xgb = modelBundle?.xgb;
   if (!modelBundle?.trained || !xgb || !Array.isArray(xgb.trees)) return 0;
-  const vector = modelFeatureVector(features);
-  let totalDelta = Number.isFinite(+pfDelta) ? +pfDelta : 0;
-  for (const tree of xgb.trees) totalDelta += evaluateTree(tree, vector);
-  return Number.isFinite(totalDelta) ? totalDelta : 0;
+  const vector = modelFeatureVector(features, tensor);
+  let result = +xgb.base_score || 0;
+  for (const tree of xgb.trees) result += evaluateTree(tree, vector);
+  return Number.isFinite(result) ? result : 0;
 }
 
 function getShoeId() {
