@@ -15,8 +15,8 @@ const FEATURE_NAMES = [
   "stage",
   "depth"
 ];
-const PSEUDO_CARD_FEATURE_NAMES = ["p_4cards", "p_6cards", "win_point", "lose_point"];
-const MODEL_FEATURE_NAMES = [...FEATURE_NAMES, ...PSEUDO_CARD_FEATURE_NAMES];
+const PHYSICAL_FEATURE_NAMES = ["pred_card_count", "pred_banker_point", "pred_player_point"];
+const MODEL_FEATURE_NAMES = [...FEATURE_NAMES, ...PHYSICAL_FEATURE_NAMES];
 const MAX_DELTA_DEFAULT = 0.10;
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const TRAINING_KEY = "bgs_xgb_residual_training_v1";
