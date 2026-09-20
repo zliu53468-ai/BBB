@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_PF_BASE_MARGIN_V1";
+const VERSION = "XGB_ENHANCED_PF_TENSOR_11D_V1";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -15,14 +15,17 @@ const FEATURE_NAMES = [
   "stage",
   "depth"
 ];
-const MODEL_FEATURE_NAMES = [...FEATURE_NAMES];
+const PSEUDO_CARD_FEATURE_NAMES = ["p_4cards", "p_6cards", "win_point", "lose_point"];
+const MODEL_FEATURE_NAMES = [...FEATURE_NAMES, ...PSEUDO_CARD_FEATURE_NAMES];
 const MAX_DELTA_DEFAULT = 0.10;
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const TRAINING_KEY = "bgs_xgb_residual_training_v1";
 const PENDING_KEY = "bgs_xgb_residual_pending_v1";
 const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
 const CUT_KEY = "bgs_xgb_estimated_total_hands_v1";
-const SHOE_PF_STATE_KEY = "bgs_xgb_shoe_particle_filter_state_v2";
+const SHOE_PF_STATE_KEY = "bgs_xgb_enhanced_shoe_particle_filter_state_v3";
+const PHYSICAL_OBS_KEY = "bgs_xgb_physical_observation_v1";
+const LEGACY_SHOE_PF_STATE_KEY_V2 = "bgs_xgb_shoe_particle_filter_state_v2";
 const LEGACY_SHOE_PF_STATE_KEY = "bgs_xgb_shoe_particle_filter_state_v1";
 const LEGACY_REGIME_STATE_KEY = "bgs_xgb_shoe_regime_state_v1";
 const LEGACY_PF_STATE_KEY = "bgs_xgb_particle_filter_state_v1";
@@ -33,14 +36,23 @@ const PF_DEFAULTS = {
   point_bins: 10,
   initial_point_counts: [128, 32, 32, 32, 32, 32, 32, 32, 32, 32],
   Q_early: 0.005,
-  Q_late: 0.02,
+  Q_late: 0.025,
   early_round_end: 15,
   late_round_start: 45,
   R: 0.25,
   resample_threshold: 500,
   resampling: "systematic",
   random_state: 42,
-  pf_delta_clip: 0.10
+  info_gain_multiplier: 1.5,
+  expected_cards_per_round: 4.8,
+  constraint_sigma_per_sqrt_round: 0.85,
+  constraint_hard_z: 3.5,
+  likelihood_weights: {
+    outcome: 0.40,
+    total_cards: 0.22,
+    points: 0.23,
+    core_residual: 0.15
+  }
 };
 
 const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
@@ -124,11 +136,17 @@ function buildFeatures(seq, corePrediction, signal = null) {
   };
 }
 
-function modelFeatureVector(features) {
-  return FEATURE_NAMES.map(name => {
+function modelFeatureVector(features, tensor) {
+  const vector = FEATURE_NAMES.map(name => {
     const value = +features[name];
     return Number.isFinite(value) ? value : 0;
   });
+  const physical = Array.isArray(tensor) ? tensor : [0, 0, 0, 0];
+  for (let i = 0; i < 4; i++) {
+    const value = +physical[i];
+    vector.push(Number.isFinite(value) ? value : 0);
+  }
+  return vector;
 }
 
 function findChild(node, nodeId) {
@@ -158,13 +176,13 @@ function evaluateTree(tree, vector) {
   return 0;
 }
 
-function predictXGBDelta(features, pfDelta) {
+function predictXGBDelta(features, tensor) {
   const xgb = modelBundle?.xgb;
   if (!modelBundle?.trained || !xgb || !Array.isArray(xgb.trees)) return 0;
-  const vector = modelFeatureVector(features);
-  let totalDelta = Number.isFinite(+pfDelta) ? +pfDelta : 0;
-  for (const tree of xgb.trees) totalDelta += evaluateTree(tree, vector);
-  return Number.isFinite(totalDelta) ? totalDelta : 0;
+  const vector = modelFeatureVector(features, tensor);
+  let result = +xgb.base_score || 0;
+  for (const tree of xgb.trees) result += evaluateTree(tree, vector);
+  return Number.isFinite(result) ? result : 0;
 }
 
 function getShoeId() {
@@ -181,7 +199,8 @@ function getShoeId() {
 }
 
 function shoePFConfig() {
-  const cfg = modelBundle?.shoe_particle_filter || {};
+  const cfg = modelBundle?.enhanced_shoe_particle_filter || {};
+  const weights = cfg.likelihood_weights || {};
   const initial = Array.isArray(cfg.initial_point_counts) && cfg.initial_point_counts.length === 10
     ? cfg.initial_point_counts.map(v => Math.max(0, Math.round(+v || 0)))
     : PF_DEFAULTS.initial_point_counts.slice();
@@ -196,9 +215,17 @@ function shoePFConfig() {
     late_round_start: Math.round(+cfg.late_round_start || PF_DEFAULTS.late_round_start),
     R: Math.max(1e-12, +cfg.R || PF_DEFAULTS.R),
     resample_threshold: Math.max(1, +cfg.resample_threshold || PF_DEFAULTS.resample_threshold),
-    resampling: "systematic",
     random_state: Math.round(+cfg.random_state || PF_DEFAULTS.random_state) >>> 0,
-    pf_delta_clip: Math.min(0.10, Math.max(0.001, +cfg.pf_delta_clip || PF_DEFAULTS.pf_delta_clip))
+    info_gain_multiplier: Math.max(1, +cfg.info_gain_multiplier || PF_DEFAULTS.info_gain_multiplier),
+    expected_cards_per_round: Math.max(4, +cfg.expected_cards_per_round || PF_DEFAULTS.expected_cards_per_round),
+    constraint_sigma_per_sqrt_round: Math.max(0.1, +cfg.constraint_sigma_per_sqrt_round || PF_DEFAULTS.constraint_sigma_per_sqrt_round),
+    constraint_hard_z: Math.max(1, +cfg.constraint_hard_z || PF_DEFAULTS.constraint_hard_z),
+    likelihood_weights: {
+      outcome: Number.isFinite(+weights.outcome) ? +weights.outcome : PF_DEFAULTS.likelihood_weights.outcome,
+      total_cards: Number.isFinite(+weights.total_cards) ? +weights.total_cards : PF_DEFAULTS.likelihood_weights.total_cards,
+      points: Number.isFinite(+weights.points) ? +weights.points : PF_DEFAULTS.likelihood_weights.points,
+      core_residual: Number.isFinite(+weights.core_residual) ? +weights.core_residual : PF_DEFAULTS.likelihood_weights.core_residual
+    }
   };
 }
 
@@ -217,12 +244,12 @@ function newShoePFState(shoeId = getShoeId()) {
     rng_state: cfg.random_state >>> 0,
     particles,
     weights: Array(cfg.n_particles).fill(1 / cfg.n_particles),
-    pf_delta: 0,
+    tensor: [0, 0, 0, 0],
     last_effective_q: cfg.Q_early,
     last_ess: cfg.n_particles,
     last_resampled: false,
-    last_residual: 0,
-    last_observed_outcome: 0
+    last_information_multiplier: 1,
+    last_constraint_survival: 1
   };
 }
 
@@ -324,7 +351,9 @@ function bankerDraws(bankerTotal, playerThird) {
 function simulateVirtualRound(counts, state) {
   let totalRemaining = 0;
   for (const count of counts) totalRemaining += +count || 0;
-  if (totalRemaining < 6) return { sign: 0, playerTotal: 0, bankerTotal: 0 };
+  if (totalRemaining < 6) {
+    return { sign: 0, playerTotal: 0, bankerTotal: 0, playerCards: 0, bankerCards: 0, totalCards: 0, winnerPoint: null, loserPoint: null };
+  }
 
   const player = [drawPoint(counts, state)];
   const banker = [drawPoint(counts, state)];
@@ -349,25 +378,58 @@ function simulateVirtualRound(counts, state) {
   }
 
   const sign = bankerTotal > playerTotal ? 1 : playerTotal > bankerTotal ? -1 : 0;
-  return { sign, playerTotal, bankerTotal };
+  const winnerPoint = sign > 0 ? bankerTotal : sign < 0 ? playerTotal : null;
+  const loserPoint = sign > 0 ? playerTotal : sign < 0 ? bankerTotal : null;
+  return {
+    sign,
+    playerTotal,
+    bankerTotal,
+    playerCards: player.length,
+    bankerCards: banker.length,
+    totalCards: player.length + banker.length,
+    winnerPoint,
+    loserPoint
+  };
 }
 
-function proposalLikelihood(simulated, actualB, corePB) {
+function particleLogLikelihood(simulated, actualB, corePB, physicalObservation = null) {
   const cfg = shoePFConfig();
   const actual = +actualB >= 0.5 ? 1 : 0;
   const observedSign = actual >= 0.5 ? 1 : -1;
-  const residual = actual - clip(+corePB || 0.5, 0, 1);
-  const observedStrength = 0.5 + 0.5 * Math.min(1, Math.abs(residual));
-  const targetScore = observedSign * observedStrength;
+  const observedTotalCards = [4, 5, 6].includes(+physicalObservation?.totalCards) ? +physicalObservation.totalCards : null;
+  const observedPlayerPoint = physicalObservation?.playerPoint !== null && physicalObservation?.playerPoint !== undefined && Number.isInteger(+physicalObservation.playerPoint) && +physicalObservation.playerPoint >= 0 && +physicalObservation.playerPoint <= 9 ? +physicalObservation.playerPoint : null;
+  const observedBankerPoint = physicalObservation?.bankerPoint !== null && physicalObservation?.bankerPoint !== undefined && Number.isInteger(+physicalObservation.bankerPoint) && +physicalObservation.bankerPoint >= 0 && +physicalObservation.bankerPoint <= 9 ? +physicalObservation.bankerPoint : null;
 
-  let simulatedScore = 0;
-  if (simulated.sign !== 0) {
-    const pointMargin = Math.abs(simulated.bankerTotal - simulated.playerTotal) / 9;
-    simulatedScore = simulated.sign * (0.5 + 0.5 * pointMargin);
+  const w = cfg.likelihood_weights;
+  let weightedError = w.outcome * Math.pow((observedSign - simulated.sign) / 2, 2);
+  let activeWeight = w.outcome;
+
+  if (observedTotalCards !== null) {
+    const e = (observedTotalCards - simulated.totalCards) / 2;
+    weightedError += w.total_cards * e * e;
+    activeWeight += w.total_cards;
   }
 
-  const error = targetScore - simulatedScore;
-  return Math.exp(-0.5 * error * error / cfg.R);
+  if (observedPlayerPoint !== null && observedBankerPoint !== null) {
+    const pe = (observedPlayerPoint - simulated.playerTotal) / 9;
+    const be = (observedBankerPoint - simulated.bankerTotal) / 9;
+    weightedError += w.points * 0.5 * (pe * pe + be * be);
+    activeWeight += w.points;
+  }
+
+  const residual = actual - clip(+corePB || 0.5, 0, 1);
+  const coreTarget = clip(2 * residual, -1, 1);
+  const pointMargin = simulated.sign === 0 ? 0 : Math.abs(simulated.bankerTotal - simulated.playerTotal) / 9;
+  const simulatedSupport = simulated.sign === 0 ? 0 : simulated.sign * (0.5 + 0.5 * pointMargin);
+  const coreError = coreTarget - simulatedSupport;
+  weightedError += w.core_residual * coreError * coreError;
+  activeWeight += w.core_residual;
+
+  const infoMultiplier = observedTotalCards === 5 || observedTotalCards === 6 ? cfg.info_gain_multiplier : 1;
+  return {
+    logLike: -0.5 * infoMultiplier * (weightedError / Math.max(activeWeight, 1e-12)) / cfg.R,
+    infoMultiplier
+  };
 }
 
 function rejuvenateParticles(state, qEff) {
@@ -392,42 +454,103 @@ function rejuvenateParticles(state, qEff) {
   }
 }
 
-function forecastPFDelta(state) {
+function applyPhysicalConstraint(state, roundIndex) {
   const cfg = shoePFConfig();
-  let bankerMass = 0;
-  let playerMass = 0;
+  const expectedRemaining = 416 - cfg.expected_cards_per_round * Math.max(1, +roundIndex || 1);
+  const sigma = Math.max(3, cfg.constraint_sigma_per_sqrt_round * Math.sqrt(Math.max(1, +roundIndex || 1)));
+  const hardZ = cfg.constraint_hard_z;
+  const survivors = new Array(state.particles.length);
+  let survivorCount = 0;
+
+  for (let i = 0; i < state.particles.length; i++) {
+    const remaining = state.particles[i].reduce((sum, value) => sum + (+value || 0), 0);
+    const z = Math.abs(remaining - expectedRemaining) / sigma;
+    survivors[i] = z <= hardZ;
+    if (survivors[i]) survivorCount++;
+  }
+
+  state.last_constraint_survival = survivorCount / Math.max(1, state.particles.length);
+
+  if (survivorCount > 0) {
+    let total = 0;
+    for (let i = 0; i < state.weights.length; i++) {
+      if (!survivors[i]) state.weights[i] = 0;
+      total += +state.weights[i] || 0;
+    }
+    if (total > 0) {
+      for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
+      return;
+    }
+  }
+
+  let total = 0;
+  for (let i = 0; i < state.weights.length; i++) {
+    const remaining = state.particles[i].reduce((sum, value) => sum + (+value || 0), 0);
+    const z = Math.min(hardZ, Math.abs(remaining - expectedRemaining) / sigma);
+    state.weights[i] *= Math.exp(-0.5 * z * z);
+    total += +state.weights[i] || 0;
+  }
+  if (!Number.isFinite(total) || total <= 0) {
+    state.weights = Array(state.weights.length).fill(1 / state.weights.length);
+  } else {
+    for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
+  }
+}
+
+function forecastTensor(state) {
+  let p4Mass = 0;
+  let p6Mass = 0;
+  let decisiveMass = 0;
+  let winPointMass = 0;
+  let losePointMass = 0;
+  let totalWeight = 0;
+
   for (let i = 0; i < state.particles.length; i++) {
     const counts = state.particles[i].slice();
     const simulated = simulateVirtualRound(counts, state);
     const weight = +state.weights[i] || 0;
-    if (simulated.sign > 0) bankerMass += weight;
-    else if (simulated.sign < 0) playerMass += weight;
+    totalWeight += weight;
+
+    if (simulated.totalCards === 4) p4Mass += weight;
+    if (simulated.totalCards === 6) p6Mass += weight;
+
+    if (simulated.sign !== 0) {
+      decisiveMass += weight;
+      winPointMass += weight * simulated.winnerPoint;
+      losePointMass += weight * simulated.loserPoint;
+    }
   }
-  const decisiveMass = bankerMass + playerMass;
-  if (decisiveMass <= 1e-12) return 0;
-  const physicalBias = (bankerMass - playerMass) / decisiveMass;
-  return clip(0.10 * physicalBias, -cfg.pf_delta_clip, cfg.pf_delta_clip);
+
+  if (totalWeight <= 1e-12) return [0, 0, 0, 0];
+  return [
+    clip(p4Mass / totalWeight, 0, 1),
+    clip(p6Mass / totalWeight, 0, 1),
+    decisiveMass > 1e-12 ? clip(winPointMass / decisiveMass, 0, 9) : 0,
+    decisiveMass > 1e-12 ? clip(losePointMass / decisiveMass, 0, 9) : 0
+  ];
 }
 
-function shoePFDelta() {
+function currentPseudoCardTensor() {
   const state = readShoePFState();
-  const cfg = shoePFConfig();
-  return clip(+state.pf_delta || 0, -cfg.pf_delta_clip, cfg.pf_delta_clip);
+  return Array.isArray(state.tensor) && state.tensor.length === 4 ? state.tensor.slice() : [0, 0, 0, 0];
 }
 
-function updateShoeParticleFilter(actualB, corePB, roundIndex) {
+
+
+function updateShoeParticleFilter(actualB, corePB, roundIndex, physicalObservation = null) {
   const state = readShoePFState();
   const logs = new Array(state.particles.length);
   let maxLog = -Infinity;
+  let infoMultiplier = 1;
 
   for (let i = 0; i < state.particles.length; i++) {
     const counts = state.particles[i].slice();
     const simulated = simulateVirtualRound(counts, state);
     state.particles[i] = counts;
-    const likelihood = proposalLikelihood(simulated, actualB, corePB);
-    const logLike = Math.log(Math.max(likelihood, 1e-300));
-    logs[i] = logLike;
-    if (logLike > maxLog) maxLog = logLike;
+    const likelihood = particleLogLikelihood(simulated, actualB, corePB, physicalObservation);
+    logs[i] = likelihood.logLike;
+    infoMultiplier = likelihood.infoMultiplier;
+    if (logs[i] > maxLog) maxLog = logs[i];
   }
 
   let total = 0;
@@ -442,6 +565,9 @@ function updateShoeParticleFilter(actualB, corePB, roundIndex) {
     for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
   }
 
+  state.last_information_multiplier = infoMultiplier;
+  applyPhysicalConstraint(state, roundIndex);
+
   const ess = effectiveSampleSize(state);
   state.last_ess = ess;
   state.last_resampled = false;
@@ -452,10 +578,8 @@ function updateShoeParticleFilter(actualB, corePB, roundIndex) {
 
   const qEff = effectiveProcessNoise(roundIndex);
   rejuvenateParticles(state, qEff);
-  state.pf_delta = forecastPFDelta(state);
+  state.tensor = forecastTensor(state);
   state.last_effective_q = qEff;
-  state.last_residual = (+actualB >= 0.5 ? 1 : 0) - clip(+corePB || 0.5, 0, 1);
-  state.last_observed_outcome = +actualB >= 0.5 ? 1 : 0;
   state.updates = Math.max(0, +state.updates || 0) + 1;
   writeShoePFState(state);
   return state;
@@ -464,10 +588,10 @@ function updateShoeParticleFilter(actualB, corePB, roundIndex) {
 function applyCorrection(seq, corePrediction) {
   const signal = corePrediction?.singleHazard || null;
   const features = buildFeatures(seq, corePrediction, signal);
-  const pfDelta = shoePFDelta();
-  const totalDelta = predictXGBDelta(features, pfDelta);
+  const tensor = currentPseudoCardTensor();
+  const rawDelta = predictXGBDelta(features, tensor);
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
-  const delta = clip(totalDelta, -maxDelta, maxDelta);
+  const delta = clip(rawDelta, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
   const finalPB = clip(corePB + delta, 0, 1);
   const direction = finalPB > 0.5 ? "B" : "P";
@@ -475,14 +599,20 @@ function applyCorrection(seq, corePrediction) {
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
   const active = Boolean(modelBundle?.trained);
+  const pseudoCardFeature = {
+    p_4cards: tensor[0],
+    p_6cards: tensor[1],
+    win_point: tensor[2],
+    lose_point: tensor[3]
+  };
 
   if (!active) {
     return {
       ...corePrediction,
       residualBias: {
         version: VERSION, active: false, modelLoaded, modelLoadError,
-        coreDirection, corePB, pfDelta,
-        totalDelta: 0, delta: 0, finalPB: corePB, finalDirection: coreDirection,
+        coreDirection, corePB, pseudoCardFeature,
+        rawDelta: 0, delta: 0, finalPB: corePB, finalDirection: coreDirection,
         flipped: false, features
       }
     };
@@ -494,11 +624,11 @@ function applyCorrection(seq, corePrediction) {
     direction,
     confidence,
     probabilities: { B: finalPB, P: finalPP },
-    regime: flipped ? "PF Base-Margin 7D-XGB殘差修正換邊" : corePrediction.regime,
+    regime: flipped ? "Enhanced PF 11D-XGB殘差修正換邊" : corePrediction.regime,
     residualBias: {
       version: VERSION, active: true, modelLoaded, modelLoadError,
-      coreDirection, corePB, pfDelta,
-      totalDelta, delta, finalPB, finalDirection: direction, flipped, features
+      coreDirection, corePB, pseudoCardFeature,
+      rawDelta, delta, finalPB, finalDirection: direction, flipped, features
     }
   };
 }
@@ -524,6 +654,8 @@ function rotateShoeId() {
     localStorage.removeItem(PENDING_KEY);
     localStorage.removeItem(SHOE_PF_STATE_KEY);
     localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY);
+    localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY_V2);
+    localStorage.removeItem(PHYSICAL_OBS_KEY);
     localStorage.removeItem(LEGACY_REGIME_STATE_KEY);
     localStorage.removeItem(LEGACY_PF_STATE_KEY);
   } catch (_) {}
@@ -548,7 +680,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "PF Base-Margin 7D-XGB 修正完成" : "分析完成";
+  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "Enhanced PF 11D-XGB 修正完成" : "分析完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
 }
@@ -566,22 +698,65 @@ function writeTrainingRows(rows) {
   try { localStorage.setItem(TRAINING_KEY, JSON.stringify(rows.slice(-MAX_TRAINING_ROWS))); } catch (_) {}
 }
 
+function normalizePhysicalObservation(value) {
+  if (!value || typeof value !== "object") return null;
+  const totalCards = [4, 5, 6].includes(+value.totalCards) ? +value.totalCards : null;
+  const playerPoint = value.playerPoint !== null && value.playerPoint !== undefined && Number.isInteger(+value.playerPoint) && +value.playerPoint >= 0 && +value.playerPoint <= 9 ? +value.playerPoint : null;
+  const bankerPoint = value.bankerPoint !== null && value.bankerPoint !== undefined && Number.isInteger(+value.bankerPoint) && +value.bankerPoint >= 0 && +value.bankerPoint <= 9 ? +value.bankerPoint : null;
+  if (totalCards === null && playerPoint === null && bankerPoint === null) return null;
+  return { totalCards, playerPoint, bankerPoint };
+}
+
+function setPhysicalObservation(value) {
+  const normalized = normalizePhysicalObservation(value);
+  if (!normalized) throw new Error("physical observation requires totalCards 4/5/6 and/or Player/Banker points 0..9");
+  try { localStorage.setItem(PHYSICAL_OBS_KEY, JSON.stringify(normalized)); } catch (_) {}
+  return normalized;
+}
+
+function consumePhysicalObservation(explicitValue = null) {
+  const direct = normalizePhysicalObservation(explicitValue);
+  if (direct) return direct;
+
+  try {
+    const fromWindow = normalizePhysicalObservation(window.__BGS_RESIDUAL_PHYSICAL_OBSERVATION__);
+    if (fromWindow) {
+      window.__BGS_RESIDUAL_PHYSICAL_OBSERVATION__ = null;
+      return fromWindow;
+    }
+  } catch (_) {}
+
+  try {
+    const stored = normalizePhysicalObservation(JSON.parse(localStorage.getItem(PHYSICAL_OBS_KEY) || "null"));
+    localStorage.removeItem(PHYSICAL_OBS_KEY);
+    return stored;
+  } catch (_) {
+    return null;
+  }
+}
+
 function registerPrediction(seq, prediction) {
   const residual = prediction?.residualBias || {};
   const features = residual.features || buildFeatures(seq, prediction, prediction?.singleHazard || null);
+  const tensor = residual.pseudoCardFeature || {};
   const pending = {
     shoe_id: getShoeId(),
     created_at: Date.now(),
     history_fingerprint: seq.join(""),
     core_p_b: +features.core_p_b,
     core_direction: residual.coreDirection || String(prediction?.direction || ""),
-    pf_delta: Number.isFinite(+residual.pfDelta) ? +residual.pfDelta : shoePFDelta(),
+    pseudo_card_feature: {
+      p_4cards: Number.isFinite(+tensor.p_4cards) ? +tensor.p_4cards : 0,
+      p_6cards: Number.isFinite(+tensor.p_6cards) ? +tensor.p_6cards : 0,
+      win_point: Number.isFinite(+tensor.win_point) ? +tensor.win_point : 0,
+      lose_point: Number.isFinite(+tensor.lose_point) ? +tensor.lose_point : 0
+    },
     features
   };
   try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (_) {}
 }
 
-function settlePending(actualOutcome) {
+function settlePending(actualOutcome, physicalObservation = null) {
   const actual = String(actualOutcome || "").toUpperCase();
   if (actual === "T") return;
   if (actual !== "B" && actual !== "P") return;
@@ -593,15 +768,24 @@ function settlePending(actualOutcome) {
   const actualB = actual === "B" ? 1 : 0;
   const corePB = clip(+pending.features.core_p_b || 0.5);
   const residualTarget = actualB - corePB;
+  const physical = consumePhysicalObservation(physicalObservation);
+  const tensor = pending.pseudo_card_feature || {};
+
   const row = {
-    schema_version: 5,
+    schema_version: 6,
     shoe_id: String(pending.shoe_id || getShoeId()),
     created_at: +pending.created_at || Date.now(),
     history_fingerprint: String(pending.history_fingerprint || ""),
     actual_outcome: actual,
     actual_b: actualB,
     residual_target: residualTarget,
-    pf_delta: Number.isFinite(+pending.pf_delta) ? +pending.pf_delta : 0,
+    p_4cards: Number.isFinite(+tensor.p_4cards) ? +tensor.p_4cards : 0,
+    p_6cards: Number.isFinite(+tensor.p_6cards) ? +tensor.p_6cards : 0,
+    win_point: Number.isFinite(+tensor.win_point) ? +tensor.win_point : 0,
+    lose_point: Number.isFinite(+tensor.lose_point) ? +tensor.lose_point : 0,
+    observed_total_cards: physical?.totalCards ?? null,
+    observed_player_point: physical?.playerPoint ?? null,
+    observed_banker_point: physical?.bankerPoint ?? null,
     ...pending.features
   };
 
@@ -612,7 +796,12 @@ function settlePending(actualOutcome) {
 
   if (!duplicate) {
     rows.push(row);
-    updateShoeParticleFilter(actualB, corePB, +pending.features.round_index || 1);
+    updateShoeParticleFilter(
+      actualB,
+      corePB,
+      +pending.features.round_index || 1,
+      physical
+    );
   }
   writeTrainingRows(rows);
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
@@ -626,10 +815,16 @@ function rebuildShoeParticleFilter(rows = readTrainingRows()) {
     const actualB = Number.isFinite(+row?.actual_b)
       ? +row.actual_b
       : (String(row?.actual_outcome || "").toUpperCase() === "B" ? 1 : 0);
+    const physical = normalizePhysicalObservation({
+      totalCards: row?.observed_total_cards,
+      playerPoint: row?.observed_player_point,
+      bankerPoint: row?.observed_banker_point
+    });
     updateShoeParticleFilter(
       actualB,
       clip(+row?.core_p_b || 0.5),
-      +row?.round_index || 1
+      +row?.round_index || 1,
+      physical
     );
   }
 }
@@ -649,10 +844,11 @@ function rollbackTrainingIfNeeded() {
 
 function exportTrainingData() {
   return JSON.stringify({
-    schema_version: 5,
+    schema_version: 6,
     feature_names: FEATURE_NAMES,
+    pseudo_card_feature_names: PSEUDO_CARD_FEATURE_NAMES,
     model_feature_names: MODEL_FEATURE_NAMES,
-    feature_schema: "7D_WITH_PF_BASE_MARGIN",
+    feature_schema: "7D_PLUS_4D_PSEUDO_CARD_TENSOR",
     rows: readTrainingRows()
   }, null, 2);
 }
@@ -662,7 +858,7 @@ function downloadTrainingData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `bgs_xgb_pf_base_margin_7d_training_${Date.now()}.json`;
+  a.download = `bgs_xgb_enhanced_pf_11d_training_${Date.now()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -676,7 +872,7 @@ async function loadModel(url = MODEL_URL) {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const bundle = await response.json();
-    if (!bundle || bundle.model_type !== "xgb_pf_base_margin_residual") throw new Error("invalid_model_bundle");
+    if (!bundle || bundle.model_type !== "xgb_enhanced_pf_tensor_residual") throw new Error("invalid_model_bundle");
     const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
     if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("upstream_feature_schema_mismatch");
     const modelNames = Array.isArray(bundle.model_feature_names) ? bundle.model_feature_names : [];
@@ -731,6 +927,7 @@ if (typeof window !== "undefined") {
   window.__BGS_RESIDUAL_BIAS__ = {
     version: VERSION,
     featureNames: FEATURE_NAMES,
+    pseudoCardFeatureNames: PSEUDO_CARD_FEATURE_NAMES,
     modelFeatureNames: MODEL_FEATURE_NAMES,
     buildFeatures,
     sxMarkovPSame,
@@ -738,33 +935,50 @@ if (typeof window !== "undefined") {
     loadModel,
     setEstimatedTotalHands,
     getEstimatedTotalHands,
+    setPhysicalObservation,
+    settlePending,
     exportTrainingData,
     downloadTrainingData,
     resetShoeParticleFilter,
     updateShoeParticleFilter,
-    getPFDelta: () => shoePFDelta(),
+    getPseudoCardFeature: () => {
+      const tensor = currentPseudoCardTensor();
+      return {
+        p_4cards: tensor[0],
+        p_6cards: tensor[1],
+        win_point: tensor[2],
+        lose_point: tensor[3]
+      };
+    },
     getShoeParticleFilterStatus: () => {
       const state = readShoePFState();
+      const tensor = currentPseudoCardTensor();
       return {
         shoeId: state.shoe_id,
         updates: +state.updates || 0,
-        pfDelta: shoePFDelta(),
+        pseudoCardFeature: {
+          p_4cards: tensor[0],
+          p_6cards: tensor[1],
+          win_point: tensor[2],
+          lose_point: tensor[3]
+        },
         effectiveSampleSize: effectiveSampleSize(state),
-        lastResidual: Number.isFinite(+state.last_residual) ? +state.last_residual : null,
         lastEffectiveQ: +state.last_effective_q || shoePFConfig().Q_early,
+        lastInformationMultiplier: +state.last_information_multiplier || 1,
+        lastConstraintSurvival: Number.isFinite(+state.last_constraint_survival) ? +state.last_constraint_survival : 1,
         lastResampled: Boolean(state.last_resampled),
         config: shoePFConfig()
       };
     },
     resetParticleFilter: resetShoeParticleFilter,
-    getParticleFilterEstimate: () => shoePFDelta(),
+    getParticleFilterEstimate: () => currentPseudoCardTensor(),
     getParticleFilterStatus: () => {
       const state = readShoePFState();
       return {
         shoeId: state.shoe_id,
         updates: +state.updates || 0,
-        estimate: shoePFDelta(),
-        semantics: "pf_delta_base_margin",
+        estimate: currentPseudoCardTensor(),
+        semantics: "pseudo_card_feature_4d",
         config: shoePFConfig()
       };
     },
@@ -773,7 +987,7 @@ if (typeof window !== "undefined") {
       loaded: modelLoaded,
       trained: Boolean(modelBundle?.trained),
       error: modelLoadError,
-      featureSchema: "7D_WITH_PF_BASE_MARGIN"
+      featureSchema: "7D_PLUS_4D_PSEUDO_CARD_TENSOR"
     })
   };
 }

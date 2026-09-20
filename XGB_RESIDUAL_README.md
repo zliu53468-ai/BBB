@@ -1,4 +1,4 @@
-# BBB PF Base-Margin -> 7D XGBoost Residual Layer
+# BBB Enhanced Shoe PF -> 4D Physical Tensor -> 11D XGBoost
 
 The upstream pipeline is frozen and unchanged:
 
@@ -9,144 +9,229 @@ The upstream pipeline is frozen and unchanged:
 -> fixed 7D features
 ```
 
-The Particle Filter no longer occupies an XGBoost feature dimension.
+Only the downstream correction layer changes.
 
 ## Architecture
 
 ```text
 fixed 7D
-  + Shoe Particle Filter -> pf_delta
-  -> xgb.DMatrix(fixed 7D)
-  -> set_base_margin(pf_delta)
-  -> XGBoost Booster trees learn residual correction above the PF prior
-  -> Booster.predict(DMatrix) = total residual Delta
-  -> clip total Delta to +/-0.10
+  -> EnhancedShoeParticleFilter
+  -> [p_4cards, p_6cards, win_point, lose_point]
+  -> fixed 7D + physical 4D = 11D
+  -> XGBoost residual model
+  -> residual Delta
+  -> clip Delta to +/-0.10
   -> Final P(B)
   -> B / P
 ```
 
-XGBoost still sees exactly these seven frozen features:
+The original seven upstream features remain unchanged.
 
-1. `core_p_b`
-2. `round_index`
-3. `estimated_total_hands`
-4. `remaining_ratio`
-5. `sx_markov_p_same`
-6. `stage`
-7. `depth`
+## EnhancedShoeParticleFilter
 
-There is no eighth XGBoost feature.
+Each of 1000 particles is one plausible remaining eight-deck shoe represented by
+baccarat point-value counts 0..9.
 
-## Shoe Particle Filter
-
-The application does not observe actual card identities. Each of 1000 particles
-is one plausible latent eight-deck remaining shoe represented by baccarat point
-counts 0..9.
-
-Fresh eight-deck point counts:
+Fresh shoe:
 
 ```text
-0-point = 128 cards
-1..9    = 32 cards each
-total   = 416 cards
+0-point cards = 128
+1..9          = 32 each
+total         = 416
 ```
 
-The PF:
+Actual hidden card identities remain unobserved.
 
-- samples virtual rounds without replacement;
-- follows baccarat Player/Banker drawing rules;
-- reweights latent shoes from the observed B/P result and Core residual;
-- resamples when ESS < 500;
-- uses Q=0.005 before round 15 and Q=0.02 after round 45, with a linear transition between;
-- resets to a fresh eight-deck latent shoe set on a new shoe.
+### Bayesian likelihood
 
-The next-round weighted B/P physical bias is converted to:
+For particle i and settled round t:
 
 ```text
-pf_delta = clip(0.10 * physical_bias, -0.10, +0.10)
+log L_i =
+  - 0.5 * information_multiplier
+  * normalized_weighted_error_i
+  / R
 ```
 
-`pf_delta` is a probabilistic physical prior, not knowledge of the true
-remaining cards.
+with:
 
-## Native XGBoost base_margin
+```text
+R = 0.25
 
-Training target remains:
+weighted_error =
+    0.40 * outcome_error^2
+  + 0.22 * total_card_error^2      (when total-card observation exists)
+  + 0.23 * point_error^2           (when Player/Banker final points exist)
+  + 0.15 * core_residual_error^2
+```
+
+The frozen Core contributes only as evidence:
+
+```text
+core_residual = actual_B - core_p_b
+core_target   = clip(2 * core_residual, -1, +1)
+```
+
+A particle's simulated B/P direction and simulated point margin are compared with
+that signed Core residual target.
+
+If the real round used five or six total cards:
+
+```text
+information_multiplier = 1.5
+```
+
+Otherwise:
+
+```text
+information_multiplier = 1.0
+```
+
+This makes 5/6-card rounds contract the posterior faster when physical
+observations are supplied.
+
+If total-card/point observations are unavailable, the PF remains operational
+using B/P outcome + Core residual only; it does not invent unseen observations.
+
+## Physical total-card constraint
+
+After likelihood weighting and before resampling:
+
+```text
+expected_remaining =
+    416 - 4.8 * current_round
+```
+
+Particle remaining-card deviation:
+
+```text
+z_i =
+  abs(remaining_i - expected_remaining)
+  / max(3.0, 0.85 * sqrt(current_round))
+```
+
+Hard constraint:
+
+```text
+if z_i > 3.5:
+    weight_i = 0
+```
+
+If a hard cutoff would collapse every particle, the implementation falls back
+to a soft Gaussian physical prior instead of producing an invalid posterior.
+
+## Adaptive process noise
+
+Q is implemented as latent particle rejuvenation strength:
+
+```text
+current_round < 15:
+    Q = 0.005
+
+15 <= current_round <= 45:
+    Q transitions linearly from 0.005 to 0.025
+
+current_round > 45:
+    Q = 0.025
+```
+
+## Four-dimensional next-round tensor
+
+Before the next real outcome is known, every weighted particle performs one
+forward virtual baccarat rollout.
+
+Let w_i be normalized particle weights.
+
+```text
+p_4cards =
+  sum_i w_i * I(total_cards_i == 4)
+
+p_6cards =
+  sum_i w_i * I(total_cards_i == 6)
+```
+
+For decisive B/P virtual rounds:
+
+```text
+win_point =
+  sum_i w_i * winner_point_i
+  / sum_i w_i * I(decisive_i)
+
+lose_point =
+  sum_i w_i * loser_point_i
+  / sum_i w_i * I(decisive_i)
+```
+
+The XGBoost physical feature block is exactly:
+
+```text
+[p_4cards, p_6cards, win_point, lose_point]
+```
+
+## 11D XGBoost residual model
+
+```text
+n_estimators = 75
+learning_rate = 0.025
+max_depth = 4
+min_child_weight = 2.0
+alpha = 0.05
+lambda = 0.30
+random_state = 42
+```
+
+Training target:
 
 ```text
 target = actual_B - core_p_b
 ```
 
-For every historical round t:
+Causal row construction:
 
 ```text
-pf_delta_t = PF state before outcome t is known
-dtrain = xgb.DMatrix(features_7d_t, label=target_t)
-dtrain.set_base_margin(pf_delta_t)
+tensor_t = PF tensor BEFORE outcome t is known
+features_11d_t = [fixed_features_7d_t, tensor_t]
+target_t = actual_B_t - core_p_b_t
+
+only after row t is captured:
+    outcome/physical observations t update the PF
+    -> tensor_(t+1)
 ```
 
-The current result is used to update the PF only after the row has been captured,
-so the current label cannot leak into its own base margin.
+This prevents the current result from leaking into its own physical feature.
 
-Prediction uses the same contract:
+## Optional high-information observations
 
-```python
-dtest = xgb.DMatrix(features_7d)
-dtest.set_base_margin(np.asarray([current_pf_delta], dtype=np.float32))
-
-total_delta = booster.predict(dtest)[0]
-delta_clipped = np.clip(total_delta, -0.10, +0.10)
-final_pb = np.clip(core_pb + delta_clipped, 0.0, 1.0)
-```
-
-For `reg:squarederror`, the supplied base margin is the initial prediction
-margin, and the boosting trees learn corrections on top of that prior.
-
-## XGBoost parameters
-
-Native `xgb.train` is used rather than sklearn `XGBRegressor.fit`.
+Historical or runtime rows may include:
 
 ```text
-num_boost_round = 50
-eta / learning_rate = 0.02
-max_depth = 3
-alpha = 0.1
-lambda = 0.3
-seed = 42
-objective = reg:squarederror
-tree_method = hist
+observed_total_cards: 4 | 5 | 6
+observed_player_point: 0..9
+observed_banker_point: 0..9
 ```
 
-## Browser runtime
+Browser runtime also exposes:
 
-The browser does not run the native XGBoost C++ DMatrix API. The exported tree
-runtime reproduces the same semantics:
+```js
+__BGS_RESIDUAL_BIAS__.setPhysicalObservation({
+  totalCards: 6,
+  playerPoint: 4,
+  bankerPoint: 7
+});
+```
+
+The next settled B/P result consumes that physical observation.
+
+## Inference
 
 ```text
-total_delta = current_pf_delta + sum(exported_tree_leaf_outputs)
+tensor = current Enhanced PF 4D forecast
+features_11d = [features_7d, tensor]
+raw_delta = XGBoost(features_11d)
+delta = clip(raw_delta, -0.10, +0.10)
+final_p_B = clip(core_p_B + delta, 0.0, 1.0)
+direction = B if final_p_B > 0.50 else P
 ```
 
-The exported model is validated in Python before writing the bundle: native
-`Booster.predict(DMatrix with base_margin)` must match
-`pf_delta + portable_tree_sum` within tolerance.
-
-## Modules
-
-```text
-shoe_particle_filter.py
-  -> 1000 latent virtual shoes
-  -> output pf_delta [-0.10,+0.10]
-
-xgb_particle_filter_residual.py
-  -> fixed 7D DMatrix
-  -> historical/current pf_delta via set_base_margin()
-  -> native xgb.train / Booster.predict
-  -> final residual clip +/-0.10
-
-residual_bias_runtime.js
-  -> same PF simulation in browser
-  -> exported-tree equivalent of PF base-margin prediction
-```
-
-The checked-in `residual_bias_model.json` remains `trained:false` until real
-labeled B/P rows are trained and exported.
+The checked-in model bundle stays `trained:false` until real labeled training
+rows are fitted and exported.
