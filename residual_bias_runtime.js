@@ -927,6 +927,7 @@ if (typeof window !== "undefined") {
   window.__BGS_RESIDUAL_BIAS__ = {
     version: VERSION,
     featureNames: FEATURE_NAMES,
+    pseudoCardFeatureNames: PSEUDO_CARD_FEATURE_NAMES,
     modelFeatureNames: MODEL_FEATURE_NAMES,
     buildFeatures,
     sxMarkovPSame,
@@ -934,33 +935,50 @@ if (typeof window !== "undefined") {
     loadModel,
     setEstimatedTotalHands,
     getEstimatedTotalHands,
+    setPhysicalObservation,
+    settlePending,
     exportTrainingData,
     downloadTrainingData,
     resetShoeParticleFilter,
     updateShoeParticleFilter,
-    getPFDelta: () => shoePFDelta(),
+    getPseudoCardFeature: () => {
+      const tensor = currentPseudoCardTensor();
+      return {
+        p_4cards: tensor[0],
+        p_6cards: tensor[1],
+        win_point: tensor[2],
+        lose_point: tensor[3]
+      };
+    },
     getShoeParticleFilterStatus: () => {
       const state = readShoePFState();
+      const tensor = currentPseudoCardTensor();
       return {
         shoeId: state.shoe_id,
         updates: +state.updates || 0,
-        pfDelta: shoePFDelta(),
+        pseudoCardFeature: {
+          p_4cards: tensor[0],
+          p_6cards: tensor[1],
+          win_point: tensor[2],
+          lose_point: tensor[3]
+        },
         effectiveSampleSize: effectiveSampleSize(state),
-        lastResidual: Number.isFinite(+state.last_residual) ? +state.last_residual : null,
         lastEffectiveQ: +state.last_effective_q || shoePFConfig().Q_early,
+        lastInformationMultiplier: +state.last_information_multiplier || 1,
+        lastConstraintSurvival: Number.isFinite(+state.last_constraint_survival) ? +state.last_constraint_survival : 1,
         lastResampled: Boolean(state.last_resampled),
         config: shoePFConfig()
       };
     },
     resetParticleFilter: resetShoeParticleFilter,
-    getParticleFilterEstimate: () => shoePFDelta(),
+    getParticleFilterEstimate: () => currentPseudoCardTensor(),
     getParticleFilterStatus: () => {
       const state = readShoePFState();
       return {
         shoeId: state.shoe_id,
         updates: +state.updates || 0,
-        estimate: shoePFDelta(),
-        semantics: "pf_delta_base_margin",
+        estimate: currentPseudoCardTensor(),
+        semantics: "pseudo_card_feature_4d",
         config: shoePFConfig()
       };
     },
@@ -969,7 +987,7 @@ if (typeof window !== "undefined") {
       loaded: modelLoaded,
       trained: Boolean(modelBundle?.trained),
       error: modelLoadError,
-      featureSchema: "7D_WITH_PF_BASE_MARGIN"
+      featureSchema: "7D_PLUS_4D_PSEUDO_CARD_TENSOR"
     })
   };
 }
