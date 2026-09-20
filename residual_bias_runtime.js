@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_BLIND_PHYSICAL_10D_V1";
+const VERSION = "XGB_TRANSFORMER_DUAL_BRAIN_V1";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -24,6 +24,7 @@ const PENDING_KEY = "bgs_xgb_residual_pending_v1";
 const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
 const CUT_KEY = "bgs_xgb_estimated_total_hands_v1";
 const SHOE_PF_STATE_KEY = "bgs_xgb_blind_physical_particle_filter_state_v4";
+const TRANSFORMER_WINDOW_KEY = "bgs_xgb_transformer_window_v1";
 const LEGACY_SHOE_PF_STATE_KEY_V3 = "bgs_xgb_enhanced_shoe_particle_filter_state_v3";
 const PHYSICAL_OBS_KEY = "bgs_xgb_physical_observation_v1";
 const LEGACY_SHOE_PF_STATE_KEY_V2 = "bgs_xgb_shoe_particle_filter_state_v2";
@@ -183,6 +184,200 @@ function predictXGBDelta(features, physical3) {
   let result = +xgb.base_score || 0;
   for (const tree of xgb.trees) result += evaluateTree(tree, vector);
   return Number.isFinite(result) ? result : 0;
+}
+
+function transformerConfig() {
+  const t = modelBundle?.transformer || {};
+  return {
+    trained: Boolean(t.trained),
+    window_size: Math.max(1, Math.round(+t.window_size || 10)),
+    input_dim: Math.max(1, Math.round(+t.input_dim || 10)),
+    num_heads: Math.max(1, Math.round(+t.num_heads || 2)),
+    key_dim: Math.max(1, Math.round(+t.key_dim || 16)),
+    d_model: Math.max(1, Math.round(+t.d_model || 32)),
+    weights: t.weights || null
+  };
+}
+
+function readTransformerWindow() {
+  const shoeId = getShoeId();
+  const cfg = transformerConfig();
+  try {
+    const state = JSON.parse(localStorage.getItem(TRANSFORMER_WINDOW_KEY) || "null");
+    const valid = state
+      && String(state.shoe_id || "") === String(shoeId)
+      && Array.isArray(state.rows)
+      && state.rows.length <= cfg.window_size
+      && state.rows.every(row => Array.isArray(row) && row.length === cfg.input_dim);
+    if (valid) return state;
+  } catch (_) {}
+  const state = { shoe_id: String(shoeId), rows: [], tokens: [] };
+  try { localStorage.setItem(TRANSFORMER_WINDOW_KEY, JSON.stringify(state)); } catch (_) {}
+  return state;
+}
+
+function writeTransformerWindow(state) {
+  try { localStorage.setItem(TRANSFORMER_WINDOW_KEY, JSON.stringify(state)); } catch (_) {}
+}
+
+function resetTransformerWindow(shoeId = getShoeId()) {
+  const state = { shoe_id: String(shoeId), rows: [], tokens: [] };
+  writeTransformerWindow(state);
+  return state;
+}
+
+function upsertTransformerFeature(token, feature10) {
+  const cfg = transformerConfig();
+  const state = readTransformerWindow();
+  const vector = Array.from(feature10 || []).slice(0, cfg.input_dim).map(v => Number.isFinite(+v) ? +v : 0);
+  while (vector.length < cfg.input_dim) vector.push(0);
+
+  const lastToken = state.tokens?.length ? state.tokens[state.tokens.length - 1] : null;
+  if (String(lastToken ?? "") === String(token ?? "") && state.rows.length) {
+    state.rows[state.rows.length - 1] = vector;
+  } else {
+    state.rows.push(vector);
+    state.tokens = Array.isArray(state.tokens) ? state.tokens : [];
+    state.tokens.push(String(token ?? ""));
+    while (state.rows.length > cfg.window_size) state.rows.shift();
+    while (state.tokens.length > cfg.window_size) state.tokens.shift();
+  }
+  writeTransformerWindow(state);
+  return state.rows.map(row => row.slice());
+}
+
+function rebuildTransformerWindow(rows = readTrainingRows()) {
+  const cfg = transformerConfig();
+  const shoeId = getShoeId();
+  const state = resetTransformerWindow(shoeId);
+  for (const row of rows) {
+    if (String(row?.shoe_id || "") !== String(shoeId)) continue;
+    const vector = MODEL_FEATURE_NAMES.map(name => {
+      const value = +row?.[name];
+      return Number.isFinite(value) ? value : 0;
+    });
+    state.rows.push(vector);
+    state.tokens.push(String(row?.history_fingerprint || row?.round_index || ""));
+    while (state.rows.length > cfg.window_size) state.rows.shift();
+    while (state.tokens.length > cfg.window_size) state.tokens.shift();
+  }
+  writeTransformerWindow(state);
+  return state;
+}
+
+function linearVector(input, weight, bias) {
+  const out = new Array(weight.length);
+  for (let r = 0; r < weight.length; r++) {
+    const row = weight[r] || [];
+    let sum = Number.isFinite(+bias?.[r]) ? +bias[r] : 0;
+    for (let i = 0; i < row.length && i < input.length; i++) {
+      sum += (+row[i] || 0) * (+input[i] || 0);
+    }
+    out[r] = sum;
+  }
+  return out;
+}
+
+function softmax(values) {
+  if (!values.length) return [];
+  let maxValue = -Infinity;
+  for (const value of values) if (value > maxValue) maxValue = value;
+  const exps = values.map(value => Math.exp(value - maxValue));
+  const total = exps.reduce((a, b) => a + b, 0);
+  if (!Number.isFinite(total) || total <= 0) return values.map(() => 1 / values.length);
+  return exps.map(value => value / total);
+}
+
+function predictTransformerDelta(rows) {
+  const cfg = transformerConfig();
+  const w = cfg.weights;
+  if (!modelBundle?.trained || !cfg.trained || !w) return 0;
+
+  const windowSize = cfg.window_size;
+  const validCount = Math.min(windowSize, rows.length);
+  if (validCount <= 0) return 0;
+
+  const padded = Array.from({ length: windowSize }, () => Array(cfg.input_dim).fill(0));
+  const mask = Array(windowSize).fill(false);
+  const start = windowSize - validCount;
+  for (let i = 0; i < validCount; i++) {
+    padded[start + i] = rows[rows.length - validCount + i].slice(0, cfg.input_dim);
+    mask[start + i] = true;
+  }
+
+  const hidden = padded.map((row, positionIndex) => {
+    const projected = linearVector(
+      row,
+      w.input_projection_weight,
+      w.input_projection_bias
+    );
+    for (let d = 0; d < cfg.d_model; d += 2) {
+      const div = Math.exp((-Math.log(10000) * d) / cfg.d_model);
+      projected[d] += Math.sin(positionIndex * div);
+      if (d + 1 < cfg.d_model) projected[d + 1] += Math.cos(positionIndex * div);
+    }
+    return projected;
+  });
+
+  const qWeight = w.in_proj_weight.slice(0, cfg.d_model);
+  const kWeight = w.in_proj_weight.slice(cfg.d_model, 2 * cfg.d_model);
+  const vWeight = w.in_proj_weight.slice(2 * cfg.d_model, 3 * cfg.d_model);
+  const qBias = w.in_proj_bias.slice(0, cfg.d_model);
+  const kBias = w.in_proj_bias.slice(cfg.d_model, 2 * cfg.d_model);
+  const vBias = w.in_proj_bias.slice(2 * cfg.d_model, 3 * cfg.d_model);
+
+  const queries = hidden.map(row => linearVector(row, qWeight, qBias));
+  const keys = hidden.map(row => linearVector(row, kWeight, kBias));
+  const values = hidden.map(row => linearVector(row, vWeight, vBias));
+
+  const attended = Array.from({ length: windowSize }, () => Array(cfg.d_model).fill(0));
+  const scale = Math.sqrt(cfg.key_dim);
+
+  for (let qi = 0; qi < windowSize; qi++) {
+    if (!mask[qi]) continue;
+    const concat = [];
+    for (let head = 0; head < cfg.num_heads; head++) {
+      const offset = head * cfg.key_dim;
+      const scoreValues = [];
+      const keyIndexes = [];
+      for (let kj = 0; kj < windowSize; kj++) {
+        if (!mask[kj]) continue;
+        let dot = 0;
+        for (let d = 0; d < cfg.key_dim; d++) {
+          dot += queries[qi][offset + d] * keys[kj][offset + d];
+        }
+        scoreValues.push(dot / scale);
+        keyIndexes.push(kj);
+      }
+      const probs = softmax(scoreValues);
+      for (let d = 0; d < cfg.key_dim; d++) {
+        let value = 0;
+        for (let k = 0; k < keyIndexes.length; k++) {
+          value += probs[k] * values[keyIndexes[k]][offset + d];
+        }
+        concat.push(value);
+      }
+    }
+    attended[qi] = linearVector(
+      concat,
+      w.out_proj_weight,
+      w.out_proj_bias
+    );
+  }
+
+  const pooled = Array(cfg.d_model).fill(0);
+  let count = 0;
+  for (let t = 0; t < windowSize; t++) {
+    if (!mask[t]) continue;
+    count++;
+    for (let d = 0; d < cfg.d_model; d++) pooled[d] += attended[t][d];
+  }
+  if (count <= 0) return 0;
+  for (let d = 0; d < cfg.d_model; d++) pooled[d] /= count;
+
+  const output = linearVector(pooled, w.dense_weight, w.dense_bias);
+  const value = +output[0];
+  return Number.isFinite(value) ? value : 0;
 }
 
 function getShoeId() {
@@ -574,16 +769,27 @@ function applyCorrection(seq, corePrediction) {
     features.core_p_b,
     features.round_index
   );
-  const rawDelta = predictXGBDelta(features, physical3);
+  const feature10 = modelFeatureVector(features, physical3);
+  const token = seq.join("");
+  const windowRows = upsertTransformerFeature(token, feature10);
+
+  const deltaXGB = predictXGBDelta(features, physical3);
+  const deltaTransformer = predictTransformerDelta(windowRows);
+  const fusion = modelBundle?.fusion || {};
+  const xgbWeight = Number.isFinite(+fusion.xgb_weight) ? +fusion.xgb_weight : 0.5;
+  const transformerWeight = Number.isFinite(+fusion.transformer_weight) ? +fusion.transformer_weight : 0.5;
+  const weightSum = Math.max(1e-12, xgbWeight + transformerWeight);
+  const deltaFinal = (xgbWeight * deltaXGB + transformerWeight * deltaTransformer) / weightSum;
+
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
-  const delta = clip(rawDelta, -maxDelta, maxDelta);
+  const delta = clip(deltaFinal, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
   const finalPB = clip(corePB + delta, 0, 1);
   const direction = finalPB > 0.5 ? "B" : "P";
   const finalPP = 1 - finalPB;
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
-  const active = Boolean(modelBundle?.trained);
+  const active = Boolean(modelBundle?.trained && modelBundle?.transformer?.trained);
   const physicalPrediction = {
     pred_card_count: physical3[0],
     pred_banker_point: physical3[1],
@@ -596,7 +802,8 @@ function applyCorrection(seq, corePrediction) {
       residualBias: {
         version: VERSION, active: false, modelLoaded, modelLoadError,
         coreDirection, corePB, physicalPrediction,
-        rawDelta: 0, delta: 0, finalPB: corePB, finalDirection: coreDirection,
+        deltaXGB: 0, deltaTransformer: 0, deltaFinal: 0,
+        delta: 0, finalPB: corePB, finalDirection: coreDirection,
         flipped: false, features
       }
     };
@@ -608,11 +815,12 @@ function applyCorrection(seq, corePrediction) {
     direction,
     confidence,
     probabilities: { B: finalPB, P: finalPP },
-    regime: flipped ? "Blind PF 10D-XGB殘差修正換邊" : corePrediction.regime,
+    regime: flipped ? "XGB + Transformer 雙核心殘差修正換邊" : corePrediction.regime,
     residualBias: {
       version: VERSION, active: true, modelLoaded, modelLoadError,
       coreDirection, corePB, physicalPrediction,
-      rawDelta, delta, finalPB, finalDirection: direction, flipped, features
+      deltaXGB, deltaTransformer, deltaFinal,
+      delta, finalPB, finalDirection: direction, flipped, features
     }
   };
 }
@@ -637,6 +845,7 @@ function rotateShoeId() {
     localStorage.removeItem(SHOE_KEY);
     localStorage.removeItem(PENDING_KEY);
     localStorage.removeItem(SHOE_PF_STATE_KEY);
+    localStorage.removeItem(TRANSFORMER_WINDOW_KEY);
     localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY);
     localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY_V2);
     localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY_V3);
@@ -665,7 +874,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "Blind PF 10D-XGB 修正完成" : "分析完成";
+  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "XGB + Transformer 雙核心修正完成" : "分析完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
 }
@@ -756,7 +965,7 @@ function settlePending(actualOutcome, physicalObservation = null) {
   const physicalPrediction = pending.physical_prediction || {};
 
   const row = {
-    schema_version: 7,
+    schema_version: 8,
     shoe_id: String(pending.shoe_id || getShoeId()),
     created_at: +pending.created_at || Date.now(),
     history_fingerprint: String(pending.history_fingerprint || ""),
@@ -822,12 +1031,13 @@ function rollbackTrainingIfNeeded() {
     writeTrainingRows(rows);
     rebuildShoeParticleFilter(rows);
   }
+  rebuildTransformerWindow(rows);
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
 
 function exportTrainingData() {
   return JSON.stringify({
-    schema_version: 7,
+    schema_version: 8,
     feature_names: FEATURE_NAMES,
     physical_feature_names: PHYSICAL_FEATURE_NAMES,
     model_feature_names: MODEL_FEATURE_NAMES,
@@ -841,7 +1051,7 @@ function downloadTrainingData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `bgs_xgb_blind_physical_10d_training_${Date.now()}.json`;
+  a.download = `bgs_xgb_dual_brain_10d_training_${Date.now()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -855,19 +1065,22 @@ async function loadModel(url = MODEL_URL) {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const bundle = await response.json();
-    if (!bundle || bundle.model_type !== "xgb_blind_physical_10d_residual") throw new Error("invalid_model_bundle");
+    if (!bundle || bundle.model_type !== "xgb_transformer_dual_residual") throw new Error("invalid_model_bundle");
     const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
     if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("upstream_feature_schema_mismatch");
     const modelNames = Array.isArray(bundle.model_feature_names) ? bundle.model_feature_names : [];
     if (modelNames.join("|") !== MODEL_FEATURE_NAMES.join("|")) throw new Error("model_feature_schema_mismatch");
+    if (!bundle.transformer || !bundle.fusion) throw new Error("dual_brain_bundle_incomplete");
     modelBundle = bundle;
     modelLoaded = true;
     readShoePFState();
+    rebuildTransformerWindow(readTrainingRows());
     return bundle;
   } catch (error) {
     modelBundle = null;
     modelLoadError = String(error?.message || error || "model_load_failed");
     readShoePFState();
+    resetTransformerWindow(getShoeId());
     return null;
   }
 }
@@ -949,7 +1162,7 @@ if (typeof window !== "undefined") {
     getTrainingCount: () => readTrainingRows().length,
     getModelStatus: () => ({
       loaded: modelLoaded,
-      trained: Boolean(modelBundle?.trained),
+      trained: Boolean(modelBundle?.trained && modelBundle?.transformer?.trained),
       error: modelLoadError,
       featureSchema: "7D_PLUS_3D_BLIND_PHYSICAL"
     })
