@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_ENHANCED_PF_TENSOR_11D_V1";
+const VERSION = "XGB_BLIND_PHYSICAL_10D_V1";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -15,15 +15,16 @@ const FEATURE_NAMES = [
   "stage",
   "depth"
 ];
-const PSEUDO_CARD_FEATURE_NAMES = ["p_4cards", "p_6cards", "win_point", "lose_point"];
-const MODEL_FEATURE_NAMES = [...FEATURE_NAMES, ...PSEUDO_CARD_FEATURE_NAMES];
+const PHYSICAL_FEATURE_NAMES = ["pred_card_count", "pred_banker_point", "pred_player_point"];
+const MODEL_FEATURE_NAMES = [...FEATURE_NAMES, ...PHYSICAL_FEATURE_NAMES];
 const MAX_DELTA_DEFAULT = 0.10;
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const TRAINING_KEY = "bgs_xgb_residual_training_v1";
 const PENDING_KEY = "bgs_xgb_residual_pending_v1";
 const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
 const CUT_KEY = "bgs_xgb_estimated_total_hands_v1";
-const SHOE_PF_STATE_KEY = "bgs_xgb_enhanced_shoe_particle_filter_state_v3";
+const SHOE_PF_STATE_KEY = "bgs_xgb_blind_physical_particle_filter_state_v4";
+const LEGACY_SHOE_PF_STATE_KEY_V3 = "bgs_xgb_enhanced_shoe_particle_filter_state_v3";
 const PHYSICAL_OBS_KEY = "bgs_xgb_physical_observation_v1";
 const LEGACY_SHOE_PF_STATE_KEY_V2 = "bgs_xgb_shoe_particle_filter_state_v2";
 const LEGACY_SHOE_PF_STATE_KEY = "bgs_xgb_shoe_particle_filter_state_v1";
@@ -36,23 +37,22 @@ const PF_DEFAULTS = {
   point_bins: 10,
   initial_point_counts: [128, 32, 32, 32, 32, 32, 32, 32, 32, 32],
   Q_early: 0.005,
-  Q_late: 0.025,
+  Q_late: 0.02,
   early_round_end: 15,
   late_round_start: 45,
   R: 0.25,
   resample_threshold: 500,
   resampling: "systematic",
   random_state: 42,
-  info_gain_multiplier: 1.5,
-  expected_cards_per_round: 4.8,
-  constraint_sigma_per_sqrt_round: 0.85,
-  constraint_hard_z: 3.5,
   likelihood_weights: {
-    outcome: 0.40,
-    total_cards: 0.22,
-    points: 0.23,
+    outcome: 0.55,
+    total_cards: 0.12,
+    points: 0.18,
     core_residual: 0.15
-  }
+  },
+  core_forecast_strength: 0.35,
+  persistence_boost: 1.15,
+  turbulence_uniform_mix: 0.35
 };
 
 const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
@@ -136,13 +136,13 @@ function buildFeatures(seq, corePrediction, signal = null) {
   };
 }
 
-function modelFeatureVector(features, tensor) {
+function modelFeatureVector(features, physical3) {
   const vector = FEATURE_NAMES.map(name => {
     const value = +features[name];
     return Number.isFinite(value) ? value : 0;
   });
-  const physical = Array.isArray(tensor) ? tensor : [0, 0, 0, 0];
-  for (let i = 0; i < 4; i++) {
+  const physical = Array.isArray(physical3) ? physical3 : [4.8, 4.5, 4.5];
+  for (let i = 0; i < 3; i++) {
     const value = +physical[i];
     vector.push(Number.isFinite(value) ? value : 0);
   }
@@ -176,10 +176,10 @@ function evaluateTree(tree, vector) {
   return 0;
 }
 
-function predictXGBDelta(features, tensor) {
+function predictXGBDelta(features, physical3) {
   const xgb = modelBundle?.xgb;
   if (!modelBundle?.trained || !xgb || !Array.isArray(xgb.trees)) return 0;
-  const vector = modelFeatureVector(features, tensor);
+  const vector = modelFeatureVector(features, physical3);
   let result = +xgb.base_score || 0;
   for (const tree of xgb.trees) result += evaluateTree(tree, vector);
   return Number.isFinite(result) ? result : 0;
@@ -199,7 +199,7 @@ function getShoeId() {
 }
 
 function shoePFConfig() {
-  const cfg = modelBundle?.enhanced_shoe_particle_filter || {};
+  const cfg = modelBundle?.shoe_particle_filter || {};
   const weights = cfg.likelihood_weights || {};
   const initial = Array.isArray(cfg.initial_point_counts) && cfg.initial_point_counts.length === 10
     ? cfg.initial_point_counts.map(v => Math.max(0, Math.round(+v || 0)))
@@ -216,16 +216,15 @@ function shoePFConfig() {
     R: Math.max(1e-12, +cfg.R || PF_DEFAULTS.R),
     resample_threshold: Math.max(1, +cfg.resample_threshold || PF_DEFAULTS.resample_threshold),
     random_state: Math.round(+cfg.random_state || PF_DEFAULTS.random_state) >>> 0,
-    info_gain_multiplier: Math.max(1, +cfg.info_gain_multiplier || PF_DEFAULTS.info_gain_multiplier),
-    expected_cards_per_round: Math.max(4, +cfg.expected_cards_per_round || PF_DEFAULTS.expected_cards_per_round),
-    constraint_sigma_per_sqrt_round: Math.max(0.1, +cfg.constraint_sigma_per_sqrt_round || PF_DEFAULTS.constraint_sigma_per_sqrt_round),
-    constraint_hard_z: Math.max(1, +cfg.constraint_hard_z || PF_DEFAULTS.constraint_hard_z),
     likelihood_weights: {
       outcome: Number.isFinite(+weights.outcome) ? +weights.outcome : PF_DEFAULTS.likelihood_weights.outcome,
       total_cards: Number.isFinite(+weights.total_cards) ? +weights.total_cards : PF_DEFAULTS.likelihood_weights.total_cards,
       points: Number.isFinite(+weights.points) ? +weights.points : PF_DEFAULTS.likelihood_weights.points,
       core_residual: Number.isFinite(+weights.core_residual) ? +weights.core_residual : PF_DEFAULTS.likelihood_weights.core_residual
-    }
+    },
+    core_forecast_strength: Number.isFinite(+cfg.core_forecast_strength) ? +cfg.core_forecast_strength : PF_DEFAULTS.core_forecast_strength,
+    persistence_boost: Number.isFinite(+cfg.persistence_boost) ? +cfg.persistence_boost : PF_DEFAULTS.persistence_boost,
+    turbulence_uniform_mix: Number.isFinite(+cfg.turbulence_uniform_mix) ? +cfg.turbulence_uniform_mix : PF_DEFAULTS.turbulence_uniform_mix
   };
 }
 
@@ -244,12 +243,11 @@ function newShoePFState(shoeId = getShoeId()) {
     rng_state: cfg.random_state >>> 0,
     particles,
     weights: Array(cfg.n_particles).fill(1 / cfg.n_particles),
-    tensor: [0, 0, 0, 0],
     last_effective_q: cfg.Q_early,
     last_ess: cfg.n_particles,
     last_resampled: false,
-    last_information_multiplier: 1,
-    last_constraint_survival: 1
+    last_core_alignment: null,
+    last_turbulence_break: false
   };
 }
 
@@ -392,7 +390,7 @@ function simulateVirtualRound(counts, state) {
   };
 }
 
-function particleLogLikelihood(simulated, actualB, corePB, physicalObservation = null) {
+function particleLogLikelihood(simulated, actualB, corePB, physicalObservation = null, persistenceMultiplier = 1) {
   const cfg = shoePFConfig();
   const actual = +actualB >= 0.5 ? 1 : 0;
   const observedSign = actual >= 0.5 ? 1 : -1;
@@ -425,11 +423,7 @@ function particleLogLikelihood(simulated, actualB, corePB, physicalObservation =
   weightedError += w.core_residual * coreError * coreError;
   activeWeight += w.core_residual;
 
-  const infoMultiplier = observedTotalCards === 5 || observedTotalCards === 6 ? cfg.info_gain_multiplier : 1;
-  return {
-    logLike: -0.5 * infoMultiplier * (weightedError / Math.max(activeWeight, 1e-12)) / cfg.R,
-    infoMultiplier
-  };
+  return -0.5 * persistenceMultiplier * (weightedError / Math.max(activeWeight, 1e-12)) / cfg.R;
 }
 
 function rejuvenateParticles(state, qEff) {
@@ -454,103 +448,91 @@ function rejuvenateParticles(state, qEff) {
   }
 }
 
-function applyPhysicalConstraint(state, roundIndex) {
+function forecastPhysicalFeatures(state, corePB, roundIndex) {
+  void roundIndex;
   const cfg = shoePFConfig();
-  const expectedRemaining = 416 - cfg.expected_cards_per_round * Math.max(1, +roundIndex || 1);
-  const sigma = Math.max(3, cfg.constraint_sigma_per_sqrt_round * Math.sqrt(Math.max(1, +roundIndex || 1)));
-  const hardZ = cfg.constraint_hard_z;
-  const survivors = new Array(state.particles.length);
-  let survivorCount = 0;
+  const savedRngState = state.rng_state;
+  const pB = clip(+corePB || 0.5, 0, 1);
+  const expectedSign = 2 * pB - 1;
+  const coreConfidence = Math.abs(expectedSign);
 
-  for (let i = 0; i < state.particles.length; i++) {
-    const remaining = state.particles[i].reduce((sum, value) => sum + (+value || 0), 0);
-    const z = Math.abs(remaining - expectedRemaining) / sigma;
-    survivors[i] = z <= hardZ;
-    if (survivors[i]) survivorCount++;
-  }
-
-  state.last_constraint_survival = survivorCount / Math.max(1, state.particles.length);
-
-  if (survivorCount > 0) {
-    let total = 0;
-    for (let i = 0; i < state.weights.length; i++) {
-      if (!survivors[i]) state.weights[i] = 0;
-      total += +state.weights[i] || 0;
-    }
-    if (total > 0) {
-      for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
-      return;
-    }
-  }
-
-  let total = 0;
-  for (let i = 0; i < state.weights.length; i++) {
-    const remaining = state.particles[i].reduce((sum, value) => sum + (+value || 0), 0);
-    const z = Math.min(hardZ, Math.abs(remaining - expectedRemaining) / sigma);
-    state.weights[i] *= Math.exp(-0.5 * z * z);
-    total += +state.weights[i] || 0;
-  }
-  if (!Number.isFinite(total) || total <= 0) {
-    state.weights = Array(state.weights.length).fill(1 / state.weights.length);
-  } else {
-    for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
-  }
-}
-
-function forecastTensor(state) {
-  let p4Mass = 0;
-  let p6Mass = 0;
-  let decisiveMass = 0;
-  let winPointMass = 0;
-  let losePointMass = 0;
+  let weightedCardCount = 0;
+  let weightedBankerPoint = 0;
+  let weightedPlayerPoint = 0;
   let totalWeight = 0;
 
-  for (let i = 0; i < state.particles.length; i++) {
-    const counts = state.particles[i].slice();
-    const simulated = simulateVirtualRound(counts, state);
-    const weight = +state.weights[i] || 0;
-    totalWeight += weight;
-
-    if (simulated.totalCards === 4) p4Mass += weight;
-    if (simulated.totalCards === 6) p6Mass += weight;
-
-    if (simulated.sign !== 0) {
-      decisiveMass += weight;
-      winPointMass += weight * simulated.winnerPoint;
-      losePointMass += weight * simulated.loserPoint;
+  try {
+    for (let i = 0; i < state.particles.length; i++) {
+      const counts = state.particles[i].slice();
+      const simulated = simulateVirtualRound(counts, state);
+      const baseWeight = +state.weights[i] || 0;
+      const alignmentError = simulated.sign - expectedSign;
+      const coreFactor = Math.exp(
+        -0.5
+        * cfg.core_forecast_strength
+        * coreConfidence
+        * alignmentError
+        * alignmentError
+        / cfg.R
+      );
+      const weight = baseWeight * coreFactor;
+      totalWeight += weight;
+      weightedCardCount += weight * simulated.totalCards;
+      weightedBankerPoint += weight * simulated.bankerTotal;
+      weightedPlayerPoint += weight * simulated.playerTotal;
     }
+  } finally {
+    state.rng_state = savedRngState;
   }
 
-  if (totalWeight <= 1e-12) return [0, 0, 0, 0];
+  if (totalWeight <= 1e-12) return [4.8, 4.5, 4.5];
   return [
-    clip(p4Mass / totalWeight, 0, 1),
-    clip(p6Mass / totalWeight, 0, 1),
-    decisiveMass > 1e-12 ? clip(winPointMass / decisiveMass, 0, 9) : 0,
-    decisiveMass > 1e-12 ? clip(losePointMass / decisiveMass, 0, 9) : 0
+    clip(weightedCardCount / totalWeight, 4, 6),
+    clip(weightedBankerPoint / totalWeight, 0, 9),
+    clip(weightedPlayerPoint / totalWeight, 0, 9)
   ];
 }
 
-function currentPseudoCardTensor() {
-  const state = readShoePFState();
-  return Array.isArray(state.tensor) && state.tensor.length === 4 ? state.tensor.slice() : [0, 0, 0, 0];
-}
-
-
-
 function updateShoeParticleFilter(actualB, corePB, roundIndex, physicalObservation = null) {
   const state = readShoePFState();
+  const cfg = shoePFConfig();
+  const actual = +actualB >= 0.5 ? 1 : 0;
+  const coreDirectionB = clip(+corePB || 0.5, 0, 1) > 0.5;
+  const alignment = coreDirectionB === (actual >= 0.5) ? 1 : -1;
+  const turbulenceBreak = state.last_core_alignment !== null && +state.last_core_alignment !== alignment;
+
+  if (turbulenceBreak) {
+    const uniform = 1 / state.weights.length;
+    const mix = cfg.turbulence_uniform_mix;
+    let totalMixed = 0;
+    for (let i = 0; i < state.weights.length; i++) {
+      state.weights[i] = (1 - mix) * (+state.weights[i] || 0) + mix * uniform;
+      totalMixed += state.weights[i];
+    }
+    if (totalMixed > 0) {
+      for (let i = 0; i < state.weights.length; i++) state.weights[i] /= totalMixed;
+    }
+  }
+
+  const persistenceMultiplier = +state.last_core_alignment === alignment
+    ? cfg.persistence_boost
+    : 1;
+
   const logs = new Array(state.particles.length);
   let maxLog = -Infinity;
-  let infoMultiplier = 1;
-
   for (let i = 0; i < state.particles.length; i++) {
     const counts = state.particles[i].slice();
     const simulated = simulateVirtualRound(counts, state);
     state.particles[i] = counts;
-    const likelihood = particleLogLikelihood(simulated, actualB, corePB, physicalObservation);
-    logs[i] = likelihood.logLike;
-    infoMultiplier = likelihood.infoMultiplier;
-    if (logs[i] > maxLog) maxLog = logs[i];
+    const logLike = particleLogLikelihood(
+      simulated,
+      actual,
+      corePB,
+      physicalObservation,
+      persistenceMultiplier
+    );
+    logs[i] = logLike;
+    if (logLike > maxLog) maxLog = logLike;
   }
 
   let total = 0;
@@ -565,21 +547,19 @@ function updateShoeParticleFilter(actualB, corePB, roundIndex, physicalObservati
     for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
   }
 
-  state.last_information_multiplier = infoMultiplier;
-  applyPhysicalConstraint(state, roundIndex);
-
   const ess = effectiveSampleSize(state);
   state.last_ess = ess;
   state.last_resampled = false;
-  if (ess < shoePFConfig().resample_threshold) {
+  if (ess < cfg.resample_threshold) {
     systematicResample(state);
     state.last_resampled = true;
   }
 
   const qEff = effectiveProcessNoise(roundIndex);
   rejuvenateParticles(state, qEff);
-  state.tensor = forecastTensor(state);
   state.last_effective_q = qEff;
+  state.last_core_alignment = alignment;
+  state.last_turbulence_break = turbulenceBreak;
   state.updates = Math.max(0, +state.updates || 0) + 1;
   writeShoePFState(state);
   return state;
@@ -588,8 +568,13 @@ function updateShoeParticleFilter(actualB, corePB, roundIndex, physicalObservati
 function applyCorrection(seq, corePrediction) {
   const signal = corePrediction?.singleHazard || null;
   const features = buildFeatures(seq, corePrediction, signal);
-  const tensor = currentPseudoCardTensor();
-  const rawDelta = predictXGBDelta(features, tensor);
+  const state = readShoePFState();
+  const physical3 = forecastPhysicalFeatures(
+    state,
+    features.core_p_b,
+    features.round_index
+  );
+  const rawDelta = predictXGBDelta(features, physical3);
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
   const delta = clip(rawDelta, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
@@ -599,11 +584,10 @@ function applyCorrection(seq, corePrediction) {
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
   const active = Boolean(modelBundle?.trained);
-  const pseudoCardFeature = {
-    p_4cards: tensor[0],
-    p_6cards: tensor[1],
-    win_point: tensor[2],
-    lose_point: tensor[3]
+  const physicalPrediction = {
+    pred_card_count: physical3[0],
+    pred_banker_point: physical3[1],
+    pred_player_point: physical3[2]
   };
 
   if (!active) {
@@ -611,7 +595,7 @@ function applyCorrection(seq, corePrediction) {
       ...corePrediction,
       residualBias: {
         version: VERSION, active: false, modelLoaded, modelLoadError,
-        coreDirection, corePB, pseudoCardFeature,
+        coreDirection, corePB, physicalPrediction,
         rawDelta: 0, delta: 0, finalPB: corePB, finalDirection: coreDirection,
         flipped: false, features
       }
@@ -624,10 +608,10 @@ function applyCorrection(seq, corePrediction) {
     direction,
     confidence,
     probabilities: { B: finalPB, P: finalPP },
-    regime: flipped ? "Enhanced PF 11D-XGB殘差修正換邊" : corePrediction.regime,
+    regime: flipped ? "Blind PF 10D-XGB殘差修正換邊" : corePrediction.regime,
     residualBias: {
       version: VERSION, active: true, modelLoaded, modelLoadError,
-      coreDirection, corePB, pseudoCardFeature,
+      coreDirection, corePB, physicalPrediction,
       rawDelta, delta, finalPB, finalDirection: direction, flipped, features
     }
   };
@@ -655,6 +639,7 @@ function rotateShoeId() {
     localStorage.removeItem(SHOE_PF_STATE_KEY);
     localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY);
     localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY_V2);
+    localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY_V3);
     localStorage.removeItem(PHYSICAL_OBS_KEY);
     localStorage.removeItem(LEGACY_REGIME_STATE_KEY);
     localStorage.removeItem(LEGACY_PF_STATE_KEY);
@@ -680,7 +665,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "Enhanced PF 11D-XGB 修正完成" : "分析完成";
+  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "Blind PF 10D-XGB 修正完成" : "分析完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
 }
@@ -738,18 +723,17 @@ function consumePhysicalObservation(explicitValue = null) {
 function registerPrediction(seq, prediction) {
   const residual = prediction?.residualBias || {};
   const features = residual.features || buildFeatures(seq, prediction, prediction?.singleHazard || null);
-  const tensor = residual.pseudoCardFeature || {};
+  const physical = residual.physicalPrediction || {};
   const pending = {
     shoe_id: getShoeId(),
     created_at: Date.now(),
     history_fingerprint: seq.join(""),
     core_p_b: +features.core_p_b,
     core_direction: residual.coreDirection || String(prediction?.direction || ""),
-    pseudo_card_feature: {
-      p_4cards: Number.isFinite(+tensor.p_4cards) ? +tensor.p_4cards : 0,
-      p_6cards: Number.isFinite(+tensor.p_6cards) ? +tensor.p_6cards : 0,
-      win_point: Number.isFinite(+tensor.win_point) ? +tensor.win_point : 0,
-      lose_point: Number.isFinite(+tensor.lose_point) ? +tensor.lose_point : 0
+    physical_prediction: {
+      pred_card_count: Number.isFinite(+physical.pred_card_count) ? +physical.pred_card_count : 4.8,
+      pred_banker_point: Number.isFinite(+physical.pred_banker_point) ? +physical.pred_banker_point : 4.5,
+      pred_player_point: Number.isFinite(+physical.pred_player_point) ? +physical.pred_player_point : 4.5
     },
     features
   };
@@ -769,20 +753,19 @@ function settlePending(actualOutcome, physicalObservation = null) {
   const corePB = clip(+pending.features.core_p_b || 0.5);
   const residualTarget = actualB - corePB;
   const physical = consumePhysicalObservation(physicalObservation);
-  const tensor = pending.pseudo_card_feature || {};
+  const physicalPrediction = pending.physical_prediction || {};
 
   const row = {
-    schema_version: 6,
+    schema_version: 7,
     shoe_id: String(pending.shoe_id || getShoeId()),
     created_at: +pending.created_at || Date.now(),
     history_fingerprint: String(pending.history_fingerprint || ""),
     actual_outcome: actual,
     actual_b: actualB,
     residual_target: residualTarget,
-    p_4cards: Number.isFinite(+tensor.p_4cards) ? +tensor.p_4cards : 0,
-    p_6cards: Number.isFinite(+tensor.p_6cards) ? +tensor.p_6cards : 0,
-    win_point: Number.isFinite(+tensor.win_point) ? +tensor.win_point : 0,
-    lose_point: Number.isFinite(+tensor.lose_point) ? +tensor.lose_point : 0,
+    pred_card_count: Number.isFinite(+physicalPrediction.pred_card_count) ? +physicalPrediction.pred_card_count : 4.8,
+    pred_banker_point: Number.isFinite(+physicalPrediction.pred_banker_point) ? +physicalPrediction.pred_banker_point : 4.5,
+    pred_player_point: Number.isFinite(+physicalPrediction.pred_player_point) ? +physicalPrediction.pred_player_point : 4.5,
     observed_total_cards: physical?.totalCards ?? null,
     observed_player_point: physical?.playerPoint ?? null,
     observed_banker_point: physical?.bankerPoint ?? null,
@@ -844,11 +827,11 @@ function rollbackTrainingIfNeeded() {
 
 function exportTrainingData() {
   return JSON.stringify({
-    schema_version: 6,
+    schema_version: 7,
     feature_names: FEATURE_NAMES,
-    pseudo_card_feature_names: PSEUDO_CARD_FEATURE_NAMES,
+    physical_feature_names: PHYSICAL_FEATURE_NAMES,
     model_feature_names: MODEL_FEATURE_NAMES,
-    feature_schema: "7D_PLUS_4D_PSEUDO_CARD_TENSOR",
+    feature_schema: "7D_PLUS_3D_BLIND_PHYSICAL",
     rows: readTrainingRows()
   }, null, 2);
 }
@@ -858,7 +841,7 @@ function downloadTrainingData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `bgs_xgb_enhanced_pf_11d_training_${Date.now()}.json`;
+  a.download = `bgs_xgb_blind_physical_10d_training_${Date.now()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -872,7 +855,7 @@ async function loadModel(url = MODEL_URL) {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const bundle = await response.json();
-    if (!bundle || bundle.model_type !== "xgb_enhanced_pf_tensor_residual") throw new Error("invalid_model_bundle");
+    if (!bundle || bundle.model_type !== "xgb_blind_physical_10d_residual") throw new Error("invalid_model_bundle");
     const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
     if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("upstream_feature_schema_mismatch");
     const modelNames = Array.isArray(bundle.model_feature_names) ? bundle.model_feature_names : [];
@@ -927,7 +910,7 @@ if (typeof window !== "undefined") {
   window.__BGS_RESIDUAL_BIAS__ = {
     version: VERSION,
     featureNames: FEATURE_NAMES,
-    pseudoCardFeatureNames: PSEUDO_CARD_FEATURE_NAMES,
+    physicalFeatureNames: PHYSICAL_FEATURE_NAMES,
     modelFeatureNames: MODEL_FEATURE_NAMES,
     buildFeatures,
     sxMarkovPSame,
@@ -941,53 +924,34 @@ if (typeof window !== "undefined") {
     downloadTrainingData,
     resetShoeParticleFilter,
     updateShoeParticleFilter,
-    getPseudoCardFeature: () => {
-      const tensor = currentPseudoCardTensor();
+    getBlindPhysicalPrediction: (corePB = 0.5, roundIndex = 1) => {
+      const values = forecastPhysicalFeatures(readShoePFState(), corePB, roundIndex);
       return {
-        p_4cards: tensor[0],
-        p_6cards: tensor[1],
-        win_point: tensor[2],
-        lose_point: tensor[3]
+        pred_card_count: values[0],
+        pred_banker_point: values[1],
+        pred_player_point: values[2]
       };
     },
     getShoeParticleFilterStatus: () => {
       const state = readShoePFState();
-      const tensor = currentPseudoCardTensor();
       return {
         shoeId: state.shoe_id,
         updates: +state.updates || 0,
-        pseudoCardFeature: {
-          p_4cards: tensor[0],
-          p_6cards: tensor[1],
-          win_point: tensor[2],
-          lose_point: tensor[3]
-        },
         effectiveSampleSize: effectiveSampleSize(state),
         lastEffectiveQ: +state.last_effective_q || shoePFConfig().Q_early,
-        lastInformationMultiplier: +state.last_information_multiplier || 1,
-        lastConstraintSurvival: Number.isFinite(+state.last_constraint_survival) ? +state.last_constraint_survival : 1,
+        lastCoreAlignment: Number.isFinite(+state.last_core_alignment) ? +state.last_core_alignment : null,
+        lastTurbulenceBreak: Boolean(state.last_turbulence_break),
         lastResampled: Boolean(state.last_resampled),
         config: shoePFConfig()
       };
     },
     resetParticleFilter: resetShoeParticleFilter,
-    getParticleFilterEstimate: () => currentPseudoCardTensor(),
-    getParticleFilterStatus: () => {
-      const state = readShoePFState();
-      return {
-        shoeId: state.shoe_id,
-        updates: +state.updates || 0,
-        estimate: currentPseudoCardTensor(),
-        semantics: "pseudo_card_feature_4d",
-        config: shoePFConfig()
-      };
-    },
     getTrainingCount: () => readTrainingRows().length,
     getModelStatus: () => ({
       loaded: modelLoaded,
       trained: Boolean(modelBundle?.trained),
       error: modelLoadError,
-      featureSchema: "7D_PLUS_4D_PSEUDO_CARD_TENSOR"
+      featureSchema: "7D_PLUS_3D_BLIND_PHYSICAL"
     })
   };
 }

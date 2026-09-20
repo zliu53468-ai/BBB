@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""Enhanced blind-box Shoe Particle Filter for BBB.
+"""Blind physical Shoe Particle Filter for BBB downstream 10D inference.
 
-The filter never observes hidden card identities. Each particle is one plausible
-remaining eight-deck shoe represented by baccarat point values 0..9.
+The application does not need to observe hidden card identities. Each particle
+is one plausible remaining eight-deck baccarat shoe, represented by point-value
+counts 0..9.
 
-When physical observations are available, the Bayesian likelihood uses:
-- settled B/P outcome;
-- total cards dealt in the round (4/5/6);
-- final Player and Banker points;
-- frozen 256D Core residual (actual_B - core_pb).
+The particle posterior is updated causally from settled B/P outcomes and the
+frozen 256D Core residual. If real total-card count / final points happen to be
+available in historical data, they can be supplied as optional extra evidence;
+blind runtime operation does not require them and never invents them.
 
-High-information 5/6-card rounds receive 1.5x likelihood precision. A hard
-remaining-card constraint suppresses particles whose total consumption is
-physically implausible relative to 4.8 cards per settled round.
+Before each next-round prediction, the particle population performs a
+side-effect-free one-step Monte Carlo rollout conditioned softly on the current
+Core P(B), producing three physical expectations:
 
-The public inference output is a four-dimensional next-round tensor:
-[p_4cards, p_6cards, win_point, lose_point].
+    pred_card_count
+    pred_banker_point
+    pred_player_point
 """
 from __future__ import annotations
 
@@ -26,12 +27,10 @@ from typing import Any
 import numpy as np
 
 INITIAL_POINT_COUNTS = np.asarray([128] + [32] * 9, dtype=np.int16)
-INITIAL_TOTAL_CARDS = int(np.sum(INITIAL_POINT_COUNTS))
-PSEUDO_CARD_FEATURE_NAMES: tuple[str, ...] = (
-    "p_4cards",
-    "p_6cards",
-    "win_point",
-    "lose_point",
+PHYSICAL_FEATURE_NAMES: tuple[str, ...] = (
+    "pred_card_count",
+    "pred_banker_point",
+    "pred_player_point",
 )
 
 PF_CONFIG: dict[str, Any] = {
@@ -40,23 +39,22 @@ PF_CONFIG: dict[str, Any] = {
     "point_bins": 10,
     "initial_point_counts": INITIAL_POINT_COUNTS.tolist(),
     "Q_early": 0.005,
-    "Q_late": 0.025,
+    "Q_late": 0.02,
     "early_round_end": 15,
     "late_round_start": 45,
     "R": 0.25,
     "resample_threshold": 500.0,
     "resampling": "systematic",
     "random_state": 42,
-    "info_gain_multiplier": 1.5,
-    "expected_cards_per_round": 4.8,
-    "constraint_sigma_per_sqrt_round": 0.85,
-    "constraint_hard_z": 3.5,
     "likelihood_weights": {
-        "outcome": 0.40,
-        "total_cards": 0.22,
-        "points": 0.23,
+        "outcome": 0.55,
+        "total_cards": 0.12,
+        "points": 0.18,
         "core_residual": 0.15,
     },
+    "core_forecast_strength": 0.35,
+    "persistence_boost": 1.15,
+    "turbulence_uniform_mix": 0.35,
 }
 
 _UINT32_MASK = 0xFFFFFFFF
@@ -82,25 +80,9 @@ class SimulatedRound:
     def total_cards(self) -> int:
         return self.player_cards + self.banker_cards
 
-    @property
-    def winner_point(self) -> int | None:
-        if self.sign > 0:
-            return self.banker_total
-        if self.sign < 0:
-            return self.player_total
-        return None
-
-    @property
-    def loser_point(self) -> int | None:
-        if self.sign > 0:
-            return self.player_total
-        if self.sign < 0:
-            return self.banker_total
-        return None
-
 
 class DeterministicRNG:
-    """Cross-runtime LCG used by Python replay and browser inference."""
+    """Cross-runtime LCG shared by Python replay and browser inference."""
 
     def __init__(self, seed: int = 42) -> None:
         self.state = int(seed) & _UINT32_MASK
@@ -110,15 +92,15 @@ class DeterministicRNG:
         return (self.state + 0.5) / _UINT32_SCALE
 
 
-class EnhancedShoeParticleFilter:
-    """1000-particle latent eight-deck filter with physical constraints."""
+class ShoeParticleFilter:
+    """1000-particle blind remaining-shoe Monte Carlo estimator."""
 
     def __init__(
         self,
         *,
         n_particles: int = 1000,
         q_early: float = 0.005,
-        q_late: float = 0.025,
+        q_late: float = 0.02,
         early_round_end: int = 15,
         late_round_start: int = 45,
         r: float = 0.25,
@@ -141,12 +123,12 @@ class EnhancedShoeParticleFilter:
         self.last_effective_q = self.q_early
         self.last_ess = float(self.n_particles)
         self.last_resampled = False
-        self.last_information_multiplier = 1.0
-        self.last_constraint_survival = 1.0
-        self._tensor = np.zeros(4, dtype=np.float64)
+        self.last_core_alignment: float | None = None
+        self.last_turbulence_break = False
         self.reset()
 
     def reset(self) -> None:
+        """Reset a new shoe to the standard 416-card eight-deck distribution."""
         self.rng = DeterministicRNG(self.random_state)
         self.particles = np.tile(INITIAL_POINT_COUNTS, (self.n_particles, 1))
         self.weights = np.full(self.n_particles, 1.0 / self.n_particles, dtype=np.float64)
@@ -154,9 +136,8 @@ class EnhancedShoeParticleFilter:
         self.last_effective_q = self.q_early
         self.last_ess = float(self.n_particles)
         self.last_resampled = False
-        self.last_information_multiplier = 1.0
-        self.last_constraint_survival = 1.0
-        self._tensor = np.zeros(4, dtype=np.float64)
+        self.last_core_alignment = None
+        self.last_turbulence_break = False
 
     def effective_sample_size(self) -> float:
         denom = float(np.sum(self.weights * self.weights))
@@ -235,29 +216,27 @@ class EnhancedShoeParticleFilter:
             banker_cards=len(banker),
         )
 
-    def _information_multiplier(self, observed_total_cards: int | None) -> float:
-        return (
-            float(PF_CONFIG["info_gain_multiplier"])
-            if observed_total_cards in (5, 6)
-            else 1.0
-        )
+    def _core_alignment(self, *, actual_b: float, core_pb: float) -> float:
+        predicted_b = clip(float(core_pb), 0.0, 1.0) > 0.5
+        actual_is_b = float(actual_b) >= 0.5
+        return 1.0 if predicted_b == actual_is_b else -1.0
 
     def _log_likelihood(
         self,
         simulated: SimulatedRound,
         *,
-        real_outcome: int | float,
+        actual_b: float,
         core_pb: float,
         observed_total_cards: int | None,
         observed_player_point: int | None,
         observed_banker_point: int | None,
+        persistence_multiplier: float,
     ) -> float:
-        actual_b = 1.0 if float(real_outcome) >= 0.5 else 0.0
-        observed_sign = 1.0 if actual_b >= 0.5 else -1.0
-        simulated_sign = float(simulated.sign)
-
+        actual = 1.0 if float(actual_b) >= 0.5 else 0.0
+        observed_sign = 1.0 if actual >= 0.5 else -1.0
         weights = PF_CONFIG["likelihood_weights"]
-        weighted_error = float(weights["outcome"]) * ((observed_sign - simulated_sign) / 2.0) ** 2
+
+        weighted_error = float(weights["outcome"]) * ((observed_sign - simulated.sign) / 2.0) ** 2
         active_weight = float(weights["outcome"])
 
         if observed_total_cards in (4, 5, 6):
@@ -271,59 +250,31 @@ class EnhancedShoeParticleFilter:
             and 0 <= observed_player_point <= 9
             and 0 <= observed_banker_point <= 9
         ):
-            p_error = (float(observed_player_point) - simulated.player_total) / 9.0
-            b_error = (float(observed_banker_point) - simulated.banker_total) / 9.0
-            point_error = 0.5 * (p_error * p_error + b_error * b_error)
+            player_error = (float(observed_player_point) - simulated.player_total) / 9.0
+            banker_error = (float(observed_banker_point) - simulated.banker_total) / 9.0
+            point_error = 0.5 * (player_error * player_error + banker_error * banker_error)
             weighted_error += float(weights["points"]) * point_error
             active_weight += float(weights["points"])
 
-        core_residual = actual_b - clip(float(core_pb), 0.0, 1.0)
+        core_residual = actual - clip(float(core_pb), 0.0, 1.0)
         core_target = float(np.clip(2.0 * core_residual, -1.0, 1.0))
         if simulated.sign == 0:
             simulated_support = 0.0
         else:
-            point_margin = abs(simulated.banker_total - simulated.player_total) / 9.0
-            simulated_support = float(simulated.sign) * (0.5 + 0.5 * point_margin)
+            margin = abs(simulated.banker_total - simulated.player_total) / 9.0
+            simulated_support = float(simulated.sign) * (0.5 + 0.5 * margin)
+
         core_error = core_target - simulated_support
         weighted_error += float(weights["core_residual"]) * core_error * core_error
         active_weight += float(weights["core_residual"])
 
         normalized_error = weighted_error / max(active_weight, 1e-12)
-        info_multiplier = self._information_multiplier(observed_total_cards)
-        return -0.5 * info_multiplier * normalized_error / max(self.r, 1e-12)
-
-    def _apply_physical_constraint(self, current_round: float) -> None:
-        rounds = max(1.0, float(current_round))
-        expected_remaining = (
-            INITIAL_TOTAL_CARDS
-            - float(PF_CONFIG["expected_cards_per_round"]) * rounds
+        return (
+            -0.5
+            * float(persistence_multiplier)
+            * normalized_error
+            / max(self.r, 1e-12)
         )
-        sigma = max(
-            3.0,
-            float(PF_CONFIG["constraint_sigma_per_sqrt_round"]) * math.sqrt(rounds),
-        )
-        hard_z = float(PF_CONFIG["constraint_hard_z"])
-
-        remaining = np.sum(self.particles, axis=1).astype(np.float64)
-        z = np.abs(remaining - expected_remaining) / sigma
-        survivors = z <= hard_z
-        self.last_constraint_survival = float(np.mean(survivors))
-
-        if np.any(survivors):
-            self.weights[~survivors] = 0.0
-            total = float(np.sum(self.weights))
-            if total > 0.0 and np.isfinite(total):
-                self.weights /= total
-                return
-
-        # Degenerate fallback: retain a soft physical prior rather than collapsing.
-        soft = np.exp(-0.5 * np.minimum(z, hard_z) ** 2)
-        self.weights *= soft
-        total = float(np.sum(self.weights))
-        if total <= 0.0 or not np.isfinite(total):
-            self.weights.fill(1.0 / self.n_particles)
-        else:
-            self.weights /= total
 
     def systematic_resample(self) -> None:
         positions = (self.rng.uniform() + np.arange(self.n_particles)) / self.n_particles
@@ -334,6 +285,7 @@ class EnhancedShoeParticleFilter:
         self.weights.fill(1.0 / self.n_particles)
 
     def _rejuvenate(self, q_eff: float) -> None:
+        """Inject hidden-card uncertainty while preserving total cards remaining."""
         n_mutations = int(math.ceil(self.n_particles * max(0.0, min(1.0, q_eff))))
         for _ in range(n_mutations):
             idx = min(
@@ -346,12 +298,7 @@ class EnhancedShoeParticleFilter:
             if len(sources) == 0 or len(destinations) == 0:
                 continue
             src = int(
-                sources[
-                    min(
-                        len(sources) - 1,
-                        int(self.rng.uniform() * len(sources)),
-                    )
-                ]
+                sources[min(len(sources) - 1, int(self.rng.uniform() * len(sources)))]
             )
             valid_destinations = destinations[destinations != src]
             if len(valid_destinations) == 0:
@@ -367,49 +314,66 @@ class EnhancedShoeParticleFilter:
             counts[src] -= 1
             counts[dst] += 1
 
-    def _forecast_tensor(self) -> np.ndarray:
-        p4_mass = 0.0
-        p6_mass = 0.0
-        decisive_mass = 0.0
-        weighted_win_point = 0.0
-        weighted_lose_point = 0.0
-        total_weight = float(np.sum(self.weights))
+    def predict_physical_features(
+        self,
+        *,
+        core_pb: float,
+        current_round: float,
+    ) -> np.ndarray:
+        """One-step blind physical forecast without mutating the PF state.
 
-        if total_weight <= 0.0:
-            return np.zeros(4, dtype=np.float64)
+        The current Core P(B) softly reweights forward rollouts. When Core is
+        near 0.5 the conditioning is almost neutral; stronger Core confidence
+        gives more weight to physically plausible rollouts that agree with it.
+        """
+        del current_round  # round dependence is already encoded in posterior/Q history
+        saved_rng_state = self.rng.state
 
-        for i in range(self.n_particles):
-            counts = self.particles[i].copy()
-            simulated = self._simulate_round(counts)
-            weight = float(self.weights[i])
+        weighted_card_count = 0.0
+        weighted_banker_point = 0.0
+        weighted_player_point = 0.0
+        total_weight = 0.0
 
-            if simulated.total_cards == 4:
-                p4_mass += weight
-            if simulated.total_cards == 6:
-                p6_mass += weight
+        p_b = clip(float(core_pb), 0.0, 1.0)
+        expected_sign = 2.0 * p_b - 1.0
+        core_confidence = abs(expected_sign)
+        strength = float(PF_CONFIG["core_forecast_strength"])
 
-            if simulated.sign != 0:
-                decisive_mass += weight
-                weighted_win_point += weight * float(simulated.winner_point)
-                weighted_lose_point += weight * float(simulated.loser_point)
+        try:
+            for i in range(self.n_particles):
+                counts = self.particles[i].copy()
+                simulated = self._simulate_round(counts)
+                particle_weight = float(self.weights[i])
 
-        p_4cards = p4_mass / total_weight
-        p_6cards = p6_mass / total_weight
-        win_point = weighted_win_point / decisive_mass if decisive_mass > 1e-12 else 0.0
-        lose_point = weighted_lose_point / decisive_mass if decisive_mass > 1e-12 else 0.0
+                sign_value = float(simulated.sign)
+                alignment_error = sign_value - expected_sign
+                core_factor = math.exp(
+                    -0.5
+                    * strength
+                    * core_confidence
+                    * alignment_error
+                    * alignment_error
+                    / max(self.r, 1e-12)
+                )
+                weight = particle_weight * core_factor
+                total_weight += weight
+                weighted_card_count += weight * float(simulated.total_cards)
+                weighted_banker_point += weight * float(simulated.banker_total)
+                weighted_player_point += weight * float(simulated.player_total)
+        finally:
+            self.rng.state = saved_rng_state
+
+        if total_weight <= 1e-12:
+            return np.asarray([4.8, 4.5, 4.5], dtype=np.float64)
 
         return np.asarray(
             [
-                np.clip(p_4cards, 0.0, 1.0),
-                np.clip(p_6cards, 0.0, 1.0),
-                np.clip(win_point, 0.0, 9.0),
-                np.clip(lose_point, 0.0, 9.0),
+                np.clip(weighted_card_count / total_weight, 4.0, 6.0),
+                np.clip(weighted_banker_point / total_weight, 0.0, 9.0),
+                np.clip(weighted_player_point / total_weight, 0.0, 9.0),
             ],
             dtype=np.float64,
         )
-
-    def current_pseudo_card_feature(self) -> np.ndarray:
-        return self._tensor.copy()
 
     def observe_and_project(
         self,
@@ -420,34 +384,53 @@ class EnhancedShoeParticleFilter:
         observed_total_cards: int | None = None,
         observed_player_point: int | None = None,
         observed_banker_point: int | None = None,
-    ) -> np.ndarray:
-        log_weights = np.empty(self.n_particles, dtype=np.float64)
+    ) -> None:
+        """Update posterior after a settled round.
 
+        Physical observations are optional. In fully blind operation only
+        outcome + Core residual are used.
+        """
+        actual_b = 1.0 if float(real_outcome) >= 0.5 else 0.0
+        alignment = self._core_alignment(actual_b=actual_b, core_pb=core_pb)
+        turbulence_break = (
+            self.last_core_alignment is not None
+            and alignment != self.last_core_alignment
+        )
+
+        if turbulence_break:
+            uniform = 1.0 / self.n_particles
+            mix = float(PF_CONFIG["turbulence_uniform_mix"])
+            self.weights = (1.0 - mix) * self.weights + mix * uniform
+            self.weights /= float(np.sum(self.weights))
+
+        persistence_multiplier = (
+            float(PF_CONFIG["persistence_boost"])
+            if self.last_core_alignment == alignment
+            else 1.0
+        )
+
+        log_weights = np.empty(self.n_particles, dtype=np.float64)
         for i in range(self.n_particles):
             counts = self.particles[i].copy()
             simulated = self._simulate_round(counts)
             self.particles[i] = counts
             log_weights[i] = self._log_likelihood(
                 simulated,
-                real_outcome=real_outcome,
+                actual_b=actual_b,
                 core_pb=core_pb,
                 observed_total_cards=observed_total_cards,
                 observed_player_point=observed_player_point,
                 observed_banker_point=observed_banker_point,
+                persistence_multiplier=persistence_multiplier,
             )
 
         log_weights -= float(np.max(log_weights))
         self.weights *= np.exp(log_weights)
         total = float(np.sum(self.weights))
-        if total <= 0.0 or not np.isfinite(total):
+        if not np.isfinite(total) or total <= 0.0:
             self.weights.fill(1.0 / self.n_particles)
         else:
             self.weights /= total
-
-        self.last_information_multiplier = self._information_multiplier(
-            observed_total_cards
-        )
-        self._apply_physical_constraint(current_round)
 
         ess = self.effective_sample_size()
         self.last_ess = ess
@@ -458,18 +441,14 @@ class EnhancedShoeParticleFilter:
 
         q_eff = self.effective_q(current_round)
         self._rejuvenate(q_eff)
-        self._tensor = self._forecast_tensor()
         self.last_effective_q = q_eff
+        self.last_core_alignment = alignment
+        self.last_turbulence_break = turbulence_break
         self.updates += 1
-        return self.current_pseudo_card_feature()
 
 
-# Backward-safe alias for callers that import the old class name.
-ShoeParticleFilter = EnhancedShoeParticleFilter
-
-
-def new_shoe_particle_filter() -> EnhancedShoeParticleFilter:
-    return EnhancedShoeParticleFilter(
+def new_shoe_particle_filter() -> ShoeParticleFilter:
+    return ShoeParticleFilter(
         n_particles=PF_CONFIG["n_particles"],
         q_early=PF_CONFIG["Q_early"],
         q_late=PF_CONFIG["Q_late"],
