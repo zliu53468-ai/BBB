@@ -162,7 +162,7 @@ unless `--force` is explicitly used for diagnostics.
 python -m pip install -r requirements-xgb.txt
 
 python xgb_particle_filter_residual.py train \
-  --input bgs_xgb_blind_physical_10d_training.json \
+  --input bgs_xgb_dual_brain_10d_training.json \
   --output residual_bias_model.json \
   --min-samples 500
 ```
