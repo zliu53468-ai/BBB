@@ -102,14 +102,16 @@ class ShoeRegimeParticleFilter:
         self,
         *,
         n_particles: int = 1000,
-        q_start: float = 0.005,\n        q_end: float = 0.02,
+        q_start: float = 0.005,
+        q_end: float = 0.02,
         r: float = 0.25,
         resample_threshold: float = 500.0,
         random_state: int = 42,
         state_clip: float = 1.0,
     ) -> None:
         self.n_particles = int(n_particles)
-        self.q_start = float(q_start)\n        self.q_end = float(q_end)
+        self.q_start = float(q_start)
+        self.q_end = float(q_end)
         self.r = float(r)
         self.resample_threshold = float(resample_threshold)
         self.random_state = int(random_state)
@@ -120,7 +122,7 @@ class ShoeRegimeParticleFilter:
         self.updates = 0
         self.last_alignment: float | None = None
         self.last_observation = 0.0
-        self.last_effective_q = self.q_start
+        self.last_effective_q = self.q_start_start
         self.reset()
 
     def reset(self) -> None:
@@ -237,7 +239,8 @@ class ShoeRegimeParticleFilter:
 def _new_particle_filter() -> ShoeRegimeParticleFilter:
     return ShoeRegimeParticleFilter(
         n_particles=PF_CONFIG["n_particles"],
-        q_start=PF_CONFIG["Q_start"],\n        q_end=PF_CONFIG["Q_end"],
+        q_start=PF_CONFIG["Q_start"],
+        q_end=PF_CONFIG["Q_end"],
         r=PF_CONFIG["R"],
         resample_threshold=PF_CONFIG["resample_threshold"],
         random_state=PF_CONFIG["random_state"],
