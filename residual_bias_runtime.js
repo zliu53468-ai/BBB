@@ -761,16 +761,27 @@ function applyCorrection(seq, corePrediction) {
     features.core_p_b,
     features.round_index
   );
-  const rawDelta = predictXGBDelta(features, physical3);
+  const feature10 = modelFeatureVector(features, physical3);
+  const token = seq.join("");
+  const windowRows = upsertTransformerFeature(token, feature10);
+
+  const deltaXGB = predictXGBDelta(features, physical3);
+  const deltaTransformer = predictTransformerDelta(windowRows);
+  const fusion = modelBundle?.fusion || {};
+  const xgbWeight = Number.isFinite(+fusion.xgb_weight) ? +fusion.xgb_weight : 0.5;
+  const transformerWeight = Number.isFinite(+fusion.transformer_weight) ? +fusion.transformer_weight : 0.5;
+  const weightSum = Math.max(1e-12, xgbWeight + transformerWeight);
+  const deltaFinal = (xgbWeight * deltaXGB + transformerWeight * deltaTransformer) / weightSum;
+
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
-  const delta = clip(rawDelta, -maxDelta, maxDelta);
+  const delta = clip(deltaFinal, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
   const finalPB = clip(corePB + delta, 0, 1);
   const direction = finalPB > 0.5 ? "B" : "P";
   const finalPP = 1 - finalPB;
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
-  const active = Boolean(modelBundle?.trained);
+  const active = Boolean(modelBundle?.trained && modelBundle?.transformer?.trained);
   const physicalPrediction = {
     pred_card_count: physical3[0],
     pred_banker_point: physical3[1],
@@ -783,7 +794,8 @@ function applyCorrection(seq, corePrediction) {
       residualBias: {
         version: VERSION, active: false, modelLoaded, modelLoadError,
         coreDirection, corePB, physicalPrediction,
-        rawDelta: 0, delta: 0, finalPB: corePB, finalDirection: coreDirection,
+        deltaXGB: 0, deltaTransformer: 0, deltaFinal: 0,
+        delta: 0, finalPB: corePB, finalDirection: coreDirection,
         flipped: false, features
       }
     };
@@ -795,11 +807,12 @@ function applyCorrection(seq, corePrediction) {
     direction,
     confidence,
     probabilities: { B: finalPB, P: finalPP },
-    regime: flipped ? "Blind PF 10D-XGB殘差修正換邊" : corePrediction.regime,
+    regime: flipped ? "XGB + Transformer 雙核心殘差修正換邊" : corePrediction.regime,
     residualBias: {
       version: VERSION, active: true, modelLoaded, modelLoadError,
       coreDirection, corePB, physicalPrediction,
-      rawDelta, delta, finalPB, finalDirection: direction, flipped, features
+      deltaXGB, deltaTransformer, deltaFinal,
+      delta, finalPB, finalDirection: direction, flipped, features
     }
   };
 }
@@ -824,6 +837,7 @@ function rotateShoeId() {
     localStorage.removeItem(SHOE_KEY);
     localStorage.removeItem(PENDING_KEY);
     localStorage.removeItem(SHOE_PF_STATE_KEY);
+    localStorage.removeItem(TRANSFORMER_WINDOW_KEY);
     localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY);
     localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY_V2);
     localStorage.removeItem(LEGACY_SHOE_PF_STATE_KEY_V3);
@@ -852,7 +866,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "Blind PF 10D-XGB 修正完成" : "分析完成";
+  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "XGB + Transformer 雙核心修正完成" : "分析完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
 }
@@ -1008,6 +1022,7 @@ function rollbackTrainingIfNeeded() {
     rows.pop();
     writeTrainingRows(rows);
     rebuildShoeParticleFilter(rows);
+    rebuildTransformerWindow(rows);
   }
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
@@ -1042,19 +1057,22 @@ async function loadModel(url = MODEL_URL) {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const bundle = await response.json();
-    if (!bundle || bundle.model_type !== "xgb_blind_physical_10d_residual") throw new Error("invalid_model_bundle");
+    if (!bundle || bundle.model_type !== "xgb_transformer_dual_residual") throw new Error("invalid_model_bundle");
     const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
     if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("upstream_feature_schema_mismatch");
     const modelNames = Array.isArray(bundle.model_feature_names) ? bundle.model_feature_names : [];
     if (modelNames.join("|") !== MODEL_FEATURE_NAMES.join("|")) throw new Error("model_feature_schema_mismatch");
+    if (!bundle.transformer || !bundle.fusion) throw new Error("dual_brain_bundle_incomplete");
     modelBundle = bundle;
     modelLoaded = true;
     readShoePFState();
+    rebuildTransformerWindow(readTrainingRows());
     return bundle;
   } catch (error) {
     modelBundle = null;
     modelLoadError = String(error?.message || error || "model_load_failed");
     readShoePFState();
+    resetTransformerWindow(getShoeId());
     return null;
   }
 }
@@ -1136,7 +1154,7 @@ if (typeof window !== "undefined") {
     getTrainingCount: () => readTrainingRows().length,
     getModelStatus: () => ({
       loaded: modelLoaded,
-      trained: Boolean(modelBundle?.trained),
+      trained: Boolean(modelBundle?.trained && modelBundle?.transformer?.trained),
       error: modelLoadError,
       featureSchema: "7D_PLUS_3D_BLIND_PHYSICAL"
     })
