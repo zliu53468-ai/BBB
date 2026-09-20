@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_SHOE_REGIME_FEATURE_V1";
+const VERSION = "XGB_SHOE_REGIME_3D_LIKELIHOOD_V2";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -28,16 +28,18 @@ const MAX_TRAINING_ROWS = 10000;
 const PF_DEFAULTS = {
   n_particles: 1000,
   state_dim: 1,
-  Q_start: 0.005,
-  Q_end: 0.02,
+  Q_early: 0.005,
+  Q_late: 0.02,
+  early_round_end: 15,
+  late_round_start: 45,
   R: 0.25,
   resample_threshold: 500,
   resampling: "systematic",
   random_state: 42,
   state_clip: 1.0,
-  observation_weights: {
-    direction_alignment: 0.55,
-    confidence_alignment: 0.30,
+  likelihood_weights: {
+    directionality: 0.55,
+    residual_alignment: 0.30,
     persistence: 0.15
   }
 };
@@ -183,21 +185,23 @@ function getShoeId() {
 
 function regimeConfig() {
   const cfg = modelBundle?.shoe_regime_filter || {};
-  const weights = cfg.observation_weights || {};
+  const weights = cfg.likelihood_weights || {};
   return {
     n_particles: Math.max(1, Math.round(+cfg.n_particles || PF_DEFAULTS.n_particles)),
     state_dim: 1,
-    Q_start: Math.max(1e-12, +cfg.Q_start || PF_DEFAULTS.Q_start),
-    Q_end: Math.max(1e-12, +cfg.Q_end || PF_DEFAULTS.Q_end),
+    Q_early: Math.max(1e-12, +cfg.Q_early || PF_DEFAULTS.Q_early),
+    Q_late: Math.max(1e-12, +cfg.Q_late || PF_DEFAULTS.Q_late),
+    early_round_end: Math.round(+cfg.early_round_end || PF_DEFAULTS.early_round_end),
+    late_round_start: Math.round(+cfg.late_round_start || PF_DEFAULTS.late_round_start),
     R: Math.max(1e-12, +cfg.R || PF_DEFAULTS.R),
     resample_threshold: Math.max(1, +cfg.resample_threshold || PF_DEFAULTS.resample_threshold),
     resampling: "systematic",
     random_state: Math.round(+cfg.random_state || PF_DEFAULTS.random_state) >>> 0,
     state_clip: Math.max(0.1, +cfg.state_clip || PF_DEFAULTS.state_clip),
-    observation_weights: {
-      direction_alignment: Number.isFinite(+weights.direction_alignment) ? +weights.direction_alignment : PF_DEFAULTS.observation_weights.direction_alignment,
-      confidence_alignment: Number.isFinite(+weights.confidence_alignment) ? +weights.confidence_alignment : PF_DEFAULTS.observation_weights.confidence_alignment,
-      persistence: Number.isFinite(+weights.persistence) ? +weights.persistence : PF_DEFAULTS.observation_weights.persistence
+    likelihood_weights: {
+      directionality: Number.isFinite(+weights.directionality) ? +weights.directionality : PF_DEFAULTS.likelihood_weights.directionality,
+      residual_alignment: Number.isFinite(+weights.residual_alignment) ? +weights.residual_alignment : PF_DEFAULTS.likelihood_weights.residual_alignment,
+      persistence: Number.isFinite(+weights.persistence) ? +weights.persistence : PF_DEFAULTS.likelihood_weights.persistence
     }
   };
 }
@@ -215,25 +219,24 @@ function gaussianRandom(state) {
 
 function newRegimeState(shoeId = getShoeId()) {
   const cfg = regimeConfig();
-  const state = {
+  return {
     shoe_id: String(shoeId),
     updates: 0,
     rng_state: cfg.random_state >>> 0,
     last_alignment: null,
     last_observation: 0,
-    last_effective_q: cfg.Q_start,
+    last_measurements: {
+      directionality: 0,
+      residual_alignment: 0,
+      persistence: 0
+    },
+    last_effective_q: cfg.Q_early,
     last_ess: cfg.n_particles,
     last_resampled: false,
-    particles: [],
+    last_turbulence_break: false,
+    particles: Array(cfg.n_particles).fill(0),
     weights: Array(cfg.n_particles).fill(1 / cfg.n_particles)
   };
-  const std = Math.sqrt(cfg.Q_start);
-  for (let i = 0; i < cfg.n_particles; i++) state.particles.push(gaussianRandom(state) * std);
-  const mean = state.particles.reduce((sum, value) => sum + value, 0) / cfg.n_particles;
-  for (let i = 0; i < state.particles.length; i++) {
-    state.particles[i] = clip(state.particles[i] - mean, -cfg.state_clip, cfg.state_clip);
-  }
-  return state;
 }
 
 function writeRegimeState(state) {
@@ -309,64 +312,80 @@ function shoeProgress(roundIndex, estimatedTotalHands) {
   return clip(((+roundIndex || 1) - 1) / (total - 1), 0, 1);
 }
 
-function effectiveProcessNoise(roundIndex, estimatedTotalHands) {
+function effectiveProcessNoise(currentRound) {
   const cfg = regimeConfig();
-  const progress = shoeProgress(roundIndex, estimatedTotalHands);
-  return Math.max(1e-12, cfg.Q_start + (cfg.Q_end - cfg.Q_start) * progress);
+  const current = +currentRound || 1;
+  if (current < cfg.early_round_end) return cfg.Q_early;
+  if (current > cfg.late_round_start) return cfg.Q_late;
+  const span = Math.max(1, cfg.late_round_start - cfg.early_round_end);
+  const ratio = clip((current - cfg.early_round_end) / span, 0, 1);
+  return cfg.Q_early + (cfg.Q_late - cfg.Q_early) * ratio;
 }
 
-function buildRegimeObservation(actualB, corePB, state) {
-  const cfg = regimeConfig();
-  const actualIsB = +actualB >= 0.5;
+function buildRegimeMeasurements(actualB, corePB, state) {
+  const actual = +actualB >= 0.5 ? 1 : 0;
   const pB = clip(+corePB || 0.5, 0, 1);
-  const coreIsB = pB > 0.5;
-  const alignment = coreIsB === actualIsB ? 1 : -1;
-  const actualProbability = actualIsB ? pB : (1 - pB);
-  const confidenceAlignment = clip(2 * (actualProbability - 0.5), -1, 1);
-  const lastAlignment = Number.isFinite(+state.last_alignment) ? +state.last_alignment : null;
-  const w = cfg.observation_weights;
+  const predictedB = pB > 0.5;
+  const actualIsB = actual >= 0.5;
 
-  let persistence = 0;
-  let observation = 0;
-  if (alignment > 0) {
-    persistence = lastAlignment === 1 ? 1 : 0;
-    observation = clip(
-      w.direction_alignment
-        + w.confidence_alignment * Math.max(0, confidenceAlignment)
-        + w.persistence * persistence,
-      -1,
-      1
-    );
-  } else if (lastAlignment === -1) {
-    persistence = -1;
-    observation = -clip(
-      w.direction_alignment
-        + w.confidence_alignment * Math.abs(Math.min(0, confidenceAlignment))
-        + w.persistence,
-      0,
-      1
-    );
-  } else {
-    // A single break is treated as turbulence and pulls the state toward zero.
-    persistence = 0;
-    observation = 0;
+  const directionality = predictedB === actualIsB ? 1 : -1;
+  const residual = actual - pB;
+  const residualAlignment = clip(1 - 2 * Math.abs(residual), -1, 1);
+  const lastAlignment = Number.isFinite(+state.last_alignment) ? +state.last_alignment : null;
+  const turbulenceBreak = lastAlignment !== null && directionality !== lastAlignment;
+
+  if (turbulenceBreak) {
+    return {
+      measurements: {
+        directionality: 0,
+        residual_alignment: 0,
+        persistence: 0
+      },
+      alignment: directionality,
+      turbulenceBreak,
+      residual
+    };
   }
 
-  return { observation, alignment, confidenceAlignment, persistence };
+  return {
+    measurements: {
+      directionality,
+      residual_alignment: residualAlignment,
+      persistence: lastAlignment === directionality ? directionality : 0
+    },
+    alignment: directionality,
+    turbulenceBreak,
+    residual
+  };
 }
 
 function updateShoeRegimeFilter(actualB, corePB, roundIndex, estimatedTotalHands) {
   const cfg = regimeConfig();
   const state = readRegimeState();
-  const obs = buildRegimeObservation(actualB, corePB, state);
+  const obs = buildRegimeMeasurements(actualB, corePB, state);
+  const measurements = obs.measurements;
+  const w = cfg.likelihood_weights;
+
+  if (obs.turbulenceBreak) {
+    state.weights = Array(state.weights.length).fill(1 / state.weights.length);
+  }
+
   let maxLog = -Infinity;
   const logs = new Array(state.particles.length);
   for (let i = 0; i < state.particles.length; i++) {
-    const error = obs.observation - (+state.particles[i] || 0);
-    const logLike = -0.5 * error * error / cfg.R;
+    const particle = +state.particles[i] || 0;
+    const dDirection = measurements.directionality - particle;
+    const dResidual = measurements.residual_alignment - particle;
+    const dPersistence = measurements.persistence - particle;
+    const weightedError =
+      w.directionality * dDirection * dDirection
+      + w.residual_alignment * dResidual * dResidual
+      + w.persistence * dPersistence * dPersistence;
+    const logLike = -0.5 * weightedError / cfg.R;
     logs[i] = logLike;
     if (logLike > maxLog) maxLog = logLike;
   }
+
   let total = 0;
   for (let i = 0; i < state.weights.length; i++) {
     const updated = (+state.weights[i] || 0) * Math.exp(logs[i] - maxLog);
@@ -378,22 +397,36 @@ function updateShoeRegimeFilter(actualB, corePB, roundIndex, estimatedTotalHands
   } else {
     for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
   }
+
   const essBeforeResample = effectiveSampleSize(state);
   let resampled = false;
   if (essBeforeResample < cfg.resample_threshold) {
     systematicResample(state);
     resampled = true;
   }
-  const qEff = effectiveProcessNoise((+roundIndex || 1) + 1, estimatedTotalHands);
-  const std = Math.sqrt(qEff);
+
+  const qEff = effectiveProcessNoise((+roundIndex || 1) + 1);
+  const std = Math.sqrt(Math.max(qEff, 1e-12));
   for (let i = 0; i < state.particles.length; i++) {
-    state.particles[i] = clip((+state.particles[i] || 0) + gaussianRandom(state) * std, -cfg.state_clip, cfg.state_clip);
+    state.particles[i] = clip(
+      (+state.particles[i] || 0) + gaussianRandom(state) * std,
+      -cfg.state_clip,
+      cfg.state_clip
+    );
   }
+
   state.updates = Math.max(0, +state.updates || 0) + 1;
   state.last_alignment = obs.alignment;
-  state.last_observation = obs.observation;
-  state.last_confidence_alignment = obs.confidenceAlignment;
-  state.last_persistence = obs.persistence;
+  state.last_measurements = measurements;
+  state.last_observation = clip(
+    w.directionality * measurements.directionality
+      + w.residual_alignment * measurements.residual_alignment
+      + w.persistence * measurements.persistence,
+    -1,
+    1
+  );
+  state.last_residual = obs.residual;
+  state.last_turbulence_break = obs.turbulenceBreak;
   state.last_ess = essBeforeResample;
   state.last_resampled = resampled;
   state.last_effective_q = qEff;
@@ -691,8 +724,11 @@ if (typeof window !== "undefined") {
         regimeClass: classifyRegime(estimate),
         effectiveSampleSize: effectiveSampleSize(state),
         lastObservation: +state.last_observation || 0,
-        lastEffectiveQ: +state.last_effective_q || regimeConfig().Q_start,
+        lastEffectiveQ: +state.last_effective_q || regimeConfig().Q_early,
         lastShoeProgress: +state.last_shoe_progress || 0,
+        lastMeasurements: state.last_measurements || null,
+        lastResidual: Number.isFinite(+state.last_residual) ? +state.last_residual : null,
+        lastTurbulenceBreak: Boolean(state.last_turbulence_break),
         lastResampled: Boolean(state.last_resampled),
         config: regimeConfig()
       };

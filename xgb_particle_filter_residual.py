@@ -33,7 +33,7 @@ from shoe_regime_filter import PF_CONFIG, ShoeRegimeParticleFilter, new_shoe_reg
 UPSTREAM_FEATURE_NAMES: tuple[str, ...] = base.FEATURE_NAMES
 MODEL_FEATURE_NAMES: tuple[str, ...] = (*UPSTREAM_FEATURE_NAMES, "regime_state")
 MODEL_TYPE = "xgb_shoe_regime_feature_residual"
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 DEFAULT_MAX_DELTA = base.DEFAULT_MAX_DELTA
 
 XGB_PARAMS: dict[str, Any] = {
@@ -285,7 +285,9 @@ def export_portable_bundle(
             "rows": int(training_rows),
             "target": "actual_B_minus_core_p_B",
             "regime_state_timing": "state_before_current_outcome",
-            "regime_state_meaning": "+1 core-aligned, 0 turbulent, -1 core-opposed",
+            "regime_state_meaning": "+1 strong/core-aligned regularity, 0 turbulent/non-regular, -1 sustained core-opposed regularity",
+            "likelihood": "directionality + residual_alignment + persistence",
+            "round_adaptive_q": "Q=0.005 before round 15; Q=0.02 after round 45; linear transition between",
             "decision_rule": "B if final_p_B > 0.50 else P",
             "no_pass": True,
             "metrics": dict(metrics),
