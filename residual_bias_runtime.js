@@ -725,7 +725,10 @@ if (typeof window !== "undefined") {
         effectiveSampleSize: effectiveSampleSize(state),
         lastObservation: +state.last_observation || 0,
         lastEffectiveQ: +state.last_effective_q || regimeConfig().Q_early,
-        lastShoeProgress: +state.last_shoe_progress || 0,\n        lastMeasurements: state.last_measurements || null,\n        lastResidual: Number.isFinite(+state.last_residual) ? +state.last_residual : null,\n        lastTurbulenceBreak: Boolean(state.last_turbulence_break),
+        lastShoeProgress: +state.last_shoe_progress || 0,
+        lastMeasurements: state.last_measurements || null,
+        lastResidual: Number.isFinite(+state.last_residual) ? +state.last_residual : null,
+        lastTurbulenceBreak: Boolean(state.last_turbulence_break),
         lastResampled: Boolean(state.last_resampled),
         config: regimeConfig()
       };
