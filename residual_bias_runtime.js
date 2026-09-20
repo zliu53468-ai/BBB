@@ -199,7 +199,8 @@ function getShoeId() {
 }
 
 function shoePFConfig() {
-  const cfg = modelBundle?.shoe_particle_filter || {};
+  const cfg = modelBundle?.enhanced_shoe_particle_filter || {};
+  const weights = cfg.likelihood_weights || {};
   const initial = Array.isArray(cfg.initial_point_counts) && cfg.initial_point_counts.length === 10
     ? cfg.initial_point_counts.map(v => Math.max(0, Math.round(+v || 0)))
     : PF_DEFAULTS.initial_point_counts.slice();
@@ -214,9 +215,17 @@ function shoePFConfig() {
     late_round_start: Math.round(+cfg.late_round_start || PF_DEFAULTS.late_round_start),
     R: Math.max(1e-12, +cfg.R || PF_DEFAULTS.R),
     resample_threshold: Math.max(1, +cfg.resample_threshold || PF_DEFAULTS.resample_threshold),
-    resampling: "systematic",
     random_state: Math.round(+cfg.random_state || PF_DEFAULTS.random_state) >>> 0,
-    pf_delta_clip: Math.min(0.10, Math.max(0.001, +cfg.pf_delta_clip || PF_DEFAULTS.pf_delta_clip))
+    info_gain_multiplier: Math.max(1, +cfg.info_gain_multiplier || PF_DEFAULTS.info_gain_multiplier),
+    expected_cards_per_round: Math.max(4, +cfg.expected_cards_per_round || PF_DEFAULTS.expected_cards_per_round),
+    constraint_sigma_per_sqrt_round: Math.max(0.1, +cfg.constraint_sigma_per_sqrt_round || PF_DEFAULTS.constraint_sigma_per_sqrt_round),
+    constraint_hard_z: Math.max(1, +cfg.constraint_hard_z || PF_DEFAULTS.constraint_hard_z),
+    likelihood_weights: {
+      outcome: Number.isFinite(+weights.outcome) ? +weights.outcome : PF_DEFAULTS.likelihood_weights.outcome,
+      total_cards: Number.isFinite(+weights.total_cards) ? +weights.total_cards : PF_DEFAULTS.likelihood_weights.total_cards,
+      points: Number.isFinite(+weights.points) ? +weights.points : PF_DEFAULTS.likelihood_weights.points,
+      core_residual: Number.isFinite(+weights.core_residual) ? +weights.core_residual : PF_DEFAULTS.likelihood_weights.core_residual
+    }
   };
 }
 
@@ -235,12 +244,12 @@ function newShoePFState(shoeId = getShoeId()) {
     rng_state: cfg.random_state >>> 0,
     particles,
     weights: Array(cfg.n_particles).fill(1 / cfg.n_particles),
-    pf_delta: 0,
+    tensor: [0, 0, 0, 0],
     last_effective_q: cfg.Q_early,
     last_ess: cfg.n_particles,
     last_resampled: false,
-    last_residual: 0,
-    last_observed_outcome: 0
+    last_information_multiplier: 1,
+    last_constraint_survival: 1
   };
 }
 
@@ -342,7 +351,9 @@ function bankerDraws(bankerTotal, playerThird) {
 function simulateVirtualRound(counts, state) {
   let totalRemaining = 0;
   for (const count of counts) totalRemaining += +count || 0;
-  if (totalRemaining < 6) return { sign: 0, playerTotal: 0, bankerTotal: 0 };
+  if (totalRemaining < 6) {
+    return { sign: 0, playerTotal: 0, bankerTotal: 0, playerCards: 0, bankerCards: 0, totalCards: 0, winnerPoint: null, loserPoint: null };
+  }
 
   const player = [drawPoint(counts, state)];
   const banker = [drawPoint(counts, state)];
@@ -367,25 +378,58 @@ function simulateVirtualRound(counts, state) {
   }
 
   const sign = bankerTotal > playerTotal ? 1 : playerTotal > bankerTotal ? -1 : 0;
-  return { sign, playerTotal, bankerTotal };
+  const winnerPoint = sign > 0 ? bankerTotal : sign < 0 ? playerTotal : null;
+  const loserPoint = sign > 0 ? playerTotal : sign < 0 ? bankerTotal : null;
+  return {
+    sign,
+    playerTotal,
+    bankerTotal,
+    playerCards: player.length,
+    bankerCards: banker.length,
+    totalCards: player.length + banker.length,
+    winnerPoint,
+    loserPoint
+  };
 }
 
-function proposalLikelihood(simulated, actualB, corePB) {
+function particleLogLikelihood(simulated, actualB, corePB, physicalObservation = null) {
   const cfg = shoePFConfig();
   const actual = +actualB >= 0.5 ? 1 : 0;
   const observedSign = actual >= 0.5 ? 1 : -1;
-  const residual = actual - clip(+corePB || 0.5, 0, 1);
-  const observedStrength = 0.5 + 0.5 * Math.min(1, Math.abs(residual));
-  const targetScore = observedSign * observedStrength;
+  const observedTotalCards = [4, 5, 6].includes(+physicalObservation?.totalCards) ? +physicalObservation.totalCards : null;
+  const observedPlayerPoint = Number.isInteger(+physicalObservation?.playerPoint) && +physicalObservation.playerPoint >= 0 && +physicalObservation.playerPoint <= 9 ? +physicalObservation.playerPoint : null;
+  const observedBankerPoint = Number.isInteger(+physicalObservation?.bankerPoint) && +physicalObservation.bankerPoint >= 0 && +physicalObservation.bankerPoint <= 9 ? +physicalObservation.bankerPoint : null;
 
-  let simulatedScore = 0;
-  if (simulated.sign !== 0) {
-    const pointMargin = Math.abs(simulated.bankerTotal - simulated.playerTotal) / 9;
-    simulatedScore = simulated.sign * (0.5 + 0.5 * pointMargin);
+  const w = cfg.likelihood_weights;
+  let weightedError = w.outcome * Math.pow((observedSign - simulated.sign) / 2, 2);
+  let activeWeight = w.outcome;
+
+  if (observedTotalCards !== null) {
+    const e = (observedTotalCards - simulated.totalCards) / 2;
+    weightedError += w.total_cards * e * e;
+    activeWeight += w.total_cards;
   }
 
-  const error = targetScore - simulatedScore;
-  return Math.exp(-0.5 * error * error / cfg.R);
+  if (observedPlayerPoint !== null && observedBankerPoint !== null) {
+    const pe = (observedPlayerPoint - simulated.playerTotal) / 9;
+    const be = (observedBankerPoint - simulated.bankerTotal) / 9;
+    weightedError += w.points * 0.5 * (pe * pe + be * be);
+    activeWeight += w.points;
+  }
+
+  const residual = actual - clip(+corePB || 0.5, 0, 1);
+  const coreTarget = clip(2 * residual, -1, 1);
+  const pointMargin = simulated.sign === 0 ? 0 : Math.abs(simulated.bankerTotal - simulated.playerTotal) / 9;
+  const simulatedSupport = simulated.sign === 0 ? 0 : simulated.sign * (0.5 + 0.5 * pointMargin);
+  const coreError = coreTarget - simulatedSupport;
+  weightedError += w.core_residual * coreError * coreError;
+  activeWeight += w.core_residual;
+
+  const infoMultiplier = observedTotalCards === 5 || observedTotalCards === 6 ? cfg.info_gain_multiplier : 1;
+  return {
+    logLike: -0.5 * infoMultiplier * (weightedError / Math.max(activeWeight, 1e-12)) / cfg.R,
+    infoMultiplier
+  };
 }
 
 function rejuvenateParticles(state, qEff) {
