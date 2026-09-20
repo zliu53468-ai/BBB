@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_PF_STATE_FEATURE_V1";
+const VERSION = "XGB_SHOE_REGIME_FEATURE_V1";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -15,14 +15,15 @@ const FEATURE_NAMES = [
   "stage",
   "depth"
 ];
-const MODEL_FEATURE_NAMES = [...FEATURE_NAMES, "pf_state"];
+const MODEL_FEATURE_NAMES = [...FEATURE_NAMES, "regime_state"];
 const MAX_DELTA_DEFAULT = 0.10;
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
 const TRAINING_KEY = "bgs_xgb_residual_training_v1";
 const PENDING_KEY = "bgs_xgb_residual_pending_v1";
 const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
 const CUT_KEY = "bgs_xgb_estimated_total_hands_v1";
-const PF_STATE_KEY = "bgs_xgb_particle_filter_state_v1";
+const REGIME_STATE_KEY = "bgs_xgb_shoe_regime_state_v1";
+const LEGACY_PF_STATE_KEY = "bgs_xgb_particle_filter_state_v1";
 const MAX_TRAINING_ROWS = 10000;
 const PF_DEFAULTS = {
   n_particles: 1000,
@@ -31,7 +32,17 @@ const PF_DEFAULTS = {
   R: 0.25,
   resample_threshold: 500,
   resampling: "systematic",
-  random_state: 42
+  random_state: 42,
+  state_clip: 1.0,
+  observation_weights: {
+    direction_alignment: 0.55,
+    confidence_alignment: 0.30,
+    persistence: 0.15
+  },
+  phase_q_scale: {
+    shoe_start: 0.75,
+    shoe_end: 1.50
+  }
 };
 
 const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
@@ -115,12 +126,12 @@ function buildFeatures(seq, corePrediction, signal = null) {
   };
 }
 
-function modelFeatureVector(features, pfState) {
+function modelFeatureVector(features, regimeState) {
   const vector = FEATURE_NAMES.map(name => {
     const value = +features[name];
     return Number.isFinite(value) ? value : 0;
   });
-  vector.push(Number.isFinite(+pfState) ? +pfState : 0);
+  vector.push(Number.isFinite(+regimeState) ? +regimeState : 0);
   return vector;
 }
 
@@ -151,10 +162,10 @@ function evaluateTree(tree, vector) {
   return 0;
 }
 
-function predictXGBDelta(features, pfState) {
+function predictXGBDelta(features, regimeState) {
   const xgb = modelBundle?.xgb;
   if (!modelBundle?.trained || !xgb || !Array.isArray(xgb.trees)) return 0;
-  const vector = modelFeatureVector(features, pfState);
+  const vector = modelFeatureVector(features, regimeState);
   let result = +xgb.base_score || 0;
   for (const tree of xgb.trees) result += evaluateTree(tree, vector);
   return Number.isFinite(result) ? result : 0;
@@ -173,8 +184,10 @@ function getShoeId() {
   }
 }
 
-function pfConfig() {
-  const cfg = modelBundle?.particle_filter || {};
+function regimeConfig() {
+  const cfg = modelBundle?.shoe_regime_filter || {};
+  const weights = cfg.observation_weights || {};
+  const phase = cfg.phase_q_scale || {};
   return {
     n_particles: Math.max(1, Math.round(+cfg.n_particles || PF_DEFAULTS.n_particles)),
     state_dim: 1,
@@ -182,7 +195,17 @@ function pfConfig() {
     R: Math.max(1e-12, +cfg.R || PF_DEFAULTS.R),
     resample_threshold: Math.max(1, +cfg.resample_threshold || PF_DEFAULTS.resample_threshold),
     resampling: "systematic",
-    random_state: Math.round(+cfg.random_state || PF_DEFAULTS.random_state) >>> 0
+    random_state: Math.round(+cfg.random_state || PF_DEFAULTS.random_state) >>> 0,
+    state_clip: Math.max(0.1, +cfg.state_clip || PF_DEFAULTS.state_clip),
+    observation_weights: {
+      direction_alignment: Number.isFinite(+weights.direction_alignment) ? +weights.direction_alignment : PF_DEFAULTS.observation_weights.direction_alignment,
+      confidence_alignment: Number.isFinite(+weights.confidence_alignment) ? +weights.confidence_alignment : PF_DEFAULTS.observation_weights.confidence_alignment,
+      persistence: Number.isFinite(+weights.persistence) ? +weights.persistence : PF_DEFAULTS.observation_weights.persistence
+    },
+    phase_q_scale: {
+      shoe_start: Number.isFinite(+phase.shoe_start) ? +phase.shoe_start : PF_DEFAULTS.phase_q_scale.shoe_start,
+      shoe_end: Number.isFinite(+phase.shoe_end) ? +phase.shoe_end : PF_DEFAULTS.phase_q_scale.shoe_end
+    }
   };
 }
 
@@ -197,37 +220,44 @@ function gaussianRandom(state) {
   return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
 }
 
-function newPFState(shoeId = getShoeId()) {
-  const cfg = pfConfig();
+function newRegimeState(shoeId = getShoeId()) {
+  const cfg = regimeConfig();
   const state = {
     shoe_id: String(shoeId),
     updates: 0,
     rng_state: cfg.random_state >>> 0,
+    last_alignment: null,
+    last_observation: 0,
+    last_effective_q: cfg.Q,
+    last_ess: cfg.n_particles,
+    last_resampled: false,
     particles: [],
     weights: Array(cfg.n_particles).fill(1 / cfg.n_particles)
   };
   const std = Math.sqrt(cfg.Q);
   for (let i = 0; i < cfg.n_particles; i++) state.particles.push(gaussianRandom(state) * std);
   const mean = state.particles.reduce((sum, value) => sum + value, 0) / cfg.n_particles;
-  for (let i = 0; i < state.particles.length; i++) state.particles[i] -= mean;
+  for (let i = 0; i < state.particles.length; i++) {
+    state.particles[i] = clip(state.particles[i] - mean, -cfg.state_clip, cfg.state_clip);
+  }
   return state;
 }
 
-function writePFState(state) {
-  try { localStorage.setItem(PF_STATE_KEY, JSON.stringify(state)); } catch (_) {}
+function writeRegimeState(state) {
+  try { localStorage.setItem(REGIME_STATE_KEY, JSON.stringify(state)); } catch (_) {}
 }
 
-function resetParticleFilter(shoeId = getShoeId()) {
-  const state = newPFState(shoeId);
-  writePFState(state);
+function resetShoeRegimeFilter(shoeId = getShoeId()) {
+  const state = newRegimeState(shoeId);
+  writeRegimeState(state);
   return state;
 }
 
-function readPFState() {
-  const cfg = pfConfig();
+function readRegimeState() {
+  const cfg = regimeConfig();
   const shoeId = getShoeId();
   try {
-    const state = JSON.parse(localStorage.getItem(PF_STATE_KEY) || "null");
+    const state = JSON.parse(localStorage.getItem(REGIME_STATE_KEY) || "null");
     const valid = state
       && String(state.shoe_id || "") === String(shoeId)
       && Array.isArray(state.particles)
@@ -237,20 +267,21 @@ function readPFState() {
       && Number.isFinite(+state.rng_state);
     if (valid) return state;
   } catch (_) {}
-  return resetParticleFilter(shoeId);
+  return resetShoeRegimeFilter(shoeId);
 }
 
-function pfEstimate(state = readPFState()) {
+function regimeEstimate(state = readRegimeState()) {
+  const cfg = regimeConfig();
   let total = 0, weightSum = 0;
   for (let i = 0; i < state.particles.length; i++) {
     const w = +state.weights[i] || 0;
     total += (+state.particles[i] || 0) * w;
     weightSum += w;
   }
-  return weightSum > 0 ? total / weightSum : 0;
+  return clip(weightSum > 0 ? total / weightSum : 0, -cfg.state_clip, cfg.state_clip);
 }
 
-function pfEffectiveSampleSize(state) {
+function effectiveSampleSize(state) {
   let sumSq = 0;
   for (const value of state.weights) {
     const w = +value || 0;
@@ -280,19 +311,52 @@ function systematicResample(state) {
   state.weights = Array(n).fill(1 / n);
 }
 
-function updateParticleFilter(residualObservation) {
-  const cfg = pfConfig();
-  const state = readPFState();
-  const measurement = +residualObservation || 0;
+function shoeProgress(roundIndex, estimatedTotalHands) {
+  const total = Math.max(2, +estimatedTotalHands || 60);
+  return clip(((+roundIndex || 1) - 1) / (total - 1), 0, 1);
+}
+
+function effectiveProcessNoise(roundIndex, estimatedTotalHands) {
+  const cfg = regimeConfig();
+  const progress = shoeProgress(roundIndex, estimatedTotalHands);
+  const start = cfg.phase_q_scale.shoe_start;
+  const end = cfg.phase_q_scale.shoe_end;
+  return Math.max(1e-12, cfg.Q * (start + (end - start) * progress));
+}
+
+function buildRegimeObservation(actualB, corePB, state) {
+  const cfg = regimeConfig();
+  const actualIsB = +actualB >= 0.5;
+  const pB = clip(+corePB || 0.5, 0, 1);
+  const coreIsB = pB > 0.5;
+  const alignment = coreIsB === actualIsB ? 1 : -1;
+  const actualProbability = actualIsB ? pB : (1 - pB);
+  const confidenceAlignment = clip(2 * (actualProbability - 0.5), -1, 1);
+  const lastAlignment = Number.isFinite(+state.last_alignment) ? +state.last_alignment : null;
+  const persistence = lastAlignment !== null && alignment === lastAlignment ? alignment : 0;
+  const w = cfg.observation_weights;
+  const observation = clip(
+    w.direction_alignment * alignment
+      + w.confidence_alignment * confidenceAlignment
+      + w.persistence * persistence,
+    -1,
+    1
+  );
+  return { observation, alignment, confidenceAlignment, persistence };
+}
+
+function updateShoeRegimeFilter(actualB, corePB, roundIndex, estimatedTotalHands) {
+  const cfg = regimeConfig();
+  const state = readRegimeState();
+  const obs = buildRegimeObservation(actualB, corePB, state);
   let maxLog = -Infinity;
   const logs = new Array(state.particles.length);
   for (let i = 0; i < state.particles.length; i++) {
-    const error = measurement - (+state.particles[i] || 0);
+    const error = obs.observation - (+state.particles[i] || 0);
     const logLike = -0.5 * error * error / cfg.R;
     logs[i] = logLike;
     if (logLike > maxLog) maxLog = logLike;
   }
-
   let total = 0;
   for (let i = 0; i < state.weights.length; i++) {
     const updated = (+state.weights[i] || 0) * Math.exp(logs[i] - maxLog);
@@ -304,35 +368,48 @@ function updateParticleFilter(residualObservation) {
   } else {
     for (let i = 0; i < state.weights.length; i++) state.weights[i] /= total;
   }
-
-  const essBeforeResample = pfEffectiveSampleSize(state);
+  const essBeforeResample = effectiveSampleSize(state);
   let resampled = false;
   if (essBeforeResample < cfg.resample_threshold) {
     systematicResample(state);
     resampled = true;
   }
-
-  const std = Math.sqrt(cfg.Q);
+  const qEff = effectiveProcessNoise((+roundIndex || 1) + 1, estimatedTotalHands);
+  const std = Math.sqrt(qEff);
   for (let i = 0; i < state.particles.length; i++) {
-    state.particles[i] = (+state.particles[i] || 0) + gaussianRandom(state) * std;
+    state.particles[i] = clip((+state.particles[i] || 0) + gaussianRandom(state) * std, -cfg.state_clip, cfg.state_clip);
   }
   state.updates = Math.max(0, +state.updates || 0) + 1;
-  state.last_observation = measurement;
+  state.last_alignment = obs.alignment;
+  state.last_observation = obs.observation;
+  state.last_confidence_alignment = obs.confidenceAlignment;
+  state.last_persistence = obs.persistence;
   state.last_ess = essBeforeResample;
   state.last_resampled = resampled;
-  writePFState(state);
+  state.last_effective_q = qEff;
+  state.last_shoe_progress = shoeProgress(roundIndex, estimatedTotalHands);
+  writeRegimeState(state);
   return state;
 }
 
-function particleFilterStateFeature() {
-  return pfEstimate(readPFState());
+function shoeRegimeStateFeature() {
+  return regimeEstimate(readRegimeState());
+}
+
+function classifyRegime(value) {
+  const v = +value || 0;
+  if (v >= 0.45) return "stable_aligned";
+  if (v >= 0.15) return "forming_aligned";
+  if (v <= -0.45) return "stable_opposed";
+  if (v <= -0.15) return "degrading_opposed";
+  return "turbulent_neutral";
 }
 
 function applyCorrection(seq, corePrediction) {
   const signal = corePrediction?.singleHazard || null;
   const features = buildFeatures(seq, corePrediction, signal);
-  const pfState = particleFilterStateFeature();
-  const rawDelta = predictXGBDelta(features, pfState);
+  const regimeState = shoeRegimeStateFeature();
+  const rawDelta = predictXGBDelta(features, regimeState);
   const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
   const delta = clip(rawDelta, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
@@ -342,49 +419,28 @@ function applyCorrection(seq, corePrediction) {
   const confidence = direction === "B" ? finalPB : finalPP;
   const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
   const active = Boolean(modelBundle?.trained);
-
   if (!active) {
     return {
       ...corePrediction,
       residualBias: {
-        version: VERSION,
-        active: false,
-        modelLoaded,
-        modelLoadError,
-        coreDirection,
-        corePB,
-        pfState,
-        rawDelta: 0,
-        delta: 0,
-        finalPB: corePB,
-        finalDirection: coreDirection,
-        flipped: false,
-        features
+        version: VERSION, active: false, modelLoaded, modelLoadError,
+        coreDirection, corePB, regimeState, regimeClass: classifyRegime(regimeState),
+        rawDelta: 0, delta: 0, finalPB: corePB, finalDirection: coreDirection,
+        flipped: false, features
       }
     };
   }
-
   const flipped = direction !== coreDirection;
   return {
     ...corePrediction,
     direction,
     confidence,
     probabilities: { B: finalPB, P: finalPP },
-    regime: flipped ? "PF狀態8D-XGB殘差修正換邊" : corePrediction.regime,
+    regime: flipped ? "Shoe-Regime 8D-XGB殘差修正換邊" : corePrediction.regime,
     residualBias: {
-      version: VERSION,
-      active: true,
-      modelLoaded,
-      modelLoadError,
-      coreDirection,
-      corePB,
-      pfState,
-      rawDelta,
-      delta,
-      finalPB,
-      finalDirection: direction,
-      flipped,
-      features
+      version: VERSION, active: true, modelLoaded, modelLoadError,
+      coreDirection, corePB, regimeState, regimeClass: classifyRegime(regimeState),
+      rawDelta, delta, finalPB, finalDirection: direction, flipped, features
     }
   };
 }
@@ -408,7 +464,8 @@ function rotateShoeId() {
   try {
     localStorage.removeItem(SHOE_KEY);
     localStorage.removeItem(PENDING_KEY);
-    localStorage.removeItem(PF_STATE_KEY);
+    localStorage.removeItem(REGIME_STATE_KEY);
+    localStorage.removeItem(LEGACY_PF_STATE_KEY);
   } catch (_) {}
 }
 
@@ -431,7 +488,7 @@ function renderPrediction(p, historyLength) {
   el("regime").textContent = p.regime;
   el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
   orb.className = "direction-orb " + (isB ? "banker" : "player");
-  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "PF狀態8D-XGB 修正完成" : "分析完成";
+  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "Shoe-Regime 8D-XGB 修正完成" : "分析完成";
   if (el("roundCount")) el("roundCount").textContent = historyLength;
   if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
 }
@@ -458,7 +515,7 @@ function registerPrediction(seq, prediction) {
     history_fingerprint: seq.join(""),
     core_p_b: +features.core_p_b,
     core_direction: residual.coreDirection || String(prediction?.direction || ""),
-    pf_state: Number.isFinite(+residual.pfState) ? +residual.pfState : particleFilterStateFeature(),
+    regime_state: Number.isFinite(+residual.regimeState) ? +residual.regimeState : shoeRegimeStateFeature(),
     features
   };
   try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (_) {}
@@ -475,35 +532,33 @@ function settlePending(actualOutcome) {
   const corePB = clip(+pending.features.core_p_b || 0.5);
   const residualTarget = actualB - corePB;
   const row = {
-    schema_version: 2,
+    schema_version: 3,
     shoe_id: String(pending.shoe_id || getShoeId()),
     created_at: +pending.created_at || Date.now(),
     history_fingerprint: String(pending.history_fingerprint || ""),
     actual_outcome: actual,
     actual_b: actualB,
     residual_target: residualTarget,
-    pf_state: Number.isFinite(+pending.pf_state) ? +pending.pf_state : 0,
+    regime_state: Number.isFinite(+pending.regime_state) ? +pending.regime_state : 0,
     ...pending.features
   };
   const rows = readTrainingRows();
   const duplicate = rows.length && rows.at(-1)?.shoe_id === row.shoe_id && rows.at(-1)?.history_fingerprint === row.history_fingerprint;
   if (!duplicate) {
     rows.push(row);
-    updateParticleFilter(residualTarget);
+    updateShoeRegimeFilter(actualB, corePB, +pending.features.round_index || 1, +pending.features.estimated_total_hands || getEstimatedTotalHands());
   }
   writeTrainingRows(rows);
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
 
-function rebuildParticleFilter(rows = readTrainingRows()) {
+function rebuildShoeRegimeFilter(rows = readTrainingRows()) {
   const shoeId = getShoeId();
-  resetParticleFilter(shoeId);
+  resetShoeRegimeFilter(shoeId);
   for (const row of rows) {
     if (String(row?.shoe_id || "") !== String(shoeId)) continue;
-    const residual = Number.isFinite(+row?.residual_target)
-      ? +row.residual_target
-      : ((+row?.actual_b || 0) - clip(+row?.core_p_b || 0.5));
-    updateParticleFilter(residual);
+    const actualB = Number.isFinite(+row?.actual_b) ? +row.actual_b : (String(row?.actual_outcome || "").toUpperCase() === "B" ? 1 : 0);
+    updateShoeRegimeFilter(actualB, clip(+row?.core_p_b || 0.5), +row?.round_index || 1, +row?.estimated_total_hands || getEstimatedTotalHands());
   }
 }
 
@@ -515,16 +570,17 @@ function rollbackTrainingIfNeeded() {
   if (last?.shoe_id === getShoeId() && +last.round_index > history.length) {
     rows.pop();
     writeTrainingRows(rows);
-    rebuildParticleFilter(rows);
+    rebuildShoeRegimeFilter(rows);
   }
   try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
 
 function exportTrainingData() {
   return JSON.stringify({
-    schema_version: 2,
+    schema_version: 3,
     feature_names: FEATURE_NAMES,
     model_feature_names: MODEL_FEATURE_NAMES,
+    feature_schema: "7D_UPSTREAM_PLUS_1D_SHOE_REGIME",
     rows: readTrainingRows()
   }, null, 2);
 }
@@ -534,7 +590,7 @@ function downloadTrainingData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `bgs_xgb_pf_state_8d_training_${Date.now()}.json`;
+  a.download = `bgs_xgb_shoe_regime_8d_training_${Date.now()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -548,19 +604,19 @@ async function loadModel(url = MODEL_URL) {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const bundle = await response.json();
-    if (!bundle || bundle.model_type !== "xgb_pf_state_feature_residual") throw new Error("invalid_model_bundle");
+    if (!bundle || bundle.model_type !== "xgb_shoe_regime_feature_residual") throw new Error("invalid_model_bundle");
     const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
     if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("upstream_feature_schema_mismatch");
     const modelNames = Array.isArray(bundle.model_feature_names) ? bundle.model_feature_names : [];
     if (modelNames.join("|") !== MODEL_FEATURE_NAMES.join("|")) throw new Error("model_feature_schema_mismatch");
     modelBundle = bundle;
     modelLoaded = true;
-    readPFState();
+    readRegimeState();
     return bundle;
   } catch (error) {
     modelBundle = null;
     modelLoadError = String(error?.message || error || "model_load_failed");
-    readPFState();
+    readRegimeState();
     return null;
   }
 }
@@ -612,26 +668,37 @@ if (typeof window !== "undefined") {
     getEstimatedTotalHands,
     exportTrainingData,
     downloadTrainingData,
-    resetParticleFilter,
-    updateParticleFilter,
-    getParticleFilterEstimate: () => particleFilterStateFeature(),
-    getParticleFilterStatus: () => {
-      const state = readPFState();
+    resetShoeRegimeFilter,
+    updateShoeRegimeFilter,
+    getShoeRegimeState: () => shoeRegimeStateFeature(),
+    getShoeRegimeStatus: () => {
+      const state = readRegimeState();
+      const estimate = regimeEstimate(state);
       return {
         shoeId: state.shoe_id,
         updates: +state.updates || 0,
-        estimate: pfEstimate(state),
-        effectiveSampleSize: pfEffectiveSampleSize(state),
+        estimate,
+        regimeClass: classifyRegime(estimate),
+        effectiveSampleSize: effectiveSampleSize(state),
+        lastObservation: +state.last_observation || 0,
+        lastEffectiveQ: +state.last_effective_q || regimeConfig().Q,
+        lastShoeProgress: +state.last_shoe_progress || 0,
         lastResampled: Boolean(state.last_resampled),
-        config: pfConfig()
+        config: regimeConfig()
       };
+    },
+    resetParticleFilter: resetShoeRegimeFilter,
+    getParticleFilterEstimate: () => shoeRegimeStateFeature(),
+    getParticleFilterStatus: () => {
+      const state = readRegimeState();
+      return { shoeId: state.shoe_id, updates: +state.updates || 0, estimate: regimeEstimate(state), semantics: "shoe_regime_state", config: regimeConfig() };
     },
     getTrainingCount: () => readTrainingRows().length,
     getModelStatus: () => ({
       loaded: modelLoaded,
       trained: Boolean(modelBundle?.trained),
       error: modelLoadError,
-      featureSchema: "7D_UPSTREAM_PLUS_1D_PF_STATE"
+      featureSchema: "7D_UPSTREAM_PLUS_1D_SHOE_REGIME"
     })
   };
 }
