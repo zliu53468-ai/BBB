@@ -42,7 +42,7 @@ XGB_PARAMS: dict[str, Any] = {
     "max_depth": 4,
     "min_child_weight": 2.0,
     "reg_alpha": 0.05,
-    "reg_lambda": 0.2,
+    "reg_lambda": 0.25,
     "random_state": 42,
     "n_jobs": 1,
     "tree_method": "hist",
@@ -52,7 +52,8 @@ XGB_PARAMS: dict[str, Any] = {
 PF_CONFIG: dict[str, Any] = {
     "n_particles": 1000,
     "state_dim": 1,
-    "Q": 0.005,
+    "Q_start": 0.005,
+    "Q_end": 0.02,
     "R": 0.25,
     "resample_threshold": 500.0,
     "resampling": "systematic",
@@ -62,10 +63,6 @@ PF_CONFIG: dict[str, Any] = {
         "direction_alignment": 0.55,
         "confidence_alignment": 0.30,
         "persistence": 0.15,
-    },
-    "phase_q_scale": {
-        "shoe_start": 0.75,
-        "shoe_end": 1.50,
     },
 }
 
@@ -105,14 +102,16 @@ class ShoeRegimeParticleFilter:
         self,
         *,
         n_particles: int = 1000,
-        q: float = 0.005,
+        q_start: float = 0.005,
+        q_end: float = 0.02,
         r: float = 0.25,
         resample_threshold: float = 500.0,
         random_state: int = 42,
         state_clip: float = 1.0,
     ) -> None:
         self.n_particles = int(n_particles)
-        self.q = float(q)
+        self.q_start = float(q_start)
+        self.q_end = float(q_end)
         self.r = float(r)
         self.resample_threshold = float(resample_threshold)
         self.random_state = int(random_state)
@@ -123,12 +122,12 @@ class ShoeRegimeParticleFilter:
         self.updates = 0
         self.last_alignment: float | None = None
         self.last_observation = 0.0
-        self.last_effective_q = self.q
+        self.last_effective_q = self.q_start_start_start
         self.reset()
 
     def reset(self) -> None:
         self.rng = DeterministicRNG(self.random_state)
-        std = math.sqrt(max(self.q, 1e-12))
+        std = math.sqrt(max(self.q_start, 1e-12))
         draws = np.asarray([self.rng.normal() * std for _ in range(self.n_particles)], dtype=np.float64)
         draws -= float(np.mean(draws))
         self.particles = np.clip(draws, -self.state_clip, self.state_clip)
@@ -136,7 +135,7 @@ class ShoeRegimeParticleFilter:
         self.updates = 0
         self.last_alignment = None
         self.last_observation = 0.0
-        self.last_effective_q = self.q
+        self.last_effective_q = self.q_start
 
     def estimate(self) -> float:
         value = float(np.sum(self.particles * self.weights))
@@ -159,12 +158,9 @@ class ShoeRegimeParticleFilter:
         total = max(2.0, float(estimated_total_hands))
         return float(np.clip((float(round_index) - 1.0) / (total - 1.0), 0.0, 1.0))
 
-    def effective_q(self, round_index: float, estimated_total_hands: float) -> float:
-        phase_cfg = PF_CONFIG["phase_q_scale"]
-        start = float(phase_cfg["shoe_start"])
-        end = float(phase_cfg["shoe_end"])
-        progress = self.shoe_progress(round_index, estimated_total_hands)
-        return max(1e-12, self.q * (start + (end - start) * progress))
+    def effective_q(self, current_round: float, estimated_total_hands: float) -> float:
+        progress = self.shoe_progress(current_round, estimated_total_hands)
+        return max(1e-12, self.q_start + (self.q_end - self.q_start) * progress)
 
     def make_observation(self, *, actual_b: float, core_pb: float) -> tuple[float, float]:
         actual_is_b = float(actual_b) >= 0.5
@@ -173,15 +169,28 @@ class ShoeRegimeParticleFilter:
         alignment = 1.0 if core_is_b == actual_is_b else -1.0
         actual_probability = p_b if actual_is_b else (1.0 - p_b)
         confidence_alignment = float(np.clip(2.0 * (actual_probability - 0.5), -1.0, 1.0))
-        persistence = 0.0
-        if self.last_alignment is not None and alignment == self.last_alignment:
-            persistence = alignment
         weights = PF_CONFIG["observation_weights"]
-        observation = (
-            float(weights["direction_alignment"]) * alignment
-            + float(weights["confidence_alignment"]) * confidence_alignment
-            + float(weights["persistence"]) * persistence
-        )
+
+        if alignment > 0.0:
+            persistence = 1.0 if self.last_alignment == 1.0 else 0.0
+            observation = (
+                float(weights["direction_alignment"])
+                + float(weights["confidence_alignment"]) * max(0.0, confidence_alignment)
+                + float(weights["persistence"]) * persistence
+            )
+        elif self.last_alignment == -1.0:
+            # A repeated miss is evidence of a persistent Core-opposed regime.
+            persistence = -1.0
+            observation = -(
+                float(weights["direction_alignment"])
+                + float(weights["confidence_alignment"]) * abs(min(0.0, confidence_alignment))
+                + float(weights["persistence"])
+            )
+        else:
+            # A single break / abrupt disorder is turbulence, not an instant reversal.
+            persistence = 0.0
+            observation = 0.0
+
         return float(np.clip(observation, -1.0, 1.0)), alignment
 
     def update_observation(self, observation: float) -> float:
@@ -201,8 +210,8 @@ class ShoeRegimeParticleFilter:
         self.last_observation = measurement
         return self.estimate()
 
-    def predict(self, *, round_index: float, estimated_total_hands: float) -> float:
-        q_eff = self.effective_q(round_index, estimated_total_hands)
+    def predict(self, *, current_round: float, estimated_total_hands: float) -> float:
+        q_eff = self.effective_q(current_round, estimated_total_hands)
         std = math.sqrt(q_eff)
         noise = np.asarray([self.rng.normal() * std for _ in range(self.n_particles)], dtype=np.float64)
         self.particles = np.clip(self.particles + noise, -self.state_clip, self.state_clip)
@@ -214,7 +223,7 @@ class ShoeRegimeParticleFilter:
         *,
         actual_b: float,
         core_pb: float,
-        round_index: float,
+        current_round: float,
         estimated_total_hands: float,
     ) -> float:
         observation, alignment = self.make_observation(actual_b=actual_b, core_pb=core_pb)
@@ -222,7 +231,7 @@ class ShoeRegimeParticleFilter:
         self.last_alignment = alignment
         self.updates += 1
         return self.predict(
-            round_index=float(round_index) + 1.0,
+            current_round=float(current_round) + 1.0,
             estimated_total_hands=estimated_total_hands,
         )
 
@@ -230,7 +239,8 @@ class ShoeRegimeParticleFilter:
 def _new_particle_filter() -> ShoeRegimeParticleFilter:
     return ShoeRegimeParticleFilter(
         n_particles=PF_CONFIG["n_particles"],
-        q=PF_CONFIG["Q"],
+        q_start=PF_CONFIG["Q_start"],
+        q_end=PF_CONFIG["Q_end"],
         r=PF_CONFIG["R"],
         resample_threshold=PF_CONFIG["resample_threshold"],
         random_state=PF_CONFIG["random_state"],
@@ -284,7 +294,7 @@ def make_training_arrays_8d(
         pf.observe_and_project(
             actual_b=actual_b,
             core_pb=core_p_b,
-            round_index=round_index,
+            current_round=round_index,
             estimated_total_hands=estimated_total_hands,
         )
 
@@ -338,7 +348,7 @@ class ShoeRegimeXGBResidualPredictor:
         return self.particle_filter.observe_and_project(
             actual_b=float(actual_b),
             core_pb=float(core_pb),
-            round_index=float(round_index),
+            current_round=float(round_index),
             estimated_total_hands=float(estimated_total_hands),
         )
 
@@ -417,7 +427,7 @@ def _portable_xgb_payload(model: XGBRegressor, reference_x: np.ndarray) -> dict[
             "max_depth": 4,
             "min_child_weight": 2.0,
             "alpha": 0.05,
-            "lambda": 0.2,
+            "lambda": 0.25,
             "random_state": 42,
         },
     }
