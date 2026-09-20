@@ -50,6 +50,10 @@ XGB_PARAMS: dict[str, Any] = {
     "verbosity": 0,
 }
 
+
+def build_xgb_regressor() -> XGBRegressor:
+    return XGBRegressor(**XGB_PARAMS)
+
 def _new_particle_filter() -> ShoeRegimeParticleFilter:
     return new_shoe_regime_filter()
 
