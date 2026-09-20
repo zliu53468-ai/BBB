@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Blind-box Shoe Particle Filter for BBB downstream pseudo-count estimation.
+"""Blind-box Shoe Particle Filter for BBB downstream physical residual prior.
 
 The filter never observes actual card identities. Each particle is one plausible
 remaining eight-deck shoe represented by baccarat point values 0..9. Particles
 are propagated by standard baccarat drawing rules with sampling without
-replacement, then reweighted from the observed B/P result and Core residual.
+replacement, then reweighted from the observed B/P result and Core residual. The public
+output is pf_delta in [-0.10, +0.10], intended for XGBoost base_margin.
 
 This is a probabilistic latent-shoe simulation, not knowledge of the true
 remaining cards.
@@ -31,7 +32,7 @@ PF_CONFIG: dict[str, Any] = {
     "resample_threshold": 500.0,
     "resampling": "systematic",
     "random_state": 42,
-    "pseudo_count_clip": 1.0,
+    "pf_delta_clip": 0.10,
 }
 
 _UINT32_MASK = 0xFFFFFFFF
@@ -84,7 +85,7 @@ class ShoeParticleFilter:
         self.particles = np.tile(INITIAL_POINT_COUNTS, (self.n_particles, 1))
         self.weights = np.full(self.n_particles, 1.0 / self.n_particles, dtype=np.float64)
         self.updates = 0
-        self.pseudo_count = 0.0
+        self.pf_delta = 0.0
         self.last_effective_q = self.q_early
         self.last_ess = float(self.n_particles)
         self.last_resampled = False
@@ -93,12 +94,12 @@ class ShoeParticleFilter:
         self.reset()
 
     def reset(self) -> None:
-        """Reset all particles to a fresh eight-deck shoe and pseudo_count=0."""
+        """Reset all particles to a fresh eight-deck shoe and pf_delta=0."""
         self.rng = DeterministicRNG(self.random_state)
         self.particles = np.tile(INITIAL_POINT_COUNTS, (self.n_particles, 1))
         self.weights = np.full(self.n_particles, 1.0 / self.n_particles, dtype=np.float64)
         self.updates = 0
-        self.pseudo_count = 0.0
+        self.pf_delta = 0.0
         self.last_effective_q = self.q_early
         self.last_ess = float(self.n_particles)
         self.last_resampled = False
@@ -244,7 +245,7 @@ class ShoeParticleFilter:
             counts[src] -= 1
             counts[dst] += 1
 
-    def _forecast_pseudo_count(self) -> float:
+    def _forecast_pf_delta(self) -> float:
         banker_mass = 0.0
         player_mass = 0.0
         for i in range(self.n_particles):
@@ -259,11 +260,16 @@ class ShoeParticleFilter:
         decisive_mass = banker_mass + player_mass
         if decisive_mass <= 1e-12:
             return 0.0
-        value = (banker_mass - player_mass) / decisive_mass
-        return float(np.clip(value, -1.0, 1.0))
+        physical_bias = (banker_mass - player_mass) / decisive_mass
+        pf_delta = 0.10 * physical_bias
+        return float(np.clip(pf_delta, -PF_CONFIG["pf_delta_clip"], PF_CONFIG["pf_delta_clip"]))
 
-    def current_pseudo_count(self) -> float:
-        return float(np.clip(self.pseudo_count, -1.0, 1.0))
+    def current_pf_delta(self) -> float:
+        return float(np.clip(
+            self.pf_delta,
+            -PF_CONFIG["pf_delta_clip"],
+            PF_CONFIG["pf_delta_clip"],
+        ))
 
     def observe_and_project(
         self,
@@ -306,12 +312,12 @@ class ShoeParticleFilter:
 
         q_eff = self.effective_q(current_round)
         self._rejuvenate(q_eff)
-        self.pseudo_count = self._forecast_pseudo_count()
+        self.pf_delta = self._forecast_pf_delta()
         self.last_effective_q = q_eff
         self.last_residual = actual_b - clip(float(core_pb), 0.0, 1.0)
         self.last_observed_outcome = int(actual_b)
         self.updates += 1
-        return self.current_pseudo_count()
+        return self.current_pf_delta()
 
 
 def new_shoe_particle_filter() -> ShoeParticleFilter:
