@@ -123,6 +123,26 @@ python xgb_particle_filter_residual.py train \
 
 The deterministic shoe-level validation split remains. The checked-in model bundle stays `trained:false` until real labeled rows are trained and exported.
 
+
+
+## Python module separation
+
+The downstream Python code is now split by responsibility:
+
+```text
+shoe_regime_filter.py
+  -> only maintains Shoe Regime PF state
+  -> outputs regime_state
+
+xgb_particle_filter_residual.py
+  -> keeps the fixed 7D input untouched
+  -> appends regime_state as feature 8
+  -> trains/runs XGBoost residual correction
+  -> clips Delta to +/-0.10
+```
+
+The Particle Filter does not perform card counting or remaining-card inference.
+
 ## Browser runtime
 
 ```text
