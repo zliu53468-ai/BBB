@@ -965,7 +965,7 @@ function settlePending(actualOutcome, physicalObservation = null) {
   const physicalPrediction = pending.physical_prediction || {};
 
   const row = {
-    schema_version: 7,
+    schema_version: 8,
     shoe_id: String(pending.shoe_id || getShoeId()),
     created_at: +pending.created_at || Date.now(),
     history_fingerprint: String(pending.history_fingerprint || ""),
@@ -1037,7 +1037,7 @@ function rollbackTrainingIfNeeded() {
 
 function exportTrainingData() {
   return JSON.stringify({
-    schema_version: 7,
+    schema_version: 8,
     feature_names: FEATURE_NAMES,
     physical_feature_names: PHYSICAL_FEATURE_NAMES,
     model_feature_names: MODEL_FEATURE_NAMES,
@@ -1051,7 +1051,7 @@ function downloadTrainingData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `bgs_xgb_blind_physical_10d_training_${Date.now()}.json`;
+  a.download = `bgs_xgb_dual_brain_10d_training_${Date.now()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
