@@ -4,7 +4,7 @@
 const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_ENHANCED_PF_TENSOR_11D_V1";
+const VERSION = "XGB_BLIND_PHYSICAL_10D_V1";
 const MODEL_URL = "residual_bias_model.json";
 const FEATURE_NAMES = [
   "core_p_b",
@@ -23,7 +23,8 @@ const TRAINING_KEY = "bgs_xgb_residual_training_v1";
 const PENDING_KEY = "bgs_xgb_residual_pending_v1";
 const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
 const CUT_KEY = "bgs_xgb_estimated_total_hands_v1";
-const SHOE_PF_STATE_KEY = "bgs_xgb_enhanced_shoe_particle_filter_state_v3";
+const SHOE_PF_STATE_KEY = "bgs_xgb_blind_physical_particle_filter_state_v4";
+const LEGACY_SHOE_PF_STATE_KEY_V3 = "bgs_xgb_enhanced_shoe_particle_filter_state_v3";
 const PHYSICAL_OBS_KEY = "bgs_xgb_physical_observation_v1";
 const LEGACY_SHOE_PF_STATE_KEY_V2 = "bgs_xgb_shoe_particle_filter_state_v2";
 const LEGACY_SHOE_PF_STATE_KEY = "bgs_xgb_shoe_particle_filter_state_v1";
@@ -36,23 +37,22 @@ const PF_DEFAULTS = {
   point_bins: 10,
   initial_point_counts: [128, 32, 32, 32, 32, 32, 32, 32, 32, 32],
   Q_early: 0.005,
-  Q_late: 0.025,
+  Q_late: 0.02,
   early_round_end: 15,
   late_round_start: 45,
   R: 0.25,
   resample_threshold: 500,
   resampling: "systematic",
   random_state: 42,
-  info_gain_multiplier: 1.5,
-  expected_cards_per_round: 4.8,
-  constraint_sigma_per_sqrt_round: 0.85,
-  constraint_hard_z: 3.5,
   likelihood_weights: {
-    outcome: 0.40,
-    total_cards: 0.22,
-    points: 0.23,
+    outcome: 0.55,
+    total_cards: 0.12,
+    points: 0.18,
     core_residual: 0.15
-  }
+  },
+  core_forecast_strength: 0.35,
+  persistence_boost: 1.15,
+  turbulence_uniform_mix: 0.35
 };
 
 const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
@@ -136,13 +136,13 @@ function buildFeatures(seq, corePrediction, signal = null) {
   };
 }
 
-function modelFeatureVector(features, tensor) {
+function modelFeatureVector(features, physical3) {
   const vector = FEATURE_NAMES.map(name => {
     const value = +features[name];
     return Number.isFinite(value) ? value : 0;
   });
-  const physical = Array.isArray(tensor) ? tensor : [0, 0, 0, 0];
-  for (let i = 0; i < 4; i++) {
+  const physical = Array.isArray(physical3) ? physical3 : [4.8, 4.5, 4.5];
+  for (let i = 0; i < 3; i++) {
     const value = +physical[i];
     vector.push(Number.isFinite(value) ? value : 0);
   }
@@ -176,10 +176,10 @@ function evaluateTree(tree, vector) {
   return 0;
 }
 
-function predictXGBDelta(features, tensor) {
+function predictXGBDelta(features, physical3) {
   const xgb = modelBundle?.xgb;
   if (!modelBundle?.trained || !xgb || !Array.isArray(xgb.trees)) return 0;
-  const vector = modelFeatureVector(features, tensor);
+  const vector = modelFeatureVector(features, physical3);
   let result = +xgb.base_score || 0;
   for (const tree of xgb.trees) result += evaluateTree(tree, vector);
   return Number.isFinite(result) ? result : 0;
