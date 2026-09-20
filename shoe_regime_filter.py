@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Shoe Regime Particle Filter for BBB downstream state estimation.
 
-This module does not inspect card identities or remaining-card composition.
-It estimates only the current shoe environment/regime used as the eighth
-downstream XGBoost feature.
+Frozen upstream inputs are not modified. This module receives only the settled
+outcome, Core P(B), and current shoe round so it can estimate the current shoe
+environment. It never performs physical card counting or remaining-card
+inference.
 
 State semantics:
-    +1.0  sustained Core-aligned regularity
+    +1.0  strong, sustained Core-aligned regularity
      0.0  turbulence / non-regular environment
     -1.0  sustained Core-opposed regularity
 """
@@ -20,16 +21,18 @@ import numpy as np
 PF_CONFIG: dict[str, Any] = {
     "n_particles": 1000,
     "state_dim": 1,
-    "Q_start": 0.005,
-    "Q_end": 0.02,
+    "Q_early": 0.005,
+    "Q_late": 0.02,
+    "early_round_end": 15,
+    "late_round_start": 45,
     "R": 0.25,
     "resample_threshold": 500.0,
     "resampling": "systematic",
     "random_state": 42,
     "state_clip": 1.0,
-    "observation_weights": {
-        "direction_alignment": 0.55,
-        "confidence_alignment": 0.30,
+    "likelihood_weights": {
+        "directionality": 0.55,
+        "residual_alignment": 0.30,
         "persistence": 0.15,
     },
 }
@@ -68,41 +71,57 @@ class ShoeRegimeParticleFilter:
         self,
         *,
         n_particles: int = 1000,
-        q_start: float = 0.005,
-        q_end: float = 0.02,
+        q_early: float = 0.005,
+        q_late: float = 0.02,
+        early_round_end: int = 15,
+        late_round_start: int = 45,
         r: float = 0.25,
         resample_threshold: float = 500.0,
         random_state: int = 42,
         state_clip: float = 1.0,
     ) -> None:
         self.n_particles = int(n_particles)
-        self.q_start = float(q_start)
-        self.q_end = float(q_end)
+        self.q_early = float(q_early)
+        self.q_late = float(q_late)
+        self.early_round_end = int(early_round_end)
+        self.late_round_start = int(late_round_start)
         self.r = float(r)
         self.resample_threshold = float(resample_threshold)
         self.random_state = int(random_state)
         self.state_clip = float(state_clip)
+
         self.rng = DeterministicRNG(self.random_state)
         self.particles = np.zeros(self.n_particles, dtype=np.float64)
         self.weights = np.full(self.n_particles, 1.0 / self.n_particles, dtype=np.float64)
         self.updates = 0
         self.last_alignment: float | None = None
         self.last_observation = 0.0
-        self.last_effective_q = self.q_start
+        self.last_measurements = {
+            "directionality": 0.0,
+            "residual_alignment": 0.0,
+            "persistence": 0.0,
+        }
+        self.last_effective_q = self.q_early
+        self.last_resampled = False
+        self.last_ess = float(self.n_particles)
         self.reset()
 
     def reset(self) -> None:
-        """Reset a new shoe to a zero-centered latent regime."""
+        """Start a new shoe with every particle and regime_state exactly zero."""
         self.rng = DeterministicRNG(self.random_state)
-        std = math.sqrt(max(self.q_start, 1e-12))
-        draws = np.asarray([self.rng.normal() * std for _ in range(self.n_particles)], dtype=np.float64)
-        draws -= float(np.mean(draws))
-        self.particles = np.clip(draws, -self.state_clip, self.state_clip)
+        self.particles = np.zeros(self.n_particles, dtype=np.float64)
         self.weights = np.full(self.n_particles, 1.0 / self.n_particles, dtype=np.float64)
         self.updates = 0
         self.last_alignment = None
         self.last_observation = 0.0
-        self.last_effective_q = self.q_start
+        self.last_measurements = {
+            "directionality": 0.0,
+            "residual_alignment": 0.0,
+            "persistence": 0.0,
+        }
+        self.last_effective_q = self.q_early
+        self.last_resampled = False
+        self.last_ess = float(self.n_particles)
 
     def estimate(self) -> float:
         value = float(np.sum(self.particles * self.weights))
@@ -120,68 +139,131 @@ class ShoeRegimeParticleFilter:
         self.particles = self.particles[indexes]
         self.weights.fill(1.0 / self.n_particles)
 
-    @staticmethod
-    def shoe_progress(current_round: float, estimated_total_hands: float) -> float:
-        total = max(2.0, float(estimated_total_hands))
-        return float(np.clip((float(current_round) - 1.0) / (total - 1.0), 0.0, 1.0))
+    def effective_q(self, current_round: float) -> float:
+        """Round-adaptive process noise: 0.005 early, 0.02 near shoe tail."""
+        current = float(current_round)
+        if current < self.early_round_end:
+            return self.q_early
+        if current > self.late_round_start:
+            return self.q_late
 
-    def effective_q(self, current_round: float, estimated_total_hands: float) -> float:
-        progress = self.shoe_progress(current_round, estimated_total_hands)
-        return max(1e-12, self.q_start + (self.q_end - self.q_start) * progress)
+        span = max(1.0, float(self.late_round_start - self.early_round_end))
+        ratio = float(np.clip((current - self.early_round_end) / span, 0.0, 1.0))
+        return self.q_early + (self.q_late - self.q_early) * ratio
 
-    def make_observation(self, *, actual_b: float, core_pb: float) -> tuple[float, float]:
-        actual_is_b = float(actual_b) >= 0.5
+    def measurement_components(
+        self,
+        *,
+        actual_b: float,
+        core_pb: float,
+    ) -> tuple[dict[str, float], float, bool]:
+        """Create the three likelihood measurements from the settled round.
+
+        directionality:
+            +1 if Core direction matched the result, else -1.
+        residual_alignment:
+            1 - 2*abs(actual_B-core_pb), clipped to [-1,1].
+            High-confidence correct outcomes approach +1; confident misses
+            approach -1.
+        persistence:
+            +1/-1 when the current correct/miss state repeats, otherwise 0.
+
+        A sudden change from correct->miss or miss->correct is treated as
+        turbulence. In that case all likelihood measurements become zero so
+        the posterior is pulled back toward a neutral regime instead of
+        immediately declaring a new trend.
+        """
+        actual = 1.0 if float(actual_b) >= 0.5 else 0.0
         p_b = clip(float(core_pb), 0.0, 1.0)
-        core_is_b = p_b > 0.5
-        alignment = 1.0 if core_is_b == actual_is_b else -1.0
-        actual_probability = p_b if actual_is_b else (1.0 - p_b)
-        confidence_alignment = float(np.clip(2.0 * (actual_probability - 0.5), -1.0, 1.0))
-        weights = PF_CONFIG["observation_weights"]
+        predicted_b = p_b > 0.5
+        actual_is_b = actual >= 0.5
 
-        if alignment > 0.0:
-            persistence = 1.0 if self.last_alignment == 1.0 else 0.0
-            observation = (
-                float(weights["direction_alignment"])
-                + float(weights["confidence_alignment"]) * max(0.0, confidence_alignment)
-                + float(weights["persistence"]) * persistence
-            )
-        elif self.last_alignment == -1.0:
-            persistence = -1.0
-            observation = -(
-                float(weights["direction_alignment"])
-                + float(weights["confidence_alignment"]) * abs(min(0.0, confidence_alignment))
-                + float(weights["persistence"])
-            )
+        directionality = 1.0 if predicted_b == actual_is_b else -1.0
+        residual = actual - p_b
+        residual_alignment = float(np.clip(1.0 - 2.0 * abs(residual), -1.0, 1.0))
+
+        turbulence_break = (
+            self.last_alignment is not None
+            and directionality != self.last_alignment
+        )
+
+        if turbulence_break:
+            components = {
+                "directionality": 0.0,
+                "residual_alignment": 0.0,
+                "persistence": 0.0,
+            }
         else:
-            # One isolated break is turbulence, not an immediate reversal regime.
-            observation = 0.0
+            persistence = directionality if self.last_alignment == directionality else 0.0
+            components = {
+                "directionality": directionality,
+                "residual_alignment": residual_alignment,
+                "persistence": persistence,
+            }
 
-        return float(np.clip(observation, -1.0, 1.0)), alignment
+        return components, directionality, turbulence_break
 
-    def update_observation(self, observation: float) -> float:
-        measurement = float(np.clip(observation, -1.0, 1.0))
+    def update_likelihood(
+        self,
+        measurements: dict[str, float],
+        *,
+        turbulence_break: bool = False,
+    ) -> float:
+        """Apply the three-dimensional Gaussian likelihood to particle weights."""
+        weights_cfg = PF_CONFIG["likelihood_weights"]
         variance = max(self.r, 1e-12)
-        error = measurement - self.particles
-        log_likelihood = -0.5 * (error * error) / variance
+
+        # A structural break discards accumulated weight concentration before
+        # applying the neutral likelihood, allowing rapid return toward zero.
+        if turbulence_break:
+            self.weights.fill(1.0 / self.n_particles)
+
+        weighted_error = np.zeros(self.n_particles, dtype=np.float64)
+        for name in ("directionality", "residual_alignment", "persistence"):
+            measurement = float(np.clip(measurements[name], -1.0, 1.0))
+            diff = measurement - self.particles
+            weighted_error += float(weights_cfg[name]) * (diff * diff)
+
+        log_likelihood = -0.5 * weighted_error / variance
         log_likelihood -= float(np.max(log_likelihood))
         self.weights *= np.exp(log_likelihood)
+
         total = float(np.sum(self.weights))
         if not np.isfinite(total) or total <= 0.0:
             self.weights.fill(1.0 / self.n_particles)
         else:
             self.weights /= total
 
-        if self.effective_sample_size() < self.resample_threshold:
+        ess_before_resample = self.effective_sample_size()
+        self.last_ess = ess_before_resample
+        self.last_resampled = False
+        if ess_before_resample < self.resample_threshold:
             self.systematic_resample()
+            self.last_resampled = True
 
-        self.last_observation = measurement
+        w = PF_CONFIG["likelihood_weights"]
+        self.last_observation = float(np.clip(
+            w["directionality"] * measurements["directionality"]
+            + w["residual_alignment"] * measurements["residual_alignment"]
+            + w["persistence"] * measurements["persistence"],
+            -1.0,
+            1.0,
+        ))
+        self.last_measurements = dict(measurements)
         return self.estimate()
 
-    def predict(self, *, current_round: float, estimated_total_hands: float) -> float:
-        q_eff = self.effective_q(current_round, estimated_total_hands)
-        std = math.sqrt(q_eff)
-        noise = np.asarray([self.rng.normal() * std for _ in range(self.n_particles)], dtype=np.float64)
-        self.particles = np.clip(self.particles + noise, -self.state_clip, self.state_clip)
+    def predict(self, *, current_round: float) -> float:
+        q_eff = self.effective_q(current_round)
+        std = math.sqrt(max(q_eff, 1e-12))
+        noise = np.asarray(
+            [self.rng.normal() * std for _ in range(self.n_particles)],
+            dtype=np.float64,
+        )
+        self.particles = np.clip(
+            self.particles + noise,
+            -self.state_clip,
+            self.state_clip,
+        )
         self.last_effective_q = q_eff
         return self.estimate()
 
@@ -191,23 +273,30 @@ class ShoeRegimeParticleFilter:
         actual_b: float,
         core_pb: float,
         current_round: float,
-        estimated_total_hands: float,
+        estimated_total_hands: float | None = None,
     ) -> float:
-        observation, alignment = self.make_observation(actual_b=actual_b, core_pb=core_pb)
-        self.update_observation(observation)
+        """Update from the settled round, then project the state for next round."""
+        del estimated_total_hands  # kept only for API compatibility with the fixed 7D pipeline
+        measurements, alignment, turbulence_break = self.measurement_components(
+            actual_b=actual_b,
+            core_pb=core_pb,
+        )
+        self.update_likelihood(
+            measurements,
+            turbulence_break=turbulence_break,
+        )
         self.last_alignment = alignment
         self.updates += 1
-        return self.predict(
-            current_round=float(current_round) + 1.0,
-            estimated_total_hands=estimated_total_hands,
-        )
+        return self.predict(current_round=float(current_round) + 1.0)
 
 
 def new_shoe_regime_filter() -> ShoeRegimeParticleFilter:
     return ShoeRegimeParticleFilter(
         n_particles=PF_CONFIG["n_particles"],
-        q_start=PF_CONFIG["Q_start"],
-        q_end=PF_CONFIG["Q_end"],
+        q_early=PF_CONFIG["Q_early"],
+        q_late=PF_CONFIG["Q_late"],
+        early_round_end=PF_CONFIG["early_round_end"],
+        late_round_start=PF_CONFIG["late_round_start"],
         r=PF_CONFIG["R"],
         resample_threshold=PF_CONFIG["resample_threshold"],
         random_state=PF_CONFIG["random_state"],
