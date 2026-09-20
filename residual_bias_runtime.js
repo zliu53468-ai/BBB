@@ -199,7 +199,7 @@ function getShoeId() {
 }
 
 function shoePFConfig() {
-  const cfg = modelBundle?.enhanced_shoe_particle_filter || {};
+  const cfg = modelBundle?.shoe_particle_filter || {};
   const weights = cfg.likelihood_weights || {};
   const initial = Array.isArray(cfg.initial_point_counts) && cfg.initial_point_counts.length === 10
     ? cfg.initial_point_counts.map(v => Math.max(0, Math.round(+v || 0)))
@@ -216,16 +216,15 @@ function shoePFConfig() {
     R: Math.max(1e-12, +cfg.R || PF_DEFAULTS.R),
     resample_threshold: Math.max(1, +cfg.resample_threshold || PF_DEFAULTS.resample_threshold),
     random_state: Math.round(+cfg.random_state || PF_DEFAULTS.random_state) >>> 0,
-    info_gain_multiplier: Math.max(1, +cfg.info_gain_multiplier || PF_DEFAULTS.info_gain_multiplier),
-    expected_cards_per_round: Math.max(4, +cfg.expected_cards_per_round || PF_DEFAULTS.expected_cards_per_round),
-    constraint_sigma_per_sqrt_round: Math.max(0.1, +cfg.constraint_sigma_per_sqrt_round || PF_DEFAULTS.constraint_sigma_per_sqrt_round),
-    constraint_hard_z: Math.max(1, +cfg.constraint_hard_z || PF_DEFAULTS.constraint_hard_z),
     likelihood_weights: {
       outcome: Number.isFinite(+weights.outcome) ? +weights.outcome : PF_DEFAULTS.likelihood_weights.outcome,
       total_cards: Number.isFinite(+weights.total_cards) ? +weights.total_cards : PF_DEFAULTS.likelihood_weights.total_cards,
       points: Number.isFinite(+weights.points) ? +weights.points : PF_DEFAULTS.likelihood_weights.points,
       core_residual: Number.isFinite(+weights.core_residual) ? +weights.core_residual : PF_DEFAULTS.likelihood_weights.core_residual
-    }
+    },
+    core_forecast_strength: Number.isFinite(+cfg.core_forecast_strength) ? +cfg.core_forecast_strength : PF_DEFAULTS.core_forecast_strength,
+    persistence_boost: Number.isFinite(+cfg.persistence_boost) ? +cfg.persistence_boost : PF_DEFAULTS.persistence_boost,
+    turbulence_uniform_mix: Number.isFinite(+cfg.turbulence_uniform_mix) ? +cfg.turbulence_uniform_mix : PF_DEFAULTS.turbulence_uniform_mix
   };
 }
 
@@ -244,12 +243,11 @@ function newShoePFState(shoeId = getShoeId()) {
     rng_state: cfg.random_state >>> 0,
     particles,
     weights: Array(cfg.n_particles).fill(1 / cfg.n_particles),
-    tensor: [0, 0, 0, 0],
     last_effective_q: cfg.Q_early,
     last_ess: cfg.n_particles,
     last_resampled: false,
-    last_information_multiplier: 1,
-    last_constraint_survival: 1
+    last_core_alignment: null,
+    last_turbulence_break: false
   };
 }
 
@@ -392,7 +390,7 @@ function simulateVirtualRound(counts, state) {
   };
 }
 
-function particleLogLikelihood(simulated, actualB, corePB, physicalObservation = null) {
+function particleLogLikelihood(simulated, actualB, corePB, physicalObservation = null, persistenceMultiplier = 1) {
   const cfg = shoePFConfig();
   const actual = +actualB >= 0.5 ? 1 : 0;
   const observedSign = actual >= 0.5 ? 1 : -1;
@@ -425,11 +423,7 @@ function particleLogLikelihood(simulated, actualB, corePB, physicalObservation =
   weightedError += w.core_residual * coreError * coreError;
   activeWeight += w.core_residual;
 
-  const infoMultiplier = observedTotalCards === 5 || observedTotalCards === 6 ? cfg.info_gain_multiplier : 1;
-  return {
-    logLike: -0.5 * infoMultiplier * (weightedError / Math.max(activeWeight, 1e-12)) / cfg.R,
-    infoMultiplier
-  };
+  return -0.5 * persistenceMultiplier * (weightedError / Math.max(activeWeight, 1e-12)) / cfg.R;
 }
 
 function rejuvenateParticles(state, qEff) {
