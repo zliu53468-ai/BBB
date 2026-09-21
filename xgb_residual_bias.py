@@ -517,6 +517,10 @@ def build_walk_forward_folds(
     cal_n = max(1, int(calibration_shoes))
     test_n = max(1, int(test_shoes))
     step = max(1, int(step_shoes))
+    if step < test_n:
+        raise ValueError(
+            "step_shoes must be >= test_shoes so OOS test windows cannot overlap"
+        )
 
     if n < min_train + cal_n + test_n:
         raise ValueError(
