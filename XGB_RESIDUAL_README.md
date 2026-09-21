@@ -1,172 +1,67 @@
-# BBB 11D Anomaly Brake XGBoost Residual Layer
+# BBB XGBoost Residual Bias Layer
 
-The upstream pipeline remains frozen:
+This repository is deployed as static GitHub Pages, so Python/XGBoost cannot run directly inside the browser. The integration is split into two deterministic parts:
 
-```text
-牌路歷史
--> 256D / V23 Core
--> Core P(B)
--> fixed 7D
-```
+1. `xgb_residual_bias.py` trains `XGBRegressor` offline on labeled B/P outcomes and exports the trees to `residual_bias_model.json`.
+2. `residual_bias_runtime.js` evaluates that exported tree bundle in the browser and applies the bounded residual correction to the existing deterministic V23 R1 core.
 
-Only the downstream correction layer changes.
-
-## Architecture
+The 256D/V23 R1 core remains the base predictor. XGBoost does **not** replace it and does **not** directly train on a B/P class target. The regression target is:
 
 ```text
-fixed 7D
--> ShoeParticleFilter
--> pred_card_count
--> pred_banker_point
--> pred_player_point
--> anomaly_score
--> 7D + 4D = 11D
--> XGBoost residual
--> deterministic anomaly brake
--> clip +/-0.10
--> Final P(B)
--> B / P
+residual = actual_B - core_p_B
 ```
 
-There is no PASS/standby output.
-
-## Change-point anomaly score
-
-The PF keeps recent settled B/P directions internally.
-
-A structural break after a run of at least three same-side outcomes raises
-`anomaly_score` to at least 0.95. Two-run breaks produce a medium anomaly, and
-strong alternation keeps the score elevated. A Core miss contributes a smaller
-confidence-weighted anomaly component.
+Production correction:
 
 ```text
-anomaly_t =
-max(
-  structural_break,
-  alternation_signal,
-  core_miss_signal,
-  0.55 * anomaly_(t-1)
-)
+delta = clip(xgb_residual, -0.10, +0.10)
+final_p_B = core_p_B + delta
+B if final_p_B > 0.50 else P
 ```
 
-Stable periods therefore decay toward zero quickly.
+There is no PASS state.
 
-## PF posterior collapse
+## Feature order
 
-When anomaly is high, the previous concentrated particle posterior is partially
-mixed back toward uniform:
+The browser and Python trainer use the exact same seven features:
 
-```text
-mix = 0.92 * anomaly_score^2
+1. `core_p_b` - current deterministic core B probability.
+2. `round_index` - next round index, capped to 1..70.
+3. `estimated_total_hands` - cut/shoe-length estimate (default 60; accepted 40..90).
+4. `remaining_ratio` - derived from round index and estimated shoe length.
+5. `sx_markov_p_same` - local first-order S/X Markov probability of next token being SAME.
+6. `stage` - current B/P streak length.
+7. `depth` - current repeated S/X token depth.
 
-w_i <- (1-mix) * w_i + mix / N
+## Collect labeled production rows
+
+The browser runtime stores local labeled rows after a prediction is followed by an actual B/P result. Ties are non-directional and are not used as labels.
+
+From the browser console:
+
+```js
+__BGS_RESIDUAL_BIAS__.getTrainingCount()
+__BGS_RESIDUAL_BIAS__.downloadTrainingData()
 ```
 
-The likelihood is also tempered:
+To set the current cut/shoe-length estimate:
 
-```text
-precision =
-max(0.15, 1 - 0.85 * anomaly_score^2)
+```js
+__BGS_RESIDUAL_BIAS__.setEstimatedTotalHands(60)
 ```
 
-This reduces the chance that a long-run posterior continues chasing the old
-regime after a sudden break.
+The value is saved in local storage for subsequent predictions.
 
-## Adaptive process noise
+## Train and export
 
-```text
-round < 15:
-  Q = 0.005
-
-15 <= round <= 45:
-  Q linearly rises from 0.005 to 0.030
-
-round > 45:
-  Q = 0.030
+```bash
+python -m pip install -r requirements-xgb.txt
+python xgb_residual_bias.py train \
+  --input bgs_xgb_residual_training.json \
+  --output residual_bias_model.json \
+  --min-samples 500
 ```
 
-## 11D features
+The trainer uses a deterministic shoe-level validation split, `n_jobs=1`, fixed random state, and a conservative regularized `XGBRegressor`. It refuses to export a production model when held-out Brier/accuracy gates regress unless `--force` is explicitly used for diagnostics.
 
-The first seven features are unchanged:
-
-1. core_p_b
-2. round_index
-3. estimated_total_hands
-4. remaining_ratio
-5. sx_markov_p_same
-6. stage
-7. depth
-
-PF adds:
-
-8. pred_card_count
-9. pred_banker_point
-10. pred_player_point
-11. anomaly_score
-
-## XGBoost
-
-```text
-n_estimators = 75
-learning_rate = 0.025
-max_depth = 4
-min_child_weight = 2.0
-alpha = 0.10
-lambda = 0.30
-random_state = 42
-```
-
-Regularization helps control overfitting, but it does not mathematically
-guarantee that high anomaly produces zero residual. Therefore the runtime adds
-an explicit smooth brake.
-
-## Deterministic anomaly brake
-
-```text
-anomaly <= 0.35:
-  brake_factor = 1
-
-0.35 < anomaly < 0.90:
-  brake_factor = 1 - smoothstep(0.35, 0.90, anomaly)
-
-anomaly >= 0.90:
-  brake_factor = 0
-```
-
-Then:
-
-```text
-raw_delta = XGBoost(features_11d)
-braked_delta = raw_delta * brake_factor
-delta = clip(braked_delta, -0.10, +0.10)
-final_p_B = clip(core_p_B + delta, 0, 1)
-```
-
-Thus an extreme change-point returns the correction to the frozen Core without
-creating a PASS state.
-
-## Causal training
-
-For round t:
-
-```text
-pf_4d_t = PF state before outcome t
-features_11d_t = [fixed_7d_t, pf_4d_t]
-target_t = actual_B_t - core_p_b_t
-```
-
-Only after row t is captured does outcome t update the PF and anomaly state for
-round t+1.
-
-## Validation
-
-Held-out shoe validation reports Core vs corrected Accuracy and Brier, plus:
-
-- mean anomaly score
-- high-anomaly fraction
-- mean absolute raw Delta
-- mean absolute braked Delta
-- high-anomaly mean absolute Delta
-
-The checked-in model remains `trained:false` until real historical labeled
-rows are trained and pass validation.
+After a validated `residual_bias_model.json` is committed, the static BBB page loads it automatically. Until then the checked-in placeholder has `trained:false`, so `delta=0` and the existing V23 R1 output is preserved exactly.
