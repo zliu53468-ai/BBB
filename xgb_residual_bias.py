@@ -55,8 +55,8 @@ XGB_PARAMS: dict[str, Any] = {
     "min_child_weight": 12.0,
     "subsample": 0.85,
     "colsample_bytree": 0.90,
-    "reg_alpha": 0.30,
-    "reg_lambda": 12.0,
+    "alpha": 0.30,
+    "lambda": 12.0,
     "max_delta_step": 1.0,
     "gamma": 0.0,
     "tree_method": "hist",
@@ -531,9 +531,6 @@ def build_walk_forward_folds(
             step,
         )
     )
-    final_start = n - cal_n - test_n
-    if final_start >= min_train and final_start not in starts:
-        starts.append(final_start)
     starts = sorted(set(starts))
 
     folds: list[WalkForwardFold] = []
@@ -1306,8 +1303,8 @@ def portable_xgb_payload(
             "eta": float(XGB_PARAMS["eta"]),
             "max_depth": int(XGB_PARAMS["max_depth"]),
             "min_child_weight": float(XGB_PARAMS["min_child_weight"]),
-            "reg_alpha": float(XGB_PARAMS["reg_alpha"]),
-            "reg_lambda": float(XGB_PARAMS["reg_lambda"]),
+            "reg_alpha": float(XGB_PARAMS["alpha"]),
+            "reg_lambda": float(XGB_PARAMS["lambda"]),
             "max_delta_step": float(XGB_PARAMS["max_delta_step"]),
         },
     }
@@ -1482,7 +1479,10 @@ def export_model_bundle(
         "calibration": calibration.as_dict(),
         "decision_rule": "B if calibrated_final_p_b > 0.50 else P",
         "no_pass": True,
-        "evaluation": dict(report),
+        "evaluation": {
+            "protocol": "strict_chronological_shoe_walk_forward",
+            **dict(report),
+        },
     }
     output_path.write_text(
         json.dumps(
