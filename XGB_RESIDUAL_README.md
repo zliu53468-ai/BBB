@@ -1,12 +1,12 @@
-# BBB PF 10D + XGBoost / Transformer Dual-Brain Residual Layer
+# BBB 11D Anomaly Brake XGBoost Residual Layer
 
-The upstream pipeline is frozen and unchanged:
+The upstream pipeline remains frozen:
 
 ```text
 牌路歷史
 -> 256D / V23 Core
 -> Core P(B)
--> fixed 7D features
+-> fixed 7D
 ```
 
 Only the downstream correction layer changes.
@@ -15,196 +15,158 @@ Only the downstream correction layer changes.
 
 ```text
 fixed 7D
-  -> ShoeParticleFilter
-  -> [pred_card_count, pred_banker_point, pred_player_point]
-  -> fixed 7D + physical 3D = 10D
-
-10D current row -----------------> XGBoost -> delta_xgb
-
-last 10 rows of 10D
-(left-zero padded + valid mask)
-  -> 10D -> 32D input projection
-  -> fixed sinusoidal position encoding
-  -> 1-layer Multi-Head Attention
-       num_heads = 2
-       key_dim   = 16
-       d_model   = 32
-       dropout   = 0.30
-  -> masked Global Average Pooling
-  -> Dense(1)
-  -> delta_transformer
-
-delta_final =
-    0.50 * delta_xgb
-  + 0.50 * delta_transformer
-
-delta_clipped = clip(delta_final, -0.10, +0.10)
-final_p_B = clip(core_p_B + delta_clipped, 0, 1)
+-> ShoeParticleFilter
+-> pred_card_count
+-> pred_banker_point
+-> pred_player_point
+-> anomaly_score
+-> 7D + 4D = 11D
+-> XGBoost residual
+-> deterministic anomaly brake
+-> clip +/-0.10
+-> Final P(B)
+-> B / P
 ```
 
-## Frozen 7D input
+There is no PASS/standby output.
 
-The original upstream feature vector remains exactly:
+## Change-point anomaly score
 
-1. `core_p_b`
-2. `round_index`
-3. `estimated_total_hands`
-4. `remaining_ratio`
-5. `sx_markov_p_same`
-6. `stage`
-7. `depth`
+The PF keeps recent settled B/P directions internally.
 
-The PF adds only:
-
-8. `pred_card_count`
-9. `pred_banker_point`
-10. `pred_player_point`
-
-## Shoe Particle Filter
-
-The PF still maintains 1000 plausible latent eight-deck shoes and never claims
-to know the hidden real cards.
-
-Configuration:
+A structural break after a run of at least three same-side outcomes raises
+`anomaly_score` to at least 0.95. Two-run breaks produce a medium anomaly, and
+strong alternation keeps the score elevated. A Core miss contributes a smaller
+confidence-weighted anomaly component.
 
 ```text
-n_particles = 1000
-R = 0.25
-Q early = 0.005
-Q late  = 0.020
-ESS threshold = 500
+anomaly_t =
+max(
+  structural_break,
+  alternation_signal,
+  core_miss_signal,
+  0.55 * anomaly_(t-1)
+)
 ```
 
-The blind physical forecast remains side-effect-free and softly conditioned on
-current Core P(B).
+Stable periods therefore decay toward zero quickly.
 
-## Transformer temporal brain
+## PF posterior collapse
 
-Input shape:
+When anomaly is high, the previous concentrated particle posterior is partially
+mixed back toward uniform:
 
 ```text
-(batch, window_size=10, features=10)
+mix = 0.92 * anomaly_score^2
+
+w_i <- (1-mix) * w_i + mix / N
 ```
 
-For a shoe with fewer than 10 available rows, older missing rows are left-padded
-with zeros. A valid-mask prevents those padding rows from participating in
-attention or pooling.
-
-A fixed sinusoidal position encoding is added before attention. This is required
-so the attention layer can distinguish temporal order; without positional
-information, attention followed by global averaging would not reliably know
-which row came earlier or later.
-
-Structure:
+The likelihood is also tempered:
 
 ```text
-Linear 10 -> 32
-+ sinusoidal position encoding
-MultiHeadAttention(num_heads=2, key_dim=16)
-Dropout(0.30)
-Masked Global Average Pooling
-Dense 32 -> 1 residual
+precision =
+max(0.15, 1 - 0.85 * anomaly_score^2)
 ```
 
-## XGBoost brain
+This reduces the chance that a long-run posterior continues chasing the old
+regime after a sudden break.
+
+## Adaptive process noise
 
 ```text
-n_estimators = 65
-learning_rate = 0.03
+round < 15:
+  Q = 0.005
+
+15 <= round <= 45:
+  Q linearly rises from 0.005 to 0.030
+
+round > 45:
+  Q = 0.030
+```
+
+## 11D features
+
+The first seven features are unchanged:
+
+1. core_p_b
+2. round_index
+3. estimated_total_hands
+4. remaining_ratio
+5. sx_markov_p_same
+6. stage
+7. depth
+
+PF adds:
+
+8. pred_card_count
+9. pred_banker_point
+10. pred_player_point
+11. anomaly_score
+
+## XGBoost
+
+```text
+n_estimators = 75
+learning_rate = 0.025
 max_depth = 4
 min_child_weight = 2.0
-alpha = 0.05
-lambda = 0.25
+alpha = 0.10
+lambda = 0.30
 random_state = 42
 ```
 
-## Causal training
+Regularization helps control overfitting, but it does not mathematically
+guarantee that high anomaly produces zero residual. Therefore the runtime adds
+an explicit smooth brake.
 
-Historical rows are replayed shoe by shoe.
+## Deterministic anomaly brake
+
+```text
+anomaly <= 0.35:
+  brake_factor = 1
+
+0.35 < anomaly < 0.90:
+  brake_factor = 1 - smoothstep(0.35, 0.90, anomaly)
+
+anomaly >= 0.90:
+  brake_factor = 0
+```
+
+Then:
+
+```text
+raw_delta = XGBoost(features_11d)
+braked_delta = raw_delta * brake_factor
+delta = clip(braked_delta, -0.10, +0.10)
+final_p_B = clip(core_p_B + delta, 0, 1)
+```
+
+Thus an extreme change-point returns the correction to the frozen Core without
+creating a PASS state.
+
+## Causal training
 
 For round t:
 
 ```text
-physical_3d_t = PF forecast before outcome t
-feature_10d_t = [fixed_7d_t, physical_3d_t]
-
-Transformer window t =
-    current feature_10d_t
-    + previous up to 9 rows from the same shoe
-
+pf_4d_t = PF state before outcome t
+features_11d_t = [fixed_7d_t, pf_4d_t]
 target_t = actual_B_t - core_p_b_t
 ```
 
-Only after row t is captured does outcome t update the PF for t+1.
+Only after row t is captured does outcome t update the PF and anomaly state for
+round t+1.
 
 ## Validation
 
-The same deterministic held-out shoe split is used for both models.
+Held-out shoe validation reports Core vs corrected Accuracy and Brier, plus:
 
-Validation reports:
+- mean anomaly score
+- high-anomaly fraction
+- mean absolute raw Delta
+- mean absolute braked Delta
+- high-anomaly mean absolute Delta
 
-```text
-Core accuracy / Brier
-XGBoost-corrected accuracy / Brier
-Transformer-corrected accuracy / Brier
-50:50 fused accuracy / Brier
-```
-
-Only the fused result is used by the acceptance gate.
-
-The trainer does not assume that adding a Transformer improves prediction. If
-held-out fused metrics fail the configured gate, the model is not exported
-unless `--force` is explicitly used for diagnostics.
-
-## Training
-
-```bash
-python -m pip install -r requirements-xgb.txt
-
-python xgb_particle_filter_residual.py train \
-  --input bgs_xgb_dual_brain_10d_training.json \
-  --output residual_bias_model.json \
-  --min-samples 500
-```
-
-Transformer defaults:
-
-```text
-epochs = 120
-batch_size = 64
-learning_rate = 0.001
-weight_decay = 0.0001
-early-stopping patience = 15
-```
-
-The best validation epoch is selected first. After validation passes, the
-Transformer is retrained on all available rows for that selected epoch count.
-
-## Portable browser inference
-
-`transformer_residual.py` exports PyTorch weights to JSON.
-
-Before writing the model bundle, export validation compares:
-
-```text
-PyTorch eval() output
-vs
-pure NumPy portable Transformer output
-```
-
-and refuses export if they differ beyond tolerance.
-
-The browser runtime implements the same:
-
-- 10 -> 32 projection
-- sinusoidal position encoding
-- Q/K/V projection
-- two 16D attention heads
-- padding mask
-- output projection
-- masked global average
-- dense residual
-- 50:50 fusion with XGBoost
-
-The checked-in `residual_bias_model.json` remains `trained:false` until real
-historical labeled rows are trained and pass validation.
+The checked-in model remains `trained:false` until real historical labeled
+rows are trained and pass validation.
