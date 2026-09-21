@@ -45,8 +45,7 @@ const LEGACY_SHOE_PF_STATE_KEYS = [
   "bgs_xgb_shoe_particle_filter_state_v2",
   "bgs_xgb_shoe_particle_filter_state_v1",
   "bgs_xgb_shoe_regime_state_v1",
-  "bgs_xgb_particle_filter_state_v1",
-  "bgs_xgb_transformer_window_v1"
+  "bgs_xgb_particle_filter_state_v1"
 ];
 const MAX_TRAINING_ROWS = 10000;
 
