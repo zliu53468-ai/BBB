@@ -303,6 +303,8 @@ function hazardChoose(seq) {
   const direction = sig.pSame >= 0.5 ? currentSide : sig.state.opposite;
   const pBUnclipped = currentSide === "B" ? sig.pSame : 1 - sig.pSame;
   const pB = clip(pBUnclipped, PROB_MIN, PROB_MAX), pP = 1 - pB;
+  const rawPB = clip(pBUnclipped, 1e-6, 1 - 1e-6);
+  const coreLogit = Math.log(rawPB / (1 - rawPB));
   const confidence = direction === "B" ? pB : pP;
   const gap = sig.state.sign * sig.sameEdge * GAP_SCALE;
 
@@ -354,6 +356,8 @@ function hazardChoose(seq) {
     gap,
     confidence,
     probabilities: { B: pB, P: pP },
+    rawProbabilities: { B: rawPB, P: 1 - rawPB },
+    coreLogit,
     regime,
     strength,
     singleHazard: sig,
