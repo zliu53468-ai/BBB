@@ -81,6 +81,17 @@ class WalkForwardResidualTests(unittest.TestCase):
                 min(all_positions[s] for s in test),
             )
 
+    def test_overlapping_test_windows_are_rejected(self):
+        shoes = [f"s{i:02d}" for i in range(14)]
+        with self.assertRaises(ValueError):
+            build_walk_forward_folds(
+                shoes,
+                min_train_shoes=8,
+                calibration_shoes=2,
+                test_shoes=2,
+                step_shoes=1,
+            )
+
     def test_ties_are_retained_but_excluded_from_primary_target(self):
         records = [
             self._row("shoe_a", 1, "B", 1000),
