@@ -80,6 +80,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin feature/physics-parallel-xgb
           git add physics_multitask_model.json residual_bias_physics_model.json physics_multitask_model.joblib
           if git diff --cached --quiet; then
             echo "No generated model changes"
