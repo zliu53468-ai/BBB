@@ -1,0 +1,94 @@
+name: Build Physics 56D Production Models
+
+on:
+  push:
+    branches:
+      - feature/physics-parallel-xgb
+    paths:
+      - "physics_feature_extractor.py"
+      - "xgb_residual_physics.py"
+      - "build_synthetic_residual_rows.js"
+      - "physics_residual_runtime.js"
+      - "test_physics_feature_extractor.py"
+      - "test_production_runtime.js"
+      - "requirements-xgb.txt"
+      - ".github/workflows/physics-production.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: physics-production-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements-xgb.txt
+
+      - name: Python unit tests
+        run: python -m unittest -v test_physics_feature_extractor.py
+
+      - name: Train browser physics multi-task model
+        run: |
+          python physics_feature_extractor.py train \
+            --shoes 300 \
+            --cut-cards 60 \
+            --output physics_multitask_model.joblib \
+            --browser-output physics_multitask_model.json
+
+      - name: Generate independent synthetic residual dataset
+        run: |
+          python physics_feature_extractor.py simulate \
+            --shoes 250 \
+            --cut-cards 60 \
+            --output /tmp/physics_residual_sim.npz \
+            --rows-output /tmp/physics_residual_rows.json
+          node build_synthetic_residual_rows.js \
+            /tmp/physics_residual_rows.json \
+            /tmp/physics_core_rows.json
+
+      - name: Train 56D XGBoost residual
+        run: |
+          python xgb_residual_physics.py train \
+            --input /tmp/physics_core_rows.json \
+            --physics-model physics_multitask_model.joblib \
+            --output residual_bias_physics_model.json \
+            --min-samples 3000 \
+            --max-delta 0.10 \
+            --force
+
+      - name: Browser production smoke test
+        run: node test_production_runtime.js
+
+      - name: Show model sizes
+        run: |
+          ls -lh physics_multitask_model.json residual_bias_physics_model.json physics_multitask_model.joblib
+
+      - name: Commit generated production models
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add physics_multitask_model.json residual_bias_physics_model.json physics_multitask_model.joblib
+          if git diff --cached --quiet; then
+            echo "No generated model changes"
+          else
+            git commit -m "Build production Physics 56D model bundles [skip ci]"
+            git pull --rebase origin feature/physics-parallel-xgb
+            git push
+          fi
