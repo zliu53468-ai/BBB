@@ -279,7 +279,9 @@ class PhysicsFeatureExtractor:
     def __init__(self, *, random_state: int=DEFAULT_RANDOM_STATE):
         self.random_state=int(random_state)
         self.scaler=StandardScaler()
-        # 中文：48D target 同時包含 0~1 機率與 0~416 張數，必須做 target scaling，\n        # 否則 MLP loss 會被 consumed-card 維度支配。\n        self.target_scaler=StandardScaler()
+        # 中文：48D target 同時包含 0~1 機率與 0~416 張數，必須做 target scaling，
+        # 否則 MLP loss 會被 consumed-card 維度支配。
+        self.target_scaler=StandardScaler()
         self.model=MLPRegressor(
             hidden_layer_sizes=(64,32),
             activation="relu",
