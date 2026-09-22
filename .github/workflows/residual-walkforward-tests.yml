@@ -1,0 +1,37 @@
+name: Residual Walk-Forward Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "xgb_residual_bias.py"
+      - "prepare_walkforward_training.py"
+      - "test_walkforward_residual.py"
+      - "requirements-xgb.txt"
+      - ".github/workflows/residual-walkforward-tests.yml"
+  pull_request:
+    paths:
+      - "xgb_residual_bias.py"
+      - "prepare_walkforward_training.py"
+      - "test_walkforward_residual.py"
+      - "requirements-xgb.txt"
+      - ".github/workflows/residual-walkforward-tests.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install residual dependencies
+        run: python -m pip install -r requirements-xgb.txt
+      - name: Compile Python modules
+        run: |
+          python -m py_compile xgb_residual_bias.py
+          python -m py_compile prepare_walkforward_training.py
+          python -m py_compile test_walkforward_residual.py
+      - name: Run walk-forward regression tests
+        run: python -m unittest -v test_walkforward_residual.py
