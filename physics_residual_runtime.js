@@ -88,6 +88,8 @@ function predictPhysics(seq){
   x=x.map((v,i)=>(v-(+mean[i]||0))/Math.max(1e-12,+scale[i]||1));
   const coefs=physicsBundle.coefs||[],intercepts=physicsBundle.intercepts||[];if(!coefs.length||coefs.length!==intercepts.length)throw new Error("invalid physics bundle");
   let h=x;for(let layer=0;layer<coefs.length;layer++)h=dense(h,coefs[layer],intercepts[layer],layer<coefs.length-1);
+  const tMean=physicsBundle.target_scaler?.mean||[],tScale=physicsBundle.target_scaler?.scale||[];
+  h=h.map((v,i)=>(+v||0)*Math.max(1e-12,+tScale[i]||1)+(+tMean[i]||0));
   return sanitizePhysics(h);
 }
 
