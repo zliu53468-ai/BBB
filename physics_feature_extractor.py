@@ -279,6 +279,7 @@ class PhysicsFeatureExtractor:
     def __init__(self, *, random_state: int=DEFAULT_RANDOM_STATE):
         self.random_state=int(random_state)
         self.scaler=StandardScaler()
+        # 中文：48D target 同時包含 0~1 機率與 0~416 張數，必須做 target scaling，\n        # 否則 MLP loss 會被 consumed-card 維度支配。\n        self.target_scaler=StandardScaler()
         self.model=MLPRegressor(
             hidden_layer_sizes=(64,32),
             activation="relu",
@@ -299,7 +300,8 @@ class PhysicsFeatureExtractor:
     def fit(self,x: np.ndarray,y: np.ndarray) -> "PhysicsFeatureExtractor":
         xx=np.asarray(x,dtype=np.float32); yy=np.asarray(y,dtype=np.float32)
         scaled=self.scaler.fit_transform(xx)
-        self.model.fit(scaled,yy)
+        target_scaled=self.target_scaler.fit_transform(yy)
+        self.model.fit(scaled,target_scaled)
         self.is_fitted=True
         return self
 
@@ -309,7 +311,9 @@ class PhysicsFeatureExtractor:
         train_ids=set(int(x) for x in unique[:split])
         train=np.asarray([int(s) in train_ids for s in data.shoe_ids]); valid=~train
         self.fit(data.x[train],data.y[train])
-        pred=np.vstack([sanitize_physics_prediction(v) for v in self.model.predict(self.scaler.transform(data.x[valid]))])
+        raw_scaled=self.model.predict(self.scaler.transform(data.x[valid]))
+        raw=self.target_scaler.inverse_transform(raw_scaled)
+        pred=np.vstack([sanitize_physics_prediction(v) for v in raw])
         truth=data.y[valid]
         metrics={
             "validation_rmse":float(np.sqrt(np.mean((pred-truth)**2))),
@@ -326,26 +330,28 @@ class PhysicsFeatureExtractor:
     def predict_features(self,history_path: str | Sequence[str]) -> np.ndarray:
         if not self.is_fitted: raise RuntimeError("physics model not fitted")
         x=history_to_vector(history_path).reshape(1,-1)
-        raw=self.model.predict(self.scaler.transform(x))[0]
+        raw_scaled=self.model.predict(self.scaler.transform(x))
+        raw=self.target_scaler.inverse_transform(raw_scaled)[0]
         return sanitize_physics_prediction(raw)
 
     def save(self,path: str | Path) -> None:
         if not self.is_fitted: raise RuntimeError("cannot save unfitted model")
-        joblib.dump({"schema_version":2,"scaler":self.scaler,"model":self.model,"metadata":self.metadata},path)
+        joblib.dump({"schema_version":3,"scaler":self.scaler,"target_scaler":self.target_scaler,"model":self.model,"metadata":self.metadata},path)
 
     @classmethod
     def load(cls,path: str | Path) -> "PhysicsFeatureExtractor":
         payload=joblib.load(path); obj=cls()
-        obj.scaler=payload["scaler"]; obj.model=payload["model"]; obj.metadata=dict(payload.get("metadata") or {})
+        obj.scaler=payload["scaler"]; obj.target_scaler=payload["target_scaler"]; obj.model=payload["model"]; obj.metadata=dict(payload.get("metadata") or {})
         obj.is_fitted=True; return obj
 
     def export_browser_bundle(self,path: str | Path) -> dict[str,Any]:
         if not self.is_fitted: raise RuntimeError("physics model not fitted")
         bundle={
-            "schema_version":2,"model_type":"baccarat_physics_multitask_mlp","trained":True,
+            "schema_version":3,"model_type":"baccarat_physics_multitask_mlp","trained":True,
             "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
             "feature_names":list(PHYSICS_FEATURE_NAMES),
             "scaler":{"mean":self.scaler.mean_.tolist(),"scale":self.scaler.scale_.tolist()},
+            "target_scaler":{"mean":self.target_scaler.mean_.tolist(),"scale":self.target_scaler.scale_.tolist()},
             "activation":"relu",
             "coefs":[w.tolist() for w in self.model.coefs_],
             "intercepts":[b.tolist() for b in self.model.intercepts_],
