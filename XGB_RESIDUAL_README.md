@@ -227,3 +227,80 @@ enabled in this revision. They should only be added after the strict
 walk-forward baseline proves the single XGBoost residual is stable; otherwise
 they add model-selection degrees of freedom before the evaluation protocol is
 trustworthy.
+
+
+## Operational training workflow
+
+### 1. Collect browser exports
+
+Use the BBB residual runtime normally. Each settled hand stores one row with:
+
+- shoe_id
+- created_at
+- history_fingerprint
+- actual_outcome (B/P/T)
+- core_p_b
+- core_raw_p_b
+- core_logit
+- fixed 7D features
+- core_x_256 when available
+
+Do not manually edit shoe_id or round_index.
+
+### 2. Merge exports safely
+
+```bash
+python prepare_walkforward_training.py \
+  exports/bgs_xgb_walkforward_training_*.json \
+  --output bgs_xgb_walkforward_training.json
+```
+
+The merger removes exact duplicates, rejects conflicting duplicates, orders rows
+chronologically by shoe, and reports whether the default 8/2/2 walk-forward
+minimum of 12 shoes is available.
+
+### 3. Validate before training
+
+```bash
+python xgb_residual_bias.py validate \
+  --input bgs_xgb_walkforward_training.json
+```
+
+Validation must pass before training. It rejects missing shoe IDs, duplicate
+prediction fingerprints, non-increasing round indices, insufficient shoes, and
+overlapping OOS test windows.
+
+### 4. Train
+
+```bash
+python xgb_residual_bias.py train \
+  --input bgs_xgb_walkforward_training.json \
+  --output residual_bias_model.json
+```
+
+A report is also written next to the model as
+`residual_bias_model.report.json`.
+
+By default the promotion gate requires the final OOS model to be no worse than
+Core on all four primary metrics:
+
+- non-tie accuracy
+- LogLoss
+- Brier
+- equal-frequency ECE
+
+Only after the gate passes is a trained model bundle written.
+
+### 5. Confirm deployment bundle
+
+Check:
+
+```json
+{
+  "trained": true,
+  "model_type": "xgb_core_margin_residual_v2"
+}
+```
+
+Then deploy the resulting `residual_bias_model.json` with the BBB web files.
+The runtime will automatically activate the residual layer after the model loads.
