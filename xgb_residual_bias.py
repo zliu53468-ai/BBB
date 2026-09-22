@@ -1619,11 +1619,32 @@ def train_command(args: argparse.Namespace) -> int:
     core_metrics = aggregate["core"]
     final_metrics = aggregate["final"]
 
+    metric_delta = {
+        "accuracy_gain": (
+            final_metrics["accuracy_ex_tie"]
+            - core_metrics["accuracy_ex_tie"]
+        ),
+        "log_loss_change": (
+            final_metrics["log_loss"]
+            - core_metrics["log_loss"]
+        ),
+        "brier_change": (
+            final_metrics["brier"]
+            - core_metrics["brier"]
+        ),
+        "ece_change": (
+            final_metrics["ece_equal_frequency"]
+            - core_metrics["ece_equal_frequency"]
+        ),
+    }
+
     accepted = (
         final_metrics["log_loss"]
         <= core_metrics["log_loss"] + args.max_logloss_regression
         and final_metrics["brier"]
         <= core_metrics["brier"] + args.max_brier_regression
+        and final_metrics["ece_equal_frequency"]
+        <= core_metrics["ece_equal_frequency"] + args.max_ece_regression
         and final_metrics["accuracy_ex_tie"]
         >= core_metrics["accuracy_ex_tie"] - args.max_accuracy_regression
     )
@@ -1649,6 +1670,13 @@ def train_command(args: argparse.Namespace) -> int:
         "folds": fold_reports,
         "aggregate_oos": aggregate,
         "core_256_audit": core_256_audit,
+        "metric_delta_vs_core": metric_delta,
+        "promotion_gate": {
+            "max_accuracy_regression": args.max_accuracy_regression,
+            "max_logloss_regression": args.max_logloss_regression,
+            "max_brier_regression": args.max_brier_regression,
+            "max_ece_regression": args.max_ece_regression,
+        },
         "accepted": accepted,
     }
 
@@ -1795,7 +1823,12 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument(
         "--max-accuracy-regression",
         type=float,
-        default=0.002,
+        default=0.0,
+    )
+    train.add_argument(
+        "--max-ece-regression",
+        type=float,
+        default=0.0,
     )
     train.add_argument("--force", action="store_true")
     train.set_defaults(func=train_command)
