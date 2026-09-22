@@ -81,6 +81,7 @@ def _core_pb(record: Mapping[str, Any]) -> float:
     raise ValueError("row missing core_p_b")
 
 
+# 中文：原 7D 只做讀取/重建，不改欄位順序、不刪任何欄位。
 def _original_7d(record: Mapping[str, Any], core_pb: float) -> np.ndarray:
     if all(record.get(name) is not None for name in ORIGINAL_7D_FEATURE_NAMES):
         return np.asarray([float(record[name]) for name in ORIGINAL_7D_FEATURE_NAMES], dtype=np.float32)
@@ -173,6 +174,7 @@ def _brier(prob_b: np.ndarray, actual_b: np.ndarray) -> float:
     return float(np.mean((prob_b.astype(float) - actual_b.astype(float)) ** 2))
 
 
+# 中文：驗證時同時比較 Core 與修正後的 accuracy / Brier，避免外掛模型只會放大噪音。
 def evaluate(
     model: XGBRegressor,
     x: np.ndarray,
@@ -240,6 +242,7 @@ class PhysicsResidualBiasPredictor:
             raise RuntimeError("residual model is not fitted")
         x = self.prepare(core_pb, original_7d, history_path).reshape(1, -1)
         raw_delta = float(self.model.predict(x)[0])
+        # 中文：安全邊界固定保留 ±10%，不允許 Physics 外掛繞過既有 Delta clip。
         delta = float(np.clip(raw_delta, -self.max_delta, self.max_delta))
         final_pb = clip(float(core_pb) + delta)
         return {
