@@ -1,14 +1,11 @@
 (() => {
 "use strict";
 
-const CORE = (typeof window !== "undefined")
-  ? window.__BGS256_CONTINUATION_TEST__
-  : null;
+const CORE = (typeof window !== "undefined") ? window.__BGS256_CONTINUATION_TEST__ : null;
 if (!CORE || typeof CORE.hazardChoose !== "function") return;
 
-const VERSION = "XGB_CORE_MARGIN_RESIDUAL_V2";
+const VERSION = "XGB_RESIDUAL_BIAS_V1";
 const MODEL_URL = "residual_bias_model.json";
-const MODEL_TYPE = "xgb_core_margin_residual_v2";
 const FEATURE_NAMES = [
   "core_p_b",
   "round_index",
@@ -18,28 +15,15 @@ const FEATURE_NAMES = [
   "stage",
   "depth"
 ];
-
+const MAX_DELTA_DEFAULT = 0.10;
 const STORAGE_KEY = "bgs256d_short_x_dynamic_v23";
-const TRAINING_KEY = "bgs_xgb_residual_training_v2";
-const PENDING_KEY = "bgs_xgb_residual_pending_v2";
+const TRAINING_KEY = "bgs_xgb_residual_training_v1";
+const PENDING_KEY = "bgs_xgb_residual_pending_v1";
 const SHOE_KEY = "bgs_xgb_residual_shoe_id_v1";
 const CUT_KEY = "bgs_xgb_estimated_total_hands_v1";
-const MAX_TRAINING_ROWS = 20000;
-const EPS = 1e-6;
+const MAX_TRAINING_ROWS = 10000;
 
-const clip = (v, lo = 0, hi = 1) =>
-  Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
-
-const sigmoid = value => {
-  const x = Math.max(-40, Math.min(40, +value || 0));
-  return 1 / (1 + Math.exp(-x));
-};
-
-const logit = probability => {
-  const p = clip(probability, EPS, 1 - EPS);
-  return Math.log(p / (1 - p));
-};
-
+const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
 const bp = seq => seq.filter(x => x === "B" || x === "P");
 
 let modelBundle = null;
@@ -48,9 +32,7 @@ let modelLoadError = "";
 
 function transitionSequence(seq) {
   const values = bp(seq), out = [];
-  for (let i = 1; i < values.length; i++) {
-    out.push(values[i] === values[i - 1] ? "S" : "X");
-  }
+  for (let i = 1; i < values.length; i++) out.push(values[i] === values[i - 1] ? "S" : "X");
   return out;
 }
 
@@ -58,19 +40,14 @@ function sxMarkovPSame(seq, window = 24, prior = 1.0) {
   const tokens = transitionSequence(seq);
   if (!tokens.length) return 0.5;
   const current = tokens.at(-1);
-  const start = Math.max(
-    0,
-    tokens.length - 1 - Math.max(2, window)
-  );
+  const start = Math.max(0, tokens.length - 1 - Math.max(2, window));
   let same = 0, sw = 0;
   for (let i = start; i < tokens.length - 1; i++) {
     if (tokens[i] !== current) continue;
     if (tokens[i + 1] === "S") same++;
     else if (tokens[i + 1] === "X") sw++;
   }
-  return clip(
-    (same + prior) / (same + sw + 2 * prior)
-  );
+  return clip((same + prior) / (same + sw + 2 * prior));
 }
 
 function currentStage(seq) {
@@ -78,13 +55,7 @@ function currentStage(seq) {
   if (!values.length) return 0;
   const side = values.at(-1);
   let n = 1;
-  for (
-    let i = values.length - 2;
-    i >= 0 && values[i] === side;
-    i--
-  ) {
-    n++;
-  }
+  for (let i = values.length - 2; i >= 0 && values[i] === side; i--) n++;
   return n;
 }
 
@@ -93,21 +64,13 @@ function currentDepth(seq) {
   if (!tokens.length) return 0;
   const token = tokens.at(-1);
   let n = 1;
-  for (
-    let i = tokens.length - 2;
-    i >= 0 && tokens[i] === token;
-    i--
-  ) {
-    n++;
-  }
+  for (let i = tokens.length - 2; i >= 0 && tokens[i] === token; i--) n++;
   return n;
 }
 
 function getEstimatedTotalHands() {
   try {
-    const configured = +(
-      window.__BGS_RESIDUAL_CONFIG__?.estimatedTotalHands || 0
-    );
+    const configured = +(window.__BGS_RESIDUAL_CONFIG__?.estimatedTotalHands || 0);
     if (configured >= 40 && configured <= 90) return configured;
     const stored = +localStorage.getItem(CUT_KEY);
     if (stored >= 40 && stored <= 90) return stored;
@@ -117,69 +80,20 @@ function getEstimatedTotalHands() {
 
 function setEstimatedTotalHands(value) {
   const parsed = Math.round(+value || 0);
-  if (parsed < 40 || parsed > 90) {
-    throw new Error(
-      "estimatedTotalHands must be between 40 and 90"
-    );
-  }
-  try {
-    localStorage.setItem(CUT_KEY, String(parsed));
-  } catch (_) {}
+  if (parsed < 40 || parsed > 90) throw new Error("estimatedTotalHands must be between 40 and 90");
+  try { localStorage.setItem(CUT_KEY, String(parsed)); } catch (_) {}
   return parsed;
 }
 
-function coreRawInfo(corePrediction) {
-  const probabilities = corePrediction?.probabilities || {};
-  const displayed = clip(+probabilities.B || 0.5, 0, 1);
-
-  const rawCandidate = +(
-    corePrediction?.rawProbabilities?.B
-  );
-  const rawPB = Number.isFinite(rawCandidate)
-    ? clip(rawCandidate, EPS, 1 - EPS)
-    : clip(displayed, EPS, 1 - EPS);
-
-  const rawLogit = +corePrediction?.coreLogit;
-  const coreLogit = Number.isFinite(rawLogit)
-    ? rawLogit
-    : logit(rawPB);
-
-  const x = Array.isArray(corePrediction?.x)
-    && corePrediction.x.length === 256
-    ? corePrediction.x.map(v => Number.isFinite(+v) ? +v : 0)
-    : null;
-
-  return {
-    displayed,
-    rawPB,
-    coreLogit,
-    coreX256: x
-  };
-}
-
 function buildFeatures(seq, corePrediction, signal = null) {
-  const raw = coreRawInfo(corePrediction);
-  const corePB = raw.displayed;
-  const roundIndex = Math.max(
-    1,
-    Math.min(70, seq.length + 1)
-  );
+  const probabilities = corePrediction?.probabilities || {};
+  const corePB = clip(+probabilities.B || 0.5, 0, 1);
+  const roundIndex = Math.max(1, Math.min(70, seq.length + 1));
   const estimatedTotalHands = getEstimatedTotalHands();
-  const remainingRatio = clip(
-    (
-      estimatedTotalHands
-      - (roundIndex - 1)
-    ) / Math.max(1, estimatedTotalHands)
-  );
-
-  const stage = Number.isFinite(+signal?.state?.length)
-    ? +signal.state.length
-    : currentStage(seq);
-  const depth = Number.isFinite(+signal?.depth?.depth)
-    ? +signal.depth.depth
-    : currentDepth(seq);
-
-  return {
+  const remainingRatio = clip((estimatedTotalHands - (roundIndex - 1)) / Math.max(1, estimatedTotalHands));
+  const stage = Number.isFinite(+signal?.state?.length) ? +signal.state.length : currentStage(seq);
+  const depth = Number.isFinite(+signal?.depth?.depth) ? +signal.depth.depth : currentDepth(seq);
+  const features = {
     core_p_b: corePB,
     round_index: roundIndex,
     estimated_total_hands: estimatedTotalHands,
@@ -188,6 +102,7 @@ function buildFeatures(seq, corePrediction, signal = null) {
     stage,
     depth
   };
+  return features;
 }
 
 function featureVector(features) {
@@ -198,19 +113,13 @@ function featureVector(features) {
 }
 
 function findChild(node, nodeId) {
-  const children = Array.isArray(node?.children)
-    ? node.children
-    : [];
-  return children.find(
-    child => +child.nodeid === +nodeId
-  ) || null;
+  const children = Array.isArray(node?.children) ? node.children : [];
+  return children.find(child => +child.nodeid === +nodeId) || null;
 }
 
 function splitIndex(split) {
   const text = String(split ?? "");
-  if (/^f\d+$/.test(text)) {
-    return +text.slice(1);
-  }
+  if (/^f\d+$/.test(text)) return +text.slice(1);
   return FEATURE_NAMES.indexOf(text);
 }
 
@@ -218,216 +127,40 @@ function evaluateTree(tree, vector) {
   let node = tree;
   let guard = 0;
   while (node && guard++ < 256) {
-    if (
-      Object.prototype.hasOwnProperty.call(
-        node,
-        "leaf"
-      )
-    ) {
-      return +node.leaf || 0;
-    }
-
+    if (Object.prototype.hasOwnProperty.call(node, "leaf")) return +node.leaf || 0;
     const index = splitIndex(node.split);
-    const value = index >= 0
-      ? Math.fround(vector[index])
-      : NaN;
-    const splitCondition = Math.fround(
-      +node.split_condition
-    );
-
+    const value = index >= 0 ? Math.fround(vector[index]) : NaN;
+    const splitCondition = Math.fround(+node.split_condition);
     let nextId;
-    if (!Number.isFinite(value)) {
-      nextId = node.missing;
-    } else {
-      nextId = value < splitCondition
-        ? node.yes
-        : node.no;
-    }
+    if (!Number.isFinite(value)) nextId = node.missing;
+    else nextId = value < splitCondition ? node.yes : node.no;
     node = findChild(node, nextId);
   }
   return 0;
 }
 
-function predictXGBProbability(
-  features,
-  coreLogit
-) {
-  const xgb = modelBundle?.xgb;
-  if (
-    !modelBundle?.trained
-    || !xgb
-    || !Array.isArray(xgb.trees)
-  ) {
-    return sigmoid(coreLogit);
-  }
-
+function predictRawDelta(features) {
+  if (!modelBundle?.trained || !Array.isArray(modelBundle.trees)) return 0;
   const vector = featureVector(features);
-  let margin =
-    coreLogit
-    + (+xgb.margin_offset || 0);
-
-  for (const tree of xgb.trees) {
-    margin += evaluateTree(tree, vector);
-  }
-
-  return clip(
-    sigmoid(margin),
-    EPS,
-    1 - EPS
-  );
-}
-
-function adaptiveDeltaLimit(corePB) {
-  const cfg = modelBundle?.adaptive_clip || {};
-  const minDelta = clip(
-    cfg.min_delta ?? 0.025,
-    0,
-    0.10
-  );
-  const maxDelta = clip(
-    cfg.max_delta ?? 0.10,
-    minDelta,
-    0.10
-  );
-  const span = Math.max(
-    EPS,
-    +cfg.confidence_span || 0.08
-  );
-  const confidence = clip(
-    Math.abs(corePB - 0.5) / span,
-    0,
-    1
-  );
-  return (
-    minDelta
-    + (maxDelta - minDelta) * confidence
-  );
-}
-
-function predictTieProbability(features) {
-  const tie = modelBundle?.tie_model;
-  if (
-    !modelBundle?.trained
-    || !tie
-    || !Array.isArray(tie.coef)
-    || !Array.isArray(tie.mean)
-    || !Array.isArray(tie.scale)
-  ) {
-    return 0;
-  }
-
-  const vector = featureVector(features);
-  let margin = +tie.intercept || 0;
-
-  for (let i = 0; i < vector.length; i++) {
-    const mean = +tie.mean[i] || 0;
-    const scale = Math.max(
-      EPS,
-      Math.abs(+tie.scale[i] || 1)
-    );
-    const coef = +tie.coef[i] || 0;
-    margin += (
-      (vector[i] - mean) / scale
-    ) * coef;
-  }
-
-  return clip(
-    sigmoid(margin),
-    EPS,
-    1 - EPS
-  );
-}
-
-function applyTieShrink(
-  probabilityB,
-  tieProbability
-) {
-  const tie = modelBundle?.tie_model;
-  if (!tie) return probabilityB;
-
-  const baseline = clip(
-    tie.baseline_rate ?? 0,
-    0,
-    0.5
-  );
-  const high = Math.max(
-    baseline + EPS,
-    clip(
-      tie.high_threshold ?? (baseline + 0.05),
-      baseline + EPS,
-      0.5
-    )
-  );
-  const strength = clip(
-    tie.shrink_strength ?? 0,
-    0,
-    1
-  );
-
-  const excess = clip(
-    (tieProbability - baseline)
-    / (high - baseline),
-    0,
-    1
-  );
-  const shrink = strength * excess;
-
-  return clip(
-    0.5
-    + (probabilityB - 0.5)
-    * (1 - shrink),
-    EPS,
-    1 - EPS
-  );
-}
-
-function applyCalibration(probabilityB) {
-  const calibration = modelBundle?.calibration;
-  if (
-    !modelBundle?.trained
-    || !calibration
-    || calibration.type !== "platt"
-  ) {
-    return probabilityB;
-  }
-
-  const slope = Number.isFinite(
-    +calibration.slope
-  )
-    ? +calibration.slope
-    : 1;
-  const intercept = Number.isFinite(
-    +calibration.intercept
-  )
-    ? +calibration.intercept
-    : 0;
-
-  return clip(
-    sigmoid(
-      slope * logit(probabilityB)
-      + intercept
-    ),
-    EPS,
-    1 - EPS
-  );
+  let result = +modelBundle.base_score || 0;
+  for (const tree of modelBundle.trees) result += evaluateTree(tree, vector);
+  return Number.isFinite(result) ? result : 0;
 }
 
 function applyCorrection(seq, corePrediction) {
   const signal = corePrediction?.singleHazard || null;
-  const features = buildFeatures(
-    seq,
-    corePrediction,
-    signal
-  );
-  const raw = coreRawInfo(corePrediction);
+  const features = buildFeatures(seq, corePrediction, signal);
+  const rawDelta = predictRawDelta(features);
+  const maxDelta = clip(modelBundle?.max_delta ?? MAX_DELTA_DEFAULT, 0, 0.10);
+  const delta = clip(rawDelta, -maxDelta, maxDelta);
   const corePB = features.core_p_b;
+  const finalPB = clip(corePB + delta, 0, 1);
+  const direction = finalPB > 0.5 ? "B" : "P";
+  const finalPP = 1 - finalPB;
+  const confidence = direction === "B" ? finalPB : finalPP;
+  const coreDirection = String(corePrediction?.direction || (corePB > 0.5 ? "B" : "P"));
   const active = Boolean(modelBundle?.trained);
-
   if (!active) {
-    const coreDirection = String(
-      corePrediction?.direction
-      || (corePB > 0.5 ? "B" : "P")
-    );
     return {
       ...corePrediction,
       residualBias: {
@@ -437,15 +170,8 @@ function applyCorrection(seq, corePrediction) {
         modelLoadError,
         coreDirection,
         corePB,
-        coreRawPB: raw.rawPB,
-        coreLogit: raw.coreLogit,
-        coreX256: raw.coreX256,
-        xgbProbability: corePB,
         rawDelta: 0,
-        deltaLimit: 0,
         delta: 0,
-        tieProbability: 0,
-        preCalibrationPB: corePB,
         finalPB: corePB,
         finalDirection: coreDirection,
         flipped: false,
@@ -453,58 +179,13 @@ function applyCorrection(seq, corePrediction) {
       }
     };
   }
-
-  const xgbProbability = predictXGBProbability(
-    features,
-    raw.coreLogit
-  );
-  const rawDelta = xgbProbability - corePB;
-  const deltaLimit = adaptiveDeltaLimit(corePB);
-  const delta = clip(
-    rawDelta,
-    -deltaLimit,
-    deltaLimit
-  );
-
-  const residualPB = clip(
-    corePB + delta,
-    EPS,
-    1 - EPS
-  );
-  const tieProbability = predictTieProbability(
-    features
-  );
-  const preCalibrationPB = applyTieShrink(
-    residualPB,
-    tieProbability
-  );
-  const finalPB = applyCalibration(
-    preCalibrationPB
-  );
-
-  const direction = finalPB > 0.5 ? "B" : "P";
-  const finalPP = 1 - finalPB;
-  const confidence = direction === "B"
-    ? finalPB
-    : finalPP;
-
-  const coreDirection = String(
-    corePrediction?.direction
-    || (corePB > 0.5 ? "B" : "P")
-  );
   const flipped = direction !== coreDirection;
-
   return {
     ...corePrediction,
     direction,
     confidence,
-    probabilities: {
-      B: finalPB,
-      P: finalPP
-    },
-    regime: flipped
-      ? "Walk-forward XGB 校準修正換邊"
-      : corePrediction.regime,
+    probabilities: { B: finalPB, P: finalPP },
+    regime: flipped ? "XGB殘差修正換邊" : corePrediction.regime,
     residualBias: {
       version: VERSION,
       active: true,
@@ -512,16 +193,8 @@ function applyCorrection(seq, corePrediction) {
       modelLoadError,
       coreDirection,
       corePB,
-      coreRawPB: raw.rawPB,
-      coreLogit: raw.coreLogit,
-      coreX256: raw.coreX256,
-      xgbProbability,
       rawDelta,
-      deltaLimit,
       delta,
-      tieProbability,
-      residualPB,
-      preCalibrationPB,
       finalPB,
       finalDirection: direction,
       flipped,
@@ -531,26 +204,15 @@ function applyCorrection(seq, corePrediction) {
 }
 
 function readHistory() {
-  if (typeof localStorage === "undefined") {
-    return [];
-  }
-
+  if (typeof localStorage === "undefined") return [];
   for (const key of [
     "bgs256d_frozen_6x15_forward_v18",
     "bgs256d_frozen_6x15_sensitive_v17",
     "bgs256d_frozen_6x15_bigroad_v16"
   ]) {
     try {
-      const raw = JSON.parse(
-        localStorage.getItem(key) || "null"
-      );
-      if (raw && Array.isArray(raw.history)) {
-        return raw.history
-          .filter(
-            x => ["B", "P", "T"].includes(x)
-          )
-          .slice(-500);
-      }
+      const raw = JSON.parse(localStorage.getItem(key) || "null");
+      if (raw && Array.isArray(raw.history)) return raw.history.filter(x => ["B", "P", "T"].includes(x)).slice(-500);
     } catch (_) {}
   }
   return [];
@@ -558,9 +220,7 @@ function readHistory() {
 
 function getShoeId() {
   try {
-    let id = String(
-      localStorage.getItem(SHOE_KEY) || ""
-    );
+    let id = String(localStorage.getItem(SHOE_KEY) || "");
     if (!id) {
       id = `shoe_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       localStorage.setItem(SHOE_KEY, id);
@@ -580,24 +240,9 @@ function rotateShoeId() {
 
 function saveSelection(direction) {
   try {
-    const old = JSON.parse(
-      localStorage.getItem(STORAGE_KEY)
-      || "null"
-    ) || {};
-    const streak = old.last_selected === direction
-      ? Math.max(
-          1,
-          (+old.selection_streak || 0) + 1
-        )
-      : 1;
-
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        last_selected: direction,
-        selection_streak: streak
-      })
-    );
+    const old = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || {};
+    const streak = old.last_selected === direction ? Math.max(1, (+old.selection_streak || 0) + 1) : 1;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ last_selected: direction, selection_streak: streak }));
   } catch (_) {}
 }
 
@@ -605,48 +250,21 @@ function renderPrediction(p, historyLength) {
   const el = id => document.getElementById(id);
   const orb = el("directionOrb");
   if (!orb) return;
-
   const isB = p.direction === "B";
-  el("directionText").textContent =
-    isB ? "莊" : "閒";
-  el("directionCode").textContent =
-    isB ? "BANKER" : "PLAYER";
-  el("confidence").textContent =
-    (p.confidence * 100).toFixed(1) + "%";
+  el("directionText").textContent = isB ? "莊" : "閒";
+  el("directionCode").textContent = isB ? "BANKER" : "PLAYER";
+  el("confidence").textContent = (p.confidence * 100).toFixed(1) + "%";
   el("regime").textContent = p.regime;
-  el("strength").textContent =
-    p.strength >= .68
-      ? "穩定"
-      : p.strength >= .52
-        ? "中等"
-        : "保守";
-
-  orb.className =
-    "direction-orb "
-    + (isB ? "banker" : "player");
-
-  if (el("modePill")) {
-    el("modePill").textContent =
-      p.residualBias?.active
-        ? "Walk-forward XGB 校準完成"
-        : "分析完成";
-  }
-  if (el("roundCount")) {
-    el("roundCount").textContent =
-      historyLength;
-  }
-  if (el("message")) {
-    el("message").textContent =
-      `第 ${historyLength + 1} 局分析完成`;
-  }
+  el("strength").textContent = p.strength >= .68 ? "穩定" : p.strength >= .52 ? "中等" : "保守";
+  orb.className = "direction-orb " + (isB ? "banker" : "player");
+  if (el("modePill")) el("modePill").textContent = p.residualBias?.active ? "XGB 修正完成" : "分析完成";
+  if (el("roundCount")) el("roundCount").textContent = historyLength;
+  if (el("message")) el("message").textContent = `第 ${historyLength + 1} 局分析完成`;
 }
 
 function readTrainingRows() {
   try {
-    const rows = JSON.parse(
-      localStorage.getItem(TRAINING_KEY)
-      || "[]"
-    );
+    const rows = JSON.parse(localStorage.getItem(TRAINING_KEY) || "[]");
     return Array.isArray(rows) ? rows : [];
   } catch (_) {
     return [];
@@ -654,181 +272,75 @@ function readTrainingRows() {
 }
 
 function writeTrainingRows(rows) {
-  try {
-    localStorage.setItem(
-      TRAINING_KEY,
-      JSON.stringify(
-        rows.slice(-MAX_TRAINING_ROWS)
-      )
-    );
-  } catch (_) {}
+  try { localStorage.setItem(TRAINING_KEY, JSON.stringify(rows.slice(-MAX_TRAINING_ROWS))); } catch (_) {}
 }
 
 function registerPrediction(seq, prediction) {
   const residual = prediction?.residualBias || {};
-  const features = residual.features
-    || buildFeatures(
-      seq,
-      prediction,
-      prediction?.singleHazard || null
-    );
-  const raw = coreRawInfo(prediction);
-
+  const features = residual.features || buildFeatures(seq, prediction, prediction?.singleHazard || null);
   const pending = {
     shoe_id: getShoeId(),
     created_at: Date.now(),
     history_fingerprint: seq.join(""),
     core_p_b: +features.core_p_b,
-    core_raw_p_b: Number.isFinite(
-      +residual.coreRawPB
-    )
-      ? +residual.coreRawPB
-      : raw.rawPB,
-    core_logit: Number.isFinite(
-      +residual.coreLogit
-    )
-      ? +residual.coreLogit
-      : raw.coreLogit,
-    core_x_256: Array.isArray(
-      residual.coreX256
-    )
-      ? residual.coreX256.slice()
-      : raw.coreX256,
-    core_direction:
-      residual.coreDirection
-      || String(prediction?.direction || ""),
+    core_direction: residual.coreDirection || String(prediction?.direction || ""),
     features
   };
-
-  try {
-    localStorage.setItem(
-      PENDING_KEY,
-      JSON.stringify(pending)
-    );
-  } catch (_) {}
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (_) {}
 }
 
 function settlePending(actualOutcome) {
-  const actual = String(
-    actualOutcome || ""
-  ).toUpperCase();
-  if (!["B", "P", "T"].includes(actual)) {
-    return;
-  }
-
+  const actual = String(actualOutcome || "").toUpperCase();
+  if (actual === "T") return;
+  if (actual !== "B" && actual !== "P") return;
   let pending = null;
-  try {
-    pending = JSON.parse(
-      localStorage.getItem(PENDING_KEY)
-      || "null"
-    );
-  } catch (_) {}
-
+  try { pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); } catch (_) {}
   if (!pending?.features) return;
-
-  const actualB = actual === "B"
-    ? 1
-    : actual === "P"
-      ? 0
-      : null;
-  const corePB = clip(
-    +pending.features.core_p_b || 0.5
-  );
-
+  const actualB = actual === "B" ? 1 : 0;
+  const corePB = clip(+pending.features.core_p_b || 0.5);
   const row = {
-    schema_version: 2,
-    shoe_id: String(
-      pending.shoe_id || getShoeId()
-    ),
-    created_at:
-      +pending.created_at || Date.now(),
-    history_fingerprint: String(
-      pending.history_fingerprint || ""
-    ),
+    schema_version: 1,
+    shoe_id: String(pending.shoe_id || getShoeId()),
+    created_at: +pending.created_at || Date.now(),
+    history_fingerprint: String(pending.history_fingerprint || ""),
     actual_outcome: actual,
     actual_b: actualB,
-    residual_target: actualB === null
-      ? null
-      : actualB - corePB,
-    core_raw_p_b: Number.isFinite(
-      +pending.core_raw_p_b
-    )
-      ? +pending.core_raw_p_b
-      : corePB,
-    core_logit: Number.isFinite(
-      +pending.core_logit
-    )
-      ? +pending.core_logit
-      : logit(corePB),
-    core_x_256:
-      Array.isArray(pending.core_x_256)
-      && pending.core_x_256.length === 256
-        ? pending.core_x_256.slice()
-        : null,
+    residual_target: actualB - corePB,
     ...pending.features
   };
-
   const rows = readTrainingRows();
-  const duplicate =
-    rows.length
-    && rows.at(-1)?.shoe_id === row.shoe_id
-    && rows.at(-1)?.history_fingerprint
-      === row.history_fingerprint;
-
-  if (!duplicate) {
-    rows.push(row);
-  }
-
+  const duplicate = rows.length && rows.at(-1)?.shoe_id === row.shoe_id && rows.at(-1)?.history_fingerprint === row.history_fingerprint;
+  if (!duplicate) rows.push(row);
   writeTrainingRows(rows);
-
-  try {
-    localStorage.removeItem(PENDING_KEY);
-  } catch (_) {}
+  try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
 
 function rollbackTrainingIfNeeded() {
   const history = readHistory();
   const rows = readTrainingRows();
   if (!rows.length) return;
-
   const last = rows.at(-1);
-  if (
-    last?.shoe_id === getShoeId()
-    && +last.round_index > history.length
-  ) {
+  if (last?.shoe_id === getShoeId() && +last.round_index > history.length) {
     rows.pop();
     writeTrainingRows(rows);
   }
-
-  try {
-    localStorage.removeItem(PENDING_KEY);
-  } catch (_) {}
+  try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
 }
 
 function exportTrainingData() {
   return JSON.stringify({
-    schema_version: 2,
+    schema_version: 1,
     feature_names: FEATURE_NAMES,
-    includes_ties: true,
-    includes_core_raw_probability: true,
-    includes_core_logit: true,
-    includes_core_x_256_when_available: true,
     rows: readTrainingRows()
   }, null, 2);
 }
 
 function downloadTrainingData() {
-  const blob = new Blob(
-    [exportTrainingData()],
-    {
-      type: "application/json;charset=utf-8"
-    }
-  );
+  const blob = new Blob([exportTrainingData()], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download =
-    `bgs_xgb_walkforward_training_${Date.now()}.json`;
+  a.download = `bgs_xgb_residual_training_${Date.now()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -838,145 +350,55 @@ function downloadTrainingData() {
 async function loadModel(url = MODEL_URL) {
   modelLoaded = false;
   modelLoadError = "";
-
   try {
-    const response = await fetch(
-      url,
-      { cache: "no-store" }
-    );
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status}`
-      );
-    }
-
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const bundle = await response.json();
-    if (
-      !bundle
-      || bundle.model_type !== MODEL_TYPE
-    ) {
-      throw new Error(
-        "invalid_model_bundle"
-      );
-    }
-
-    const names = Array.isArray(
-      bundle.feature_names
-    )
-      ? bundle.feature_names
-      : [];
-    if (
-      names.join("|")
-      !== FEATURE_NAMES.join("|")
-    ) {
-      throw new Error(
-        "feature_schema_mismatch"
-      );
-    }
-
+    if (!bundle || bundle.model_type !== "xgb_residual_regressor") throw new Error("invalid_model_bundle");
+    const names = Array.isArray(bundle.feature_names) ? bundle.feature_names : [];
+    if (names.join("|") !== FEATURE_NAMES.join("|")) throw new Error("feature_schema_mismatch");
     modelBundle = bundle;
     modelLoaded = true;
     return bundle;
   } catch (error) {
     modelBundle = null;
-    modelLoadError = String(
-      error?.message
-      || error
-      || "model_load_failed"
-    );
+    modelLoadError = String(error?.message || error || "model_load_failed");
     return null;
   }
 }
 
 function installUIOverride() {
   if (typeof document === "undefined") return;
-
-  const oldBtn =
-    document.getElementById("btnStart");
+  const oldBtn = document.getElementById("btnStart");
   if (!oldBtn) return;
-
   const btn = oldBtn.cloneNode(true);
   oldBtn.replaceWith(btn);
-
   btn.addEventListener("click", () => {
     const history = readHistory();
-
     if (!history.length) {
-      const msg =
-        document.getElementById("message");
-      if (msg) {
-        msg.textContent =
-          "請先輸入牌局紀錄";
-        msg.classList.add("warning");
-      }
+      const msg = document.getElementById("message");
+      if (msg) { msg.textContent = "請先輸入牌局紀錄"; msg.classList.add("warning"); }
       return;
     }
-
-    const corePrediction =
-      CORE.hazardChoose(history);
-    const prediction =
-      applyCorrection(
-        history,
-        corePrediction
-      );
-
+    const corePrediction = CORE.hazardChoose(history);
+    const prediction = applyCorrection(history, corePrediction);
     saveSelection(prediction.direction);
-    registerPrediction(
-      history,
-      prediction
-    );
-    renderPrediction(
-      prediction,
-      history.length
-    );
+    registerPrediction(history, prediction);
+    renderPrediction(prediction, history.length);
   });
 
-  const b =
-    document.getElementById("btnB");
-  const p =
-    document.getElementById("btnP");
-  const t =
-    document.getElementById("btnT");
+  const b = document.getElementById("btnB");
+  const p = document.getElementById("btnP");
+  const t = document.getElementById("btnT");
+  if (b) b.addEventListener("click", () => settlePending("B"));
+  if (p) p.addEventListener("click", () => settlePending("P"));
+  if (t) t.addEventListener("click", () => settlePending("T"));
 
-  if (b) {
-    b.addEventListener(
-      "click",
-      () => settlePending("B")
-    );
-  }
-  if (p) {
-    p.addEventListener(
-      "click",
-      () => settlePending("P")
-    );
-  }
-  if (t) {
-    t.addEventListener(
-      "click",
-      () => settlePending("T")
-    );
-  }
+  const back = document.getElementById("btnBack");
+  if (back) back.addEventListener("click", () => setTimeout(rollbackTrainingIfNeeded, 0));
 
-  const back =
-    document.getElementById("btnBack");
-  if (back) {
-    back.addEventListener(
-      "click",
-      () => setTimeout(
-        rollbackTrainingIfNeeded,
-        0
-      )
-    );
-  }
-
-  const end =
-    document.getElementById("btnEnd");
-  if (end) {
-    end.addEventListener(
-      "click",
-      rotateShoeId
-    );
-  }
+  const end = document.getElementById("btnEnd");
+  if (end) end.addEventListener("click", rotateShoeId);
 }
 
 if (typeof window !== "undefined") {
@@ -989,21 +411,10 @@ if (typeof window !== "undefined") {
     loadModel,
     setEstimatedTotalHands,
     getEstimatedTotalHands,
-    settlePending,
     exportTrainingData,
     downloadTrainingData,
-    getTrainingCount: () =>
-      readTrainingRows().length,
-    getModelStatus: () => ({
-      loaded: modelLoaded,
-      trained: Boolean(
-        modelBundle?.trained
-      ),
-      error: modelLoadError,
-      protocol:
-        modelBundle?.evaluation?.protocol
-        || "strict_chronological_shoe_walk_forward"
-    })
+    getTrainingCount: () => readTrainingRows().length,
+    getModelStatus: () => ({ loaded: modelLoaded, trained: Boolean(modelBundle?.trained), error: modelLoadError })
   };
 }
 
