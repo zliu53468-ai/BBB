@@ -42,7 +42,7 @@ PHYSICS_FEATURE_NAMES: tuple[str, ...] = (
     + ("winner_p_b", "winner_p_p", "winner_p_t")
     + tuple(f"next_rank_expected_{label}" for label in RANK_LABELS)
     + tuple(f"next_suit_ratio_{suit}" for suit in SUITS)
-    + ("shoe_consumed_cards_norm", "remaining_low_rank_density", "remaining_high_rank_density")
+    + ("shoe_consumed_cards", "remaining_low_rank_density", "remaining_high_rank_density")
     + ("expected_point_diff_norm", "expected_abs_point_diff_norm")
 )
 PHYSICS_DIM = len(PHYSICS_FEATURE_NAMES)
@@ -288,7 +288,8 @@ def build_physics_target(hand: HandResult, shoe: Sequence[Card], cursor_before: 
     k += 4
 
     low_density, high_density = _remaining_rank_density(shoe, cursor_before)
-    y[k] = cursor_before / float(TOTAL_CARDS)
+    # 中文：保留 0~416 的實際已消耗總張數，不做比例化。
+    y[k] = float(cursor_before)
     y[k + 1] = low_density
     y[k + 2] = high_density
     k += 3
@@ -319,7 +320,11 @@ class SimulationDataset:
 
 
 class OfflineBaccaratSimulator:
-    """Generate supervised rows from physically shuffled 8-deck shoes."""
+    """Generate supervised rows from physically shuffled 8-deck shoes.
+
+    中文：每筆樣本的輸入只有當下已出現的 B/P/T 路徑；A-K、花色與 shoe state
+    僅作為離線 supervision target，線上 inference 不會偷看未來牌。
+    """
 
     def __init__(
         self,
@@ -392,7 +397,9 @@ def sanitize_physics_prediction(raw: Sequence[float]) -> np.ndarray:
     out[k : k + 4] = _normalise_nonnegative(x[k : k + 4], np.full(4, 0.25))
     k += 4
 
-    out[k : k + 3] = np.clip(x[k : k + 3], 0.0, 1.0).astype(np.float32)
+    # 中文：第一維是已消耗總張數；後兩維才是 0~1 的剩餘 rank density。
+    out[k] = float(np.clip(x[k], 0.0, float(TOTAL_CARDS)))
+    out[k + 1 : k + 3] = np.clip(x[k + 1 : k + 3], 0.0, 1.0).astype(np.float32)
     k += 3
     out[k] = float(np.clip(x[k], -1.0, 1.0))
     out[k + 1] = float(np.clip(x[k + 1], 0.0, 1.0))
@@ -550,6 +557,7 @@ def get_default_extractor() -> PhysicsFeatureExtractor:
     return _DEFAULT_EXTRACTOR
 
 
+# 中文：非侵入式對接點；Core 與 original_7d 都不重算、不改值、不改順序。
 def prepare_xgboost_input(
     core_pb: float,
     original_7d: Sequence[float],
