@@ -1499,6 +1499,92 @@ def export_model_bundle(
     return bundle
 
 
+
+def dataset_summary(rows: Sequence[PreparedRow]) -> dict[str, Any]:
+    shoes = ordered_shoes(rows)
+    outcomes = {
+        "B": sum(1 for row in rows if row.outcome == "B"),
+        "P": sum(1 for row in rows if row.outcome == "P"),
+        "T": sum(1 for row in rows if row.outcome == "T"),
+    }
+    per_shoe = {
+        shoe: sum(1 for row in rows if row.shoe_id == shoe)
+        for shoe in shoes
+    }
+    non_tie = outcomes["B"] + outcomes["P"]
+    return {
+        "rows": len(rows),
+        "shoes": len(shoes),
+        "first_shoe": shoes[0] if shoes else None,
+        "last_shoe": shoes[-1] if shoes else None,
+        "outcomes": outcomes,
+        "non_tie_rows": non_tie,
+        "tie_rate": (
+            outcomes["T"] / len(rows)
+            if rows else 0.0
+        ),
+        "min_rows_per_shoe": (
+            min(per_shoe.values())
+            if per_shoe else 0
+        ),
+        "max_rows_per_shoe": (
+            max(per_shoe.values())
+            if per_shoe else 0
+        ),
+        "mean_rows_per_shoe": (
+            float(np.mean(list(per_shoe.values())))
+            if per_shoe else 0.0
+        ),
+        "rows_with_core_x_256": sum(
+            1 for row in rows
+            if row.core_x_256 is not None
+        ),
+    }
+
+
+def validate_command(args: argparse.Namespace) -> int:
+    records = load_training_records(Path(args.input))
+    rows = prepare_rows(records)
+    shoes = ordered_shoes(rows)
+
+    folds = build_walk_forward_folds(
+        shoes,
+        min_train_shoes=args.min_train_shoes,
+        calibration_shoes=args.calibration_shoes,
+        test_shoes=args.test_shoes,
+        step_shoes=args.step_shoes,
+    )
+
+    summary = {
+        "valid": True,
+        "dataset": dataset_summary(rows),
+        "walk_forward": {
+            "folds": len(folds),
+            "min_train_shoes": args.min_train_shoes,
+            "calibration_shoes": args.calibration_shoes,
+            "test_shoes": args.test_shoes,
+            "step_shoes": args.step_shoes,
+            "fold_layout": [
+                {
+                    "fold": fold.fold,
+                    "train_shoes": list(fold.train_shoes),
+                    "calibration_shoes": list(fold.calibration_shoes),
+                    "test_shoes": list(fold.test_shoes),
+                }
+                for fold in folds
+            ],
+        },
+    }
+    print(
+        json.dumps(
+            summary,
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
 def train_command(args: argparse.Namespace) -> int:
     records = load_training_records(Path(args.input))
     rows = prepare_rows(records)
@@ -1625,6 +1711,14 @@ def build_parser() -> argparse.ArgumentParser:
         dest="command",
         required=True,
     )
+
+    validate = sub.add_parser("validate")
+    validate.add_argument("--input", required=True)
+    validate.add_argument("--min-train-shoes", type=int, default=8)
+    validate.add_argument("--calibration-shoes", type=int, default=2)
+    validate.add_argument("--test-shoes", type=int, default=2)
+    validate.add_argument("--step-shoes", type=int, default=2)
+    validate.set_defaults(func=validate_command)
 
     train = sub.add_parser("train")
     train.add_argument("--input", required=True)
