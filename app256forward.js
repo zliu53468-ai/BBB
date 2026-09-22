@@ -406,12 +406,12 @@ function deterministicTie(seq){let h=0;const token="FROZEN256_BIGROAD_6X15_FORWA
 function choose(seq){
   const ctx=context256(seq),x=modelX(ctx.vector),prior=frozenPrior(),scores={B:scoreArm("B",x,prior),P:scoreArm("P",x,prior)},gap=scores.B.score-scores.P.score;
   let direction,reason;if(Math.abs(gap)<=SCORE_TIE_EPS){direction=deterministicTie(seq);reason="固定歷史平手判定";}else{direction=gap>0?"B":"P";reason="256維＋6×15前瞻雙臂判斷";}
-  const rawPB=1/(1+Math.exp(-Math.max(-8,Math.min(8,gap/SCORE_TEMP)))),pB=clip(rawPB,PROB_MIN,PROB_MAX),pP=1-pB,confidence=direction==="B"?pB:pP,coreLogit=Math.log(Math.max(1e-6,rawPB)/Math.max(1e-6,1-rawPB));
+  const rawPB=1/(1+Math.exp(-Math.max(-8,Math.min(8,gap/SCORE_TEMP)))),pB=clip(rawPB,PROB_MIN,PROB_MAX),pP=1-pB,confidence=direction==="B"?pB:pP;
   const previous=state.last_selected;state.selection_streak=previous===direction?(state.selection_streak||0)+1:1;state.last_selected=direction;
   const c=ctx.candidates;let regime="混合";
   if(c.support>=.25){const currentContinuation=c.currentSide&&direction===c.currentSide;if(Math.abs(c.B-c.P)>=.045||Math.abs(c.forwardDirectional||0)>=.20)regime=currentContinuation?"大路延續":"大路反轉";else regime="大路觀察";}
   const strength=clip(.40+.32*c.support+.14*Math.abs(c.forwardDirectional||0)+.08*Math.abs(c.twoStepDirectional||0)+Math.min(.16,Math.abs(gap)*.66));
-  return{direction,reason,x,scores,gap,confidence,probabilities:{B:pB,P:pP},rawProbabilities:{B:rawPB,P:1-rawPB},coreLogit,regime,strength,candidates:c,bigRoad:{rows:BIG_ROAD_ROWS,cols:BIG_ROAD_COLS,viewStartCol:ctx.bigRoad.viewStartCol,viewEndCol:ctx.bigRoad.viewEndCol,maxCol:ctx.bigRoad.maxCol,grid:ctx.bigRoad.grid},frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM}};
+  return{direction,reason,x,scores,gap,confidence,probabilities:{B:pB,P:pP},regime,strength,candidates:c,bigRoad:{rows:BIG_ROAD_ROWS,cols:BIG_ROAD_COLS,viewStartCol:ctx.bigRoad.viewStartCol,viewEndCol:ctx.bigRoad.viewEndCol,maxCol:ctx.bigRoad.maxCol,grid:ctx.bigRoad.grid},frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM}};
 }
 
 function save(){try{if(typeof localStorage!=="undefined")localStorage.setItem(STORAGE_KEY,JSON.stringify({history:state.history,last_selected:state.last_selected,selection_streak:state.selection_streak}));}catch(_){}}
