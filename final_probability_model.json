@@ -1,0 +1,1 @@
+{"schema_version":1,"model_type":"xgb_final_probability_classifier","trained":false,"link":"sigmoid","probability_bounds":[0.4,0.6],"trees":[],"training":{"target":"actual_b_binary","label_mapping":{"P":0,"B":1},"residual":false,"status":"awaiting_labeled_B_P_data"}}
