@@ -166,7 +166,7 @@ function applyFinalPrediction(seq,corePrediction){
   }catch(e){error=String(e?.message||e||"runtime_error");rawPB=corePB;finalPB=corePB;mode="core";}
   const direction=evDecision?.direction||(finalPB>.5?"B":"P"),finalPP=1-finalPB;
   const confidence=evDecision?.confidence??(direction==="B"?finalPB:finalPP);
-  return {...corePrediction,direction,confidence,probabilities:{B:finalPB,P:finalPP},
+  return {...corePrediction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),confidence,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,probabilities:{B:finalPB,P:finalPP},
     regime:mode==="final56"?(direction==="Skip"?"EV 觀望":direction!==corePrediction.direction?"Final XGB換邊":"Final XGB裁決"):corePrediction.regime,
     finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,finalPB,bounds,
       p_tie:evDecision?.pTie??null,p_player:evDecision?.pPlayer??null,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,
