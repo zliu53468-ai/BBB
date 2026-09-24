@@ -440,16 +440,29 @@ def _physics_48d(record: Mapping[str, Any], extractor: PhysicsFeatureExtractor |
 
 
 def _snapshot_56d(record: Mapping[str, Any]) -> np.ndarray | None:
-    """Return the exact feature vector captured at prediction time, when present."""
-    snapshot = record.get("features_56d", record.get("feature_snapshot_56d"))
-    if snapshot is None:
+    """Accept new 57D snapshots and migrate legacy 56D snapshots in-place."""
+    snapshot = record.get("features_57d", record.get("feature_snapshot_57d"))
+    if snapshot is not None:
+        vector = np.asarray(snapshot, dtype=np.float32).reshape(-1)
+        if vector.size != FEATURE_DIM or not np.all(np.isfinite(vector)):
+            raise ValueError("features_57d must contain exactly 57 finite values")
+        return vector.reshape(1, FEATURE_DIM)
+
+    legacy = record.get("features_56d", record.get("feature_snapshot_56d"))
+    if legacy is None:
         return None
-    vector = np.asarray(snapshot, dtype=np.float32).reshape(-1)
-    if vector.size != FEATURE_DIM:
-        raise ValueError(f"features_56d must contain exactly {FEATURE_DIM} values")
-    if not np.all(np.isfinite(vector)):
-        raise ValueError("features_56d must contain only finite values")
-    return vector.reshape(1, FEATURE_DIM)
+    vector = np.asarray(legacy, dtype=np.float32).reshape(-1)
+    if vector.size != 56 or not np.all(np.isfinite(vector)):
+        raise ValueError("legacy features_56d must contain exactly 56 finite values")
+    physics = vector[8:]
+    migrated = np.hstack((
+        vector[0],
+        (float(vector[2]) / 70.0) ** 2,
+        vector[2:8],
+        physics,
+        physics_noise_score(physics),
+    )).astype(np.float32, copy=False)
+    return migrated.reshape(1, FEATURE_DIM)
 
 
 def make_training_dataset(
@@ -496,7 +509,7 @@ def make_training_arrays(
     *,
     physics_extractor: PhysicsFeatureExtractor | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Build chronological 56D inputs with absolute binary labels (B=1/P=0)."""
+    """Build chronological 57D inputs with absolute binary labels (B=1/P=0)."""
     x, y, _ = make_training_dataset(records, physics_extractor=physics_extractor)
     return x, y
 
@@ -558,8 +571,10 @@ def evaluate(model: Any, x: np.ndarray, y: np.ndarray, *, probability_bounds: Se
     if positive.size != 1:
         raise RuntimeError("classifier has no Banker class")
     raw = np.clip(probabilities[:, int(positive[0])], 0.0, 1.0)
-    lo, hi = _probability_bounds(probability_bounds)
-    final = np.clip(raw, lo, hi)
+    final = np.asarray([
+        _clip(pb, *dynamic_probability_bounds(float(row[2]), float(row[-1])))
+        for pb, row in zip(raw, x)
+    ], dtype=np.float64)
     return {
         "samples": float(len(y)),
         "raw_accuracy": _accuracy(raw, y),
@@ -671,7 +686,7 @@ def train_command(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train the direct 56D final-probability XGBoost model")
+    parser = argparse.ArgumentParser(description="Train the direct 57D final-probability XGBoost model")
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train")
     train.add_argument("--input", required=True)
