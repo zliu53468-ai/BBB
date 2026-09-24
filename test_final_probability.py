@@ -31,7 +31,8 @@ class FinalProbabilityTests(unittest.TestCase):
         matrix = final.build_56d_feature_matrix(self.core, self.original, self.physics)
         self.assertEqual(matrix.shape, (1, 56))
         self.assertAlmostEqual(float(matrix[0, 0]), self.core, places=6)
-        self.assertTrue(np.array_equal(matrix[0, 1:8], self.original))
+        self.assertAlmostEqual(float(matrix[0, 1]), (15 / 70.0) ** 2, places=6)
+        self.assertTrue(np.array_equal(matrix[0, 2:8], self.original[1:]))
         self.assertTrue(np.array_equal(matrix[0, 8:], self.physics))
 
     def test_xgboost_probability_is_direct_and_bounded(self):
@@ -48,11 +49,15 @@ class FinalProbabilityTests(unittest.TestCase):
             self.physics,
             xgboost_model=model,
         )
-        self.assertAlmostEqual(prediction["final_p_b"], 0.60, places=6)
+        self.assertAlmostEqual(prediction["final_p_b"], 0.55, places=6)
         self.assertAlmostEqual(result["raw_p_b"], 0.87, places=6)
-        self.assertAlmostEqual(result["final_p_b"], 0.60, places=6)
+        self.assertAlmostEqual(result["final_p_b"], 0.55, places=6)
         self.assertEqual(result["direction"], "B")
         self.assertEqual(model.seen.shape, (1, 56))
+        mid = self.original.copy(); mid[1] = 45
+        late = self.original.copy(); late[1] = 55
+        self.assertAlmostEqual(final.predict_final_probability(self.core, mid, self.physics, xgboost_model=model)["final_p_b"], 0.60, places=6)
+        self.assertAlmostEqual(final.predict_final_probability(self.core, late, self.physics, xgboost_model=model)["final_p_b"], 0.65, places=6)
 
     def test_physics_forecast_is_unpacked_with_expected_suit_consumption(self):
         forecast = final.unpack_physics_forecast(self.physics)
