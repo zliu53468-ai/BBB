@@ -22,7 +22,10 @@ class FinalProbabilityTests(unittest.TestCase):
     def setUp(self):
         self.core = 0.53
         self.original = np.asarray([0.53, 15, 60, 0.75, 0.5, 2, 1], dtype=np.float32)
-        self.physics = np.linspace(0.01, 0.48, PHYSICS_DIM, dtype=np.float32)
+        self.physics = np.zeros(PHYSICS_DIM, dtype=np.float32)
+        self.physics[:3] = [0.2, 0.5, 0.3]
+        self.physics[26:39] = np.arange(1, 14, dtype=np.float32) / 10.0
+        self.physics[39:43] = [0.1, 0.2, 0.3, 0.4]
 
     def test_bridge_flattens_to_one_56d_matrix(self):
         matrix = final.build_56d_feature_matrix(self.core, self.original, self.physics)
@@ -33,7 +36,7 @@ class FinalProbabilityTests(unittest.TestCase):
 
     def test_xgboost_probability_is_direct_and_bounded(self):
         model = FakeClassifier(0.87)
-        final_pb = final.predict_final_probability(
+        prediction = final.predict_final_probability(
             self.core,
             self.original,
             self.physics,
@@ -45,11 +48,28 @@ class FinalProbabilityTests(unittest.TestCase):
             self.physics,
             xgboost_model=model,
         )
-        self.assertAlmostEqual(final_pb, 0.60, places=6)
+        self.assertAlmostEqual(prediction["final_p_b"], 0.60, places=6)
         self.assertAlmostEqual(result["raw_p_b"], 0.87, places=6)
         self.assertAlmostEqual(result["final_p_b"], 0.60, places=6)
         self.assertEqual(result["direction"], "B")
         self.assertEqual(model.seen.shape, (1, 56))
+
+    def test_physics_forecast_is_unpacked_with_expected_suit_consumption(self):
+        forecast = final.unpack_physics_forecast(self.physics)
+        self.assertAlmostEqual(
+            forecast["next_card_count_probabilities"]["4_cards"], 0.2, places=6
+        )
+        self.assertAlmostEqual(
+            forecast["next_card_count_probabilities"]["5_cards"], 0.5, places=6
+        )
+        self.assertAlmostEqual(
+            forecast["next_card_count_probabilities"]["6_cards"], 0.3, places=6
+        )
+        self.assertAlmostEqual(forecast["expected_next_card_count"], 5.1, places=6)
+        self.assertAlmostEqual(forecast["next_rank_expected_consumption"]["A"], 0.1, places=6)
+        self.assertAlmostEqual(forecast["next_rank_expected_consumption"]["K"], 1.3, places=6)
+        self.assertAlmostEqual(forecast["next_suit_consumption_ratios"]["spades"], 0.1, places=6)
+        self.assertAlmostEqual(forecast["next_suit_expected_consumption"]["clubs"], 2.04, places=6)
 
     def test_training_labels_are_absolute_banker_player_values(self):
         common = {

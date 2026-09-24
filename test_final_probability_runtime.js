@@ -43,6 +43,12 @@ require("./final_probability_runtime.js");
   const r=out.finalProbability;
   if(r?.mode!=="final56")throw new Error("final56 inference path was not used");
   if(r.physics?.length!==48||r.extended?.length!==56)throw new Error("incorrect direct-model feature shape");
+  const forecast=r.physicsForecast;
+  if(!forecast||Object.keys(forecast.nextCardCountProbabilities||{}).length!==3)throw new Error("missing next-hand card-count forecast");
+  if(Object.keys(forecast.rankExpectedConsumption||{}).length!==13)throw new Error("missing A-K consumption forecast");
+  if(Object.keys(forecast.suitExpectedConsumption||{}).length!==4)throw new Error("missing suit consumption forecast");
+  const cardExpectation=4*forecast.nextCardCountProbabilities["4_cards"]+5*forecast.nextCardCountProbabilities["5_cards"]+6*forecast.nextCardCountProbabilities["6_cards"];
+  if(Math.abs(cardExpectation-forecast.expectedNextCardCount)>1e-9)throw new Error("incorrect next-hand card expectation");
   if(useGeneratedBundle){
     if(!(r.rawPB>=0&&r.rawPB<=1))throw new Error("generated model did not return a probability");
     if(!(r.finalPB>=.40&&r.finalPB<=.60))throw new Error("generated model ignored probability bounds");
