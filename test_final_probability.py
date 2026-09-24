@@ -71,6 +71,19 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertAlmostEqual(forecast["next_suit_consumption_ratios"]["spades"], 0.1, places=6)
         self.assertAlmostEqual(forecast["next_suit_expected_consumption"]["clubs"], 2.04, places=6)
 
+    def test_physics_integrity_is_reported_without_changing_features(self):
+        consistent = self.physics.copy()
+        consistent[26:39] = 5.1 / 13.0
+        report = final.physics_integrity_report(consistent)
+        self.assertTrue(report["valid"])
+        self.assertTrue(report["checks"]["card_count_distribution"])
+        self.assertTrue(report["checks"]["suit_ratio_distribution"])
+        self.assertTrue(report["checks"]["rank_consumption_total"])
+        self.assertAlmostEqual(report["expected_next_card_count"], 5.1, places=6)
+
+        inconsistent = final.physics_integrity_report(self.physics)
+        self.assertFalse(inconsistent["checks"]["rank_consumption_total"])
+
     def test_training_labels_are_absolute_banker_player_values(self):
         common = {
             "core_p_b": self.core,
@@ -89,6 +102,29 @@ class FinalProbabilityTests(unittest.TestCase):
         ])
         self.assertEqual(x.shape, (2, 56))
         self.assertTrue(np.array_equal(y, np.asarray([1, 0], dtype=np.int8)))
+
+    def test_training_prefers_captured_56d_snapshot(self):
+        snapshot = final.build_56d_feature_matrix(self.core, self.original, self.physics)
+        x, y = final.make_training_arrays([
+            {
+                "shoe_id": "shoe-snapshot",
+                "features_56d": snapshot.tolist(),
+                "actual_b": 1,
+            },
+        ])
+        self.assertTrue(np.array_equal(x, snapshot))
+        self.assertTrue(np.array_equal(y, np.asarray([1], dtype=np.int8)))
+
+    def test_shoe_level_validation_holds_out_complete_latest_shoes(self):
+        records = [
+            {"shoe_id": shoe_id}
+            for shoe_id in ("shoe-1", "shoe-1", "shoe-2", "shoe-2", "shoe-3", "shoe-3", "shoe-4", "shoe-4", "shoe-5")
+        ]
+        mask = final.shoe_level_validation_mask(records, fraction=0.20)
+        self.assertTrue(np.array_equal(
+            mask,
+            np.asarray([False, False, False, False, False, False, False, False, True]),
+        ))
 
     def test_classifier_is_binary_logistic(self):
         class CapturingClassifier:

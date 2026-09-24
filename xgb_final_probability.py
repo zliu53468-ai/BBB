@@ -39,6 +39,9 @@ MODEL_TYPE = "xgb_final_probability_classifier"
 RANDOM_STATE = 20260923
 FEATURE_DIM = 56
 PROBABILITY_BOUNDS = (0.40, 0.60)
+SNAPSHOT_SCHEMA_VERSION = 5
+PHYSICS_PROBABILITY_TOLERANCE = 1e-4
+PHYSICS_RANK_CONSUMPTION_TOLERANCE = 0.50
 ORIGINAL_7D_FEATURE_NAMES = (
     "core_p_b",
     "round_index",
@@ -142,6 +145,41 @@ def unpack_physics_forecast(physics_48d: Sequence[float]) -> dict[str, Any]:
     }
 
 
+def physics_integrity_report(physics_48d: Sequence[float]) -> dict[str, Any]:
+    """Report whether the supplied 48D physical forecast is self-consistent.
+
+    The bridge deliberately does not alter or simulate the physics block.  This
+    report is diagnostic metadata for snapshots and model validation: card-count
+    and suit distributions should normalise to one, while the A-K consumption
+    total should be close to the decoded expected next-hand card count.
+    """
+    forecast = unpack_physics_forecast(physics_48d)
+    card_probability_sum = float(sum(forecast["next_card_count_probabilities"].values()))
+    suit_ratio_sum = float(sum(forecast["next_suit_consumption_ratios"].values()))
+    expected_card_count = float(forecast["expected_next_card_count"])
+    rank_expected_total = float(sum(forecast["next_rank_expected_consumption"].values()))
+    rank_total_gap = abs(rank_expected_total - expected_card_count)
+    rank_tolerance = max(
+        PHYSICS_RANK_CONSUMPTION_TOLERANCE,
+        expected_card_count * 0.10,
+    )
+    checks = {
+        "card_count_distribution": abs(card_probability_sum - 1.0) <= PHYSICS_PROBABILITY_TOLERANCE,
+        "suit_ratio_distribution": abs(suit_ratio_sum - 1.0) <= PHYSICS_PROBABILITY_TOLERANCE,
+        "rank_consumption_total": rank_total_gap <= rank_tolerance,
+    }
+    return {
+        "valid": bool(all(checks.values())),
+        "checks": checks,
+        "card_count_probability_sum": card_probability_sum,
+        "expected_next_card_count": expected_card_count,
+        "rank_expected_consumption_total": rank_expected_total,
+        "rank_expected_total_gap": rank_total_gap,
+        "rank_expected_total_tolerance": rank_tolerance,
+        "suit_ratio_sum": suit_ratio_sum,
+    }
+
+
 def build_56d_feature_matrix(
     core_pb: float,
     original_7d: Sequence[float],
@@ -227,6 +265,7 @@ def _direct_prediction_payload(
         "probability_bounds": {"min": lo, "max": hi},
         "features": features,
         "physics_forecast": unpack_physics_forecast(physics),
+        "physics_integrity": physics_integrity_report(physics),
     }
 
 
@@ -377,26 +416,66 @@ def _physics_48d(record: Mapping[str, Any], extractor: PhysicsFeatureExtractor |
     return extractor.predict_features(_history(record))
 
 
+def _snapshot_56d(record: Mapping[str, Any]) -> np.ndarray | None:
+    """Return the exact feature vector captured at prediction time, when present."""
+    snapshot = record.get("features_56d", record.get("feature_snapshot_56d"))
+    if snapshot is None:
+        return None
+    vector = np.asarray(snapshot, dtype=np.float32).reshape(-1)
+    if vector.size != FEATURE_DIM:
+        raise ValueError(f"features_56d must contain exactly {FEATURE_DIM} values")
+    if not np.all(np.isfinite(vector)):
+        raise ValueError("features_56d must contain only finite values")
+    return vector.reshape(1, FEATURE_DIM)
+
+
+def make_training_dataset(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    physics_extractor: PhysicsFeatureExtractor | None = None,
+) -> tuple[np.ndarray, np.ndarray, list[Mapping[str, Any]]]:
+    """Build direct-label training data and retain the matching chronological rows.
+
+    New browser records provide the exact 56D vector that was used at
+    prediction-time.  Older records remain supported by rebuilding the feature
+    blocks only when no snapshot is available.
+    """
+    rows: list[np.ndarray] = []
+    labels: list[int] = []
+    used_records: list[Mapping[str, Any]] = []
+    for record in records:
+        try:
+            x = _snapshot_56d(record)
+            if x is None:
+                pb = _core_pb(record)
+                x = build_56d_feature_matrix(
+                    pb,
+                    _original_7d(record, pb),
+                    _physics_48d(record, physics_extractor),
+                )
+            y = _actual_b(record)
+        except (KeyError, TypeError, ValueError):
+            continue
+        rows.append(x[0])
+        labels.append(y)
+        used_records.append(record)
+    if not rows:
+        raise ValueError("no valid B/P training rows")
+    return (
+        np.vstack(rows).astype(np.float32),
+        np.asarray(labels, dtype=np.int8),
+        used_records,
+    )
+
+
 def make_training_arrays(
     records: Sequence[Mapping[str, Any]],
     *,
     physics_extractor: PhysicsFeatureExtractor | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Build chronological 56D inputs with absolute binary labels (B=1/P=0)."""
-    rows: list[np.ndarray] = []
-    labels: list[int] = []
-    for record in records:
-        try:
-            pb = _core_pb(record)
-            x = build_56d_feature_matrix(pb, _original_7d(record, pb), _physics_48d(record, physics_extractor))
-            y = _actual_b(record)
-        except (KeyError, TypeError, ValueError):
-            continue
-        rows.append(x[0])
-        labels.append(y)
-    if not rows:
-        raise ValueError("no valid B/P training rows")
-    return np.vstack(rows).astype(np.float32), np.asarray(labels, dtype=np.int8)
+    x, y, _ = make_training_dataset(records, physics_extractor=physics_extractor)
+    return x, y
 
 
 def chronological_validation_mask(row_count: int, *, fraction: float = 0.20) -> np.ndarray:
@@ -410,6 +489,37 @@ def chronological_validation_mask(row_count: int, *, fraction: float = 0.20) -> 
     return mask
 
 
+def shoe_level_validation_mask(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    fraction: float = 0.20,
+) -> np.ndarray:
+    """Hold out complete latest shoes, preserving the supplied chronological order."""
+    if len(records) < 2:
+        raise ValueError("at least two chronological rows are required")
+    fraction = min(0.50, max(0.05, float(fraction)))
+    shoe_keys: list[str] = []
+    ordered_shoes: list[str] = []
+    seen: set[str] = set()
+    for record in records:
+        value = record.get("shoe_id")
+        shoe_id = str(value).strip() if value is not None else ""
+        if not shoe_id:
+            raise ValueError("strict shoe-level validation requires a non-empty shoe_id")
+        shoe_keys.append(shoe_id)
+        if shoe_id not in seen:
+            ordered_shoes.append(shoe_id)
+            seen.add(shoe_id)
+    if len(ordered_shoes) < 2:
+        raise ValueError("strict shoe-level validation requires at least two shoes")
+    validation_shoe_count = max(
+        1,
+        min(len(ordered_shoes) - 1, int(math.ceil(len(ordered_shoes) * fraction))),
+    )
+    validation_shoes = set(ordered_shoes[-validation_shoe_count:])
+    return np.asarray([shoe_id in validation_shoes for shoe_id in shoe_keys], dtype=bool)
+
+
 def _accuracy(probability_b: np.ndarray, actual_b: np.ndarray) -> float:
     return float(np.mean((probability_b > 0.50) == (actual_b > 0)))
 
@@ -418,7 +528,7 @@ def _brier(probability_b: np.ndarray, actual_b: np.ndarray) -> float:
     return float(np.mean((probability_b.astype(float) - actual_b.astype(float)) ** 2))
 
 
-def evaluate(model: Any, x: np.ndarray, y: np.ndarray, *, probability_bounds: Sequence[float]) -> dict[str, float]:
+def evaluate(model: Any, x: np.ndarray, y: np.ndarray, *, probability_bounds: Sequence[float]) -> dict[str, Any]:
     probabilities = np.asarray(model.predict_proba(x), dtype=np.float64)
     classes = np.asarray(getattr(model, "classes_", (0, 1)))
     positive = np.flatnonzero(classes == 1)
@@ -496,6 +606,7 @@ def export_browser_bundle(
             "target": "actual_b_binary",
             "label_mapping": {"P": 0, "B": 1},
             "residual": False,
+            "feature_snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
             "metrics": dict(metrics),
         },
     }
@@ -506,14 +617,19 @@ def export_browser_bundle(
 def train_command(args: argparse.Namespace) -> int:
     extractor = PhysicsFeatureExtractor.load(args.physics_model) if args.physics_model else None
     records = load_training_records(Path(args.input))
-    x, y = make_training_arrays(records, physics_extractor=extractor)
+    x, y, training_records = make_training_dataset(records, physics_extractor=extractor)
     if len(x) < args.min_samples:
         raise SystemExit(f"need {args.min_samples} rows; got {len(x)}")
 
-    validation = chronological_validation_mask(len(y), fraction=args.validation_fraction)
+    validation = shoe_level_validation_mask(training_records, fraction=args.validation_fraction)
     model = build_xgboost_classifier(random_state=args.random_state)
     model.fit(x[~validation], y[~validation])
     metrics = evaluate(model, x[validation], y[validation], probability_bounds=args.probability_bounds)
+    metrics.update({
+        "validation_strategy": "chronological_shoe",
+        "training_shoes": int(len({str(record["shoe_id"]) for record, held_out in zip(training_records, validation) if not held_out})),
+        "validation_shoes": int(len({str(record["shoe_id"]) for record, held_out in zip(training_records, validation) if held_out})),
+    })
     print(json.dumps({"validation": metrics}, ensure_ascii=False, indent=2))
 
     final_model = build_xgboost_classifier(random_state=args.random_state)
