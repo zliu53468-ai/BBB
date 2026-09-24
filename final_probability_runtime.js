@@ -4,7 +4,7 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_56D_FINAL_PROBABILITY_V3";
+const VERSION="PHYSICS_56D_FINAL_PROBABILITY_V4";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -18,12 +18,12 @@ const PHYSICS_NAMES=[
 "shoe_consumed_cards","remaining_low_rank_density","remaining_high_rank_density",
 "expected_point_diff_norm","expected_abs_point_diff_norm"];
 const PHYSICS_INDEX=Object.fromEntries(PHYSICS_NAMES.map((name,index)=>[name,index]));
-const EXTENDED_NAMES=["core_p_b_external",...ORIGINAL7_NAMES.map(x=>"original7_"+x),...PHYSICS_NAMES];
+const EXTENDED_NAMES=["core_p_b_external","shoe_progress_weight",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...PHYSICS_NAMES];
 const HISTORY_WINDOW=64,HISTORY_INPUT_DIM=213,PHYSICS_DIM=48;
 const DEFAULT_BOUNDS=[.40,.60];
-const SNAPSHOT_SCHEMA_VERSION=5;
-const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
-const SHOE_KEY="bgs_xgb_final_shoe_id_v5",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
+const SNAPSHOT_SCHEMA_VERSION=6;
+const TRAINING_KEY="bgs_xgb_final_training_v6",PENDING_KEY="bgs_xgb_final_pending_v6";
+const SHOE_KEY="bgs_xgb_final_shoe_id_v6",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
 const STORAGE_KEY="bgs256d_short_x_dynamic_v23",MAX_TRAINING_ROWS=15000;
 const clip=(v,lo=0,hi=1)=>Math.max(lo,Math.min(hi,Number.isFinite(+v)?+v:lo));
 const bp=seq=>seq.filter(x=>x==="B"||x==="P");
@@ -111,7 +111,7 @@ function predictFinalProbability(bundle,vector,names){
   for(const tree of bundle.trees)margin+=evaluateTree(tree,vector,names);
   return clip(sigmoid(margin));
 }
-function buildExtended(corePB,o7,physics){const out=[corePB,...original7Vector(o7),...physics];if(out.length!==56)throw new Error("extended dim "+out.length);return out;}
+function buildExtended(corePB,o7,physics){const v=original7Vector(o7),w=(v[1]/70)**2,out=[corePB,w,...v.slice(1),...physics];if(out.length!==56)throw new Error("extended dim "+out.length);return out;}
 function unpackPhysicsForecast(physics){
   if(!Array.isArray(physics)||physics.length!==PHYSICS_DIM)throw new Error("physics forecast dim mismatch");
   const value=name=>{const v=+physics[PHYSICS_INDEX[name]];return Number.isFinite(v)?v:0;};
@@ -134,11 +134,7 @@ function physicsIntegrity(physics){
   return {valid:Object.values(checks).every(Boolean),checks,cardCountProbabilitySum,expectedNextCardCount:forecast.expectedNextCardCount,rankExpectedConsumptionTotal,rankExpectedTotalGap,rankExpectedTotalTolerance,suitRatioSum};
 }
 function dataQuality(seq){const directionalRounds=directionalRoundCount(seq);return {directionalRounds,stage:directionalRounds<12?"cold":directionalRounds<20?"warm":"ready",entryEligible:directionalRounds>=12,preferredEntry:directionalRounds>=20};}
-function applyProbabilityBounds(rawPB,bundle){
-  const configured=Array.isArray(bundle?.probability_bounds)?bundle.probability_bounds:DEFAULT_BOUNDS;
-  const lo=clip(configured[0],0,.5),hi=clip(configured[1],.5,1);
-  return {value:clip(rawPB,lo,hi),low:lo,high:hi};
-}
+function applyProbabilityBounds(rawPB,roundIndex){const [lo,hi]=roundIndex<=40?[.45,.55]:roundIndex>50?[.35,.65]:[.40,.60];return {value:clip(rawPB,lo,hi),low:lo,high:hi};}
 
 function applyFinalPrediction(seq,corePrediction){
   const original7=buildOriginal7(seq,corePrediction),corePB=original7.core_p_b;
@@ -152,7 +148,7 @@ function applyFinalPrediction(seq,corePrediction){
     if(physics&&final56Bundle?.trained){
       extended=buildExtended(corePB,original7,physics);
       rawPB=predictFinalProbability(final56Bundle,extended,EXTENDED_NAMES);
-      bounds=applyProbabilityBounds(rawPB,final56Bundle);
+      bounds=applyProbabilityBounds(rawPB,original7.round_index);
       finalPB=bounds.value;
       mode="final56";
     }
