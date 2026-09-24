@@ -53,10 +53,10 @@ require("./final_probability_runtime.js");
   if(r.dataQuality?.stage!=="warm"||r.dataQuality?.directionalRounds!==15)throw new Error("incorrect prediction data stage");
   if(useGeneratedBundle){
     if(!(r.rawPB>=0&&r.rawPB<=1))throw new Error("generated model did not return a probability");
-    if(!(r.finalPB>=.40&&r.finalPB<=.60))throw new Error("generated model ignored probability bounds");
+    if(!(r.finalPB>=.45&&r.finalPB<=.55))throw new Error("generated model ignored early probability bounds");
   }else{
     if(Math.abs(r.rawPB-.90)>1e-9)throw new Error("sigmoid probability was not used");
-    if(Math.abs(r.finalPB-.60)>1e-9)throw new Error("probability bounds were not applied");
+    if(Math.abs(r.finalPB-.55)>1e-9)throw new Error("early probability bounds were not applied");
   }
   if(out.direction!=="B")throw new Error("B/P decision rule changed");
 
@@ -65,7 +65,7 @@ require("./final_probability_runtime.js");
   let rows=api.getTrainingRows();
   if(rows.length!==1)throw new Error("directional prediction snapshot was not retained");
   const snapshot=rows[0];
-  if(snapshot.schema_version!==5||snapshot.actual_b!==1||snapshot.is_directional_label!==true)throw new Error("invalid directional snapshot metadata");
+  if(snapshot.schema_version!==6||snapshot.actual_b!==1||snapshot.is_directional_label!==true)throw new Error("invalid directional snapshot metadata");
   if(snapshot.physics_48d?.length!==48||snapshot.features_56d?.length!==56)throw new Error("prediction snapshot is missing exact model features");
   if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==1)throw new Error("snapshot model metadata is missing");
 
@@ -75,7 +75,7 @@ require("./final_probability_runtime.js");
   rows=api.getTrainingRows();
   if(rows.length!==2||rows[1].actual_outcome!=="T"||rows[1].actual_b!==null||rows[1].is_directional_label!==false)throw new Error("tie context snapshot was not retained");
   const exported=JSON.parse(api.exportTrainingData());
-  if(exported.schema_version!==5||exported.feature_names?.length!==56||exported.rows?.length!==2)throw new Error("snapshot export contract is incomplete");
+  if(exported.schema_version!==6||exported.feature_names?.length!==56||exported.rows?.length!==2)throw new Error("snapshot export contract is incomplete");
 
   console.log(JSON.stringify({ok:true,rawPB:r.rawPB,finalPB:r.finalPB,direction:out.direction,snapshots:rows.length}));
 })().catch(error=>{console.error(error);process.exit(1);});
