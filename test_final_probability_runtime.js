@@ -49,6 +49,8 @@ require("./final_probability_runtime.js");
   if(Object.keys(forecast.suitExpectedConsumption||{}).length!==4)throw new Error("missing suit consumption forecast");
   const cardExpectation=4*forecast.nextCardCountProbabilities["4_cards"]+5*forecast.nextCardCountProbabilities["5_cards"]+6*forecast.nextCardCountProbabilities["6_cards"];
   if(Math.abs(cardExpectation-forecast.expectedNextCardCount)>1e-9)throw new Error("incorrect next-hand card expectation");
+  if(!r.physicsIntegrity||typeof r.physicsIntegrity.valid!=="boolean")throw new Error("missing physics integrity report");
+  if(r.dataQuality?.stage!=="warm"||r.dataQuality?.directionalRounds!==15)throw new Error("incorrect prediction data stage");
   if(useGeneratedBundle){
     if(!(r.rawPB>=0&&r.rawPB<=1))throw new Error("generated model did not return a probability");
     if(!(r.finalPB>=.40&&r.finalPB<=.60))throw new Error("generated model ignored probability bounds");
@@ -57,5 +59,23 @@ require("./final_probability_runtime.js");
     if(Math.abs(r.finalPB-.60)>1e-9)throw new Error("probability bounds were not applied");
   }
   if(out.direction!=="B")throw new Error("B/P decision rule changed");
-  console.log(JSON.stringify({ok:true,rawPB:r.rawPB,finalPB:r.finalPB,direction:out.direction}));
+
+  api.registerPrediction(history,out);
+  api.settlePending("B");
+  let rows=api.getTrainingRows();
+  if(rows.length!==1)throw new Error("directional prediction snapshot was not retained");
+  const snapshot=rows[0];
+  if(snapshot.schema_version!==5||snapshot.actual_b!==1||snapshot.is_directional_label!==true)throw new Error("invalid directional snapshot metadata");
+  if(snapshot.physics_48d?.length!==48||snapshot.features_56d?.length!==56)throw new Error("prediction snapshot is missing exact model features");
+  if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==1)throw new Error("snapshot model metadata is missing");
+
+  const tieHistory=[...history,"T"],tieCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(tieHistory),tiePrediction=api.applyFinalPrediction(tieHistory,tieCore);
+  api.registerPrediction(tieHistory,tiePrediction);
+  api.settlePending("T");
+  rows=api.getTrainingRows();
+  if(rows.length!==2||rows[1].actual_outcome!=="T"||rows[1].actual_b!==null||rows[1].is_directional_label!==false)throw new Error("tie context snapshot was not retained");
+  const exported=JSON.parse(api.exportTrainingData());
+  if(exported.schema_version!==5||exported.feature_names?.length!==56||exported.rows?.length!==2)throw new Error("snapshot export contract is incomplete");
+
+  console.log(JSON.stringify({ok:true,rawPB:r.rawPB,finalPB:r.finalPB,direction:out.direction,snapshots:rows.length}));
 })().catch(error=>{console.error(error);process.exit(1);});
