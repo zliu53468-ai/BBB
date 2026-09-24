@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/direct-global-probability-xgb
+      - feature/compact-56d-progress-clip
     paths:
       - "physics_feature_extractor.py"
       - "xgb_final_probability.py"
