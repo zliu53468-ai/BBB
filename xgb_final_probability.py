@@ -252,75 +252,22 @@ def _positive_class_probability(model: Any, features: np.ndarray) -> float:
     return _clip(float(probabilities[0, int(positive[0])]))
 
 
-def _direct_prediction_payload(
-    core_pb: float,
-    original_7d: Sequence[float],
-    physics_48d: Sequence[float],
-    *,
-    xgboost_model: Any,
-    probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
-) -> dict[str, Any]:
-    """Create the direct XGBoost result and decode its 48D physical forecast."""
+def predict_final_probability(core_pb, original_7d, physics_48d, *, xgboost_model, probability_bounds=PROBABILITY_BOUNDS):
+    original = np.asarray(original_7d, dtype=np.float32).reshape(-1)
     physics = _physics_vector(physics_48d)
-    features = build_56d_feature_matrix(core_pb, original_7d, physics)
+    round_index = float(original[1])
+    progress_w = (round_index / 70.0) ** 2
+    features = np.hstack(([core_pb, progress_w], original[1:], physics)).astype(np.float32).reshape(1, 56)
     raw_pb = _positive_class_probability(xgboost_model, features)
-    round_index = float(np.asarray(original_7d, dtype=np.float32).reshape(-1)[1])
-    lo, hi = dynamic_probability_bounds(round_index)
+    lo, hi = (0.45, 0.55) if round_index <= 40 else ((0.35, 0.65) if round_index > 50 else (0.40, 0.60))
     final_pb = _clip(raw_pb, lo, hi)
-    return {
-        "core_p_b": float(core_pb),
-        "raw_p_b": raw_pb,
-        "final_p_b": final_pb,
-        "direction": "B" if final_pb > 0.50 else "P",
-        "probability_bounds": {"min": lo, "max": hi},
-        "features": features,
-        "physics_forecast": unpack_physics_forecast(physics),
-        "shoe_progress_weight": shoe_progress_weight(round_index),
-        "physics_integrity": physics_integrity_report(physics),
-    }
+    return {"core_p_b":float(core_pb),"raw_p_b":raw_pb,"final_p_b":final_pb,"direction":"B" if final_pb>0.5 else "P",
+            "probability_bounds":{"min":lo,"max":hi},"features":features,"shoe_progress_weight":progress_w,
+            "physics_forecast":unpack_physics_forecast(physics),"physics_integrity":physics_integrity_report(physics)}
 
 
-def predict_final_probability(
-    core_pb: float,
-    original_7d: Sequence[float],
-    physics_48d: Sequence[float],
-    *,
-    xgboost_model: Any,
-    probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
-) -> dict[str, Any]:
-    """Return final P(B) and unpacked next-hand physical estimates.
-
-    The former ``Core P(B) + Delta`` operation does not exist in this path.
-    ``[0.40, 0.60]`` is the direct-probability equivalent of the previous
-    neutral-centred +/-0.10 safety envelope.  ``final_p_b`` is obtained from
-    ``xgboost_model.predict_proba(features)[:, 1]`` (the Banker class).
-    """
-    return _direct_prediction_payload(
-        core_pb,
-        original_7d,
-        physics_48d,
-        xgboost_model=xgboost_model,
-        probability_bounds=probability_bounds,
-    )
-
-
-def predict_final_result(
-    core_pb: float,
-    original_7d: Sequence[float],
-    physics_48d: Sequence[float],
-    *,
-    xgboost_model: Any,
-    probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
-) -> dict[str, Any]:
-    """Compatibility name for the complete direct probability result payload."""
-    return predict_final_probability(
-        core_pb,
-        original_7d,
-        physics_48d,
-        xgboost_model=xgboost_model,
-        probability_bounds=probability_bounds,
-    )
-
+def predict_final_result(core_pb, original_7d, physics_48d, *, xgboost_model, probability_bounds=PROBABILITY_BOUNDS):
+    return predict_final_probability(core_pb, original_7d, physics_48d, xgboost_model=xgboost_model, probability_bounds=probability_bounds)
 
 def _actual_b(record: Mapping[str, Any]) -> int:
     if record.get("actual_b") is not None:
