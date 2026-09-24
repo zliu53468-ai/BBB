@@ -27,12 +27,14 @@ class FinalProbabilityTests(unittest.TestCase):
         self.physics[26:39] = np.arange(1, 14, dtype=np.float32) / 10.0
         self.physics[39:43] = [0.1, 0.2, 0.3, 0.4]
 
-    def test_bridge_flattens_to_one_56d_matrix(self):
+    def test_bridge_flattens_to_one_57d_matrix(self):
         matrix = final.build_56d_feature_matrix(self.core, self.original, self.physics)
-        self.assertEqual(matrix.shape, (1, 56))
+        self.assertEqual(matrix.shape, (1, 57))
         self.assertAlmostEqual(float(matrix[0, 0]), self.core, places=6)
-        self.assertTrue(np.array_equal(matrix[0, 1:8], self.original))
-        self.assertTrue(np.array_equal(matrix[0, 8:], self.physics))
+        self.assertAlmostEqual(float(matrix[0, 1]), (15 / 70.0) ** 2, places=6)
+        self.assertTrue(np.array_equal(matrix[0, 2:8], self.original[1:]))
+        self.assertTrue(np.array_equal(matrix[0, 8:56], self.physics))
+        self.assertAlmostEqual(float(matrix[0, 56]), 0.0, places=6)
 
     def test_xgboost_probability_is_direct_and_bounded(self):
         model = FakeClassifier(0.87)
@@ -48,11 +50,21 @@ class FinalProbabilityTests(unittest.TestCase):
             self.physics,
             xgboost_model=model,
         )
-        self.assertAlmostEqual(prediction["final_p_b"], 0.60, places=6)
+        self.assertAlmostEqual(prediction["final_p_b"], 0.55, places=6)
         self.assertAlmostEqual(result["raw_p_b"], 0.87, places=6)
-        self.assertAlmostEqual(result["final_p_b"], 0.60, places=6)
+        self.assertAlmostEqual(result["final_p_b"], 0.55, places=6)
         self.assertEqual(result["direction"], "B")
-        self.assertEqual(model.seen.shape, (1, 56))
+        self.assertEqual(model.seen.shape, (1, 57))
+
+    def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
+        early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))
+        late_original = self.original.copy(); late_original[1] = 55
+        late = final.predict_final_probability(self.core, late_original, self.physics, xgboost_model=FakeClassifier(0.90))
+        noisy = self.physics.copy(); noisy[0] += 0.01
+        late_noisy = final.predict_final_probability(self.core, late_original, noisy, xgboost_model=FakeClassifier(0.90))
+        self.assertAlmostEqual(early["final_p_b"], 0.55, places=6)
+        self.assertAlmostEqual(late["final_p_b"], 0.65, places=6)
+        self.assertAlmostEqual(late_noisy["final_p_b"], 0.60, places=6)
 
     def test_physics_forecast_is_unpacked_with_expected_suit_consumption(self):
         forecast = final.unpack_physics_forecast(self.physics)
@@ -100,15 +112,15 @@ class FinalProbabilityTests(unittest.TestCase):
             {**common, "actual_outcome": "P"},
             {**common, "actual_outcome": "T"},
         ])
-        self.assertEqual(x.shape, (2, 56))
+        self.assertEqual(x.shape, (2, 57))
         self.assertTrue(np.array_equal(y, np.asarray([1, 0], dtype=np.int8)))
 
-    def test_training_prefers_captured_56d_snapshot(self):
+    def test_training_prefers_captured_57d_snapshot(self):
         snapshot = final.build_56d_feature_matrix(self.core, self.original, self.physics)
         x, y = final.make_training_arrays([
             {
                 "shoe_id": "shoe-snapshot",
-                "features_56d": snapshot.tolist(),
+                "features_57d": snapshot.tolist(),
                 "actual_b": 1,
             },
         ])
