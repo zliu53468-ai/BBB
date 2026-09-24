@@ -27,7 +27,13 @@ try:  # Keep vector-only tests usable before requirements-xgb.txt is installed.
 except ModuleNotFoundError:  # pragma: no cover - exercised only in lean dev envs
     XGBClassifier = None  # type: ignore[assignment,misc]
 
-from physics_feature_extractor import PHYSICS_DIM, PHYSICS_FEATURE_NAMES, PhysicsFeatureExtractor
+from physics_feature_extractor import (
+    PHYSICS_DIM,
+    PHYSICS_FEATURE_NAMES,
+    RANK_LABELS,
+    SUITS,
+    PhysicsFeatureExtractor,
+)
 
 MODEL_TYPE = "xgb_final_probability_classifier"
 RANDOM_STATE = 20260923
@@ -49,6 +55,13 @@ FEATURE_NAMES: tuple[str, ...] = (
     + PHYSICS_FEATURE_NAMES
 )
 assert len(FEATURE_NAMES) == FEATURE_DIM
+
+NEXT_CARD_COUNT_LABELS = ("4", "5", "6")
+_NEXT_CARD_COUNT_NAMES = tuple(f"cards_p{label}" for label in NEXT_CARD_COUNT_LABELS)
+_NEXT_RANK_CONSUMPTION_NAMES = tuple(f"next_rank_expected_{label}" for label in RANK_LABELS)
+_NEXT_SUIT_RATIO_NAMES = tuple(f"next_suit_ratio_{suit}" for suit in SUITS)
+_PHYSICS_INDEX = {name: index for index, name in enumerate(PHYSICS_FEATURE_NAMES)}
+assert all(name in _PHYSICS_INDEX for name in _NEXT_CARD_COUNT_NAMES + _NEXT_RANK_CONSUMPTION_NAMES + _NEXT_SUIT_RATIO_NAMES)
 
 
 def load_training_records(path: Path) -> list[dict[str, Any]]:
@@ -80,6 +93,55 @@ def _probability_bounds(bounds: Sequence[float]) -> tuple[float, float]:
     return lo, hi
 
 
+def _physics_vector(physics_48d: Sequence[float]) -> np.ndarray:
+    """Validate the already-produced 48D physical forecast without simulating it."""
+    physics = np.asarray(physics_48d, dtype=np.float32).reshape(-1)
+    if physics.size != PHYSICS_DIM:
+        raise ValueError(f"physics_48d must contain exactly {PHYSICS_DIM} values")
+    if not np.all(np.isfinite(physics)):
+        raise ValueError("physics_48d must contain only finite values")
+    return physics
+
+
+def unpack_physics_forecast(physics_48d: Sequence[float]) -> dict[str, Any]:
+    """Decode next-hand physical estimates embedded in the existing 48D vector.
+
+    This is a pure view of the supplied feature block: it does not invoke, train,
+    or alter any simulation/MCMC component.  Suit ratios are also converted to
+    expected cards by multiplying them by the decoded next-hand card expectation.
+    """
+    physics = _physics_vector(physics_48d)
+    value = lambda name: float(physics[_PHYSICS_INDEX[name]])
+
+    card_count_probabilities = {
+        f"{label}_cards": value(f"cards_p{label}")
+        for label in NEXT_CARD_COUNT_LABELS
+    }
+    expected_next_card_count = sum(
+        int(label) * card_count_probabilities[f"{label}_cards"]
+        for label in NEXT_CARD_COUNT_LABELS
+    )
+    rank_expected_consumption = {
+        label: value(f"next_rank_expected_{label}")
+        for label in RANK_LABELS
+    }
+    suit_consumption_ratios = {
+        suit: value(f"next_suit_ratio_{suit}")
+        for suit in SUITS
+    }
+    suit_expected_consumption = {
+        suit: expected_next_card_count * ratio
+        for suit, ratio in suit_consumption_ratios.items()
+    }
+    return {
+        "next_card_count_probabilities": card_count_probabilities,
+        "expected_next_card_count": float(expected_next_card_count),
+        "next_rank_expected_consumption": rank_expected_consumption,
+        "next_suit_consumption_ratios": suit_consumption_ratios,
+        "next_suit_expected_consumption": suit_expected_consumption,
+    }
+
+
 def build_56d_feature_matrix(
     core_pb: float,
     original_7d: Sequence[float],
@@ -93,7 +155,7 @@ def build_56d_feature_matrix(
     """
     core = np.asarray(core_pb, dtype=np.float32).reshape(-1)
     original = np.asarray(original_7d, dtype=np.float32).reshape(-1)
-    physics = np.asarray(physics_48d, dtype=np.float32).reshape(-1)
+    physics = _physics_vector(physics_48d)
 
     if core.size != 1:
         raise ValueError("core_pb must contain exactly one probability")
@@ -101,9 +163,7 @@ def build_56d_feature_matrix(
         raise ValueError("core_pb must be within [0, 1]")
     if original.size != 7:
         raise ValueError("original_7d must contain exactly 7 values")
-    if physics.size != PHYSICS_DIM:
-        raise ValueError(f"physics_48d must contain exactly {PHYSICS_DIM} values")
-    if not (np.all(np.isfinite(original)) and np.all(np.isfinite(physics))):
+    if not np.all(np.isfinite(original)):
         raise ValueError("feature blocks must contain only finite values")
 
     merged = np.hstack((core, original, physics)).astype(np.float32, copy=False)
@@ -145,6 +205,31 @@ def _positive_class_probability(model: Any, features: np.ndarray) -> float:
     return _clip(float(probabilities[0, int(positive[0])]))
 
 
+def _direct_prediction_payload(
+    core_pb: float,
+    original_7d: Sequence[float],
+    physics_48d: Sequence[float],
+    *,
+    xgboost_model: Any,
+    probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
+) -> dict[str, Any]:
+    """Create the direct XGBoost result and decode its 48D physical forecast."""
+    physics = _physics_vector(physics_48d)
+    features = build_56d_feature_matrix(core_pb, original_7d, physics)
+    raw_pb = _positive_class_probability(xgboost_model, features)
+    lo, hi = _probability_bounds(probability_bounds)
+    final_pb = _clip(raw_pb, lo, hi)
+    return {
+        "core_p_b": float(core_pb),
+        "raw_p_b": raw_pb,
+        "final_p_b": final_pb,
+        "direction": "B" if final_pb > 0.50 else "P",
+        "probability_bounds": {"min": lo, "max": hi},
+        "features": features,
+        "physics_forecast": unpack_physics_forecast(physics),
+    }
+
+
 def predict_final_probability(
     core_pb: float,
     original_7d: Sequence[float],
@@ -152,17 +237,21 @@ def predict_final_probability(
     *,
     xgboost_model: Any,
     probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
-) -> float:
-    """Return final P(B) directly from ``XGBClassifier.predict_proba``.
+) -> dict[str, Any]:
+    """Return final P(B) and unpacked next-hand physical estimates.
 
     The former ``Core P(B) + Delta`` operation does not exist in this path.
     ``[0.40, 0.60]`` is the direct-probability equivalent of the previous
-    neutral-centred +/-0.10 safety envelope.
+    neutral-centred +/-0.10 safety envelope.  ``final_p_b`` is obtained from
+    ``xgboost_model.predict_proba(features)[:, 1]`` (the Banker class).
     """
-    features = build_56d_feature_matrix(core_pb, original_7d, physics_48d)
-    raw_pb = _positive_class_probability(xgboost_model, features)
-    lo, hi = _probability_bounds(probability_bounds)
-    return _clip(raw_pb, lo, hi)
+    return _direct_prediction_payload(
+        core_pb,
+        original_7d,
+        physics_48d,
+        xgboost_model=xgboost_model,
+        probability_bounds=probability_bounds,
+    )
 
 
 def predict_final_result(
@@ -173,18 +262,14 @@ def predict_final_result(
     xgboost_model: Any,
     probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
 ) -> dict[str, Any]:
-    """Direct final probability plus the required Banker/Player decision."""
-    features = build_56d_feature_matrix(core_pb, original_7d, physics_48d)
-    raw_pb = _positive_class_probability(xgboost_model, features)
-    lo, hi = _probability_bounds(probability_bounds)
-    final_pb = _clip(raw_pb, lo, hi)
-    return {
-        "core_p_b": float(core_pb),
-        "raw_p_b": raw_pb,
-        "final_p_b": final_pb,
-        "direction": "B" if final_pb > 0.50 else "P",
-        "features": features,
-    }
+    """Compatibility name for the complete direct probability result payload."""
+    return predict_final_probability(
+        core_pb,
+        original_7d,
+        physics_48d,
+        xgboost_model=xgboost_model,
+        probability_bounds=probability_bounds,
+    )
 
 
 def _actual_b(record: Mapping[str, Any]) -> int:
