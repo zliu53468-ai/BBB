@@ -59,7 +59,8 @@ require("./final_probability_runtime.js");
     if(Math.abs(r.rawPB-.90)>1e-9)throw new Error("sigmoid probability was not used");
     if(Math.abs(r.finalPB-.55)>1e-9)throw new Error("early dynamic bounds were not applied");
   }
-  if(out.direction!=="B")throw new Error("B/P decision rule changed");
+  if(out.direction!=="B"||out.final_direction!=="莊 B")throw new Error("EV direction rule changed");
+  if(!(Number.isFinite(out.ev_banker)&&Number.isFinite(out.ev_player)&&out.ev_banker>out.ev_player))throw new Error("EV fields missing or inconsistent");
 
   api.registerPrediction(history,out);
   api.settlePending("B");
