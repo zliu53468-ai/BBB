@@ -54,6 +54,9 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertAlmostEqual(result["raw_p_b"], 0.87, places=6)
         self.assertAlmostEqual(result["final_p_b"], 0.55, places=6)
         self.assertEqual(result["direction"], "B")
+        self.assertEqual(result["final_direction"], "莊 B")
+        self.assertGreater(result["ev_banker"], result["ev_player"])
+        self.assertGreater(result["ev_banker"], 0.0)
         self.assertEqual(model.seen.shape, (1, 57))
 
     def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
