@@ -37,10 +37,13 @@ from physics_feature_extractor import (
 
 MODEL_TYPE = "xgb_final_probability_classifier"
 RANDOM_STATE = 20260923
-FEATURE_DIM = 56
+FEATURE_DIM = 57
 PROBABILITY_BOUNDS = (0.40, 0.60)
-SNAPSHOT_SCHEMA_VERSION = 5
+EARLY_PROBABILITY_BOUNDS = (0.45, 0.55)
+LATE_CLEAN_PROBABILITY_BOUNDS = (0.35, 0.65)
+SNAPSHOT_SCHEMA_VERSION = 6
 PHYSICS_PROBABILITY_TOLERANCE = 1e-4
+PHYSICS_NOISE_LOW_THRESHOLD = 2e-4
 PHYSICS_RANK_CONSUMPTION_TOLERANCE = 0.50
 ORIGINAL_7D_FEATURE_NAMES = (
     "core_p_b",
@@ -53,9 +56,10 @@ ORIGINAL_7D_FEATURE_NAMES = (
 )
 
 FEATURE_NAMES: tuple[str, ...] = (
-    ("core_p_b_external",)
-    + tuple(f"original7_{name}" for name in ORIGINAL_7D_FEATURE_NAMES)
+    ("core_p_b_external", "shoe_progress_weight")
+    + tuple(f"original7_{name}" for name in ORIGINAL_7D_FEATURE_NAMES[1:])
     + PHYSICS_FEATURE_NAMES
+    + ("physics_noise_score",)
 )
 assert len(FEATURE_NAMES) == FEATURE_DIM
 
@@ -180,6 +184,19 @@ def physics_integrity_report(physics_48d: Sequence[float]) -> dict[str, Any]:
     }
 
 
+def physics_noise_score(physics_48d: Sequence[float]) -> float:
+    report = physics_integrity_report(physics_48d)
+    return abs(report["card_count_probability_sum"] - 1.0) + abs(report["suit_ratio_sum"] - 1.0)
+
+
+def dynamic_probability_bounds(round_index: float, noise_score: float) -> tuple[float, float]:
+    if round_index <= 40:
+        return EARLY_PROBABILITY_BOUNDS
+    if round_index > 50 and noise_score <= PHYSICS_NOISE_LOW_THRESHOLD:
+        return LATE_CLEAN_PROBABILITY_BOUNDS
+    return PROBABILITY_BOUNDS
+
+
 def build_56d_feature_matrix(
     core_pb: float,
     original_7d: Sequence[float],
@@ -204,7 +221,9 @@ def build_56d_feature_matrix(
     if not np.all(np.isfinite(original)):
         raise ValueError("feature blocks must contain only finite values")
 
-    merged = np.hstack((core, original, physics)).astype(np.float32, copy=False)
+    progress_w = np.float32((float(original[1]) / 70.0) ** 2)
+    noise = np.float32(physics_noise_score(physics))
+    merged = np.hstack((core, [progress_w], original[1:], physics, [noise])).astype(np.float32, copy=False)
     if merged.size != FEATURE_DIM:
         raise RuntimeError(f"expected {FEATURE_DIM} features, got {merged.size}")
     return merged.reshape(1, FEATURE_DIM)
@@ -255,7 +274,9 @@ def _direct_prediction_payload(
     physics = _physics_vector(physics_48d)
     features = build_56d_feature_matrix(core_pb, original_7d, physics)
     raw_pb = _positive_class_probability(xgboost_model, features)
-    lo, hi = _probability_bounds(probability_bounds)
+    round_index = float(np.asarray(original_7d, dtype=np.float32).reshape(-1)[1])
+    noise_score = float(features[0, -1])
+    lo, hi = dynamic_probability_bounds(round_index, noise_score)
     final_pb = _clip(raw_pb, lo, hi)
     return {
         "core_p_b": float(core_pb),
@@ -263,6 +284,8 @@ def _direct_prediction_payload(
         "final_p_b": final_pb,
         "direction": "B" if final_pb > 0.50 else "P",
         "probability_bounds": {"min": lo, "max": hi},
+        "shoe_progress_weight": float(features[0, 1]),
+        "physics_noise_score": noise_score,
         "features": features,
         "physics_forecast": unpack_physics_forecast(physics),
         "physics_integrity": physics_integrity_report(physics),
