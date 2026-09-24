@@ -4,7 +4,7 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_56D_FINAL_PROBABILITY_V2";
+const VERSION="PHYSICS_57D_DYNAMIC_CLIP_V1";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -17,9 +17,9 @@ const PHYSICS_NAMES=[
 "next_suit_ratio_spades","next_suit_ratio_hearts","next_suit_ratio_diamonds","next_suit_ratio_clubs",
 "shoe_consumed_cards","remaining_low_rank_density","remaining_high_rank_density",
 "expected_point_diff_norm","expected_abs_point_diff_norm"];
-const EXTENDED_NAMES=["core_p_b_external",...ORIGINAL7_NAMES.map(x=>"original7_"+x),...PHYSICS_NAMES];
-const HISTORY_WINDOW=64,HISTORY_INPUT_DIM=213,PHYSICS_DIM=48;
-const DEFAULT_BOUNDS=[.40,.60];
+const EXTENDED_NAMES=["core_p_b_external",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...PHYSICS_NAMES,"shoe_progress_weight","physics_noise_score"];
+const HISTORY_WINDOW=64,HISTORY_INPUT_DIM=213,PHYSICS_DIM=48,FEATURE_DIM=57;
+const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.02;
 const TRAINING_KEY="bgs_xgb_final_training_v4",PENDING_KEY="bgs_xgb_final_pending_v4";
 const SHOE_KEY="bgs_xgb_final_shoe_id_v4",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
 const STORAGE_KEY="bgs256d_short_x_dynamic_v23",MAX_TRAINING_ROWS=15000;
@@ -108,7 +108,20 @@ function predictFinalProbability(bundle,vector,names){
   for(const tree of bundle.trees)margin+=evaluateTree(tree,vector,names);
   return clip(sigmoid(margin));
 }
-function buildExtended(corePB,o7,physics){const out=[corePB,...original7Vector(o7),...physics];if(out.length!==56)throw new Error("extended dim "+out.length);return out;}
+function physicsNoiseScore(physics){
+  const value=name=>{const v=+physics[PHYSICS_NAMES.indexOf(name)];return Number.isFinite(v)?v:0;};
+  const cardSum=value("cards_p4")+value("cards_p5")+value("cards_p6");
+  const suitSum=value("next_suit_ratio_spades")+value("next_suit_ratio_hearts")+value("next_suit_ratio_diamonds")+value("next_suit_ratio_clubs");
+  return Math.abs(cardSum-1)+Math.abs(suitSum-1);
+}
+function derivedPhysicsFeatures(o7,physics){
+  const roundIndex=Number.isFinite(+o7?.round_index)?+o7.round_index:0;
+  return {shoeProgressWeight:(roundIndex/70)**2,physicsNoiseScore:physicsNoiseScore(physics)};
+}
+function buildExtended(corePB,o7,physics,derived=derivedPhysicsFeatures(o7,physics)){
+  const out=[corePB,...original7Vector(o7).slice(1),...physics,derived.shoeProgressWeight,derived.physicsNoiseScore];
+  if(out.length!==FEATURE_DIM)throw new Error("extended dim "+out.length);return out;
+}
 function unpackPhysicsForecast(physics){
   if(!Array.isArray(physics)||physics.length!==PHYSICS_DIM)throw new Error("physics forecast dim mismatch");
   const value=name=>{const v=+physics[PHYSICS_NAMES.indexOf(name)];return Number.isFinite(v)?v:0;};
@@ -119,24 +132,27 @@ function unpackPhysicsForecast(physics){
   const suitExpectedConsumption=Object.fromEntries(Object.entries(suitConsumptionRatios).map(([suit,ratio])=>[suit,expectedNextCardCount*ratio]));
   return {nextCardCountProbabilities:cardCountProbabilities,expectedNextCardCount,rankExpectedConsumption,suitConsumptionRatios,suitExpectedConsumption};
 }
-function applyProbabilityBounds(rawPB,bundle){
+function applyProbabilityBounds(rawPB,bundle,roundIndex,noiseScore){
   const configured=Array.isArray(bundle?.probability_bounds)?bundle.probability_bounds:DEFAULT_BOUNDS;
-  const lo=clip(configured[0],0,.5),hi=clip(configured[1],.5,1);
-  return {value:clip(rawPB,lo,hi),low:lo,high:hi};
+  let lo=clip(configured[0],0,.5),hi=clip(configured[1],.5,1),regime="transition_or_noisy_physics";
+  if(+roundIndex<=40){[lo,hi]=EARLY_BOUNDS;regime="early";}
+  else if(+roundIndex>50&&+noiseScore<=PHYSICS_NOISE_LOW_THRESHOLD){[lo,hi]=LATE_BOUNDS;regime="late_clean_physics";}
+  return {value:clip(rawPB,lo,hi),low:lo,high:hi,regime};
 }
 
 function applyFinalPrediction(seq,corePrediction){
   const original7=buildOriginal7(seq,corePrediction),corePB=original7.core_p_b;
-  let physics=null,physicsForecast=null,extended=null,rawPB=corePB,finalPB=corePB,bounds=null,error="",mode="core";
+  let physics=null,physicsForecast=null,extended=null,derived=null,rawPB=corePB,finalPB=corePB,bounds=null,error="",mode="core";
   try{
     if(physicsBundle?.trained){
       physics=predictPhysics(seq);
       physicsForecast=unpackPhysicsForecast(physics);
     }
     if(physics&&final56Bundle?.trained){
-      extended=buildExtended(corePB,original7,physics);
+      derived=derivedPhysicsFeatures(original7,physics);
+      extended=buildExtended(corePB,original7,physics,derived);
       rawPB=predictFinalProbability(final56Bundle,extended,EXTENDED_NAMES);
-      bounds=applyProbabilityBounds(rawPB,final56Bundle);
+      bounds=applyProbabilityBounds(rawPB,final56Bundle,original7.round_index,derived.physicsNoiseScore);
       finalPB=bounds.value;
       mode="final56";
     }
@@ -146,7 +162,8 @@ function applyFinalPrediction(seq,corePrediction){
     regime:mode==="final56"?(direction!==corePrediction.direction?"Final XGB換邊":"Final XGB裁決"):corePrediction.regime,
     finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,finalPB,bounds,
       coreDirection:corePrediction.direction,finalDirection:direction,flipped:direction!==corePrediction.direction,
-      original7,physics,physicsForecast,extended,error}};
+      original7,physics,physicsForecast,shoeProgressWeight:derived?.shoeProgressWeight??null,
+      physicsNoiseScore:derived?.physicsNoiseScore??null,extended,error}};
 }
 
 function readHistory(){
@@ -190,7 +207,7 @@ function renderPrediction(p,n){
   const el=id=>document.getElementById(id),orb=el("directionOrb");if(!orb)return;const isB=p.direction==="B";
   el("directionText").textContent=isB?"莊":"閒";el("directionCode").textContent=isB?"BANKER":"PLAYER";el("confidence").textContent=(p.confidence*100).toFixed(1)+"%";
   el("regime").textContent=p.regime;el("strength").textContent=p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isB?"banker":"player");
-  if(el("modePill"))el("modePill").textContent=p.finalProbability?.mode==="final56"?"Final 56D 完成":"Core 完成";
+  if(el("modePill"))el("modePill").textContent=p.finalProbability?.mode==="final56"?"Final 57D 完成":"Core 完成";
   if(el("roundCount"))el("roundCount").textContent=n;if(el("message"))el("message").textContent="第 "+(n+1)+" 局分析完成";
 }
 function installUI(){
@@ -201,7 +218,7 @@ function installUI(){
   if(b)b.addEventListener("click",()=>settlePending("B"));if(p)p.addEventListener("click",()=>settlePending("P"));if(t)t.addEventListener("click",()=>settlePending("T"));
   const end=document.getElementById("btnEnd");if(end)end.addEventListener("click",rotateShoeId);
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsNoiseScore,derivedPhysicsFeatures,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,
   exportTrainingData,downloadTrainingData,getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 loadModels();installUI();
 })();
