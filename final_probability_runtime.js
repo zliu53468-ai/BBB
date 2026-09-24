@@ -4,7 +4,7 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_56D_FINAL_PROBABILITY_V1";
+const VERSION="PHYSICS_56D_FINAL_PROBABILITY_V2";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -109,6 +109,16 @@ function predictFinalProbability(bundle,vector,names){
   return clip(sigmoid(margin));
 }
 function buildExtended(corePB,o7,physics){const out=[corePB,...original7Vector(o7),...physics];if(out.length!==56)throw new Error("extended dim "+out.length);return out;}
+function unpackPhysicsForecast(physics){
+  if(!Array.isArray(physics)||physics.length!==PHYSICS_DIM)throw new Error("physics forecast dim mismatch");
+  const value=name=>{const v=+physics[PHYSICS_NAMES.indexOf(name)];return Number.isFinite(v)?v:0;};
+  const cardCountProbabilities={"4_cards":value("cards_p4"),"5_cards":value("cards_p5"),"6_cards":value("cards_p6")};
+  const expectedNextCardCount=4*cardCountProbabilities["4_cards"]+5*cardCountProbabilities["5_cards"]+6*cardCountProbabilities["6_cards"];
+  const rankExpectedConsumption=Object.fromEntries("A,2,3,4,5,6,7,8,9,10,J,Q,K".split(",").map(rank=>[rank,value("next_rank_expected_"+rank)]));
+  const suitConsumptionRatios=Object.fromEntries(["spades","hearts","diamonds","clubs"].map(suit=>[suit,value("next_suit_ratio_"+suit)]));
+  const suitExpectedConsumption=Object.fromEntries(Object.entries(suitConsumptionRatios).map(([suit,ratio])=>[suit,expectedNextCardCount*ratio]));
+  return {nextCardCountProbabilities:cardCountProbabilities,expectedNextCardCount,rankExpectedConsumption,suitConsumptionRatios,suitExpectedConsumption};
+}
 function applyProbabilityBounds(rawPB,bundle){
   const configured=Array.isArray(bundle?.probability_bounds)?bundle.probability_bounds:DEFAULT_BOUNDS;
   const lo=clip(configured[0],0,.5),hi=clip(configured[1],.5,1);
@@ -117,10 +127,13 @@ function applyProbabilityBounds(rawPB,bundle){
 
 function applyFinalPrediction(seq,corePrediction){
   const original7=buildOriginal7(seq,corePrediction),corePB=original7.core_p_b;
-  let physics=null,extended=null,rawPB=corePB,finalPB=corePB,bounds=null,error="",mode="core";
+  let physics=null,physicsForecast=null,extended=null,rawPB=corePB,finalPB=corePB,bounds=null,error="",mode="core";
   try{
-    if(physicsBundle?.trained&&final56Bundle?.trained){
+    if(physicsBundle?.trained){
       physics=predictPhysics(seq);
+      physicsForecast=unpackPhysicsForecast(physics);
+    }
+    if(physics&&final56Bundle?.trained){
       extended=buildExtended(corePB,original7,physics);
       rawPB=predictFinalProbability(final56Bundle,extended,EXTENDED_NAMES);
       bounds=applyProbabilityBounds(rawPB,final56Bundle);
@@ -133,7 +146,7 @@ function applyFinalPrediction(seq,corePrediction){
     regime:mode==="final56"?(direction!==corePrediction.direction?"Final XGB換邊":"Final XGB裁決"):corePrediction.regime,
     finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,finalPB,bounds,
       coreDirection:corePrediction.direction,finalDirection:direction,flipped:direction!==corePrediction.direction,
-      original7,physics,extended,error}};
+      original7,physics,physicsForecast,extended,error}};
 }
 
 function readHistory(){
@@ -188,7 +201,7 @@ function installUI(){
   if(b)b.addEventListener("click",()=>settlePending("B"));if(p)p.addEventListener("click",()=>settlePending("P"));if(t)t.addEventListener("click",()=>settlePending("T"));
   const end=document.getElementById("btnEnd");if(end)end.addEventListener("click",rotateShoeId);
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,applyFinalPrediction,predictPhysics,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,
   exportTrainingData,downloadTrainingData,getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 loadModels();installUI();
 })();
