@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Direct 57D XGBoost probability layer for the frozen BBB core.
+"""Direct 56D XGBoost probability layer for the frozen BBB core.
 
-The 257D JavaScript cores remain unchanged.  Their ``Core P(B)`` is only one
+The 256D JavaScript cores remain unchanged.  Their ``Core P(B)`` is only one
 input feature here; it is never added to a residual prediction.
 
 Feature order (fixed):
-    [Core P(B)] + [original 7D] + [physics 48D] = 57D
+    [Core P(B)] + [progress_w] + [original 7D without duplicate Core P(B)] + [physics 48D] = 56D
 
 Target (fixed):
     actual_B, where Player=0 and Banker=1
@@ -37,11 +37,10 @@ from physics_feature_extractor import (
 
 MODEL_TYPE = "xgb_final_probability_classifier"
 RANDOM_STATE = 20260923
-FEATURE_DIM = 57
+FEATURE_DIM = 56
 PROBABILITY_BOUNDS = (0.40, 0.60)
 EARLY_PROBABILITY_BOUNDS = (0.45, 0.55)
-LATE_LOW_NOISE_BOUNDS = (0.35, 0.65)
-PHYSICS_NOISE_LOW_THRESHOLD = 1e-3
+LATE_PROBABILITY_BOUNDS = (0.35, 0.65)
 SNAPSHOT_SCHEMA_VERSION = 6
 PHYSICS_PROBABILITY_TOLERANCE = 1e-4
 PHYSICS_RANK_CONSUMPTION_TOLERANCE = 0.50
@@ -56,11 +55,9 @@ ORIGINAL_7D_FEATURE_NAMES = (
 )
 
 FEATURE_NAMES: tuple[str, ...] = (
-    ("core_p_b_external",)
+    ("core_p_b_external", "shoe_progress_weight")
     + tuple(f"original7_{name}" for name in ORIGINAL_7D_FEATURE_NAMES[1:])
-    + ("shoe_progress_weight",)
     + PHYSICS_FEATURE_NAMES
-    + ("physics_noise_score",)
 )
 assert len(FEATURE_NAMES) == FEATURE_DIM
 
@@ -185,26 +182,18 @@ def physics_integrity_report(physics_48d: Sequence[float]) -> dict[str, Any]:
     }
 
 
-def physics_noise_score(physics_48d: Sequence[float]) -> float:
-    physics = _physics_vector(physics_48d)
-    card_sum = sum(float(physics[_PHYSICS_INDEX[name]]) for name in _NEXT_CARD_COUNT_NAMES)
-    suit_sum = sum(float(physics[_PHYSICS_INDEX[name]]) for name in _NEXT_SUIT_RATIO_NAMES)
-    return float(abs(card_sum - 1.0) + abs(suit_sum - 1.0))
-
-
 def shoe_progress_weight(round_index: float) -> float:
     return float((max(0.0, float(round_index)) / 70.0) ** 2)
 
 
-def dynamic_probability_bounds(round_index: float, noise_score: float) -> tuple[float, float]:
+def dynamic_probability_bounds(round_index: float) -> tuple[float, float]:
     if float(round_index) <= 40.0:
         return EARLY_PROBABILITY_BOUNDS
-    if float(round_index) > 50.0 and float(noise_score) <= PHYSICS_NOISE_LOW_THRESHOLD:
-        return LATE_LOW_NOISE_BOUNDS
+    if float(round_index) > 50.0:
+        return LATE_PROBABILITY_BOUNDS
     return PROBABILITY_BOUNDS
 
-
-def build_57d_feature_matrix(
+def build_56d_feature_matrix(
     core_pb: float,
     original_7d: Sequence[float],
     physics_48d: Sequence[float],
@@ -224,14 +213,11 @@ def build_57d_feature_matrix(
         raise ValueError("feature blocks must contain only finite values")
 
     progress = shoe_progress_weight(float(original[1]))
-    noise = physics_noise_score(physics)
-    merged = np.hstack((core, original[1:], [progress], physics, [noise])).astype(np.float32, copy=False)
+    merged = np.hstack((core, [progress], original[1:], physics)).astype(np.float32, copy=False)
     if merged.size != FEATURE_DIM:
         raise RuntimeError(f"expected {FEATURE_DIM} features, got {merged.size}")
     return merged.reshape(1, FEATURE_DIM)
 
-
-build_56d_feature_matrix = build_57d_feature_matrix
 
 def build_xgboost_classifier(*, random_state: int = RANDOM_STATE) -> Any:
     """Conservative direct-classification configuration; no residual target."""
@@ -276,11 +262,10 @@ def _direct_prediction_payload(
 ) -> dict[str, Any]:
     """Create the direct XGBoost result and decode its 48D physical forecast."""
     physics = _physics_vector(physics_48d)
-    features = build_57d_feature_matrix(core_pb, original_7d, physics)
+    features = build_56d_feature_matrix(core_pb, original_7d, physics)
     raw_pb = _positive_class_probability(xgboost_model, features)
     round_index = float(np.asarray(original_7d, dtype=np.float32).reshape(-1)[1])
-    noise_score = physics_noise_score(physics)
-    lo, hi = dynamic_probability_bounds(round_index, noise_score)
+    lo, hi = dynamic_probability_bounds(round_index)
     final_pb = _clip(raw_pb, lo, hi)
     return {
         "core_p_b": float(core_pb),
@@ -290,7 +275,6 @@ def _direct_prediction_payload(
         "probability_bounds": {"min": lo, "max": hi},
         "features": features,
         "physics_forecast": unpack_physics_forecast(physics),
-        "physics_noise_score": noise_score,
         "shoe_progress_weight": shoe_progress_weight(round_index),
         "physics_integrity": physics_integrity_report(physics),
     }
@@ -445,14 +429,14 @@ def _physics_48d(record: Mapping[str, Any], extractor: PhysicsFeatureExtractor |
 
 def _snapshot_56d(record: Mapping[str, Any]) -> np.ndarray | None:
     """Return the exact feature vector captured at prediction time, when present."""
-    snapshot = record.get("features_57d", record.get("feature_snapshot_57d"))
+    snapshot = record.get("features_56d", record.get("feature_snapshot_56d"))
     if snapshot is None:
         return None
     vector = np.asarray(snapshot, dtype=np.float32).reshape(-1)
     if vector.size != FEATURE_DIM:
-        raise ValueError(f"features_57d must contain exactly {FEATURE_DIM} values")
+        raise ValueError(f"features_56d must contain exactly {FEATURE_DIM} values")
     if not np.all(np.isfinite(vector)):
-        raise ValueError("features_57d must contain only finite values")
+        raise ValueError("features_56d must contain only finite values")
     return vector.reshape(1, FEATURE_DIM)
 
 
@@ -463,7 +447,7 @@ def make_training_dataset(
 ) -> tuple[np.ndarray, np.ndarray, list[Mapping[str, Any]]]:
     """Build direct-label training data and retain the matching chronological rows.
 
-    New browser records provide the exact 57D vector that was used at
+    New browser records provide the exact 56D vector that was used at
     prediction-time.  Older records remain supported by rebuilding the feature
     blocks only when no snapshot is available.
     """
@@ -500,7 +484,7 @@ def make_training_arrays(
     *,
     physics_extractor: PhysicsFeatureExtractor | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Build chronological 57D inputs with absolute binary labels (B=1/P=0)."""
+    """Build chronological 56D inputs with absolute binary labels (B=1/P=0)."""
     x, y, _ = make_training_dataset(records, physics_extractor=physics_extractor)
     return x, y
 
@@ -675,7 +659,7 @@ def train_command(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train the direct 57D final-probability XGBoost model")
+    parser = argparse.ArgumentParser(description="Train the direct 56D final-probability XGBoost model")
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train")
     train.add_argument("--input", required=True)
