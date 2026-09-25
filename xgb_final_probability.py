@@ -279,7 +279,7 @@ def _direct_prediction_payload(
     lo, hi = dynamic_probability_bounds(round_index, noise_score)
     final_pb = _clip(raw_pb, lo, hi)
     p_tie = _clip(float(physics[_PHYSICS_INDEX["winner_p_t"]]))
-    p_player = _clip(1.0 - final_pb - p_tie)
+    p_player = 1.0 - final_pb
     ev_banker = final_pb * 0.95 - p_player
     ev_player = p_player - final_pb
     direction = "B" if ev_banker > 0 and ev_banker > ev_player else "P" if ev_player > 0 and ev_player > ev_banker else "Skip"

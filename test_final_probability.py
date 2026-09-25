@@ -24,6 +24,7 @@ class FinalProbabilityTests(unittest.TestCase):
         self.original = np.asarray([0.53, 15, 60, 0.75, 0.5, 2, 1], dtype=np.float32)
         self.physics = np.zeros(PHYSICS_DIM, dtype=np.float32)
         self.physics[:3] = [0.2, 0.5, 0.3]
+        self.physics[23:26] = [0.4586, 0.4462, 0.0952]
         self.physics[26:39] = np.arange(1, 14, dtype=np.float32) / 10.0
         self.physics[39:43] = [0.1, 0.2, 0.3, 0.4]
 
@@ -58,6 +59,14 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertGreater(result["ev_banker"], result["ev_player"])
         self.assertGreater(result["ev_banker"], 0.0)
         self.assertEqual(model.seen.shape, (1, 57))
+
+    def test_player_ev_uses_binary_complement(self):
+        result = final.predict_final_probability(
+            self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.48)
+        )
+        self.assertAlmostEqual(result["p_player"], 0.52, places=6)
+        self.assertAlmostEqual(result["ev_player"], 0.04, places=6)
+        self.assertEqual(result["final_direction"], "閒 P")
 
     def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
         early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))

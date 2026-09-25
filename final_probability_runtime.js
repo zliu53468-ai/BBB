@@ -157,7 +157,7 @@ function applyFinalPrediction(seq,corePrediction){
       rawPB=predictFinalProbability(final56Bundle,extended,EXTENDED_NAMES);
       bounds=applyProbabilityBounds(rawPB,original7.round_index,extended.at(-1));
       finalPB=bounds.value;
-      const pTie=clip(+physics[PHYSICS_INDEX["winner_p_t"]]),pPlayer=clip(1-finalPB-pTie);
+      const pTie=clip(+physics[PHYSICS_INDEX["winner_p_t"]]),pPlayer=1-finalPB;
       const evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
       const direction=evBanker>0&&evBanker>evPlayer?"B":evPlayer>0&&evPlayer>evBanker?"P":"Skip";
       evDecision={pTie,pPlayer,evBanker,evPlayer,direction,finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="Skip"?0:Math.max(evBanker,evPlayer,0)};

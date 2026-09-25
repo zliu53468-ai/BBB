@@ -61,6 +61,13 @@ require("./final_probability_runtime.js");
   }
   if(out.direction!=="B"||out.final_direction!=="莊 B")throw new Error("EV direction rule changed");
   if(!(Number.isFinite(out.ev_banker)&&Number.isFinite(out.ev_player)&&out.ev_banker>out.ev_player))throw new Error("EV fields missing or inconsistent");
+  if(!useGeneratedBundle){
+    finalBundle.base_margin=Math.log(.48/.52);
+    const playerOut=api.applyFinalPrediction(history,core),playerResult=playerOut.finalProbability;
+    if(playerOut.direction!=="P"||playerOut.final_direction!=="閒 P")throw new Error("binary Player EV normalization failed");
+    if(Math.abs(playerResult.p_player-.52)>1e-9||Math.abs(playerOut.ev_player-.04)>1e-9)throw new Error("Player EV still subtracts tie probability");
+    finalBundle.base_margin=Math.log(.90/.10);
+  }
 
   api.registerPrediction(history,out);
   api.settlePending("B");
