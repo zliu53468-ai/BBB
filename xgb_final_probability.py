@@ -589,9 +589,10 @@ def _sample_weights(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 
 
 def _fit_platt(raw_probability: np.ndarray, y: np.ndarray) -> tuple[float,float]:
-    p=np.clip(np.asarray(raw_probability,dtype=float),1e-6,1-1e-6)
+    p=np.clip(np.asarray(raw_probability,dtype=float),1e-6,1-1e-6); labels=np.asarray(y,dtype=np.int8)
+    if np.unique(labels).size<2: return 1.0,0.0
     z=np.log(p/(1-p)).reshape(-1,1)
-    lr=LogisticRegression(C=1.0,solver="lbfgs",random_state=RANDOM_STATE).fit(z,np.asarray(y,dtype=np.int8))
+    lr=LogisticRegression(C=1.0,solver="lbfgs",random_state=RANDOM_STATE).fit(z,labels)
     return float(lr.coef_[0,0]),float(lr.intercept_[0])
 
 
