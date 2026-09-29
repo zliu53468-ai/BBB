@@ -52,6 +52,12 @@ assert PHYSICS_DIM == 48
 DEFAULT_MODEL_PATH = "physics_multitask_model.joblib"
 DEFAULT_BROWSER_BUNDLE = "physics_multitask_model.json"
 DEFAULT_RANDOM_STATE = 20260922
+PHYSICS_TASK_WEIGHTS = np.asarray(
+    [1.25] * 3 + [1.00] * 10 + [1.00] * 10 + [1.60] * 3
+    + [0.80] * 13 + [0.80] * 4 + [0.70] * 3 + [1.00] * 2,
+    dtype=np.float64,
+)
+DEFAULT_CALIBRATION_TEMPERATURES = (1.0, 1.0, 1.0, 1.0)
 
 
 def _clip(v: float, lo: float = 0.0, hi: float = 1.0) -> float:
@@ -274,6 +280,32 @@ def sanitize_physics_prediction(raw: Sequence[float]) -> np.ndarray:
     return out
 
 
+def _temperature_scale(block: Sequence[float], temperature: float) -> np.ndarray:
+    p=np.clip(np.asarray(block,dtype=np.float64),1e-8,1.0)
+    power=1.0/max(.25,min(4.0,float(temperature)))
+    q=np.power(p,power); return (q/q.sum()).astype(np.float32)
+
+
+def apply_physics_calibration(raw: Sequence[float], temperatures: Sequence[float]) -> np.ndarray:
+    out=np.asarray(raw,dtype=np.float32).copy()
+    temps=list(temperatures) if len(temperatures)==4 else list(DEFAULT_CALIBRATION_TEMPERATURES)
+    for (start,end),temp in zip(((0,3),(3,13),(13,23),(23,26)),temps):
+        out[start:end]=_temperature_scale(out[start:end],temp)
+    return out
+
+
+def fit_physics_temperatures(pred: np.ndarray, truth: np.ndarray) -> tuple[float,float,float,float]:
+    grid=np.linspace(.70,1.50,17)
+    best=[]
+    for start,end in ((0,3),(3,13),(13,23),(23,26)):
+        scores=[]
+        for temp in grid:
+            calibrated=np.vstack([_temperature_scale(row[start:end],temp) for row in pred])
+            scores.append(float(np.mean((calibrated-truth[:,start:end])**2)))
+        best.append(float(grid[int(np.argmin(scores))]))
+    return tuple(best)  # type: ignore[return-value]
+
+
 class PhysicsFeatureExtractor:
     """輕量 multi-task MLP：一個模型一次輸出完整 48D，適合 browser export。"""
     def __init__(self, *, random_state: int=DEFAULT_RANDOM_STATE):
@@ -297,17 +329,29 @@ class PhysicsFeatureExtractor:
             verbose=False,
         )
         self.is_fitted=False
+        self.calibration_temperatures=DEFAULT_CALIBRATION_TEMPERATURES
         self.metadata: dict[str,Any]={}
 
     def fit(self,x: np.ndarray,y: np.ndarray) -> "PhysicsFeatureExtractor":
         xx=np.asarray(x,dtype=np.float32); yy=np.asarray(y,dtype=np.float32)
         scaled=self.scaler.fit_transform(xx)
-        target_scaled=self.target_scaler.fit_transform(yy)
+        self.target_scaler.fit(yy)
+        self.target_scaler.scale_=self.target_scaler.scale_/np.sqrt(PHYSICS_TASK_WEIGHTS)
+        target_scaled=self.target_scaler.transform(yy)
+        # 213D stays fixed: augment only continuous 21D summary fields, never the 64x3 one-hot history.
+        rng=np.random.default_rng(self.random_state+17); n=max(0,int(len(xx)*.15))
+        if n:
+            idx=rng.choice(len(xx),size=n,replace=False); aug=xx[idx].copy()
+            aug[:,-HISTORY_SUMMARY_DIM:-2]=np.clip(
+                aug[:,-HISTORY_SUMMARY_DIM:-2]+rng.normal(0,.01,size=(n,HISTORY_SUMMARY_DIM-2)),0,1
+            )
+            scaled=np.vstack((scaled,self.scaler.transform(aug)))
+            target_scaled=np.vstack((target_scaled,self.target_scaler.transform(yy[idx])))
         self.model.fit(scaled,target_scaled)
         self.is_fitted=True
         return self
 
-    def train_from_simulation(self, *, n_shoes: int=800, cut_cards: int=60, validation_fraction: float=.2) -> dict[str,float]:
+    def train_from_simulation(self, *, n_shoes: int=3000, cut_cards: int=60, validation_fraction: float=.2) -> dict[str,float]:
         data=OfflineBaccaratSimulator(cut_cards=cut_cards,random_state=self.random_state).generate(n_shoes)
         unique=np.unique(data.shoe_ids); split=max(1,int(round(len(unique)*(1-validation_fraction))))
         train_ids=set(int(x) for x in unique[:split])
@@ -317,14 +361,21 @@ class PhysicsFeatureExtractor:
         raw=self.target_scaler.inverse_transform(raw_scaled)
         pred=np.vstack([sanitize_physics_prediction(v) for v in raw])
         truth=data.y[valid]
+        self.calibration_temperatures=fit_physics_temperatures(pred,truth)
+        pred=np.vstack([apply_physics_calibration(v,self.calibration_temperatures) for v in pred])
         metrics={
             "validation_rmse":float(np.sqrt(np.mean((pred-truth)**2))),
+            "validation_brier":float(np.mean((pred[:,:26]-truth[:,:26])**2)),
             "card_count_accuracy":float(np.mean(np.argmax(pred[:,:3],1)==np.argmax(truth[:,:3],1))),
             "winner_accuracy":float(np.mean(np.argmax(pred[:,23:26],1)==np.argmax(truth[:,23:26],1))),
-            "training_rows":float(train.sum()),"validation_rows":float(valid.sum())
+            "training_rows":float(train.sum()),"validation_rows":float(valid.sum()),
+            "training_shoes":float(len(train_ids)),"validation_shoes":float(len(unique)-len(train_ids)),
         }
         self.metadata={**metrics,"n_shoes":int(n_shoes),"cut_cards":int(cut_cards),
                        "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
+                       "task_loss_weights":PHYSICS_TASK_WEIGHTS.tolist(),
+                       "augmentation_fraction":.15,
+                       "calibration_temperatures":list(self.calibration_temperatures),
                        "feature_names":list(PHYSICS_FEATURE_NAMES),
                        "semantic_note":"conditional expectations; not unseen-card reconstruction"}
         return metrics
@@ -334,27 +385,30 @@ class PhysicsFeatureExtractor:
         x=history_to_vector(history_path).reshape(1,-1)
         raw_scaled=self.model.predict(self.scaler.transform(x))
         raw=self.target_scaler.inverse_transform(raw_scaled)[0]
-        return sanitize_physics_prediction(raw)
+        return apply_physics_calibration(sanitize_physics_prediction(raw),self.calibration_temperatures)
 
     def save(self,path: str | Path) -> None:
         if not self.is_fitted: raise RuntimeError("cannot save unfitted model")
-        joblib.dump({"schema_version":3,"scaler":self.scaler,"target_scaler":self.target_scaler,"model":self.model,"metadata":self.metadata},path)
+        joblib.dump({"schema_version":4,"scaler":self.scaler,"target_scaler":self.target_scaler,"model":self.model,
+                     "calibration_temperatures":self.calibration_temperatures,"metadata":self.metadata},path)
 
     @classmethod
     def load(cls,path: str | Path) -> "PhysicsFeatureExtractor":
         payload=joblib.load(path); obj=cls()
         obj.scaler=payload["scaler"]; obj.target_scaler=payload["target_scaler"]; obj.model=payload["model"]; obj.metadata=dict(payload.get("metadata") or {})
+        obj.calibration_temperatures=tuple(payload.get("calibration_temperatures") or obj.metadata.get("calibration_temperatures") or DEFAULT_CALIBRATION_TEMPERATURES)
         obj.is_fitted=True; return obj
 
     def export_browser_bundle(self,path: str | Path) -> dict[str,Any]:
         if not self.is_fitted: raise RuntimeError("physics model not fitted")
         bundle={
-            "schema_version":3,"model_type":"baccarat_physics_multitask_mlp","trained":True,
+            "schema_version":4,"model_type":"baccarat_physics_multitask_mlp","trained":True,
             "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
             "feature_names":list(PHYSICS_FEATURE_NAMES),
             "scaler":{"mean":self.scaler.mean_.tolist(),"scale":self.scaler.scale_.tolist()},
             "target_scaler":{"mean":self.target_scaler.mean_.tolist(),"scale":self.target_scaler.scale_.tolist()},
             "activation":"relu",
+            "calibration_temperatures":list(self.calibration_temperatures),
             "coefs":[w.tolist() for w in self.model.coefs_],
             "intercepts":[b.tolist() for b in self.model.intercepts_],
             "metadata":self.metadata,
@@ -387,7 +441,7 @@ def prepare_xgboost_input(core_pb: float, original_7d: Sequence[float], history_
 
 def build_parser() -> argparse.ArgumentParser:
     p=argparse.ArgumentParser(); sub=p.add_subparsers(dest="command",required=True)
-    t=sub.add_parser("train"); t.add_argument("--shoes",type=int,default=800); t.add_argument("--cut-cards",type=int,default=60)
+    t=sub.add_parser("train"); t.add_argument("--shoes",type=int,default=3000); t.add_argument("--cut-cards",type=int,default=60)
     t.add_argument("--output",default=DEFAULT_MODEL_PATH); t.add_argument("--browser-output",default=DEFAULT_BROWSER_BUNDLE)
     t.add_argument("--random-state",type=int,default=DEFAULT_RANDOM_STATE)
     s=sub.add_parser("simulate"); s.add_argument("--shoes",type=int,default=100); s.add_argument("--cut-cards",type=int,default=60)
