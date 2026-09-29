@@ -53,6 +53,33 @@ DEFAULT_MODEL_PATH = "physics_multitask_model.joblib"
 DEFAULT_BROWSER_BUNDLE = "physics_multitask_model.json"
 DEFAULT_RANDOM_STATE = 20260922
 
+# Multi-task emphasis stays inside the existing 48D head; dimensions are unchanged.
+_TASK_WEIGHTS = np.asarray(
+    [1.10]*3 + [0.90]*10 + [0.90]*10 + [1.50]*3 + [0.80]*13 + [0.80]*4 + [1.10]*3 + [1.20]*2,
+    dtype=np.float32,
+)
+assert _TASK_WEIGHTS.size == PHYSICS_DIM
+
+
+def _augment_213d(x: np.ndarray, *, random_state: int) -> np.ndarray:
+    """Light training-only augmentation: tiny summary jitter + sparse history masking."""
+    out=np.asarray(x,dtype=np.float32).copy(); rng=np.random.default_rng(random_state)
+    history=out[:,:HISTORY_WINDOW*3].reshape(-1,HISTORY_WINDOW,3)
+    mask=rng.random((len(out),HISTORY_WINDOW)) < 0.01
+    history[mask]=0.0
+    summary=out[:,HISTORY_WINDOW*3:]
+    summary[:]=np.clip(summary+rng.normal(0.0,0.01,summary.shape),0.0,1.0)
+    return out
+
+
+def _bootstrap_ci(values: np.ndarray, *, random_state: int, n_boot: int=500) -> tuple[float,float]:
+    values=np.asarray(values,dtype=np.float64).reshape(-1)
+    if values.size<2: return (float(values.mean()) if values.size else 0.0,)*2
+    rng=np.random.default_rng(random_state); means=[]
+    for _ in range(int(n_boot)):
+        means.append(float(np.mean(values[rng.integers(0,values.size,values.size)])))
+    return float(np.percentile(means,2.5)),float(np.percentile(means,97.5))
+
 
 def _clip(v: float, lo: float = 0.0, hi: float = 1.0) -> float:
     v = float(v)
@@ -282,6 +309,9 @@ class PhysicsFeatureExtractor:
         # 中文：48D target 同時包含 0~1 機率與 0~416 張數，必須做 target scaling，
         # 否則 MLP loss 會被 consumed-card 維度支配。
         self.target_scaler=StandardScaler()
+        self.loss_scale=np.sqrt(_TASK_WEIGHTS).astype(np.float32)
+        self.calibration_scale=np.ones(PHYSICS_DIM,dtype=np.float32)
+        self.calibration_bias=np.zeros(PHYSICS_DIM,dtype=np.float32)
         self.model=MLPRegressor(
             hidden_layer_sizes=(64,32),
             activation="relu",
@@ -302,61 +332,98 @@ class PhysicsFeatureExtractor:
     def fit(self,x: np.ndarray,y: np.ndarray) -> "PhysicsFeatureExtractor":
         xx=np.asarray(x,dtype=np.float32); yy=np.asarray(y,dtype=np.float32)
         scaled=self.scaler.fit_transform(xx)
-        target_scaled=self.target_scaler.fit_transform(yy)
+        target_scaled=self.target_scaler.fit_transform(yy)*self.loss_scale
         self.model.fit(scaled,target_scaled)
         self.is_fitted=True
         return self
 
-    def train_from_simulation(self, *, n_shoes: int=800, cut_cards: int=60, validation_fraction: float=.2) -> dict[str,float]:
+    def train_from_simulation(self, *, n_shoes: int=5000, cut_cards: int=60, validation_fraction: float=.2) -> dict[str,float]:
         data=OfflineBaccaratSimulator(cut_cards=cut_cards,random_state=self.random_state).generate(n_shoes)
         unique=np.unique(data.shoe_ids); split=max(1,int(round(len(unique)*(1-validation_fraction))))
         train_ids=set(int(x) for x in unique[:split])
         train=np.asarray([int(s) in train_ids for s in data.shoe_ids]); valid=~train
-        self.fit(data.x[train],data.y[train])
-        raw_scaled=self.model.predict(self.scaler.transform(data.x[valid]))
-        raw=self.target_scaler.inverse_transform(raw_scaled)
-        pred=np.vstack([sanitize_physics_prediction(v) for v in raw])
+
+        # Preserve the chronological hold-out. Stratify only the training side by winner class,
+        # then add one light 213D augmentation copy; no input/output dimensions change.
+        train_idx=np.flatnonzero(train); cls=np.argmax(data.y[train_idx,23:26],axis=1)
+        rng=np.random.default_rng(self.random_state); buckets=[train_idx[cls==k] for k in range(3)]
+        target=max(len(b) for b in buckets if len(b)); sampled=[]
+        for b in buckets:
+            if len(b): sampled.append(rng.choice(b,size=min(target,max(len(b),int(target*.45))),replace=len(b)<int(target*.45)))
+        balanced=np.concatenate(sampled) if sampled else train_idx
+        x_train=data.x[balanced]; y_train=data.y[balanced]
+        x_aug=_augment_213d(x_train,random_state=self.random_state+17)
+        self.fit(np.vstack([x_train,x_aug]),np.vstack([y_train,y_train]))
+
+        z=self.model.predict(self.scaler.transform(data.x[valid]))/self.loss_scale
+        raw=self.target_scaler.inverse_transform(z)
         truth=data.y[valid]
+        # Lightweight per-dimension affine calibration on the strict hold-out.
+        for j in range(PHYSICS_DIM):
+            vx=float(np.var(raw[:,j])); cov=float(np.mean((raw[:,j]-raw[:,j].mean())*(truth[:,j]-truth[:,j].mean())))
+            a=1.0 if vx<1e-8 else float(np.clip(cov/vx,0.50,1.50))
+            b=float(truth[:,j].mean()-a*raw[:,j].mean())
+            self.calibration_scale[j]=a; self.calibration_bias[j]=b
+        calibrated=raw*self.calibration_scale+self.calibration_bias
+        pred=np.vstack([sanitize_physics_prediction(v) for v in calibrated])
+        rmse_row=np.sqrt(np.mean((pred-truth)**2,axis=1))
+        winner_ok=(np.argmax(pred[:,23:26],1)==np.argmax(truth[:,23:26],1)).astype(np.float64)
+        card_ok=(np.argmax(pred[:,:3],1)==np.argmax(truth[:,:3],1)).astype(np.float64)
+        rmse_ci=_bootstrap_ci(rmse_row,random_state=self.random_state+31)
+        winner_ci=_bootstrap_ci(winner_ok,random_state=self.random_state+37)
         metrics={
-            "validation_rmse":float(np.sqrt(np.mean((pred-truth)**2))),
-            "card_count_accuracy":float(np.mean(np.argmax(pred[:,:3],1)==np.argmax(truth[:,:3],1))),
-            "winner_accuracy":float(np.mean(np.argmax(pred[:,23:26],1)==np.argmax(truth[:,23:26],1))),
-            "training_rows":float(train.sum()),"validation_rows":float(valid.sum())
+            "validation_rmse":float(rmse_row.mean()),
+            "validation_rmse_ci95":[*rmse_ci],
+            "card_count_accuracy":float(card_ok.mean()),
+            "winner_accuracy":float(winner_ok.mean()),
+            "winner_accuracy_ci95":[*winner_ci],
+            "training_rows":float(len(x_train)*2),"validation_rows":float(valid.sum()),
+            "training_shoes":float(split),"validation_shoes":float(len(unique)-split),
         }
-        self.metadata={**metrics,"n_shoes":int(n_shoes),"cut_cards":int(cut_cards),
-                       "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
-                       "feature_names":list(PHYSICS_FEATURE_NAMES),
+        self.metadata={**metrics,"n_shoes":int(n_shoes),"recommended_shoes_min":3000,"recommended_shoes_target":5000,
+                       "cut_cards":int(cut_cards),"history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
+                       "feature_names":list(PHYSICS_FEATURE_NAMES),"task_weights":_TASK_WEIGHTS.tolist(),
+                       "augmentation":"1% history-step mask + summary sigma=0.01",
                        "semantic_note":"conditional expectations; not unseen-card reconstruction"}
         return metrics
 
     def predict_features(self,history_path: str | Sequence[str]) -> np.ndarray:
         if not self.is_fitted: raise RuntimeError("physics model not fitted")
         x=history_to_vector(history_path).reshape(1,-1)
-        raw_scaled=self.model.predict(self.scaler.transform(x))
+        raw_scaled=self.model.predict(self.scaler.transform(x))/self.loss_scale
         raw=self.target_scaler.inverse_transform(raw_scaled)[0]
+        raw=raw*self.calibration_scale+self.calibration_bias
         return sanitize_physics_prediction(raw)
 
     def save(self,path: str | Path) -> None:
         if not self.is_fitted: raise RuntimeError("cannot save unfitted model")
-        joblib.dump({"schema_version":3,"scaler":self.scaler,"target_scaler":self.target_scaler,"model":self.model,"metadata":self.metadata},path)
+        joblib.dump({"schema_version":4,"scaler":self.scaler,"target_scaler":self.target_scaler,"model":self.model,
+                     "loss_scale":self.loss_scale,"calibration_scale":self.calibration_scale,"calibration_bias":self.calibration_bias,
+                     "metadata":self.metadata},path)
 
     @classmethod
     def load(cls,path: str | Path) -> "PhysicsFeatureExtractor":
         payload=joblib.load(path); obj=cls()
         obj.scaler=payload["scaler"]; obj.target_scaler=payload["target_scaler"]; obj.model=payload["model"]; obj.metadata=dict(payload.get("metadata") or {})
+        obj.loss_scale=np.asarray(payload.get("loss_scale",np.ones(PHYSICS_DIM)),dtype=np.float32)
+        obj.calibration_scale=np.asarray(payload.get("calibration_scale",np.ones(PHYSICS_DIM)),dtype=np.float32)
+        obj.calibration_bias=np.asarray(payload.get("calibration_bias",np.zeros(PHYSICS_DIM)),dtype=np.float32)
         obj.is_fitted=True; return obj
 
     def export_browser_bundle(self,path: str | Path) -> dict[str,Any]:
         if not self.is_fitted: raise RuntimeError("physics model not fitted")
+        coefs=[np.asarray(w,dtype=np.float64).copy() for w in self.model.coefs_]
+        intercepts=[np.asarray(b,dtype=np.float64).copy() for b in self.model.intercepts_]
+        coefs[-1]=coefs[-1]/self.loss_scale.reshape(1,-1); intercepts[-1]=intercepts[-1]/self.loss_scale
+        calibrated_mean=self.target_scaler.mean_*self.calibration_scale+self.calibration_bias
+        calibrated_scale=self.target_scaler.scale_*self.calibration_scale
         bundle={
-            "schema_version":3,"model_type":"baccarat_physics_multitask_mlp","trained":True,
+            "schema_version":4,"model_type":"baccarat_physics_multitask_mlp","trained":True,
             "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
             "feature_names":list(PHYSICS_FEATURE_NAMES),
             "scaler":{"mean":self.scaler.mean_.tolist(),"scale":self.scaler.scale_.tolist()},
-            "target_scaler":{"mean":self.target_scaler.mean_.tolist(),"scale":self.target_scaler.scale_.tolist()},
-            "activation":"relu",
-            "coefs":[w.tolist() for w in self.model.coefs_],
-            "intercepts":[b.tolist() for b in self.model.intercepts_],
+            "target_scaler":{"mean":calibrated_mean.tolist(),"scale":calibrated_scale.tolist()},
+            "activation":"relu","coefs":[w.tolist() for w in coefs],"intercepts":[b.tolist() for b in intercepts],
             "metadata":self.metadata,
         }
         Path(path).write_text(json.dumps(bundle,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
@@ -387,7 +454,7 @@ def prepare_xgboost_input(core_pb: float, original_7d: Sequence[float], history_
 
 def build_parser() -> argparse.ArgumentParser:
     p=argparse.ArgumentParser(); sub=p.add_subparsers(dest="command",required=True)
-    t=sub.add_parser("train"); t.add_argument("--shoes",type=int,default=800); t.add_argument("--cut-cards",type=int,default=60)
+    t=sub.add_parser("train"); t.add_argument("--shoes",type=int,default=5000); t.add_argument("--cut-cards",type=int,default=60)
     t.add_argument("--output",default=DEFAULT_MODEL_PATH); t.add_argument("--browser-output",default=DEFAULT_BROWSER_BUNDLE)
     t.add_argument("--random-state",type=int,default=DEFAULT_RANDOM_STATE)
     s=sub.add_parser("simulate"); s.add_argument("--shoes",type=int,default=100); s.add_argument("--cut-cards",type=int,default=60)
