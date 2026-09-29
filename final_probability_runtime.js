@@ -4,7 +4,7 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V4";
+const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V5";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -113,7 +113,7 @@ function predictFinalProbability(bundle,vector,names){
 }
 function physicsNoiseScore(physics){const r=physicsIntegrity(physics);return r?Math.abs(r.cardCountProbabilitySum-1)+Math.abs(r.suitRatioSum-1):1;}
 function buildExtended(corePB,o7,physics){
-  const original=original7Vector(o7),progress=(Number(original[1])/70)**2,noise=physicsNoiseScore(physics);
+  const original=original7Vector(o7),progress=(Number(original[1])/70)**3,noise=physicsNoiseScore(physics);
   const out=[corePB,progress,...original.slice(1),...physics,noise];if(out.length!==FEATURE_DIM)throw new Error("extended dim "+out.length);return out;
 }
 function unpackPhysicsForecast(physics){
@@ -159,17 +159,18 @@ function applyFinalPrediction(seq,corePrediction){
       finalPB=bounds.value;
       const pTie=clip(+physics[PHYSICS_INDEX["winner_p_t"]]),pPlayer=1-finalPB;
       const evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
-      const direction=evBanker>0&&evBanker>evPlayer?"B":evPlayer>0&&evPlayer>evBanker?"P":"Skip";
-      evDecision={pTie,pPlayer,evBanker,evPlayer,direction,finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="Skip"?0:Math.max(evBanker,evPlayer,0)};
+      const minEv=original7.round_index<=40?.020:original7.round_index>50?.005:.010;
+      const direction=evBanker>minEv&&evBanker>evPlayer?"B":evPlayer>minEv&&evPlayer>evBanker?"P":"Skip";
+      evDecision={pTie,pPlayer,evBanker,evPlayer,minEv,direction,finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="B"?evBanker-minEv:direction==="P"?evPlayer-minEv:0};
       mode="final56";
     }
   }catch(e){error=String(e?.message||e||"runtime_error");rawPB=corePB;finalPB=corePB;mode="core";}
-  const direction=evDecision?.direction||(finalPB>.5?"B":"P"),finalPP=1-finalPB;
-  const confidence=evDecision?.confidence??(direction==="B"?finalPB:finalPP);
-  return {...corePrediction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),confidence,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,probabilities:{B:finalPB,P:finalPP},
+  const direction=evDecision?.direction||corePrediction.direction,finalPP=1-finalPB;
+  const confidence=evDecision?.confidence??corePrediction.confidence??0;
+  return {...corePrediction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),confidence,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,probabilities:{B:finalPB,P:finalPP},
     regime:mode==="final56"?(direction==="Skip"?"EV 觀望":direction!==corePrediction.direction?"Final XGB換邊":"Final XGB裁決"):corePrediction.regime,
     finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,finalPB,bounds,
-      p_tie:evDecision?.pTie??null,p_player:evDecision?.pPlayer??null,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,
+      p_tie:evDecision?.pTie??null,p_player:evDecision?.pPlayer??null,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
       coreDirection:corePrediction.direction,finalDirection:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),flipped:direction!==corePrediction.direction,
       original7,physics,physicsForecast,physicsIntegrity:physicsIntegrityReport,dataQuality:dataQuality(seq),extended,error}};
 }
@@ -194,7 +195,7 @@ function registerPrediction(seq,prediction){
     core_p_b:f.core_p_b,round_index:f.round_index,estimated_total_hands:f.estimated_total_hands,remaining_ratio:f.remaining_ratio,
     sx_markov_p_same:f.sx_markov_p_same,stage:f.stage,depth:f.depth,original_7d:original7Vector(f),physics_48d:cloneFiniteVector(r.physics,PHYSICS_DIM),
     features_57d:cloneFiniteVector(r.extended,FEATURE_DIM),shoe_progress_weight:Number.isFinite(+r.extended?.[1])?+r.extended[1]:null,physics_noise_score:Number.isFinite(+r.extended?.at(-1))?+r.extended.at(-1):null,raw_p_b:Number.isFinite(+r.rawPB)?+r.rawPB:null,final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
-    probability_bounds:r.bounds?[r.bounds.low,r.bounds.high]:null,predicted_direction:r.finalDirection||prediction.direction||"",physics_integrity:r.physicsIntegrity||null};
+    probability_bounds:r.bounds?[r.bounds.low,r.bounds.high]:null,min_ev:Number.isFinite(+r.min_ev)?+r.min_ev:null,predicted_direction:r.finalDirection||prediction.direction||"",physics_integrity:r.physicsIntegrity||null};
   try{localStorage.setItem(PENDING_KEY,JSON.stringify(pending));}catch(_){}
 }
 function settlePending(actualOutcome){

@@ -59,13 +59,23 @@ require("./final_probability_runtime.js");
     if(Math.abs(r.rawPB-.90)>1e-9)throw new Error("sigmoid probability was not used");
     if(Math.abs(r.finalPB-.55)>1e-9)throw new Error("early dynamic bounds were not applied");
   }
-  if(out.direction!=="B"||out.final_direction!=="莊 B")throw new Error("EV direction rule changed");
-  if(!(Number.isFinite(out.ev_banker)&&Number.isFinite(out.ev_player)&&out.ev_banker>out.ev_player))throw new Error("EV fields missing or inconsistent");
+  if(!(Number.isFinite(out.ev_banker)&&Number.isFinite(out.ev_player)))throw new Error("EV fields missing");
+  const expectedDirection=out.ev_banker>out.min_ev&&out.ev_banker>out.ev_player?"B":out.ev_player>out.min_ev&&out.ev_player>out.ev_banker?"P":"Skip";
+  const expectedConfidence=expectedDirection==="B"?out.ev_banker-out.min_ev:expectedDirection==="P"?out.ev_player-out.min_ev:0;
+  if(out.direction!==expectedDirection||Math.abs(out.confidence-expectedConfidence)>1e-9||Math.abs(out.min_ev-.020)>1e-9)throw new Error("dynamic EV decision mismatch");
   if(!useGeneratedBundle){
     finalBundle.base_margin=Math.log(.48/.52);
     const playerOut=api.applyFinalPrediction(history,core),playerResult=playerOut.finalProbability;
     if(playerOut.direction!=="P"||playerOut.final_direction!=="閒 P")throw new Error("binary Player EV normalization failed");
-    if(Math.abs(playerResult.p_player-.52)>1e-9||Math.abs(playerOut.ev_player-.04)>1e-9)throw new Error("Player EV still subtracts tie probability");
+    if(Math.abs(playerResult.p_player-.52)>1e-9||Math.abs(playerOut.ev_player-.04)>1e-9||Math.abs(playerOut.confidence-.02)>1e-9)throw new Error("Player EV normalization or premium failed");
+    finalBundle.base_margin=Math.log(.494/.506);
+    const earlySkip=api.applyFinalPrediction(history,core);
+    if(earlySkip.direction!=="Skip"||Math.abs(earlySkip.min_ev-.020)>1e-9)throw new Error("early EV threshold failed");
+    const midHistory=Array.from({length:44},(_,i)=>i%2?"P":"B"),midCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(midHistory),midOut=api.applyFinalPrediction(midHistory,midCore);
+    if(midOut.direction!=="P"||Math.abs(midOut.min_ev-.010)>1e-9)throw new Error("middle EV threshold failed");
+    finalBundle.base_margin=Math.log(.497/.503);
+    const lateHistory=Array.from({length:54},(_,i)=>i%2?"P":"B"),lateCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(lateHistory),lateOut=api.applyFinalPrediction(lateHistory,lateCore);
+    if(lateOut.direction!=="P"||Math.abs(lateOut.min_ev-.005)>1e-9)throw new Error("late EV threshold failed");
     finalBundle.base_margin=Math.log(.90/.10);
   }
 

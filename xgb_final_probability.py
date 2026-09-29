@@ -221,7 +221,7 @@ def build_56d_feature_matrix(
     if not np.all(np.isfinite(original)):
         raise ValueError("feature blocks must contain only finite values")
 
-    progress_w = np.float32((float(original[1]) / 70.0) ** 2)
+    progress_w = np.float32((float(original[1]) / 70.0) ** 3)
     noise = np.float32(physics_noise_score(physics))
     merged = np.hstack((core, [progress_w], original[1:], physics, [noise])).astype(np.float32, copy=False)
     if merged.size != FEATURE_DIM:
@@ -282,9 +282,10 @@ def _direct_prediction_payload(
     p_player = 1.0 - final_pb
     ev_banker = final_pb * 0.95 - p_player
     ev_player = p_player - final_pb
-    direction = "B" if ev_banker > 0 and ev_banker > ev_player else "P" if ev_player > 0 and ev_player > ev_banker else "Skip"
+    min_ev = 0.020 if round_index <= 40 else 0.005 if round_index > 50 else 0.010
+    direction = "B" if ev_banker > min_ev and ev_banker > ev_player else "P" if ev_player > min_ev and ev_player > ev_banker else "Skip"
     final_direction = {"B": "莊 B", "P": "閒 P", "Skip": "觀望 Skip"}[direction]
-    confidence = max(ev_banker, ev_player, 0.0) if direction != "Skip" else 0.0
+    confidence = ev_banker - min_ev if direction == "B" else ev_player - min_ev if direction == "P" else 0.0
     return {
         "core_p_b": float(core_pb),
         "raw_p_b": raw_pb,
@@ -293,6 +294,7 @@ def _direct_prediction_payload(
         "p_player": p_player,
         "ev_banker": ev_banker,
         "ev_player": ev_player,
+        "min_ev": min_ev,
         "direction": direction,
         "final_direction": final_direction,
         "confidence": confidence,
@@ -470,7 +472,7 @@ def _snapshot_56d(record: Mapping[str, Any]) -> np.ndarray | None:
     physics = vector[8:]
     migrated = np.hstack((
         vector[0],
-        (float(vector[2]) / 70.0) ** 2,
+        (float(vector[2]) / 70.0) ** 3,
         vector[2:8],
         physics,
         physics_noise_score(physics),

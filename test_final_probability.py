@@ -32,7 +32,7 @@ class FinalProbabilityTests(unittest.TestCase):
         matrix = final.build_56d_feature_matrix(self.core, self.original, self.physics)
         self.assertEqual(matrix.shape, (1, 57))
         self.assertAlmostEqual(float(matrix[0, 0]), self.core, places=6)
-        self.assertAlmostEqual(float(matrix[0, 1]), (15 / 70.0) ** 2, places=6)
+        self.assertAlmostEqual(float(matrix[0, 1]), (15 / 70.0) ** 3, places=6)
         self.assertTrue(np.array_equal(matrix[0, 2:8], self.original[1:]))
         self.assertTrue(np.array_equal(matrix[0, 8:56], self.physics))
         self.assertAlmostEqual(float(matrix[0, 56]), 0.0, places=6)
@@ -66,7 +66,17 @@ class FinalProbabilityTests(unittest.TestCase):
         )
         self.assertAlmostEqual(result["p_player"], 0.52, places=6)
         self.assertAlmostEqual(result["ev_player"], 0.04, places=6)
+        self.assertAlmostEqual(result["min_ev"], 0.02, places=6)
+        self.assertAlmostEqual(result["confidence"], 0.02, places=6)
         self.assertEqual(result["final_direction"], "閒 P")
+
+    def test_dynamic_ev_thresholds(self):
+        cases = ((15, 0.494, 0.020, "觀望 Skip"), (45, 0.494, 0.010, "閒 P"), (55, 0.497, 0.005, "閒 P"))
+        for round_index, p_banker, min_ev, direction in cases:
+            original = self.original.copy(); original[1] = round_index
+            result = final.predict_final_probability(self.core, original, self.physics, xgboost_model=FakeClassifier(p_banker))
+            self.assertAlmostEqual(result["min_ev"], min_ev, places=6)
+            self.assertEqual(result["final_direction"], direction)
 
     def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
         early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))
