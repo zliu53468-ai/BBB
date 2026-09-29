@@ -35,7 +35,9 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertAlmostEqual(float(matrix[0, 1]), (15 / 70.0) ** 3, places=6)
         self.assertTrue(np.array_equal(matrix[0, 2:8], self.original[1:]))
         self.assertTrue(np.array_equal(matrix[0, 8:56], self.physics))
-        self.assertAlmostEqual(float(matrix[0, 56]), 0.0, places=6)
+        self.assertAlmostEqual(float(matrix[0, 56]), final.physics_noise_score(self.physics), places=6)
+        self.assertGreaterEqual(float(matrix[0, 56]), 0.0)
+        self.assertLessEqual(float(matrix[0, 56]), 1.0)
 
     def test_xgboost_probability_is_direct_and_bounded(self):
         model = FakeClassifier(0.87)
@@ -78,13 +80,19 @@ class FinalProbabilityTests(unittest.TestCase):
             self.assertAlmostEqual(result["min_ev"], min_ev, places=6)
             self.assertEqual(result["final_direction"], direction)
 
-    def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
+    def test_dynamic_bounds_expand_only_for_low_uncertainty_late_physics(self):
         early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))
         late_original = self.original.copy(); late_original[1] = 55
-        late = final.predict_final_probability(self.core, late_original, self.physics, xgboost_model=FakeClassifier(0.90))
-        noisy = self.physics.copy(); noisy[0] += 0.01
-        late_noisy = final.predict_final_probability(self.core, late_original, noisy, xgboost_model=FakeClassifier(0.90))
+        clean = np.zeros(PHYSICS_DIM, dtype=np.float32)
+        clean[:3] = [0.98, 0.01, 0.01]
+        clean[3] = 1.0; clean[13] = 1.0
+        clean[23:26] = [0.90, 0.09, 0.01]
+        clean[39] = 1.0
+        late = final.predict_final_probability(self.core, late_original, clean, xgboost_model=FakeClassifier(0.90))
+        late_noisy = final.predict_final_probability(self.core, late_original, self.physics, xgboost_model=FakeClassifier(0.90))
         self.assertAlmostEqual(early["final_p_b"], 0.55, places=6)
+        self.assertLessEqual(final.physics_noise_score(clean), final.PHYSICS_NOISE_LOW_THRESHOLD)
+        self.assertGreater(final.physics_noise_score(self.physics), final.PHYSICS_NOISE_LOW_THRESHOLD)
         self.assertAlmostEqual(late["final_p_b"], 0.65, places=6)
         self.assertAlmostEqual(late_noisy["final_p_b"], 0.60, places=6)
 

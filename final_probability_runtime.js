@@ -20,7 +20,7 @@ const PHYSICS_NAMES=[
 const PHYSICS_INDEX=Object.fromEntries(PHYSICS_NAMES.map((name,index)=>[name,index]));
 const EXTENDED_NAMES=["core_p_b_external","shoe_progress_weight",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...PHYSICS_NAMES,"physics_noise_score"];
 const HISTORY_WINDOW=64,HISTORY_INPUT_DIM=213,PHYSICS_DIM=48,FEATURE_DIM=57;
-const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=2e-4;
+const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.72;
 const SNAPSHOT_SCHEMA_VERSION=6;
 const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
 const SHOE_KEY="bgs_xgb_final_shoe_id_v5",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
@@ -57,7 +57,8 @@ function buildOriginal7(seq,corePrediction){
 }
 function original7Vector(f){return ORIGINAL7_NAMES.map(n=>Number.isFinite(+f[n])?+f[n]:0);}
 
-function entropy3(p){let s=0;for(const v of p)if(v>0)s-=v*Math.log(v);return s/Math.log(3);}
+function entropyN(p){let s=0,z=0;for(const v of p){const x=Math.max(0,+v||0);z+=x;}if(z<=1e-12)return 1;for(const v of p){const x=Math.max(0,+v||0)/z;if(x>0)s-=x*Math.log(x);}return s/Math.log(Math.max(2,p.length));}
+function entropy3(p){return entropyN(p);}
 function ratios(seq,n){const b=n?seq.slice(-n):seq;if(!b.length)return[0,0,0];return[b.filter(x=>x==="B").length/b.length,b.filter(x=>x==="P").length/b.length,b.filter(x=>x==="T").length/b.length];}
 function historyVector(seq){
   const one=Array(HISTORY_WINDOW*3).fill(0),tail=seq.slice(-HISTORY_WINDOW),offset=HISTORY_WINDOW-tail.length,map={B:0,P:1,T:2};
@@ -109,9 +110,17 @@ function predictFinalProbability(bundle,vector,names){
   if(!bundle?.trained||!Array.isArray(bundle.trees))return .5;
   let margin=+bundle.base_margin||0;
   for(const tree of bundle.trees)margin+=evaluateTree(tree,vector,names);
-  return clip(sigmoid(margin));
+  let p=clip(sigmoid(margin)),cal=bundle.calibration||{};
+  if(cal.type==="platt"){const z=Math.log(Math.max(1e-6,p)/Math.max(1e-6,1-p));p=clip(sigmoid((+cal.coef||1)*z+(+cal.intercept||0)));}
+  return p;
 }
-function physicsNoiseScore(physics){const r=physicsIntegrity(physics);return r?Math.abs(r.cardCountProbabilitySum-1)+Math.abs(r.suitRatioSum-1):1;}
+function physicsNoiseScore(physics){
+  if(!Array.isArray(physics)||physics.length!==PHYSICS_DIM)return 1;
+  const winner=physics.slice(23,26),dir=Math.max(1e-12,(+winner[0]||0)+(+winner[1]||0));
+  const marginUncertainty=1-Math.abs((+winner[0]||0)-(+winner[1]||0))/dir;
+  return clip(.15*entropyN(physics.slice(0,3))+.15*entropyN(physics.slice(3,13))+.15*entropyN(physics.slice(13,23))+
+    .30*entropyN(winner)+.10*entropyN(physics.slice(39,43))+.15*marginUncertainty);
+}
 function buildExtended(corePB,o7,physics){
   const original=original7Vector(o7),progress=(Number(original[1])/70)**3,noise=physicsNoiseScore(physics);
   const out=[corePB,progress,...original.slice(1),...physics,noise];if(out.length!==FEATURE_DIM)throw new Error("extended dim "+out.length);return out;
@@ -138,8 +147,10 @@ function physicsIntegrity(physics){
   return {valid:Object.values(checks).every(Boolean),checks,cardCountProbabilitySum,expectedNextCardCount:forecast.expectedNextCardCount,rankExpectedConsumptionTotal,rankExpectedTotalGap,rankExpectedTotalTolerance,suitRatioSum};
 }
 function dataQuality(seq){const directionalRounds=directionalRoundCount(seq);return {directionalRounds,stage:directionalRounds<12?"cold":directionalRounds<20?"warm":"ready",entryEligible:directionalRounds>=12,preferredEntry:directionalRounds>=20};}
-function applyProbabilityBounds(rawPB,roundIndex,noiseScore){
-  const pair=roundIndex<=40?EARLY_BOUNDS:(roundIndex>50&&noiseScore<=PHYSICS_NOISE_LOW_THRESHOLD?LATE_CLEAN_BOUNDS:DEFAULT_BOUNDS);
+function applyProbabilityBounds(rawPB,roundIndex,noiseScore,tuning=null){
+  const cfg=tuning||{},early=cfg.early_bounds||EARLY_BOUNDS,normal=cfg.default_bounds||DEFAULT_BOUNDS,late=cfg.late_clean_bounds||LATE_CLEAN_BOUNDS;
+  const noiseLimit=Number.isFinite(+cfg.noise_threshold)?+cfg.noise_threshold:PHYSICS_NOISE_LOW_THRESHOLD;
+  const pair=roundIndex<=40?early:(roundIndex>50&&noiseScore<=noiseLimit?late:normal);
   return {value:clip(rawPB,pair[0],pair[1]),low:pair[0],high:pair[1]};
 }
 
@@ -155,11 +166,12 @@ function applyFinalPrediction(seq,corePrediction){
     if(physics&&final56Bundle?.trained){
       extended=buildExtended(corePB,original7,physics);
       rawPB=predictFinalProbability(final56Bundle,extended,EXTENDED_NAMES);
-      bounds=applyProbabilityBounds(rawPB,original7.round_index,extended.at(-1));
+      const tuning=final56Bundle?.decision_tuning||null;
+      bounds=applyProbabilityBounds(rawPB,original7.round_index,extended.at(-1),tuning);
       finalPB=bounds.value;
       const pTie=clip(+physics[PHYSICS_INDEX["winner_p_t"]]),pPlayer=1-finalPB;
       const evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
-      const minEv=original7.round_index<=40?.020:original7.round_index>50?.005:.010;
+      const minEv=original7.round_index<=40?(Number.isFinite(+tuning?.early_ev)?+tuning.early_ev:.020):original7.round_index>50?(Number.isFinite(+tuning?.late_ev)?+tuning.late_ev:.005):(Number.isFinite(+tuning?.mid_ev)?+tuning.mid_ev:.010);
       const direction=evBanker>minEv&&evBanker>evPlayer?"B":evPlayer>minEv&&evPlayer>evBanker?"P":"Skip";
       evDecision={pTie,pPlayer,evBanker,evPlayer,minEv,direction,finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="B"?evBanker-minEv:direction==="P"?evPlayer-minEv:0};
       mode="final56";
