@@ -35,7 +35,20 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertAlmostEqual(float(matrix[0, 1]), (15 / 70.0) ** 3, places=6)
         self.assertTrue(np.array_equal(matrix[0, 2:8], self.original[1:]))
         self.assertTrue(np.array_equal(matrix[0, 8:56], self.physics))
-        self.assertAlmostEqual(float(matrix[0, 56]), 0.0, places=6)
+        self.assertAlmostEqual(float(matrix[0, 56]), final.physics_noise_score(self.physics), places=6)
+
+    def test_physics_noise_score_tracks_predictive_uncertainty(self):
+        uncertain = self.physics.copy()
+        uncertain[:3] = 1.0 / 3.0
+        uncertain[3:13] = 0.1
+        uncertain[13:23] = 0.1
+        uncertain[23:26] = 1.0 / 3.0
+        confident = uncertain.copy()
+        confident[:3] = [1.0, 0.0, 0.0]
+        confident[3:13] = [1.0] + [0.0] * 9
+        confident[13:23] = [1.0] + [0.0] * 9
+        confident[23:26] = [1.0, 0.0, 0.0]
+        self.assertGreater(final.physics_noise_score(uncertain), final.physics_noise_score(confident))
 
     def test_xgboost_probability_is_direct_and_bounded(self):
         model = FakeClassifier(0.87)
@@ -82,7 +95,11 @@ class FinalProbabilityTests(unittest.TestCase):
         early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))
         late_original = self.original.copy(); late_original[1] = 55
         late = final.predict_final_probability(self.core, late_original, self.physics, xgboost_model=FakeClassifier(0.90))
-        noisy = self.physics.copy(); noisy[0] += 0.01
+        noisy = self.physics.copy()
+        noisy[:3] = 1.0 / 3.0
+        noisy[3:13] = 0.1
+        noisy[13:23] = 0.1
+        noisy[23:26] = 1.0 / 3.0
         late_noisy = final.predict_final_probability(self.core, late_original, noisy, xgboost_model=FakeClassifier(0.90))
         self.assertAlmostEqual(early["final_p_b"], 0.55, places=6)
         self.assertAlmostEqual(late["final_p_b"], 0.65, places=6)
@@ -159,6 +176,38 @@ class FinalProbabilityTests(unittest.TestCase):
             mask,
             np.asarray([False, False, False, False, False, False, False, False, True]),
         ))
+
+    def test_three_way_split_keeps_complete_shoes_and_order(self):
+        records = [{"shoe_id": f"shoe-{shoe}"} for shoe in range(10) for _ in range(2)]
+        train, calibration, holdout = final.three_way_shoe_masks(
+            records, calibration_fraction=0.20, holdout_fraction=0.20
+        )
+        self.assertFalse(np.any(train & calibration) or np.any(train & holdout) or np.any(calibration & holdout))
+        self.assertTrue(np.all(train | calibration | holdout))
+        self.assertTrue(np.all(train[:12]))
+        self.assertTrue(np.all(calibration[12:16]))
+        self.assertTrue(np.all(holdout[16:]))
+
+        fit, tuning = final.nested_tuning_masks(records, train, fraction=0.20)
+        self.assertTrue(np.all(fit[:8]))
+        self.assertTrue(np.all(tuning[8:12]))
+        self.assertFalse(np.any((fit | tuning) & (calibration | holdout)))
+
+    def test_sample_weights_are_finite_and_normalized(self):
+        x = np.zeros((6, 57), dtype=np.float32)
+        x[:, 2] = [10, 20, 42, 48, 55, 60]
+        weights = final.balanced_sample_weights(np.asarray([0, 0, 0, 0, 1, 1]), x)
+        self.assertEqual(weights.shape, (6,))
+        self.assertTrue(np.all(np.isfinite(weights)))
+        self.assertAlmostEqual(float(np.mean(weights)), 1.0, places=6)
+
+    def test_ev_threshold_tuning_keeps_three_stages(self):
+        probability = np.asarray([0.45, 0.55, 0.46, 0.54, 0.44, 0.56] * 4)
+        actual = np.asarray([0, 1, 0, 1, 0, 1] * 4)
+        rounds = np.asarray([20, 25, 45, 48, 55, 60] * 4)
+        tuning = final.optimize_ev_thresholds(probability, actual, rounds)
+        self.assertEqual(set(tuning["thresholds"]), {"early", "middle", "late"})
+        self.assertEqual(set(tuning["stages"]), {"early", "middle", "late"})
 
     def test_classifier_is_binary_logistic(self):
         class CapturingClassifier:

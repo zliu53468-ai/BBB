@@ -20,7 +20,7 @@ const PHYSICS_NAMES=[
 const PHYSICS_INDEX=Object.fromEntries(PHYSICS_NAMES.map((name,index)=>[name,index]));
 const EXTENDED_NAMES=["core_p_b_external","shoe_progress_weight",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...PHYSICS_NAMES,"physics_noise_score"];
 const HISTORY_WINDOW=64,HISTORY_INPUT_DIM=213,PHYSICS_DIM=48,FEATURE_DIM=57;
-const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=2e-4;
+const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.95;
 const SNAPSHOT_SCHEMA_VERSION=6;
 const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
 const SHOE_KEY="bgs_xgb_final_shoe_id_v5",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
@@ -74,13 +74,14 @@ function dense(input,w,b,relu){
   return out;
 }
 function normalise(block,fallback){const a=block.map(v=>Math.max(0,Number.isFinite(+v)?+v:0)),s=a.reduce((x,y)=>x+y,0);return s>1e-12?a.map(v=>v/s):fallback.slice();}
-function sanitizePhysics(raw){
+function temperatureNorm(block,fallback,t=1){const p=normalise(block,fallback).map(v=>Math.max(1e-8,v)),z=p.map(v=>Math.log(v)/Math.max(.25,+t||1)),m=Math.max(...z),e=z.map(v=>Math.exp(v-m)),s=e.reduce((a,b)=>a+b,0);return e.map(v=>v/s);}
+function sanitizePhysics(raw,temperatures={}){
   if(raw.length!==PHYSICS_DIM)throw new Error("physics dim mismatch");
   const out=Array(PHYSICS_DIM).fill(0);let src=0,dst=0;
-  const copyNorm=(n,fb)=>{const a=normalise(raw.slice(src,src+n),fb);src+=n;for(const v of a)out[dst++]=v;};
-  copyNorm(3,[.58,.34,.08]);copyNorm(10,Array(10).fill(.1));copyNorm(10,Array(10).fill(.1));copyNorm(3,[.4586,.4462,.0952]);
+  const copyNorm=(n,fb,key)=>{const a=temperatureNorm(raw.slice(src,src+n),fb,temperatures[key]);src+=n;for(const v of a)out[dst++]=v;};
+  copyNorm(3,[.58,.34,.08],"card_count");copyNorm(10,Array(10).fill(.1),"player_points");copyNorm(10,Array(10).fill(.1),"banker_points");copyNorm(3,[.4586,.4462,.0952],"winner");
   for(let i=0;i<13;i++)out[dst++]=clip(raw[src++],0,6);
-  copyNorm(4,Array(4).fill(.25));
+  copyNorm(4,Array(4).fill(.25),"suit");
   out[dst++]=clip(raw[src++],0,416);out[dst++]=clip(raw[src++],0,1);out[dst++]=clip(raw[src++],0,1);
   out[dst++]=clip(raw[src++],-1,1);out[dst++]=clip(raw[src++],0,1);
   return out;
@@ -92,9 +93,12 @@ function predictPhysics(seq){
   const coefs=physicsBundle.coefs||[],intercepts=physicsBundle.intercepts||[];
   if(!coefs.length||coefs.length!==intercepts.length)throw new Error("invalid physics bundle");
   let h=x;for(let layer=0;layer<coefs.length;layer++)h=dense(h,coefs[layer],intercepts[layer],layer<coefs.length-1);
+  const lossScale=physicsBundle.loss_scale||[];h=h.map((v,i)=>(+v||0)/Math.max(1e-12,+lossScale[i]||1));
   const tMean=physicsBundle.target_scaler?.mean||[],tScale=physicsBundle.target_scaler?.scale||[];
   h=h.map((v,i)=>(+v||0)*Math.max(1e-12,+tScale[i]||1)+(+tMean[i]||0));
-  return sanitizePhysics(h);
+  const outputSlope=physicsBundle.output_calibration?.slope||[],outputIntercept=physicsBundle.output_calibration?.intercept||[];
+  h=h.map((v,i)=>v*(Number.isFinite(+outputSlope[i])?+outputSlope[i]:1)+(Number.isFinite(+outputIntercept[i])?+outputIntercept[i]:0));
+  return sanitizePhysics(h,physicsBundle.calibration_temperatures||{});
 }
 
 function findChild(node,id){return(node?.children||[]).find(c=>+c.nodeid===+id)||null;}
@@ -109,9 +113,19 @@ function predictFinalProbability(bundle,vector,names){
   if(!bundle?.trained||!Array.isArray(bundle.trees))return .5;
   let margin=+bundle.base_margin||0;
   for(const tree of bundle.trees)margin+=evaluateTree(tree,vector,names);
-  return clip(sigmoid(margin));
+  let probability=clip(sigmoid(margin),1e-7,1-1e-7),calibration=bundle.calibration||{};
+  if(calibration.method==="platt"){
+    const logit=Math.log(probability/(1-probability));
+    probability=sigmoid((+calibration.slope||1)*logit+(+calibration.intercept||0));
+  }
+  return clip(probability);
 }
-function physicsNoiseScore(physics){const r=physicsIntegrity(physics);return r?Math.abs(r.cardCountProbabilitySum-1)+Math.abs(r.suitRatioSum-1):1;}
+function normalisedEntropy(block){const p=normalise(block,Array(block.length).fill(1/block.length));return-p.reduce((s,v)=>s+(v>0?v*Math.log(v):0),0)/Math.log(block.length);}
+function physicsNoiseScore(physics){
+  if((final56Bundle?.training?.noise_score_version||1)<2){const r=physicsIntegrity(physics);return r?Math.abs(r.cardCountProbabilitySum-1)+Math.abs(r.suitRatioSum-1):1;}
+  const winner=physics.slice(23,26).sort((a,b)=>b-a),gap=(winner[0]||0)-(winner[1]||0);
+  return clip(.20*normalisedEntropy(physics.slice(0,3))+.15*normalisedEntropy(physics.slice(3,13))+.15*normalisedEntropy(physics.slice(13,23))+.35*normalisedEntropy(physics.slice(23,26))+.15*(1-gap));
+}
 function buildExtended(corePB,o7,physics){
   const original=original7Vector(o7),progress=(Number(original[1])/70)**3,noise=physicsNoiseScore(physics);
   const out=[corePB,progress,...original.slice(1),...physics,noise];if(out.length!==FEATURE_DIM)throw new Error("extended dim "+out.length);return out;
@@ -159,7 +173,8 @@ function applyFinalPrediction(seq,corePrediction){
       finalPB=bounds.value;
       const pTie=clip(+physics[PHYSICS_INDEX["winner_p_t"]]),pPlayer=1-finalPB;
       const evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
-      const minEv=original7.round_index<=40?.020:original7.round_index>50?.005:.010;
+      const threshold=final56Bundle.ev_thresholds||{},pick=(key,fallback)=>Number.isFinite(+threshold[key])?+threshold[key]:fallback;
+      const minEv=original7.round_index<=40?pick("early",.020):original7.round_index>50?pick("late",.005):pick("middle",.010);
       const direction=evBanker>minEv&&evBanker>evPlayer?"B":evPlayer>minEv&&evPlayer>evBanker?"P":"Skip";
       evDecision={pTie,pPlayer,evBanker,evPlayer,minEv,direction,finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="B"?evBanker-minEv:direction==="P"?evPlayer-minEv:0};
       mode="final56";

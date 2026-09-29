@@ -27,7 +27,7 @@ concurrency:
 jobs:
   build-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +49,7 @@ jobs:
       - name: Train browser physics multi-task model
         run: |
           python physics_feature_extractor.py train \
-            --shoes 300 \
+            --shoes 2500 \
             --cut-cards 60 \
             --output physics_multitask_model.joblib \
             --browser-output physics_multitask_model.json
@@ -57,7 +57,7 @@ jobs:
       - name: Generate independent synthetic binary-label dataset
         run: |
           python physics_feature_extractor.py simulate \
-            --shoes 250 \
+            --shoes 1000 \
             --cut-cards 60 \
           --output /tmp/physics_final_sim.npz \
           --rows-output /tmp/physics_final_rows.json
@@ -71,7 +71,8 @@ jobs:
             --input /tmp/physics_core_rows.json \
             --physics-model physics_multitask_model.joblib \
             --output final_probability_model.json \
-            --min-samples 3000 \
+            --min-samples 12000 \
+            --min-shoes 1000 \
             --probability-bounds 0.40 0.60
 
       - name: Browser production smoke test

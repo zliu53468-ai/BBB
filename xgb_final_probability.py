@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Direct 56D XGBoost probability layer for the frozen BBB core.
+"""Direct 57D XGBoost probability layer for the frozen BBB core.
 
 The 256D JavaScript cores remain unchanged.  Their ``Core P(B)`` is only one
 input feature here; it is never added to a residual prediction.
 
 Feature order (fixed):
-    [Core P(B)] + [original 7D] + [physics 48D] = 56D
+    [Core P(B), progress^3] + [original 7D without duplicate Core P(B)]
+    + [physics 48D] + [physics uncertainty] = 57D
 
 Target (fixed):
     actual_B, where Player=0 and Banker=1
@@ -21,10 +22,12 @@ from typing import Any, Mapping, Sequence
 
 import joblib
 import numpy as np
+from sklearn.linear_model import LogisticRegression
 
 try:  # Keep vector-only tests usable before requirements-xgb.txt is installed.
-    from xgboost import XGBClassifier
+    from xgboost import DMatrix, XGBClassifier
 except ModuleNotFoundError:  # pragma: no cover - exercised only in lean dev envs
+    DMatrix = None  # type: ignore[assignment,misc]
     XGBClassifier = None  # type: ignore[assignment,misc]
 
 from physics_feature_extractor import (
@@ -43,8 +46,17 @@ EARLY_PROBABILITY_BOUNDS = (0.45, 0.55)
 LATE_CLEAN_PROBABILITY_BOUNDS = (0.35, 0.65)
 SNAPSHOT_SCHEMA_VERSION = 6
 PHYSICS_PROBABILITY_TOLERANCE = 1e-4
-PHYSICS_NOISE_LOW_THRESHOLD = 2e-4
+PHYSICS_NOISE_LOW_THRESHOLD = 0.95
 PHYSICS_RANK_CONSUMPTION_TOLERANCE = 0.50
+DEFAULT_MIN_EV = {"early": 0.020, "middle": 0.010, "late": 0.005}
+XGB_TUNING_CANDIDATES: tuple[dict[str, Any], ...] = (
+    {"n_estimators": 420, "max_depth": 2, "learning_rate": 0.020, "min_child_weight": 18, "subsample": 0.80, "colsample_bytree": 0.75, "reg_alpha": 0.50, "reg_lambda": 16.0},
+    {"n_estimators": 600, "max_depth": 2, "learning_rate": 0.012, "min_child_weight": 12, "subsample": 0.85, "colsample_bytree": 0.85, "reg_alpha": 0.25, "reg_lambda": 12.0},
+    {"n_estimators": 520, "max_depth": 2, "learning_rate": 0.015, "min_child_weight": 24, "subsample": 0.90, "colsample_bytree": 0.70, "reg_alpha": 0.75, "reg_lambda": 20.0},
+    {"n_estimators": 360, "max_depth": 3, "learning_rate": 0.020, "min_child_weight": 18, "subsample": 0.80, "colsample_bytree": 0.75, "reg_alpha": 0.75, "reg_lambda": 18.0},
+    {"n_estimators": 480, "max_depth": 3, "learning_rate": 0.015, "min_child_weight": 24, "subsample": 0.90, "colsample_bytree": 0.80, "reg_alpha": 1.00, "reg_lambda": 24.0},
+    {"n_estimators": 700, "max_depth": 1, "learning_rate": 0.015, "min_child_weight": 10, "subsample": 0.90, "colsample_bytree": 0.90, "reg_alpha": 0.25, "reg_lambda": 12.0},
+)
 ORIGINAL_7D_FEATURE_NAMES = (
     "core_p_b",
     "round_index",
@@ -185,8 +197,23 @@ def physics_integrity_report(physics_48d: Sequence[float]) -> dict[str, Any]:
 
 
 def physics_noise_score(physics_48d: Sequence[float]) -> float:
-    report = physics_integrity_report(physics_48d)
-    return abs(report["card_count_probability_sum"] - 1.0) + abs(report["suit_ratio_sum"] - 1.0)
+    """Probability entropy plus winner ambiguity, scaled to [0, 1]."""
+    physics = _physics_vector(physics_48d).astype(np.float64)
+
+    def entropy(block: np.ndarray) -> float:
+        probability = np.clip(block, 1e-8, None)
+        probability /= probability.sum()
+        return float(-np.sum(probability * np.log(probability)) / math.log(len(probability)))
+
+    winner = np.sort(physics[23:26])[::-1]
+    winner_gap = float(winner[0] - winner[1])
+    return _clip(
+        0.20 * entropy(physics[0:3])
+        + 0.15 * entropy(physics[3:13])
+        + 0.15 * entropy(physics[13:23])
+        + 0.35 * entropy(physics[23:26])
+        + 0.15 * (1.0 - winner_gap)
+    )
 
 
 def dynamic_probability_bounds(round_index: float, noise_score: float) -> tuple[float, float]:
@@ -202,7 +229,7 @@ def build_56d_feature_matrix(
     original_7d: Sequence[float],
     physics_48d: Sequence[float],
 ) -> np.ndarray:
-    """Flatten and concatenate the three fixed input blocks into ``(1, 56)``.
+    """Build the compatibility-named fixed feature bridge as ``(1, 57)``.
 
     ``original_7d`` is intentionally not recalculated or reordered.  The
     physics block is supplied by the caller so no MCMC/simulation work happens
@@ -229,37 +256,38 @@ def build_56d_feature_matrix(
     return merged.reshape(1, FEATURE_DIM)
 
 
-def build_xgboost_classifier(*, random_state: int = RANDOM_STATE) -> Any:
+def build_xgboost_classifier(
+    *,
+    random_state: int = RANDOM_STATE,
+    overrides: Mapping[str, Any] | None = None,
+) -> Any:
     """Conservative direct-classification configuration; no residual target."""
     if XGBClassifier is None:
         raise RuntimeError("xgboost is required; install requirements-xgb.txt")
-    return XGBClassifier(
+    parameters: dict[str, Any] = dict(
         objective="binary:logistic",
         eval_metric="logloss",
-        n_estimators=320,
-        max_depth=3,
-        learning_rate=0.025,
-        min_child_weight=12,
-        subsample=0.85,
-        colsample_bytree=0.82,
-        reg_alpha=0.35,
-        reg_lambda=12.0,
+        n_estimators=420,
+        max_depth=2,
+        learning_rate=0.02,
+        min_child_weight=18,
+        subsample=0.80,
+        colsample_bytree=0.75,
+        reg_alpha=0.50,
+        reg_lambda=16.0,
         random_state=int(random_state),
         n_jobs=1,
         tree_method="hist",
         verbosity=0,
     )
+    parameters.update(overrides or {})
+    return XGBClassifier(**parameters)
 
 
 def _positive_class_probability(model: Any, features: np.ndarray) -> float:
-    probabilities = np.asarray(model.predict_proba(features), dtype=np.float64)
-    if probabilities.ndim != 2 or probabilities.shape[0] != 1:
-        raise RuntimeError("predict_proba must return one row per feature row")
-    classes = np.asarray(getattr(model, "classes_", (0, 1)))
-    positive = np.flatnonzero(classes == 1)
-    if positive.size != 1 or probabilities.shape[1] <= int(positive[0]):
-        raise RuntimeError("XGBoost classifier must expose class 1 (Banker)")
-    return _clip(float(probabilities[0, int(positive[0])]))
+    probabilities = _positive_probabilities(model, features)
+    calibrated = apply_probability_calibration(probabilities, getattr(model, "bbb_calibration_", None))
+    return _clip(float(calibrated[0]))
 
 
 def _direct_prediction_payload(
@@ -282,7 +310,9 @@ def _direct_prediction_payload(
     p_player = 1.0 - final_pb
     ev_banker = final_pb * 0.95 - p_player
     ev_player = p_player - final_pb
-    min_ev = 0.020 if round_index <= 40 else 0.005 if round_index > 50 else 0.010
+    ev_thresholds = dict(DEFAULT_MIN_EV)
+    ev_thresholds.update(getattr(xgboost_model, "bbb_ev_thresholds_", {}) or {})
+    min_ev = ev_thresholds["early"] if round_index <= 40 else ev_thresholds["late"] if round_index > 50 else ev_thresholds["middle"]
     direction = "B" if ev_banker > min_ev and ev_banker > ev_player else "P" if ev_player > min_ev and ev_player > ev_banker else "Skip"
     final_direction = {"B": "莊 B", "P": "閒 P", "Skip": "觀望 Skip"}[direction]
     confidence = ev_banker - min_ev if direction == "B" else ev_player - min_ev if direction == "P" else 0.0
@@ -571,6 +601,269 @@ def shoe_level_validation_mask(
     return np.asarray([shoe_id in validation_shoes for shoe_id in shoe_keys], dtype=bool)
 
 
+def three_way_shoe_masks(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    calibration_fraction: float = 0.15,
+    holdout_fraction: float = 0.20,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Chronological whole-shoe train/calibration/strict-holdout split."""
+    shoe_keys = [str(record.get("shoe_id") or "").strip() for record in records]
+    if any(not key for key in shoe_keys):
+        raise ValueError("three-way shoe split requires a non-empty shoe_id")
+    ordered_shoes = list(dict.fromkeys(shoe_keys))
+    if len(ordered_shoes) < 3:
+        raise ValueError("three-way shoe split requires at least three shoes")
+    calibration_fraction = min(0.40, max(0.05, float(calibration_fraction)))
+    holdout_fraction = min(0.40, max(0.05, float(holdout_fraction)))
+    holdout_count = max(1, int(math.ceil(len(ordered_shoes) * holdout_fraction)))
+    calibration_count = max(1, int(math.ceil(len(ordered_shoes) * calibration_fraction)))
+    calibration_count = min(calibration_count, len(ordered_shoes) - holdout_count - 1)
+    holdout_shoes = set(ordered_shoes[-holdout_count:])
+    calibration_shoes = set(ordered_shoes[-(holdout_count + calibration_count):-holdout_count])
+    holdout = np.asarray([key in holdout_shoes for key in shoe_keys], dtype=bool)
+    calibration = np.asarray([key in calibration_shoes for key in shoe_keys], dtype=bool)
+    train = ~(calibration | holdout)
+    return train, calibration, holdout
+
+
+def nested_tuning_masks(
+    records: Sequence[Mapping[str, Any]],
+    training: np.ndarray,
+    *,
+    fraction: float = 0.15,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reserve the latest whole shoes inside training for hyperparameter selection."""
+    keys = np.asarray([str(record.get("shoe_id") or "").strip() for record in records])
+    ordered = list(dict.fromkeys(keys[np.asarray(training, dtype=bool)].tolist()))
+    if len(ordered) < 2:
+        raise ValueError("nested tuning split requires at least two training shoes")
+    count = max(1, min(len(ordered) - 1, int(math.ceil(len(ordered) * min(0.30, max(0.05, float(fraction)))))))
+    tuning_shoes = set(ordered[-count:])
+    tuning = np.asarray(training, dtype=bool) & np.asarray([key in tuning_shoes for key in keys], dtype=bool)
+    fit = np.asarray(training, dtype=bool) & ~tuning
+    return fit, tuning
+
+
+def balanced_sample_weights(y: np.ndarray, x: np.ndarray) -> np.ndarray:
+    """Class- and round-stage-stratified weights without changing chronology."""
+    labels = np.asarray(y, dtype=np.int8).reshape(-1)
+    rounds = np.asarray(x, dtype=np.float64)[:, 2]
+    weights = np.ones(len(labels), dtype=np.float64)
+    for label in (0, 1):
+        mask = labels == label
+        if np.any(mask):
+            weights[mask] *= len(labels) / (2.0 * float(np.sum(mask)))
+    stages = (rounds > 40).astype(np.int8) + (rounds > 50).astype(np.int8)
+    present_stages = np.unique(stages)
+    for stage in present_stages:
+        mask = stages == stage
+        weights[mask] *= len(labels) / (len(present_stages) * float(np.sum(mask)))
+    progress = np.clip(np.asarray(x, dtype=np.float64)[:, 1], 0.0, 1.0)
+    uncertainty = np.clip(np.asarray(x, dtype=np.float64)[:, -1], 0.0, 1.0)
+    weights *= (0.90 + 0.20 * progress) * (1.25 - 0.50 * uncertainty)
+    weights = np.clip(weights, 0.25, 4.0)
+    return (weights / np.mean(weights)).astype(np.float32)
+
+
+def _positive_probabilities(model: Any, x: np.ndarray) -> np.ndarray:
+    probabilities = np.asarray(model.predict_proba(x), dtype=np.float64)
+    classes = np.asarray(getattr(model, "classes_", (0, 1)))
+    positive = np.flatnonzero(classes == 1)
+    if positive.size != 1:
+        raise RuntimeError("classifier has no Banker class")
+    return np.clip(probabilities[:, int(positive[0])], 1e-7, 1.0 - 1e-7)
+
+
+def fit_probability_calibration(
+    model: Any,
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    sample_weight: np.ndarray | None = None,
+) -> dict[str, Any]:
+    """Fit a light Platt map on the chronological calibration shoes."""
+    labels = np.asarray(y, dtype=np.int8)
+    if len(np.unique(labels)) < 2:
+        return {"method": "identity", "slope": 1.0, "intercept": 0.0}
+    probability = _positive_probabilities(model, x)
+    logits = np.log(probability / (1.0 - probability)).reshape(-1, 1)
+    calibrator = LogisticRegression(C=1.0, solver="lbfgs", max_iter=500, random_state=RANDOM_STATE)
+    calibrator.fit(logits, labels, sample_weight=sample_weight)
+    return {
+        "method": "platt",
+        "slope": float(calibrator.coef_[0, 0]),
+        "intercept": float(calibrator.intercept_[0]),
+    }
+
+
+def apply_probability_calibration(probability: np.ndarray, calibration: Mapping[str, Any] | None) -> np.ndarray:
+    values = np.clip(np.asarray(probability, dtype=np.float64), 1e-7, 1.0 - 1e-7)
+    if not calibration or calibration.get("method") != "platt":
+        return values
+    logits = np.log(values / (1.0 - values))
+    adjusted = float(calibration.get("slope", 1.0)) * logits + float(calibration.get("intercept", 0.0))
+    return 1.0 / (1.0 + np.exp(-np.clip(adjusted, -40.0, 40.0)))
+
+
+def feature_importance_report(
+    model: Any,
+    x: np.ndarray | None = None,
+    *,
+    top_n: int = 15,
+) -> dict[str, Any]:
+    booster = model.get_booster()
+    gain = booster.get_score(importance_type="gain")
+    ranked: list[tuple[str, float]] = []
+    for key, value in gain.items():
+        index = int(key[1:]) if key.startswith("f") and key[1:].isdigit() else FEATURE_NAMES.index(key)
+        if 0 <= index < FEATURE_DIM:
+            ranked.append((FEATURE_NAMES[index], float(value)))
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    total = sum(value for _, value in ranked) or 1.0
+    report: dict[str, Any] = {
+        "top_gain": [{"feature": name, "share": value / total} for name, value in ranked[:top_n]],
+        "unused_feature_count": FEATURE_DIM - len(ranked),
+    }
+    if x is not None and DMatrix is not None and len(x):
+        sample = np.asarray(x[: min(2048, len(x))], dtype=np.float32)
+        contributions = np.asarray(booster.predict(DMatrix(sample), pred_contribs=True), dtype=np.float64)
+        mean_absolute = np.mean(np.abs(contributions[:, :FEATURE_DIM]), axis=0)
+        shap_total = float(np.sum(mean_absolute)) or 1.0
+        order = np.argsort(mean_absolute)[::-1][:top_n]
+        report["top_mean_abs_shap"] = [
+            {"feature": FEATURE_NAMES[int(index)], "share": float(mean_absolute[index] / shap_total)}
+            for index in order
+        ]
+    return report
+
+
+def _stage_min_ev(rounds: np.ndarray, thresholds: Mapping[str, float]) -> np.ndarray:
+    values = np.full(len(rounds), float(thresholds["middle"]), dtype=np.float64)
+    values[rounds <= 40] = float(thresholds["early"])
+    values[rounds > 50] = float(thresholds["late"])
+    return values
+
+
+def decision_returns(
+    probability_b: np.ndarray,
+    actual_b: np.ndarray,
+    rounds: np.ndarray,
+    thresholds: Mapping[str, float],
+) -> tuple[np.ndarray, np.ndarray]:
+    probability_b = np.asarray(probability_b, dtype=np.float64)
+    actual_b = np.asarray(actual_b, dtype=np.int8)
+    probability_p = 1.0 - probability_b
+    ev_banker = probability_b * 0.95 - probability_p
+    ev_player = probability_p - probability_b
+    min_ev = _stage_min_ev(np.asarray(rounds, dtype=np.float64), thresholds)
+    banker = (ev_banker > min_ev) & (ev_banker > ev_player)
+    player = (ev_player > min_ev) & (ev_player > ev_banker)
+    wagered = banker | player
+    realised = np.zeros(len(probability_b), dtype=np.float64)
+    realised[banker] = np.where(actual_b[banker] == 1, 0.95, -1.0)
+    realised[player] = np.where(actual_b[player] == 0, 1.0, -1.0)
+    return realised, wagered
+
+
+def optimize_ev_thresholds(
+    probability_b: np.ndarray,
+    actual_b: np.ndarray,
+    rounds: np.ndarray,
+) -> dict[str, Any]:
+    """Tune only the three existing threshold numbers on validation data."""
+    thresholds = dict(DEFAULT_MIN_EV)
+    grids = {
+        "early": np.arange(0.010, 0.0351, 0.0025),
+        "middle": np.arange(0.005, 0.0201, 0.0025),
+        "late": np.arange(0.000, 0.0126, 0.00125),
+    }
+    masks = {
+        "early": np.asarray(rounds) <= 40,
+        "middle": (np.asarray(rounds) > 40) & (np.asarray(rounds) <= 50),
+        "late": np.asarray(rounds) > 50,
+    }
+    stages: dict[str, Any] = {}
+    for stage, mask in masks.items():
+        count = int(np.sum(mask))
+        if not count:
+            stages[stage] = {"rows": 0, "min_ev": thresholds[stage]}
+            continue
+        minimum_wagers = min(count, max(5, int(math.ceil(count * 0.05))))
+        best: tuple[float, float, float, int] | None = None
+        candidates = sorted(set(float(value) for value in grids[stage]) | {float(DEFAULT_MIN_EV[stage])})
+        for candidate in candidates:
+            trial = dict(thresholds)
+            trial[stage] = candidate
+            realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], trial)
+            wagers = int(np.sum(wagered))
+            if wagers < minimum_wagers:
+                continue
+            score = float(np.mean(realised))
+            per_bet = float(np.sum(realised) / wagers)
+            result = (score, per_bet, -candidate, wagers)
+            if best is None or result > best:
+                best = result
+        if best is not None:
+            thresholds[stage] = float(-best[2])
+        realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], thresholds)
+        wagers = int(np.sum(wagered))
+        stages[stage] = {
+            "rows": count,
+            "wagers": wagers,
+            "action_rate": wagers / count,
+            "realized_ev_per_bet": float(np.sum(realised) / wagers) if wagers else 0.0,
+            "min_ev": thresholds[stage],
+        }
+    return {"thresholds": thresholds, "stages": stages}
+
+
+def shoe_bootstrap_ci(
+    values: np.ndarray,
+    shoe_ids: Sequence[str],
+    *,
+    samples: int = 1000,
+    random_state: int = RANDOM_STATE,
+) -> list[float]:
+    values = np.asarray(values, dtype=np.float64)
+    shoes = np.asarray([str(value) for value in shoe_ids])
+    unique = np.unique(shoes)
+    if len(values) != len(shoes) or not len(values):
+        raise ValueError("bootstrap values and shoe_ids must be non-empty and aligned")
+    if len(unique) < 2 or samples < 2:
+        point = float(np.mean(values))
+        return [point, point]
+    rng = np.random.default_rng(random_state)
+    estimates = np.empty(int(samples), dtype=np.float64)
+    indices = {shoe: np.flatnonzero(shoes == shoe) for shoe in unique}
+    for index in range(int(samples)):
+        selected = rng.choice(unique, size=len(unique), replace=True)
+        rows = np.concatenate([indices[shoe] for shoe in selected])
+        estimates[index] = float(np.mean(values[rows]))
+    return [float(value) for value in np.quantile(estimates, [0.025, 0.975])]
+
+
+def shoe_bootstrap_ratio_ci(
+    numerator: np.ndarray,
+    denominator: np.ndarray,
+    shoe_ids: Sequence[str],
+    *,
+    samples: int = 1000,
+    random_state: int = RANDOM_STATE,
+) -> list[float]:
+    numerator=np.asarray(numerator,dtype=np.float64); denominator=np.asarray(denominator,dtype=np.float64)
+    shoes=np.asarray([str(value) for value in shoe_ids]); unique=np.unique(shoes)
+    if len(numerator)!=len(denominator) or len(numerator)!=len(shoes):
+        raise ValueError("bootstrap ratio inputs must be aligned")
+    rng=np.random.default_rng(random_state); estimates=[]; indices={shoe:np.flatnonzero(shoes==shoe) for shoe in unique}
+    for _ in range(max(1,int(samples))):
+        selected=rng.choice(unique,size=len(unique),replace=True); rows=np.concatenate([indices[shoe] for shoe in selected])
+        total=float(np.sum(denominator[rows]))
+        if total>0: estimates.append(float(np.sum(numerator[rows])/total))
+    point=float(np.sum(numerator)/np.sum(denominator)) if np.sum(denominator)>0 else 0.0
+    return [float(value) for value in np.quantile(estimates,[.025,.975])] if len(estimates)>1 else [point,point]
+
+
 def _accuracy(probability_b: np.ndarray, actual_b: np.ndarray) -> float:
     return float(np.mean((probability_b > 0.50) == (actual_b > 0)))
 
@@ -579,24 +872,92 @@ def _brier(probability_b: np.ndarray, actual_b: np.ndarray) -> float:
     return float(np.mean((probability_b.astype(float) - actual_b.astype(float)) ** 2))
 
 
-def evaluate(model: Any, x: np.ndarray, y: np.ndarray, *, probability_bounds: Sequence[float]) -> dict[str, Any]:
-    probabilities = np.asarray(model.predict_proba(x), dtype=np.float64)
-    classes = np.asarray(getattr(model, "classes_", (0, 1)))
-    positive = np.flatnonzero(classes == 1)
-    if positive.size != 1:
-        raise RuntimeError("classifier has no Banker class")
-    raw = np.clip(probabilities[:, int(positive[0])], 0.0, 1.0)
-    final = np.asarray([
+def bounded_probabilities(
+    model: Any,
+    x: np.ndarray,
+    calibration: Mapping[str, Any] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    uncalibrated = _positive_probabilities(model, x)
+    calibrated = apply_probability_calibration(uncalibrated, calibration)
+    bounded = np.asarray([
         _clip(pb, *dynamic_probability_bounds(float(row[2]), float(row[-1])))
-        for pb, row in zip(raw, x)
+        for pb, row in zip(calibrated, x)
     ], dtype=np.float64)
+    return uncalibrated, calibrated, bounded
+
+
+def evaluate(
+    model: Any,
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    probability_bounds: Sequence[float],
+    calibration: Mapping[str, Any] | None = None,
+    ev_thresholds: Mapping[str, float] | None = None,
+    shoe_ids: Sequence[str] | None = None,
+    bootstrap_samples: int = 1000,
+) -> dict[str, Any]:
+    uncalibrated, raw, final = bounded_probabilities(model, x, calibration)
+    rounds = np.asarray(x[:, 2], dtype=np.float64)
+    thresholds = dict(DEFAULT_MIN_EV)
+    thresholds.update(ev_thresholds or {})
+    realised, wagered = decision_returns(final, y, rounds, thresholds)
+    shoe_ids = list(shoe_ids) if shoe_ids is not None else [str(index) for index in range(len(y))]
+    correct = ((final > 0.50) == (y > 0)).astype(np.float64)
     return {
         "samples": float(len(y)),
+        "uncalibrated_brier": _brier(uncalibrated, y),
         "raw_accuracy": _accuracy(raw, y),
         "raw_brier": _brier(raw, y),
         "bounded_accuracy": _accuracy(final, y),
+        "bounded_accuracy_ci95": shoe_bootstrap_ci(correct, shoe_ids, samples=bootstrap_samples),
         "bounded_brier": _brier(final, y),
+        "bounded_brier_ci95": shoe_bootstrap_ci((final - y) ** 2, shoe_ids, samples=bootstrap_samples),
+        "realized_ev_per_row": float(np.mean(realised)),
+        "realized_ev_per_bet": float(np.sum(realised) / np.sum(wagered)) if np.any(wagered) else 0.0,
+        "realized_ev_per_bet_ci95": shoe_bootstrap_ratio_ci(realised, wagered, shoe_ids, samples=bootstrap_samples),
+        "realized_ev_per_row_ci95": shoe_bootstrap_ci(realised, shoe_ids, samples=bootstrap_samples),
+        "action_rate": float(np.mean(wagered)),
+        "evaluated_min_ev": thresholds,
     }
+
+
+def select_xgboost_model(
+    x: np.ndarray,
+    y: np.ndarray,
+    train: np.ndarray,
+    validation: np.ndarray,
+    *,
+    trials: int = len(XGB_TUNING_CANDIDATES),
+    random_state: int = RANDOM_STATE,
+) -> tuple[Any, dict[str, Any], list[dict[str, Any]]]:
+    """Small deterministic search scored by bounded Brier and realised EV."""
+    limit = max(1, min(int(trials), len(XGB_TUNING_CANDIDATES)))
+    reports: list[dict[str, Any]] = []
+    best: tuple[float, Any, dict[str, Any]] | None = None
+    weights = balanced_sample_weights(y[train], x[train])
+    rounds = np.asarray(x[validation, 2], dtype=np.float64)
+    for index, parameters in enumerate(XGB_TUNING_CANDIDATES[:limit]):
+        model = build_xgboost_classifier(random_state=random_state + index, overrides=parameters)
+        model.fit(x[train], y[train], sample_weight=weights)
+        _, _, probability = bounded_probabilities(model, x[validation])
+        realised, wagered = decision_returns(probability, y[validation], rounds, DEFAULT_MIN_EV)
+        brier = _brier(probability, y[validation])
+        ev_per_row = float(np.mean(realised))
+        score = brier - 0.10 * ev_per_row
+        report = {
+            "candidate": index,
+            "score_brier_minus_0.10_ev": score,
+            "bounded_brier": brier,
+            "realized_ev_per_row": ev_per_row,
+            "action_rate": float(np.mean(wagered)),
+            "parameters": dict(parameters),
+        }
+        reports.append(report)
+        if best is None or score < best[0]:
+            best = (score, model, dict(parameters))
+    assert best is not None
+    return best[1], best[2], reports
 
 
 def _tree_leaf(tree: Mapping[str, Any], vector: Sequence[float]) -> float:
@@ -630,6 +991,8 @@ def export_browser_bundle(
     output_path: str | Path,
     *,
     metrics: Mapping[str, Any],
+    calibration: Mapping[str, Any] | None = None,
+    ev_thresholds: Mapping[str, float] | None = None,
     probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
 ) -> dict[str, Any]:
     """Export sigmoid-linked classifier trees for the static browser runtime."""
@@ -637,28 +1000,31 @@ def export_browser_bundle(
     trees = [json.loads(item) for item in model.get_booster().get_dump(dump_format="json")]
     reference = np.asarray(reference_x[0], dtype=np.float32)
     tree_sum = sum(_tree_leaf(tree, reference) for tree in trees)
-    native_pb = _positive_class_probability(model, reference.reshape(1, -1))
+    native_pb = float(_positive_probabilities(model, reference.reshape(1, -1))[0])
     base_margin = _logit(native_pb) - tree_sum
 
     for vector in np.asarray(reference_x[: min(128, len(reference_x))], dtype=np.float32):
         portable_pb = _sigmoid(base_margin + sum(_tree_leaf(tree, vector) for tree in trees))
-        native_pb = _positive_class_probability(model, vector.reshape(1, -1))
+        native_pb = float(_positive_probabilities(model, vector.reshape(1, -1))[0])
         if abs(portable_pb - native_pb) > 2e-5:
             raise RuntimeError(f"portable probability mismatch {portable_pb} vs {native_pb}")
 
     bundle = {
-        "schema_version": 1,
+        "schema_version": 2,
         "model_type": MODEL_TYPE,
         "trained": True,
         "feature_names": list(FEATURE_NAMES),
         "link": "sigmoid",
         "base_margin": float(base_margin),
         "probability_bounds": [lo, hi],
+        "calibration": dict(calibration or {"method": "identity", "slope": 1.0, "intercept": 0.0}),
+        "ev_thresholds": dict(ev_thresholds or DEFAULT_MIN_EV),
         "trees": trees,
         "training": {
             "target": "actual_b_binary",
             "label_mapping": {"P": 0, "B": 1},
             "residual": False,
+            "noise_score_version": 2,
             "feature_snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
             "metrics": dict(metrics),
         },
@@ -673,27 +1039,76 @@ def train_command(args: argparse.Namespace) -> int:
     x, y, training_records = make_training_dataset(records, physics_extractor=extractor)
     if len(x) < args.min_samples:
         raise SystemExit(f"need {args.min_samples} rows; got {len(x)}")
+    shoe_count = len({str(record.get("shoe_id") or "").strip() for record in training_records})
+    if shoe_count < args.min_shoes:
+        raise SystemExit(f"need {args.min_shoes} shoes; got {shoe_count}")
 
-    validation = shoe_level_validation_mask(training_records, fraction=args.validation_fraction)
-    model = build_xgboost_classifier(random_state=args.random_state)
-    model.fit(x[~validation], y[~validation])
-    metrics = evaluate(model, x[validation], y[validation], probability_bounds=args.probability_bounds)
+    train, calibration_rows, holdout = three_way_shoe_masks(
+        training_records,
+        calibration_fraction=args.calibration_fraction,
+        holdout_fraction=args.validation_fraction,
+    )
+    search_train, tuning_rows = nested_tuning_masks(
+        training_records,
+        train,
+        fraction=args.tuning_fraction,
+    )
+    _, best_parameters, search_report = select_xgboost_model(
+        x,
+        y,
+        search_train,
+        tuning_rows,
+        trials=args.tune_trials,
+        random_state=args.random_state,
+    )
+    model = build_xgboost_classifier(random_state=args.random_state, overrides=best_parameters)
+    model.fit(x[train], y[train], sample_weight=balanced_sample_weights(y[train], x[train]))
+    calibration = fit_probability_calibration(
+        model,
+        x[calibration_rows],
+        y[calibration_rows],
+    )
+    _, _, calibration_probability = bounded_probabilities(model, x[calibration_rows], calibration)
+    ev_tuning = optimize_ev_thresholds(calibration_probability, y[calibration_rows], x[calibration_rows, 2])
+    holdout_records = [record for record, selected in zip(training_records, holdout) if selected]
+    metrics = evaluate(
+        model,
+        x[holdout],
+        y[holdout],
+        probability_bounds=args.probability_bounds,
+        calibration=calibration,
+        ev_thresholds=ev_tuning["thresholds"],
+        shoe_ids=[str(record["shoe_id"]) for record in holdout_records],
+        bootstrap_samples=args.bootstrap_samples,
+    )
     metrics.update({
-        "validation_strategy": "chronological_shoe",
-        "training_shoes": int(len({str(record["shoe_id"]) for record, held_out in zip(training_records, validation) if not held_out})),
-        "validation_shoes": int(len({str(record["shoe_id"]) for record, held_out in zip(training_records, validation) if held_out})),
+        "validation_strategy": "chronological_shoe_train_calibration_strict_holdout",
+        "training_shoes": int(len({str(record["shoe_id"]) for record, selected in zip(training_records, train) if selected})),
+        "tuning_shoes": int(len({str(record["shoe_id"]) for record, selected in zip(training_records, tuning_rows) if selected})),
+        "calibration_shoes": int(len({str(record["shoe_id"]) for record, selected in zip(training_records, calibration_rows) if selected})),
+        "holdout_shoes": int(len({str(record["shoe_id"]) for record, selected in zip(training_records, holdout) if selected})),
+        "calibration": calibration,
+        "recommended_min_ev": ev_tuning,
+        "hyperparameter_search": search_report,
+        "selected_parameters": best_parameters,
+        "feature_importance": feature_importance_report(model, x[calibration_rows]),
     })
-    print(json.dumps({"validation": metrics}, ensure_ascii=False, indent=2))
+    print(json.dumps({"holdout": metrics}, ensure_ascii=False, indent=2))
 
-    final_model = build_xgboost_classifier(random_state=args.random_state)
-    final_model.fit(x, y)
+    deploy = train | calibration_rows
+    final_model = build_xgboost_classifier(random_state=args.random_state, overrides=best_parameters)
+    final_model.fit(x[deploy], y[deploy], sample_weight=balanced_sample_weights(y[deploy], x[deploy]))
+    final_model.bbb_calibration_ = calibration
+    final_model.bbb_ev_thresholds_ = ev_tuning["thresholds"]
     if args.joblib_output:
         joblib.dump(final_model, args.joblib_output)
     export_browser_bundle(
         final_model,
-        x,
+        x[deploy],
         args.output,
         metrics=metrics,
+        calibration=calibration,
+        ev_thresholds=ev_tuning["thresholds"],
         probability_bounds=args.probability_bounds,
     )
     print(f"wrote {args.output}")
@@ -708,8 +1123,13 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--physics-model", default="")
     train.add_argument("--output", default="final_probability_model.json")
     train.add_argument("--joblib-output", default="")
-    train.add_argument("--min-samples", type=int, default=3000)
+    train.add_argument("--min-samples", type=int, default=12000)
+    train.add_argument("--min-shoes", type=int, default=1000)
     train.add_argument("--validation-fraction", type=float, default=0.20)
+    train.add_argument("--calibration-fraction", type=float, default=0.15)
+    train.add_argument("--tuning-fraction", type=float, default=0.15)
+    train.add_argument("--bootstrap-samples", type=int, default=1000)
+    train.add_argument("--tune-trials", type=int, default=len(XGB_TUNING_CANDIDATES))
     train.add_argument("--probability-bounds", nargs=2, type=float, default=PROBABILITY_BOUNDS, metavar=("MIN", "MAX"))
     train.add_argument("--random-state", type=int, default=RANDOM_STATE)
     train.set_defaults(func=train_command)
