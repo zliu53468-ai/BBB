@@ -52,6 +52,9 @@ PHYSICS_RANK_CONSUMPTION_TOLERANCE = 0.50
 DEFAULT_MIN_EV = {"early": 0.020, "middle": 0.010, "late": 0.005}
 PREFERRED_SKIP_RATE_INCREASE = 0.05
 MAX_SKIP_RATE_INCREASE = 0.08
+SMOOTHING_STRENGTHS = (0.0, 0.025, 0.05, 0.075, 0.10, 0.125, 0.15)
+MAX_SMOOTHING_STRENGTH = 0.15
+MAX_SMOOTHING_BRIER_INCREASE = 0.0005
 LEGACY_XGB_PARAMETERS = {"n_estimators": 320, "max_depth": 3, "learning_rate": 0.025, "min_child_weight": 12, "subsample": 0.85, "colsample_bytree": 0.82, "reg_alpha": 0.35, "reg_lambda": 12.0}
 XGB_TUNING_CANDIDATES: tuple[dict[str, Any], ...] = (
     LEGACY_XGB_PARAMETERS,
@@ -898,6 +901,47 @@ def optimize_ev_thresholds(
             "skip_constraint":{"preferred_max_increase":PREFERRED_SKIP_RATE_INCREASE,"hard_max_increase":MAX_SKIP_RATE_INCREASE,"passed":skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12}}
 
 
+def optimize_smoothing_and_thresholds(
+    calibrated_probability: np.ndarray,
+    actual_b: np.ndarray,
+    x: np.ndarray,
+    shoe_ids: Sequence[str],
+    *,
+    strengths: Sequence[float] = SMOOTHING_STRENGTHS,
+) -> dict[str, Any]:
+    """在獨立 EV tuning 靴選 EMA；EV 不得下降，Skip 增幅硬限 +8%。"""
+    rounds = np.asarray(x, dtype=np.float64)[:, 2]
+    candidates = sorted({_clip(float(value), 0.0, MAX_SMOOTHING_STRENGTH) for value in strengths} | {0.0})
+    reports: list[dict[str, Any]] = []; baseline: dict[str, float] | None = None
+    best: tuple[float, float, dict[str, Any]] | None = None
+    for strength in candidates:
+        final = bounded_from_calibrated(calibrated_probability, x, shoe_ids=shoe_ids, smoothing_strength=strength)
+        tuning = optimize_ev_thresholds(final, actual_b, rounds)
+        realised, wagered = decision_returns(final, actual_b, rounds, tuning["thresholds"])
+        metrics = decision_metrics(realised, wagered); brier = _brier(final, actual_b)
+        if baseline is None:
+            baseline = {**metrics, "brier": brier}
+        skip_delta = metrics["skip_rate"] - baseline["skip_rate"]
+        ev_delta = metrics["realized_ev_per_bet"] - baseline["realized_ev_per_bet"]
+        brier_delta = brier - baseline["brier"]
+        eligible = skip_delta <= MAX_SKIP_RATE_INCREASE + 1e-12 and ev_delta >= -1e-12 and brier_delta <= MAX_SMOOTHING_BRIER_INCREASE
+        score = brier - .02 * metrics["realized_ev_per_bet"] - .05 * metrics["realized_ev_per_row"] + .25 * max(0.0, skip_delta - PREFERRED_SKIP_RATE_INCREASE)
+        report = {"strength": strength, "score": score, "brier": brier, **metrics,
+                  "skip_rate_delta": skip_delta, "ev_per_bet_delta": ev_delta,
+                  "brier_delta": brier_delta, "guardrail_passed": eligible,
+                  "ev_thresholds": tuning["thresholds"]}
+        reports.append(report)
+        if eligible and (best is None or score < best[0]):
+            best = (score, strength, tuning)
+    assert baseline is not None and best is not None
+    return {"method": "causal_ema", "strength": best[1], "ev_tuning": best[2],
+            "baseline": baseline, "candidates": reports,
+            "guardrail": {"max_strength": MAX_SMOOTHING_STRENGTH,
+                          "preferred_skip_increase": PREFERRED_SKIP_RATE_INCREASE,
+                          "hard_skip_increase": MAX_SKIP_RATE_INCREASE,
+                          "max_brier_increase": MAX_SMOOTHING_BRIER_INCREASE}}
+
+
 def shoe_bootstrap_ci(
     values: np.ndarray,
     shoe_ids: Sequence[str],
@@ -952,17 +996,58 @@ def _brier(probability_b: np.ndarray, actual_b: np.ndarray) -> float:
     return float(np.mean((probability_b.astype(float) - actual_b.astype(float)) ** 2))
 
 
+def causal_ema_by_shoe(
+    probability_b: np.ndarray,
+    shoe_ids: Sequence[str],
+    strength: float,
+) -> np.ndarray:
+    """只使用同靴過去輸出的輕量 EMA；0=關閉，0.15=最大允許強度。"""
+    values = np.asarray(probability_b, dtype=np.float64).reshape(-1)
+    shoes = [str(value) for value in shoe_ids]
+    if len(values) != len(shoes):
+        raise ValueError("smoothing probability and shoe_ids must be aligned")
+    memory = _clip(float(strength), 0.0, MAX_SMOOTHING_STRENGTH)
+    output = np.empty_like(values); previous: dict[str, float] = {}
+    for index, (value, shoe_id) in enumerate(zip(values, shoes)):
+        smoothed = value if shoe_id not in previous else (1.0 - memory) * value + memory * previous[shoe_id]
+        output[index] = previous[shoe_id] = _clip(float(smoothed), 1e-7, 1.0 - 1e-7)
+    return output
+
+
+def bounded_from_calibrated(
+    probability_b: np.ndarray,
+    x: np.ndarray,
+    *,
+    shoe_ids: Sequence[str] | None = None,
+    smoothing_strength: float = 0.0,
+) -> np.ndarray:
+    values = np.asarray(probability_b, dtype=np.float64)
+    if smoothing_strength > 0.0:
+        if shoe_ids is None:
+            raise ValueError("shoe_ids are required when smoothing is enabled")
+        values = causal_ema_by_shoe(values, shoe_ids, smoothing_strength)
+    return np.asarray([
+        _clip(pb, *dynamic_probability_bounds(float(row[2]), float(row[-1])))
+        for pb, row in zip(values, np.asarray(x))
+    ], dtype=np.float64)
+
+
 def bounded_probabilities(
     model: Any,
     x: np.ndarray,
     calibration: Mapping[str, Any] | None = None,
+    *,
+    shoe_ids: Sequence[str] | None = None,
+    smoothing_strength: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     uncalibrated = _positive_probabilities(model, x)
     calibrated = apply_probability_calibration(uncalibrated, calibration)
-    bounded = np.asarray([
-        _clip(pb, *dynamic_probability_bounds(float(row[2]), float(row[-1])))
-        for pb, row in zip(calibrated, x)
-    ], dtype=np.float64)
+    bounded = bounded_from_calibrated(
+        calibrated,
+        x,
+        shoe_ids=shoe_ids,
+        smoothing_strength=smoothing_strength,
+    )
     return uncalibrated, calibrated, bounded
 
 
@@ -974,25 +1059,38 @@ def evaluate(
     probability_bounds: Sequence[float],
     calibration: Mapping[str, Any] | None = None,
     ev_thresholds: Mapping[str, float] | None = None,
+    smoothing_strength: float = 0.0,
     shoe_ids: Sequence[str] | None = None,
     bootstrap_samples: int = 1000,
 ) -> dict[str, Any]:
-    uncalibrated, raw, final = bounded_probabilities(model, x, calibration)
+    shoe_ids = list(shoe_ids) if shoe_ids is not None else [str(index) for index in range(len(y))]
+    uncalibrated, raw, unsmoothed = bounded_probabilities(model, x, calibration)
+    strength = _clip(float(smoothing_strength), 0.0, MAX_SMOOTHING_STRENGTH)
+    final = bounded_from_calibrated(raw, x, shoe_ids=shoe_ids, smoothing_strength=strength)
     rounds = np.asarray(x[:, 2], dtype=np.float64)
     thresholds = dict(DEFAULT_MIN_EV)
     thresholds.update(ev_thresholds or {})
     realised, wagered = decision_returns(final, y, rounds, thresholds)
+    pre_realised,pre_wagered=decision_returns(unsmoothed,y,rounds,thresholds)
     baseline_realised,baseline_wagered=decision_returns(final,y,rounds,DEFAULT_MIN_EV)
-    decision=decision_metrics(realised,wagered); baseline=decision_metrics(baseline_realised,baseline_wagered)
+    decision=decision_metrics(realised,wagered); pre=decision_metrics(pre_realised,pre_wagered); baseline=decision_metrics(baseline_realised,baseline_wagered)
     skip_delta=decision["skip_rate"]-baseline["skip_rate"]
-    shoe_ids = list(shoe_ids) if shoe_ids is not None else [str(index) for index in range(len(y))]
     correct = ((final > 0.50) == (y > 0)).astype(np.float64)
+    pre_correct = ((unsmoothed > 0.50) == (y > 0)).astype(np.float64)
+    smoothing_skip_delta=decision["skip_rate"]-pre["skip_rate"]
+    smoothing_ev_delta=decision["realized_ev_per_bet"]-pre["realized_ev_per_bet"]
+    smoothing_brier_delta=_brier(final,y)-_brier(unsmoothed,y)
+    smoothing_guard=(smoothing_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and smoothing_ev_delta>=-1e-12 and smoothing_brier_delta<=MAX_SMOOTHING_BRIER_INCREASE)
     stage_masks={"early":rounds<=40,"middle":(rounds>40)&(rounds<=50),"late":rounds>50}; stage_report={}
     for stage,mask in stage_masks.items():
         stage_realised,stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds)
+        pre_stage_realised,pre_stage_wagered=decision_returns(unsmoothed[mask],y[mask],rounds[mask],thresholds)
         base_realised,base_wagered=decision_returns(final[mask],y[mask],rounds[mask],DEFAULT_MIN_EV)
-        tuned_stage=decision_metrics(stage_realised,stage_wagered); base_stage=decision_metrics(base_realised,base_wagered)
-        stage_report[stage]={**tuned_stage,"baseline_skip_rate":base_stage["skip_rate"],"skip_rate_delta":tuned_stage["skip_rate"]-base_stage["skip_rate"]}
+        tuned_stage=decision_metrics(stage_realised,stage_wagered); pre_stage=decision_metrics(pre_stage_realised,pre_stage_wagered); base_stage=decision_metrics(base_realised,base_wagered)
+        stage_report[stage]={**tuned_stage,"baseline_skip_rate":base_stage["skip_rate"],"skip_rate_delta":tuned_stage["skip_rate"]-base_stage["skip_rate"],
+                             "pre_smoothing_ev_per_bet":pre_stage["realized_ev_per_bet"],"pre_smoothing_skip_rate":pre_stage["skip_rate"],
+                             "smoothing_ev_per_bet_delta":tuned_stage["realized_ev_per_bet"]-pre_stage["realized_ev_per_bet"],
+                             "smoothing_skip_rate_delta":tuned_stage["skip_rate"]-pre_stage["skip_rate"]}
     return {
         "samples": float(len(y)),
         "uncalibrated_brier": _brier(uncalibrated, y),
@@ -1015,6 +1113,16 @@ def evaluate(
         "baseline_realized_ev_per_bet": baseline["realized_ev_per_bet"],
         "stage_decision_metrics": stage_report,
         "evaluated_min_ev": thresholds,
+        "smoothing": {
+            "method":"causal_ema","strength":strength,"guardrail_passed":bool(smoothing_guard),
+            "before":{"accuracy":_accuracy(unsmoothed,y),"accuracy_ci95":shoe_bootstrap_ci(pre_correct,shoe_ids,samples=bootstrap_samples),
+                      "brier":_brier(unsmoothed,y),"brier_ci95":shoe_bootstrap_ci((unsmoothed-y)**2,shoe_ids,samples=bootstrap_samples),
+                      **pre,"ev_per_bet_ci95":shoe_bootstrap_ratio_ci(pre_realised,pre_wagered,shoe_ids,samples=bootstrap_samples),
+                      "skip_rate_ci95":shoe_bootstrap_ci((~pre_wagered).astype(float),shoe_ids,samples=bootstrap_samples)},
+            "after":{"accuracy":_accuracy(final,y),"brier":_brier(final,y),**decision},
+            "delta":{"accuracy":_accuracy(final,y)-_accuracy(unsmoothed,y),"brier":smoothing_brier_delta,
+                     "realized_ev_per_bet":smoothing_ev_delta,"skip_rate":smoothing_skip_delta},
+        },
     }
 
 
@@ -1097,6 +1205,7 @@ def export_browser_bundle(
     metrics: Mapping[str, Any],
     calibration: Mapping[str, Any] | None = None,
     ev_thresholds: Mapping[str, float] | None = None,
+    smoothing_strength: float = 0.0,
     probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
 ) -> dict[str, Any]:
     """Export sigmoid-linked classifier trees for the static browser runtime."""
@@ -1123,6 +1232,7 @@ def export_browser_bundle(
         "probability_bounds": [lo, hi],
         "calibration": dict(calibration or {"method": "identity", "slope": 1.0, "intercept": 0.0}),
         "ev_thresholds": dict(ev_thresholds or DEFAULT_MIN_EV),
+        "smoothing": {"method": "causal_ema", "strength": _clip(float(smoothing_strength), 0.0, MAX_SMOOTHING_STRENGTH)},
         "trees": trees,
         "training": {
             "target": "actual_b_binary",
@@ -1179,8 +1289,14 @@ def train_command(args: argparse.Namespace) -> int:
         y[probability_calibration_rows],
         shoe_ids=[str(record["shoe_id"]) for record,selected in zip(training_records,probability_calibration_rows) if selected],
     )
-    _, _, calibration_probability = bounded_probabilities(model, x[ev_tuning_rows], calibration)
-    ev_tuning = optimize_ev_thresholds(calibration_probability, y[ev_tuning_rows], x[ev_tuning_rows, 2])
+    _, calibration_probability, _ = bounded_probabilities(model, x[ev_tuning_rows], calibration)
+    ev_tuning_shoe_ids=[str(record["shoe_id"]) for record,selected in zip(training_records,ev_tuning_rows) if selected]
+    smoothing_tuning=optimize_smoothing_and_thresholds(
+        calibration_probability,y[ev_tuning_rows],x[ev_tuning_rows],ev_tuning_shoe_ids,
+        strengths=args.smoothing_strengths,
+    )
+    ev_tuning=smoothing_tuning["ev_tuning"]
+    smoothing_strength=float(smoothing_tuning["strength"])
     holdout_records = [record for record, selected in zip(training_records, holdout) if selected]
     metrics = evaluate(
         model,
@@ -1189,6 +1305,7 @@ def train_command(args: argparse.Namespace) -> int:
         probability_bounds=args.probability_bounds,
         calibration=calibration,
         ev_thresholds=ev_tuning["thresholds"],
+        smoothing_strength=smoothing_strength,
         shoe_ids=[str(record["shoe_id"]) for record in holdout_records],
         bootstrap_samples=args.bootstrap_samples,
     )
@@ -1209,6 +1326,7 @@ def train_command(args: argparse.Namespace) -> int:
         "holdout_shoes": int(len({str(record["shoe_id"]) for record, selected in zip(training_records, holdout) if selected})),
         "calibration": calibration,
         "recommended_min_ev": ev_tuning,
+        "smoothing_selection": smoothing_tuning,
         "hyperparameter_search": search_report,
         "selected_parameters": best_parameters,
         "feature_importance": feature_importance_report(model, x[calibration_rows]),
@@ -1216,16 +1334,20 @@ def train_command(args: argparse.Namespace) -> int:
         "legacy_baseline_realized_ev_per_bet": legacy_decision["realized_ev_per_bet"],
         "skip_rate_delta_vs_legacy": deployment_skip_delta,
         "deployment_skip_constraint_passed": bool(deployment_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12),
+        "deployment_smoothing_constraint_passed": bool(metrics["smoothing"]["guardrail_passed"]),
     })
     print(json.dumps({"holdout": metrics}, ensure_ascii=False, indent=2))
     if not metrics["deployment_skip_constraint_passed"]:
         raise SystemExit(f"deployment blocked: holdout Skip increased by {deployment_skip_delta:.4f} (> {MAX_SKIP_RATE_INCREASE:.4f})")
+    if not metrics["deployment_smoothing_constraint_passed"]:
+        raise SystemExit("deployment blocked: smoothing reduced holdout EV, worsened Brier, or increased Skip beyond guardrail")
 
     deploy = train | calibration_rows
     final_model = build_xgboost_classifier(random_state=args.random_state, overrides=best_parameters)
     final_model.fit(x[deploy], y[deploy], sample_weight=balanced_sample_weights(y[deploy], x[deploy]))
     final_model.bbb_calibration_ = calibration
     final_model.bbb_ev_thresholds_ = ev_tuning["thresholds"]
+    final_model.bbb_smoothing_strength_ = smoothing_strength
     if args.joblib_output:
         joblib.dump(final_model, args.joblib_output)
     export_browser_bundle(
@@ -1235,6 +1357,7 @@ def train_command(args: argparse.Namespace) -> int:
         metrics=metrics,
         calibration=calibration,
         ev_thresholds=ev_tuning["thresholds"],
+        smoothing_strength=smoothing_strength,
         probability_bounds=args.probability_bounds,
     )
     print(f"wrote {args.output}")
@@ -1255,6 +1378,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--calibration-fraction", type=float, default=0.15)
     train.add_argument("--tuning-fraction", type=float, default=0.15)
     train.add_argument("--ev-tuning-fraction", type=float, default=0.30)
+    train.add_argument("--smoothing-strengths", nargs="+", type=float, default=list(SMOOTHING_STRENGTHS))
     train.add_argument("--bootstrap-samples", type=int, default=1000)
     train.add_argument("--tune-trials", type=int, default=len(XGB_TUNING_CANDIDATES))
     train.add_argument("--probability-bounds", nargs=2, type=float, default=PROBABILITY_BOUNDS, metavar=("MIN", "MAX"))

@@ -91,7 +91,15 @@ require("./final_probability_runtime.js");
   const snapshot=rows[0];
   if(snapshot.schema_version!==6||snapshot.actual_b!==1||snapshot.is_directional_label!==true)throw new Error("invalid directional snapshot metadata");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57)throw new Error("prediction snapshot is missing exact model features");
+  if(!Number.isFinite(snapshot.smoothed_p_b)||snapshot.smoothing_strength!==0)throw new Error("smoothing snapshot metadata is missing");
   if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==1)throw new Error("snapshot model metadata is missing");
+
+  if(!useGeneratedBundle){
+    finalBundle.smoothing={method:"causal_ema",strength:.10};finalBundle.base_margin=Math.log(.40/.60);
+    const smoothHistory=[...history,"B"],smoothCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(smoothHistory),smoothOut=api.applyFinalPrediction(smoothHistory,smoothCore);
+    if(Math.abs(smoothOut.finalProbability.smoothedPB-.45)>1e-9||Math.abs(smoothOut.finalProbability.smoothingStrength-.10)>1e-9)throw new Error("causal EMA failed");
+    delete finalBundle.smoothing;finalBundle.base_margin=Math.log(.90/.10);
+  }
 
   const tieHistory=[...history,"T"],tieCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(tieHistory),tiePrediction=api.applyFinalPrediction(tieHistory,tieCore);
   api.registerPrediction(tieHistory,tiePrediction);

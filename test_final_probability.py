@@ -213,6 +213,27 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(weights)))
         self.assertAlmostEqual(float(np.mean(weights)), 1.0, places=6)
 
+    def test_causal_ema_never_crosses_shoes(self):
+        values = final.causal_ema_by_shoe(np.asarray([.8, .2, .4, .6]), ["A", "A", "B", "A"], .10)
+        self.assertTrue(np.allclose(values, [.8, .26, .4, .566]))
+
+    def test_smoothing_selection_can_safely_disable_itself(self):
+        probability=np.asarray([.9,.1]*20);actual=np.asarray([1,0]*20,dtype=np.int8)
+        x=np.zeros((40,57),dtype=np.float32);x[:,2]=np.arange(20,60);x[:,-1]=.5
+        tuning=final.optimize_smoothing_and_thresholds(probability,actual,x,["shoe-A"]*40,strengths=[0,.10,.15])
+        self.assertEqual(tuning["method"],"causal_ema")
+        self.assertEqual(tuning["strength"],0.0)
+        self.assertTrue(all("guardrail_passed" in row for row in tuning["candidates"]))
+
+    def test_evaluation_reports_smoothing_before_and_after(self):
+        x=np.zeros((20,57),dtype=np.float32);x[:,0]=np.asarray([.55,.45]*10);x[:,2]=np.arange(20,40);x[:,-1]=.5
+        y=np.asarray([1,0]*10,dtype=np.int8);shoes=["A"]*10+["B"]*10
+        report=final.evaluate(VectorClassifier(),x,y,probability_bounds=final.PROBABILITY_BOUNDS,
+                              smoothing_strength=.05,shoe_ids=shoes,bootstrap_samples=10)
+        self.assertEqual(set(report["smoothing"]),{"method","strength","guardrail_passed","before","after","delta"})
+        self.assertIn("realized_ev_per_bet",report["smoothing"]["before"])
+        self.assertIn("skip_rate",report["smoothing"]["after"])
+
     def test_ev_threshold_tuning_keeps_three_stages(self):
         probability = np.asarray([0.45, 0.55, 0.46, 0.54, 0.44, 0.56] * 4)
         actual = np.asarray([0, 1, 0, 1, 0, 1] * 4)
