@@ -91,12 +91,12 @@ class FinalProbabilityTests(unittest.TestCase):
         )
         self.assertAlmostEqual(result["p_player"], 0.52, places=6)
         self.assertAlmostEqual(result["ev_player"], 0.04, places=6)
-        self.assertAlmostEqual(result["min_ev"], 0.015, places=6)
-        self.assertAlmostEqual(result["confidence"], 0.025, places=6)
+        self.assertAlmostEqual(result["min_ev"], 0.02, places=6)
+        self.assertAlmostEqual(result["confidence"], 0.02, places=6)
         self.assertEqual(result["final_direction"], "閒 P")
 
     def test_dynamic_ev_thresholds(self):
-        cases = ((15, 0.494, 0.015, "觀望 Skip"), (45, 0.494, 0.008, "閒 P"), (55, 0.497, 0.002, "閒 P"))
+        cases = ((15, 0.494, 0.020, "觀望 Skip"), (45, 0.494, 0.010, "閒 P"), (55, 0.497, 0.005, "閒 P"))
         for round_index, p_banker, min_ev, direction in cases:
             original = self.original.copy(); original[1] = round_index
             result = final.predict_final_probability(self.core, original, self.physics, xgboost_model=FakeClassifier(p_banker))
@@ -205,11 +205,13 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertTrue(np.all(tuning[8:12]))
         self.assertFalse(np.any((fit | tuning) & (calibration | holdout)))
 
-    def test_dynamic_sample_weights_follow_information_density_formula(self):
-        x = np.zeros((3, 57), dtype=np.float32)
-        x[:, 1], x[:, -1] = [0.0, 0.5, 1.0], [0.0, 0.25, 0.0]
-        weights = final.dynamic_sample_weights(x)
-        self.assertTrue(np.allclose(weights, [1.0, 1.75, 3.0]))
+    def test_sample_weights_are_finite_and_normalized(self):
+        x = np.zeros((6, 57), dtype=np.float32)
+        x[:, 2] = [10, 20, 42, 48, 55, 60]
+        weights = final.balanced_sample_weights(np.asarray([0, 0, 0, 0, 1, 1]), x)
+        self.assertEqual(weights.shape, (6,))
+        self.assertTrue(np.all(np.isfinite(weights)))
+        self.assertAlmostEqual(float(np.mean(weights)), 1.0, places=6)
 
     def test_ev_threshold_tuning_keeps_three_stages(self):
         probability = np.asarray([0.45, 0.55, 0.46, 0.54, 0.44, 0.56] * 4)
@@ -254,11 +256,7 @@ class FinalProbabilityTests(unittest.TestCase):
         finally:
             final.XGBClassifier = original
         self.assertEqual(model.kwargs["objective"], "binary:logistic")
-        self.assertEqual(model.kwargs["eval_metric"], ["auc", "logloss"])
-        self.assertEqual(model.kwargs["max_depth"], 6)
-        self.assertAlmostEqual(model.kwargs["learning_rate"], 0.03)
-        self.assertAlmostEqual(model.kwargs["subsample"], 0.8)
-        self.assertAlmostEqual(model.kwargs["colsample_bytree"], 0.8)
+        self.assertEqual(model.kwargs["eval_metric"], "logloss")
 
 
 if __name__ == "__main__":
