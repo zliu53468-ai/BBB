@@ -185,7 +185,7 @@ function applyFinalPrediction(seq,corePrediction){
       const pTie=clip(+physics[PHYSICS_INDEX["winner_p_t"]]),pPlayer=1-finalPB;
       const evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
       const threshold=final56Bundle.ev_thresholds||{},pick=(key,fallback)=>Number.isFinite(+threshold[key])?+threshold[key]:fallback;
-      const minEv=original7.round_index<=40?pick("early",.020):original7.round_index>50?pick("late",.005):pick("middle",.010);
+      const minEv=original7.round_index<=40?pick("early",.015):original7.round_index>50?pick("late",.002):pick("middle",.008);
       const direction=evBanker>minEv&&evBanker>evPlayer?"B":evPlayer>minEv&&evPlayer>evBanker?"P":"Skip";
       evDecision={pTie,pPlayer,evBanker,evPlayer,minEv,direction,finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="B"?evBanker-minEv:direction==="P"?evPlayer-minEv:0};
       mode="final56";

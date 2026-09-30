@@ -49,12 +49,14 @@ SNAPSHOT_SCHEMA_VERSION = 6
 PHYSICS_PROBABILITY_TOLERANCE = 1e-4
 PHYSICS_NOISE_LOW_THRESHOLD = 0.78
 PHYSICS_RANK_CONSUMPTION_TOLERANCE = 0.50
-DEFAULT_MIN_EV = {"early": 0.020, "middle": 0.010, "late": 0.005}
+LEGACY_MIN_EV = {"early": 0.020, "middle": 0.010, "late": 0.005}
+DEFAULT_MIN_EV = {"early": 0.015, "middle": 0.008, "late": 0.002}
 PREFERRED_SKIP_RATE_INCREASE = 0.05
 MAX_SKIP_RATE_INCREASE = 0.08
 LEGACY_XGB_PARAMETERS = {"n_estimators": 320, "max_depth": 3, "learning_rate": 0.025, "min_child_weight": 12, "subsample": 0.85, "colsample_bytree": 0.82, "reg_alpha": 0.35, "reg_lambda": 12.0}
 XGB_TUNING_CANDIDATES: tuple[dict[str, Any], ...] = (
     LEGACY_XGB_PARAMETERS,
+    {"n_estimators": 600, "max_depth": 6, "learning_rate": 0.030, "min_child_weight": 18, "subsample": 0.80, "colsample_bytree": 0.80, "reg_alpha": 0.75, "reg_lambda": 18.0},
     {"n_estimators": 420, "max_depth": 2, "learning_rate": 0.020, "min_child_weight": 18, "subsample": 0.80, "colsample_bytree": 0.75, "reg_alpha": 0.50, "reg_lambda": 16.0},
     {"n_estimators": 600, "max_depth": 2, "learning_rate": 0.012, "min_child_weight": 12, "subsample": 0.85, "colsample_bytree": 0.85, "reg_alpha": 0.25, "reg_lambda": 12.0},
     {"n_estimators": 520, "max_depth": 2, "learning_rate": 0.015, "min_child_weight": 24, "subsample": 0.90, "colsample_bytree": 0.70, "reg_alpha": 0.75, "reg_lambda": 20.0},
@@ -279,15 +281,15 @@ def build_xgboost_classifier(
         raise RuntimeError("xgboost is required; install requirements-xgb.txt")
     parameters: dict[str, Any] = dict(
         objective="binary:logistic",
-        eval_metric="logloss",
-        n_estimators=420,
-        max_depth=2,
-        learning_rate=0.02,
+        eval_metric=["auc", "logloss"],
+        n_estimators=600,
+        max_depth=6,
+        learning_rate=0.03,
         min_child_weight=18,
         subsample=0.80,
-        colsample_bytree=0.75,
-        reg_alpha=0.50,
-        reg_lambda=16.0,
+        colsample_bytree=0.80,
+        reg_alpha=0.75,
+        reg_lambda=18.0,
         random_state=int(random_state),
         n_jobs=1,
         tree_method="hist",
@@ -661,25 +663,12 @@ def nested_tuning_masks(
     return fit, tuning
 
 
-def balanced_sample_weights(y: np.ndarray, x: np.ndarray) -> np.ndarray:
-    """Class- and round-stage-stratified weights without changing chronology."""
-    labels = np.asarray(y, dtype=np.int8).reshape(-1)
-    rounds = np.asarray(x, dtype=np.float64)[:, 2]
-    weights = np.ones(len(labels), dtype=np.float64)
-    for label in (0, 1):
-        mask = labels == label
-        if np.any(mask):
-            weights[mask] *= len(labels) / (2.0 * float(np.sum(mask)))
-    stages = (rounds > 40).astype(np.int8) + (rounds > 50).astype(np.int8)
-    present_stages = np.unique(stages)
-    for stage in present_stages:
-        mask = stages == stage
-        weights[mask] *= len(labels) / (len(present_stages) * float(np.sum(mask)))
-    progress = np.clip(np.asarray(x, dtype=np.float64)[:, 1], 0.0, 1.0)
-    uncertainty = np.clip(np.asarray(x, dtype=np.float64)[:, -1], 0.0, 1.0)
-    weights *= (0.90 + 0.20 * progress) * (1.25 - 0.50 * uncertainty)
-    weights = np.clip(weights, 0.25, 4.0)
-    return (weights / np.mean(weights)).astype(np.float32)
+def dynamic_sample_weights(x: np.ndarray) -> np.ndarray:
+    """放大後期且低物理噪音樣本；權重嚴格限制在 1～3 倍。"""
+    features = np.asarray(x, dtype=np.float64)
+    progress_w = np.clip(features[:, 1], 0.0, 1.0)
+    physics_noise = np.clip(features[:, -1], 0.0, 1.0)
+    return (1.0 + progress_w * 2.0 * (1.0 - physics_noise)).astype(np.float32)
 
 
 def legacy_feature_matrix(x: np.ndarray) -> np.ndarray:
@@ -856,7 +845,7 @@ def optimize_ev_thresholds(
         if not count:
             stages[stage] = {"rows": 0, "min_ev": thresholds[stage]}
             continue
-        baseline_realised,baseline_wagered=decision_returns(probability_b[mask],actual_b[mask],np.asarray(rounds)[mask],DEFAULT_MIN_EV)
+        baseline_realised,baseline_wagered=decision_returns(probability_b[mask],actual_b[mask],np.asarray(rounds)[mask],LEGACY_MIN_EV)
         baseline=decision_metrics(baseline_realised,baseline_wagered)
         minimum_wagers=max(1,int(math.ceil(max(0.0,baseline["action_rate"]-MAX_SKIP_RATE_INCREASE)*count)))
         best: tuple[float, float, float, float] | None = None
@@ -888,7 +877,7 @@ def optimize_ev_thresholds(
             "realized_ev_per_bet": tuned["realized_ev_per_bet"],
             "min_ev": thresholds[stage],
         }
-    baseline_realised,baseline_wagered=decision_returns(probability_b,actual_b,rounds,DEFAULT_MIN_EV)
+    baseline_realised,baseline_wagered=decision_returns(probability_b,actual_b,rounds,LEGACY_MIN_EV)
     tuned_realised,tuned_wagered=decision_returns(probability_b,actual_b,rounds,thresholds)
     baseline=decision_metrics(baseline_realised,baseline_wagered); tuned=decision_metrics(tuned_realised,tuned_wagered)
     skip_delta=tuned["skip_rate"]-baseline["skip_rate"]
@@ -982,7 +971,7 @@ def evaluate(
     thresholds = dict(DEFAULT_MIN_EV)
     thresholds.update(ev_thresholds or {})
     realised, wagered = decision_returns(final, y, rounds, thresholds)
-    baseline_realised,baseline_wagered=decision_returns(final,y,rounds,DEFAULT_MIN_EV)
+    baseline_realised,baseline_wagered=decision_returns(final,y,rounds,LEGACY_MIN_EV)
     decision=decision_metrics(realised,wagered); baseline=decision_metrics(baseline_realised,baseline_wagered)
     skip_delta=decision["skip_rate"]-baseline["skip_rate"]
     shoe_ids = list(shoe_ids) if shoe_ids is not None else [str(index) for index in range(len(y))]
@@ -990,7 +979,7 @@ def evaluate(
     stage_masks={"early":rounds<=40,"middle":(rounds>40)&(rounds<=50),"late":rounds>50}; stage_report={}
     for stage,mask in stage_masks.items():
         stage_realised,stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds)
-        base_realised,base_wagered=decision_returns(final[mask],y[mask],rounds[mask],DEFAULT_MIN_EV)
+        base_realised,base_wagered=decision_returns(final[mask],y[mask],rounds[mask],LEGACY_MIN_EV)
         tuned_stage=decision_metrics(stage_realised,stage_wagered); base_stage=decision_metrics(base_realised,base_wagered)
         stage_report[stage]={**tuned_stage,"baseline_skip_rate":base_stage["skip_rate"],"skip_rate_delta":tuned_stage["skip_rate"]-base_stage["skip_rate"]}
     return {
@@ -1032,11 +1021,11 @@ def select_xgboost_model(
     reports: list[dict[str, Any]] = []
     best: tuple[float, Any, dict[str, Any]] | None = None
     baseline_skip: float | None = None
-    weights = balanced_sample_weights(y[train], x[train])
+    weights = dynamic_sample_weights(x[train])
     rounds = np.asarray(x[validation, 2], dtype=np.float64)
     for index, parameters in enumerate(XGB_TUNING_CANDIDATES[:limit]):
         model = build_xgboost_classifier(random_state=random_state + index, overrides=parameters)
-        model.fit(x[train], y[train], sample_weight=weights)
+        model.fit(x[train], y[train], sample_weight=weights, eval_set=[(x[validation], y[validation])], verbose=False)
         _, _, probability = bounded_probabilities(model, x[validation])
         realised, wagered = decision_returns(probability, y[validation], rounds, DEFAULT_MIN_EV)
         brier = _brier(probability, y[validation])
@@ -1172,7 +1161,7 @@ def train_command(args: argparse.Namespace) -> int:
         random_state=args.random_state,
     )
     model = build_xgboost_classifier(random_state=args.random_state, overrides=best_parameters)
-    model.fit(x[train], y[train], sample_weight=balanced_sample_weights(y[train], x[train]))
+    model.fit(x[train], y[train], sample_weight=dynamic_sample_weights(x[train]), eval_set=[(x[tuning_rows], y[tuning_rows])], verbose=False)
     calibration = fit_probability_calibration(
         model,
         x[probability_calibration_rows],
@@ -1196,7 +1185,7 @@ def train_command(args: argparse.Namespace) -> int:
     legacy_model=build_xgboost_classifier(random_state=args.random_state,overrides=LEGACY_XGB_PARAMETERS)
     legacy_model.fit(legacy_x[train],y[train])
     _,_,legacy_probability=bounded_probabilities(legacy_model,legacy_x[holdout])
-    legacy_realised,legacy_wagered=decision_returns(legacy_probability,y[holdout],legacy_x[holdout,2],DEFAULT_MIN_EV)
+    legacy_realised,legacy_wagered=decision_returns(legacy_probability,y[holdout],legacy_x[holdout,2],LEGACY_MIN_EV)
     legacy_decision=decision_metrics(legacy_realised,legacy_wagered)
     deployment_skip_delta=metrics["skip_rate"]-legacy_decision["skip_rate"]
     metrics.update({
@@ -1223,7 +1212,7 @@ def train_command(args: argparse.Namespace) -> int:
 
     deploy = train | calibration_rows
     final_model = build_xgboost_classifier(random_state=args.random_state, overrides=best_parameters)
-    final_model.fit(x[deploy], y[deploy], sample_weight=balanced_sample_weights(y[deploy], x[deploy]))
+    final_model.fit(x[deploy], y[deploy], sample_weight=dynamic_sample_weights(x[deploy]))
     final_model.bbb_calibration_ = calibration
     final_model.bbb_ev_thresholds_ = ev_tuning["thresholds"]
     if args.joblib_output:
