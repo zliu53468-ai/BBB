@@ -18,6 +18,14 @@ class FakeClassifier:
         return np.asarray([[1.0 - self.banker_probability, self.banker_probability]], dtype=float)
 
 
+class VectorClassifier:
+    classes_ = np.asarray([0, 1])
+
+    def predict_proba(self, features):
+        probability=np.clip(np.asarray(features,dtype=float)[:,0],1e-4,1-1e-4)
+        return np.column_stack((1.0-probability,probability))
+
+
 class FinalProbabilityTests(unittest.TestCase):
     def setUp(self):
         self.core = 0.53
@@ -35,7 +43,10 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertAlmostEqual(float(matrix[0, 1]), (15 / 70.0) ** 3, places=6)
         self.assertTrue(np.array_equal(matrix[0, 2:8], self.original[1:]))
         self.assertTrue(np.array_equal(matrix[0, 8:56], self.physics))
-        self.assertAlmostEqual(float(matrix[0, 56]), final.physics_noise_score(self.physics), places=6)
+        self.assertAlmostEqual(float(matrix[0, 56]), final.physics_noise_score(self.physics, self.original[1]), places=6)
+        legacy=final.legacy_feature_matrix(matrix)
+        self.assertEqual(legacy.shape,(1,57))
+        self.assertAlmostEqual(float(legacy[0,-1]),0.0,places=6)
 
     def test_physics_noise_score_tracks_predictive_uncertainty(self):
         uncertain = self.physics.copy()
@@ -49,6 +60,7 @@ class FinalProbabilityTests(unittest.TestCase):
         confident[13:23] = [1.0] + [0.0] * 9
         confident[23:26] = [1.0, 0.0, 0.0]
         self.assertGreater(final.physics_noise_score(uncertain), final.physics_noise_score(confident))
+        self.assertLess(abs(final.physics_noise_score(uncertain, 20) - 0.5), abs(final.physics_noise_score(uncertain, 55) - 0.5))
 
     def test_xgboost_probability_is_direct_and_bounded(self):
         model = FakeClassifier(0.87)
@@ -208,6 +220,29 @@ class FinalProbabilityTests(unittest.TestCase):
         tuning = final.optimize_ev_thresholds(probability, actual, rounds)
         self.assertEqual(set(tuning["thresholds"]), {"early", "middle", "late"})
         self.assertEqual(set(tuning["stages"]), {"early", "middle", "late"})
+        self.assertLessEqual(tuning["skip_rate_delta"], final.MAX_SKIP_RATE_INCREASE + 1e-12)
+        self.assertTrue(tuning["skip_constraint"]["passed"])
+
+    def test_ev_tuning_rejects_large_skip_increase(self):
+        probability=np.full(100,.489,dtype=float)
+        actual=np.asarray(([0]*55)+([1]*45),dtype=np.int8)
+        rounds=np.full(100,20,dtype=float)
+        tuning=final.optimize_ev_thresholds(probability,actual,rounds)
+        self.assertLessEqual(tuning["skip_rate_delta"],.08+1e-12)
+
+    def test_isotonic_calibration_mapping(self):
+        calibrated=final.apply_probability_calibration(np.asarray([.25,.50,.75]),{"method":"isotonic","x_thresholds":[0.0,.5,1.0],"y_thresholds":[.1,.45,.9]})
+        self.assertTrue(np.allclose(calibrated,[.275,.45,.675]))
+
+    def test_calibration_selects_supported_method(self):
+        probability=np.tile(np.linspace(.1,.9,20),30)
+        features=np.zeros((len(probability),57),dtype=np.float32);features[:,0]=probability
+        labels=(probability>.5).astype(np.int8)
+        calibration=final.fit_probability_calibration(VectorClassifier(),features,labels,shoe_ids=[f"shoe-{index//20}" for index in range(len(labels))])
+        self.assertIn(calibration["method"],{"platt","isotonic"})
+        output=final.apply_probability_calibration(probability,calibration)
+        self.assertTrue(np.all(np.isfinite(output)))
+        self.assertTrue(np.all((output>0)&(output<1)))
 
     def test_classifier_is_binary_logistic(self):
         class CapturingClassifier:

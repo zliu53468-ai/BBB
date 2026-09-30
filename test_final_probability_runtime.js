@@ -64,6 +64,11 @@ require("./final_probability_runtime.js");
   const expectedConfidence=expectedDirection==="B"?out.ev_banker-out.min_ev:expectedDirection==="P"?out.ev_player-out.min_ev:0;
   if(out.direction!==expectedDirection||Math.abs(out.confidence-expectedConfidence)>1e-9||Math.abs(out.min_ev-.020)>1e-9)throw new Error("dynamic EV decision mismatch");
   if(!useGeneratedBundle){
+    finalBundle.calibration={method:"isotonic",x_thresholds:[0,1],y_thresholds:[.2,.6]};
+    finalBundle.base_margin=Math.log(.25/.75);
+    const calibratedOut=api.applyFinalPrediction(history,core);
+    if(Math.abs(calibratedOut.finalProbability.rawPB-.30)>1e-9)throw new Error("isotonic calibration failed");
+    delete finalBundle.calibration;
     finalBundle.base_margin=Math.log(.48/.52);
     const playerOut=api.applyFinalPrediction(history,core),playerResult=playerOut.finalProbability;
     if(playerOut.direction!=="P"||playerOut.final_direction!=="閒 P")throw new Error("binary Player EV normalization failed");

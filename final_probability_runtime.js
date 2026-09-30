@@ -20,7 +20,7 @@ const PHYSICS_NAMES=[
 const PHYSICS_INDEX=Object.fromEntries(PHYSICS_NAMES.map((name,index)=>[name,index]));
 const EXTENDED_NAMES=["core_p_b_external","shoe_progress_weight",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...PHYSICS_NAMES,"physics_noise_score"];
 const HISTORY_WINDOW=64,HISTORY_INPUT_DIM=213,PHYSICS_DIM=48,FEATURE_DIM=57;
-const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.95;
+const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.78;
 const SNAPSHOT_SCHEMA_VERSION=6;
 const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
 const SHOE_KEY="bgs_xgb_final_shoe_id_v5",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
@@ -116,18 +116,29 @@ function predictFinalProbability(bundle,vector,names){
   let probability=clip(sigmoid(margin),1e-7,1-1e-7),calibration=bundle.calibration||{};
   if(calibration.method==="platt"){
     const logit=Math.log(probability/(1-probability));
-    probability=sigmoid((+calibration.slope||1)*logit+(+calibration.intercept||0));
+    const slope=Number.isFinite(+calibration.slope)?+calibration.slope:1,intercept=Number.isFinite(+calibration.intercept)?+calibration.intercept:0;
+    probability=sigmoid(slope*logit+intercept);
+  }else if(calibration.method==="isotonic"&&calibration.x_thresholds?.length>1&&calibration.y_thresholds?.length===calibration.x_thresholds.length){
+    const xs=calibration.x_thresholds,ys=calibration.y_thresholds;if(probability<=xs[0])probability=ys[0];else if(probability>=xs.at(-1))probability=ys.at(-1);else{
+      let lo=0,hi=xs.length-1;while(hi-lo>1){const mid=(lo+hi)>>1;if(probability<xs[mid])hi=mid;else lo=mid;}
+      const ratio=(probability-xs[lo])/Math.max(1e-12,xs[hi]-xs[lo]);probability=ys[lo]+ratio*(ys[hi]-ys[lo]);
+    }
   }
   return clip(probability);
 }
 function normalisedEntropy(block){const p=normalise(block,Array(block.length).fill(1/block.length));return-p.reduce((s,v)=>s+(v>0?v*Math.log(v):0),0)/Math.log(block.length);}
-function physicsNoiseScore(physics){
-  if((final56Bundle?.training?.noise_score_version||1)<2){const r=physicsIntegrity(physics);return r?Math.abs(r.cardCountProbabilitySum-1)+Math.abs(r.suitRatioSum-1):1;}
+function physicsNoiseScore(physics,roundIndex=70){
+  const version=final56Bundle?.training?.noise_score_version||1;
+  if(version<2){const r=physicsIntegrity(physics);return r?Math.abs(r.cardCountProbabilitySum-1)+Math.abs(r.suitRatioSum-1):1;}
   const winner=physics.slice(23,26).sort((a,b)=>b-a),gap=(winner[0]||0)-(winner[1]||0);
-  return clip(.20*normalisedEntropy(physics.slice(0,3))+.15*normalisedEntropy(physics.slice(3,13))+.15*normalisedEntropy(physics.slice(13,23))+.35*normalisedEntropy(physics.slice(23,26))+.15*(1-gap));
+  if(version<3)return clip(.20*normalisedEntropy(physics.slice(0,3))+.15*normalisedEntropy(physics.slice(3,13))+.15*normalisedEntropy(physics.slice(13,23))+.35*normalisedEntropy(physics.slice(23,26))+.15*(1-gap));
+  const densityGap=Math.abs(clip(physics[44])-clip(physics[45])),densityAmbiguity=1-Math.min(1,densityGap/.25);
+  const raw=clip(.10*normalisedEntropy(physics.slice(0,3))+.075*normalisedEntropy(physics.slice(3,13))+.075*normalisedEntropy(physics.slice(13,23))+.15*normalisedEntropy(physics.slice(23,26))+.25*normalisedEntropy(physics.slice(26,39))+.15*normalisedEntropy(physics.slice(39,43))+.075*(1-gap)+.125*densityAmbiguity);
+  const compressed=.50+.35*Math.tanh((raw-.75)/.20),influence=roundIndex<=40?.35:roundIndex<=50?.65:1;
+  return clip(.50+(compressed-.50)*influence);
 }
 function buildExtended(corePB,o7,physics){
-  const original=original7Vector(o7),progress=(Number(original[1])/70)**3,noise=physicsNoiseScore(physics);
+  const original=original7Vector(o7),progress=(Number(original[1])/70)**3,noise=physicsNoiseScore(physics,original[1]);
   const out=[corePB,progress,...original.slice(1),...physics,noise];if(out.length!==FEATURE_DIM)throw new Error("extended dim "+out.length);return out;
 }
 function unpackPhysicsForecast(physics){
