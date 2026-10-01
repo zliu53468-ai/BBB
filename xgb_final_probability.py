@@ -55,6 +55,12 @@ MAX_SKIP_RATE_INCREASE = 0.08
 SMOOTHING_STRENGTHS = (0.0, 0.025, 0.05, 0.075, 0.10, 0.125, 0.15)
 MAX_SMOOTHING_STRENGTH = 0.15
 MAX_SMOOTHING_BRIER_INCREASE = 0.0005
+MAX_NOISE_EV_PENALTY = 0.001
+MIDDLE_EV_RELIEF = 0.001
+LATE_EV_RELIEF = 0.001
+MIDDLE_SOFT_BAND = 0.001
+LATE_SOFT_BAND = 0.0015
+MIN_SOFT_CONFIDENCE = 0.0005
 LEGACY_XGB_PARAMETERS = {"n_estimators": 320, "max_depth": 3, "learning_rate": 0.025, "min_child_weight": 12, "subsample": 0.85, "colsample_bytree": 0.82, "reg_alpha": 0.35, "reg_lambda": 12.0}
 XGB_TUNING_CANDIDATES: tuple[dict[str, Any], ...] = (
     LEGACY_XGB_PARAMETERS,
@@ -328,10 +334,11 @@ def _direct_prediction_payload(
     ev_player = p_player - final_pb
     ev_thresholds = dict(DEFAULT_MIN_EV)
     ev_thresholds.update(getattr(xgboost_model, "bbb_ev_thresholds_", {}) or {})
-    min_ev = ev_thresholds["early"] if round_index <= 40 else ev_thresholds["late"] if round_index > 50 else ev_thresholds["middle"]
-    direction = "B" if ev_banker > min_ev and ev_banker > ev_player else "P" if ev_player > min_ev and ev_player > ev_banker else "Skip"
+    policy_enabled = bool((getattr(xgboost_model, "bbb_decision_policy_", {}) or {}).get("enabled", False))
+    min_ev, activation_ev, soft_band = decision_policy_value(round_index, noise_score, ev_thresholds, enabled=policy_enabled)
+    direction = "B" if ev_banker > activation_ev and ev_banker > ev_player else "P" if ev_player > activation_ev and ev_player > ev_banker else "Skip"
     final_direction = {"B": "莊 B", "P": "閒 P", "Skip": "觀望 Skip"}[direction]
-    confidence = ev_banker - min_ev if direction == "B" else ev_player - min_ev if direction == "P" else 0.0
+    confidence = soft_confidence(ev_banker if direction == "B" else ev_player, min_ev, activation_ev, soft_band) if direction != "Skip" else 0.0
     return {
         "core_p_b": float(core_pb),
         "raw_p_b": raw_pb,
@@ -341,6 +348,9 @@ def _direct_prediction_payload(
         "ev_banker": ev_banker,
         "ev_player": ev_player,
         "min_ev": min_ev,
+        "activation_ev": activation_ev,
+        "soft_band": soft_band,
+        "decision_policy_enabled": policy_enabled,
         "direction": direction,
         "final_direction": final_direction,
         "confidence": confidence,
@@ -803,20 +813,63 @@ def _stage_min_ev(rounds: np.ndarray, thresholds: Mapping[str, float]) -> np.nda
     return values
 
 
+def decision_policy_arrays(
+    rounds: np.ndarray,
+    noise_scores: np.ndarray | None,
+    thresholds: Mapping[str, float],
+    *,
+    enabled: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """噪音主要控制 Clip；EV 只做至多 0.001 微調，軟帶只開放低噪音中後段。"""
+    rounds = np.asarray(rounds, dtype=np.float64)
+    base = _stage_min_ev(rounds, thresholds)
+    if not enabled:
+        return base, base.copy(), np.zeros(len(rounds), dtype=np.float64)
+    noise = np.full(len(rounds), 0.5) if noise_scores is None else np.clip(np.asarray(noise_scores, dtype=np.float64), 0.0, 1.0)
+    if len(noise) != len(rounds):
+        raise ValueError("noise_scores and rounds must be aligned")
+    low_noise = noise <= PHYSICS_NOISE_LOW_THRESHOLD
+    middle = (rounds > 40) & (rounds <= 50); late = rounds > 50
+    relief = np.zeros(len(rounds), dtype=np.float64)
+    relief[middle & low_noise] = MIDDLE_EV_RELIEF; relief[late & low_noise] = LATE_EV_RELIEF
+    penalty = np.minimum(MAX_NOISE_EV_PENALTY, np.maximum(0.0, noise - PHYSICS_NOISE_LOW_THRESHOLD) * (MAX_NOISE_EV_PENALTY / (1.0 - PHYSICS_NOISE_LOW_THRESHOLD)))
+    min_ev = np.maximum(0.0, base - relief + penalty)
+    soft_band = np.zeros(len(rounds), dtype=np.float64)
+    soft_band[middle & low_noise] = MIDDLE_SOFT_BAND; soft_band[late & low_noise] = LATE_SOFT_BAND
+    return min_ev, np.maximum(0.0, min_ev - soft_band), soft_band
+
+
+def decision_policy_value(round_index: float, noise_score: float, thresholds: Mapping[str, float], *, enabled: bool) -> tuple[float, float, float]:
+    values = decision_policy_arrays(np.asarray([round_index]), np.asarray([noise_score]), thresholds, enabled=enabled)
+    return tuple(float(item[0]) for item in values)
+
+
+def soft_confidence(edge: float, min_ev: float, activation_ev: float, soft_band: float) -> float:
+    if edge <= activation_ev:
+        return 0.0
+    premium = max(0.0, edge - min_ev)
+    if soft_band <= 0.0:
+        return premium
+    return max(MIN_SOFT_CONFIDENCE, premium, 0.5 * min(soft_band, edge - activation_ev))
+
+
 def decision_returns(
     probability_b: np.ndarray,
     actual_b: np.ndarray,
     rounds: np.ndarray,
     thresholds: Mapping[str, float],
+    noise_scores: np.ndarray | None = None,
+    *,
+    policy_enabled: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     probability_b = np.asarray(probability_b, dtype=np.float64)
     actual_b = np.asarray(actual_b, dtype=np.int8)
     probability_p = 1.0 - probability_b
     ev_banker = probability_b * 0.95 - probability_p
     ev_player = probability_p - probability_b
-    min_ev = _stage_min_ev(np.asarray(rounds, dtype=np.float64), thresholds)
-    banker = (ev_banker > min_ev) & (ev_banker > ev_player)
-    player = (ev_player > min_ev) & (ev_player > ev_banker)
+    _, activation_ev, _ = decision_policy_arrays(np.asarray(rounds, dtype=np.float64), noise_scores, thresholds, enabled=policy_enabled)
+    banker = (ev_banker > activation_ev) & (ev_banker > ev_player)
+    player = (ev_player > activation_ev) & (ev_player > ev_banker)
     wagered = banker | player
     realised = np.zeros(len(probability_b), dtype=np.float64)
     realised[banker] = np.where(actual_b[banker] == 1, 0.95, -1.0)
@@ -840,9 +893,12 @@ def optimize_ev_thresholds(
     probability_b: np.ndarray,
     actual_b: np.ndarray,
     rounds: np.ndarray,
+    noise_scores: np.ndarray | None = None,
+    *,
+    policy_enabled: bool = False,
 ) -> dict[str, Any]:
     """Tune the existing three numbers with an absolute +8% Skip guardrail."""
-    thresholds = dict(DEFAULT_MIN_EV)
+    thresholds = dict(DEFAULT_MIN_EV); noise=np.full(len(rounds),.5) if noise_scores is None else np.asarray(noise_scores,dtype=np.float64)
     grids = {
         "early": np.arange(0.010, 0.0351, 0.0025),
         "middle": np.arange(0.005, 0.0201, 0.0025),
@@ -859,7 +915,7 @@ def optimize_ev_thresholds(
         if not count:
             stages[stage] = {"rows": 0, "min_ev": thresholds[stage]}
             continue
-        baseline_realised,baseline_wagered=decision_returns(probability_b[mask],actual_b[mask],np.asarray(rounds)[mask],DEFAULT_MIN_EV)
+        baseline_realised,baseline_wagered=decision_returns(probability_b[mask],actual_b[mask],np.asarray(rounds)[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=policy_enabled)
         baseline=decision_metrics(baseline_realised,baseline_wagered)
         minimum_wagers=max(1,int(math.ceil(max(0.0,baseline["action_rate"]-MAX_SKIP_RATE_INCREASE)*count)))
         best: tuple[float, float, float, float] | None = None
@@ -867,7 +923,7 @@ def optimize_ev_thresholds(
         for candidate in candidates:
             trial = dict(thresholds)
             trial[stage] = candidate
-            realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], trial)
+            realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], trial, noise[mask], policy_enabled=policy_enabled)
             wagers = int(np.sum(wagered))
             if wagers < minimum_wagers:
                 continue
@@ -879,7 +935,7 @@ def optimize_ev_thresholds(
                 best = result
         if best is not None:
             thresholds[stage] = float(-best[3])
-        realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], thresholds)
+        realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], thresholds, noise[mask], policy_enabled=policy_enabled)
         tuned=decision_metrics(realised,wagered)
         stages[stage] = {
             "rows": count,
@@ -891,13 +947,13 @@ def optimize_ev_thresholds(
             "realized_ev_per_bet": tuned["realized_ev_per_bet"],
             "min_ev": thresholds[stage],
         }
-    baseline_realised,baseline_wagered=decision_returns(probability_b,actual_b,rounds,DEFAULT_MIN_EV)
-    tuned_realised,tuned_wagered=decision_returns(probability_b,actual_b,rounds,thresholds)
+    baseline_realised,baseline_wagered=decision_returns(probability_b,actual_b,rounds,DEFAULT_MIN_EV,noise,policy_enabled=policy_enabled)
+    tuned_realised,tuned_wagered=decision_returns(probability_b,actual_b,rounds,thresholds,noise,policy_enabled=policy_enabled)
     baseline=decision_metrics(baseline_realised,baseline_wagered); tuned=decision_metrics(tuned_realised,tuned_wagered)
     skip_delta=tuned["skip_rate"]-baseline["skip_rate"]
     if skip_delta > MAX_SKIP_RATE_INCREASE + 1e-12:
         thresholds=dict(DEFAULT_MIN_EV); tuned=baseline; skip_delta=0.0
-    return {"thresholds":thresholds,"stages":stages,"baseline":baseline,"tuned":tuned,"skip_rate_delta":skip_delta,
+    return {"thresholds":thresholds,"stages":stages,"baseline":baseline,"tuned":tuned,"skip_rate_delta":skip_delta,"decision_policy_enabled":bool(policy_enabled),
             "skip_constraint":{"preferred_max_increase":PREFERRED_SKIP_RATE_INCREASE,"hard_max_increase":MAX_SKIP_RATE_INCREASE,"passed":skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12}}
 
 
@@ -910,31 +966,31 @@ def optimize_smoothing_and_thresholds(
     strengths: Sequence[float] = SMOOTHING_STRENGTHS,
 ) -> dict[str, Any]:
     """在獨立 EV tuning 靴選 EMA；EV 不得下降，Skip 增幅硬限 +8%。"""
-    rounds = np.asarray(x, dtype=np.float64)[:, 2]
+    features=np.asarray(x,dtype=np.float64);rounds=features[:,2];noise=features[:,-1]
     candidates = sorted({_clip(float(value), 0.0, MAX_SMOOTHING_STRENGTH) for value in strengths} | {0.0})
     reports: list[dict[str, Any]] = []; baseline: dict[str, float] | None = None
-    best: tuple[float, float, dict[str, Any]] | None = None
+    best: tuple[float, float, bool, dict[str, Any]] | None = None
     for strength in candidates:
         final = bounded_from_calibrated(calibrated_probability, x, shoe_ids=shoe_ids, smoothing_strength=strength)
-        tuning = optimize_ev_thresholds(final, actual_b, rounds)
-        realised, wagered = decision_returns(final, actual_b, rounds, tuning["thresholds"])
-        metrics = decision_metrics(realised, wagered); brier = _brier(final, actual_b)
-        if baseline is None:
-            baseline = {**metrics, "brier": brier}
-        skip_delta = metrics["skip_rate"] - baseline["skip_rate"]
-        ev_delta = metrics["realized_ev_per_bet"] - baseline["realized_ev_per_bet"]
-        brier_delta = brier - baseline["brier"]
-        eligible = skip_delta <= MAX_SKIP_RATE_INCREASE + 1e-12 and ev_delta >= -1e-12 and brier_delta <= MAX_SMOOTHING_BRIER_INCREASE
-        score = brier - .02 * metrics["realized_ev_per_bet"] - .05 * metrics["realized_ev_per_row"] + .25 * max(0.0, skip_delta - PREFERRED_SKIP_RATE_INCREASE)
-        report = {"strength": strength, "score": score, "brier": brier, **metrics,
-                  "skip_rate_delta": skip_delta, "ev_per_bet_delta": ev_delta,
-                  "brier_delta": brier_delta, "guardrail_passed": eligible,
-                  "ev_thresholds": tuning["thresholds"]}
-        reports.append(report)
-        if eligible and (best is None or score < best[0]):
-            best = (score, strength, tuning)
+        for policy_enabled in (False,True):
+            tuning = optimize_ev_thresholds(final,actual_b,rounds,noise,policy_enabled=policy_enabled)
+            realised,wagered=decision_returns(final,actual_b,rounds,tuning["thresholds"],noise,policy_enabled=policy_enabled)
+            metrics=decision_metrics(realised,wagered);brier=_brier(final,actual_b)
+            if baseline is None: baseline={**metrics,"brier":brier}
+            skip_delta=metrics["skip_rate"]-baseline["skip_rate"]
+            ev_delta=metrics["realized_ev_per_bet"]-baseline["realized_ev_per_bet"]
+            brier_delta=brier-baseline["brier"]
+            eligible=skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and ev_delta>=-1e-12 and brier_delta<=MAX_SMOOTHING_BRIER_INCREASE
+            score=brier-.02*metrics["realized_ev_per_bet"]-.05*metrics["realized_ev_per_row"]+.25*max(0.0,skip_delta-PREFERRED_SKIP_RATE_INCREASE)
+            report={"strength":strength,"decision_policy_enabled":policy_enabled,"score":score,"brier":brier,**metrics,
+                    "skip_rate_delta":skip_delta,"ev_per_bet_delta":ev_delta,"brier_delta":brier_delta,
+                    "guardrail_passed":eligible,"ev_thresholds":tuning["thresholds"]}
+            reports.append(report)
+            if eligible and (best is None or score<best[0]): best=(score,strength,policy_enabled,tuning)
     assert baseline is not None and best is not None
-    return {"method": "causal_ema", "strength": best[1], "ev_tuning": best[2],
+    return {"method":"causal_ema","strength":best[1],"decision_policy":{"enabled":best[2],"max_noise_ev_penalty":MAX_NOISE_EV_PENALTY,
+                    "middle_relief":MIDDLE_EV_RELIEF,"late_relief":LATE_EV_RELIEF,"middle_soft_band":MIDDLE_SOFT_BAND,"late_soft_band":LATE_SOFT_BAND,
+                    "noise_threshold":PHYSICS_NOISE_LOW_THRESHOLD,"min_confidence":MIN_SOFT_CONFIDENCE},"ev_tuning":best[3],
             "baseline": baseline, "candidates": reports,
             "guardrail": {"max_strength": MAX_SMOOTHING_STRENGTH,
                           "preferred_skip_increase": PREFERRED_SKIP_RATE_INCREASE,
@@ -1060,6 +1116,7 @@ def evaluate(
     calibration: Mapping[str, Any] | None = None,
     ev_thresholds: Mapping[str, float] | None = None,
     smoothing_strength: float = 0.0,
+    decision_policy_enabled: bool = False,
     shoe_ids: Sequence[str] | None = None,
     bootstrap_samples: int = 1000,
 ) -> dict[str, Any]:
@@ -1068,13 +1125,19 @@ def evaluate(
     strength = _clip(float(smoothing_strength), 0.0, MAX_SMOOTHING_STRENGTH)
     final = bounded_from_calibrated(raw, x, shoe_ids=shoe_ids, smoothing_strength=strength)
     rounds = np.asarray(x[:, 2], dtype=np.float64)
+    noise = np.asarray(x[:, -1], dtype=np.float64)
     thresholds = dict(DEFAULT_MIN_EV)
     thresholds.update(ev_thresholds or {})
-    realised, wagered = decision_returns(final, y, rounds, thresholds)
-    pre_realised,pre_wagered=decision_returns(unsmoothed,y,rounds,thresholds)
-    baseline_realised,baseline_wagered=decision_returns(final,y,rounds,DEFAULT_MIN_EV)
+    realised,wagered=decision_returns(final,y,rounds,thresholds,noise,policy_enabled=decision_policy_enabled)
+    pre_realised,pre_wagered=decision_returns(unsmoothed,y,rounds,thresholds,noise,policy_enabled=decision_policy_enabled)
+    baseline_realised,baseline_wagered=decision_returns(final,y,rounds,DEFAULT_MIN_EV,noise,policy_enabled=decision_policy_enabled)
+    hard_realised,hard_wagered=decision_returns(final,y,rounds,thresholds,noise,policy_enabled=False)
     decision=decision_metrics(realised,wagered); pre=decision_metrics(pre_realised,pre_wagered); baseline=decision_metrics(baseline_realised,baseline_wagered)
+    hard=decision_metrics(hard_realised,hard_wagered)
     skip_delta=decision["skip_rate"]-baseline["skip_rate"]
+    policy_skip_delta=decision["skip_rate"]-hard["skip_rate"]
+    policy_ev_delta=decision["realized_ev_per_bet"]-hard["realized_ev_per_bet"]
+    policy_guard=policy_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and policy_ev_delta>=-1e-12
     correct = ((final > 0.50) == (y > 0)).astype(np.float64)
     pre_correct = ((unsmoothed > 0.50) == (y > 0)).astype(np.float64)
     smoothing_skip_delta=decision["skip_rate"]-pre["skip_rate"]
@@ -1083,11 +1146,16 @@ def evaluate(
     smoothing_guard=(smoothing_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and smoothing_ev_delta>=-1e-12 and smoothing_brier_delta<=MAX_SMOOTHING_BRIER_INCREASE)
     stage_masks={"early":rounds<=40,"middle":(rounds>40)&(rounds<=50),"late":rounds>50}; stage_report={}
     for stage,mask in stage_masks.items():
-        stage_realised,stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds)
-        pre_stage_realised,pre_stage_wagered=decision_returns(unsmoothed[mask],y[mask],rounds[mask],thresholds)
-        base_realised,base_wagered=decision_returns(final[mask],y[mask],rounds[mask],DEFAULT_MIN_EV)
+        stage_realised,stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled)
+        pre_stage_realised,pre_stage_wagered=decision_returns(unsmoothed[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled)
+        base_realised,base_wagered=decision_returns(final[mask],y[mask],rounds[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=decision_policy_enabled)
+        hard_stage_realised,hard_stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=False)
         tuned_stage=decision_metrics(stage_realised,stage_wagered); pre_stage=decision_metrics(pre_stage_realised,pre_stage_wagered); base_stage=decision_metrics(base_realised,base_wagered)
+        hard_stage=decision_metrics(hard_stage_realised,hard_stage_wagered)
         stage_report[stage]={**tuned_stage,"baseline_skip_rate":base_stage["skip_rate"],"skip_rate_delta":tuned_stage["skip_rate"]-base_stage["skip_rate"],
+                             "hard_policy_ev_per_bet":hard_stage["realized_ev_per_bet"],"hard_policy_skip_rate":hard_stage["skip_rate"],
+                             "policy_ev_per_bet_delta":tuned_stage["realized_ev_per_bet"]-hard_stage["realized_ev_per_bet"],
+                             "policy_skip_rate_delta":tuned_stage["skip_rate"]-hard_stage["skip_rate"],
                              "pre_smoothing_ev_per_bet":pre_stage["realized_ev_per_bet"],"pre_smoothing_skip_rate":pre_stage["skip_rate"],
                              "smoothing_ev_per_bet_delta":tuned_stage["realized_ev_per_bet"]-pre_stage["realized_ev_per_bet"],
                              "smoothing_skip_rate_delta":tuned_stage["skip_rate"]-pre_stage["skip_rate"]}
@@ -1113,6 +1181,13 @@ def evaluate(
         "baseline_realized_ev_per_bet": baseline["realized_ev_per_bet"],
         "stage_decision_metrics": stage_report,
         "evaluated_min_ev": thresholds,
+        "decision_policy": {
+            "enabled": bool(decision_policy_enabled),
+            "guardrail_passed": bool(policy_guard),
+            "before": hard,
+            "after": decision,
+            "delta": {"realized_ev_per_bet": policy_ev_delta, "skip_rate": policy_skip_delta},
+        },
         "smoothing": {
             "method":"causal_ema","strength":strength,"guardrail_passed":bool(smoothing_guard),
             "before":{"accuracy":_accuracy(unsmoothed,y),"accuracy_ci95":shoe_bootstrap_ci(pre_correct,shoe_ids,samples=bootstrap_samples),
@@ -1206,6 +1281,7 @@ def export_browser_bundle(
     calibration: Mapping[str, Any] | None = None,
     ev_thresholds: Mapping[str, float] | None = None,
     smoothing_strength: float = 0.0,
+    decision_policy: Mapping[str, Any] | None = None,
     probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
 ) -> dict[str, Any]:
     """Export sigmoid-linked classifier trees for the static browser runtime."""
@@ -1233,6 +1309,7 @@ def export_browser_bundle(
         "calibration": dict(calibration or {"method": "identity", "slope": 1.0, "intercept": 0.0}),
         "ev_thresholds": dict(ev_thresholds or DEFAULT_MIN_EV),
         "smoothing": {"method": "causal_ema", "strength": _clip(float(smoothing_strength), 0.0, MAX_SMOOTHING_STRENGTH)},
+        "decision_policy": dict(decision_policy or {"enabled": False}),
         "trees": trees,
         "training": {
             "target": "actual_b_binary",
@@ -1297,6 +1374,8 @@ def train_command(args: argparse.Namespace) -> int:
     )
     ev_tuning=smoothing_tuning["ev_tuning"]
     smoothing_strength=float(smoothing_tuning["strength"])
+    decision_policy=dict(smoothing_tuning["decision_policy"])
+    decision_policy_enabled=bool(decision_policy["enabled"])
     holdout_records = [record for record, selected in zip(training_records, holdout) if selected]
     metrics = evaluate(
         model,
@@ -1306,6 +1385,7 @@ def train_command(args: argparse.Namespace) -> int:
         calibration=calibration,
         ev_thresholds=ev_tuning["thresholds"],
         smoothing_strength=smoothing_strength,
+        decision_policy_enabled=decision_policy_enabled,
         shoe_ids=[str(record["shoe_id"]) for record in holdout_records],
         bootstrap_samples=args.bootstrap_samples,
     )
@@ -1326,6 +1406,7 @@ def train_command(args: argparse.Namespace) -> int:
         "holdout_shoes": int(len({str(record["shoe_id"]) for record, selected in zip(training_records, holdout) if selected})),
         "calibration": calibration,
         "recommended_min_ev": ev_tuning,
+        "selected_decision_policy": decision_policy,
         "smoothing_selection": smoothing_tuning,
         "hyperparameter_search": search_report,
         "selected_parameters": best_parameters,
@@ -1335,12 +1416,15 @@ def train_command(args: argparse.Namespace) -> int:
         "skip_rate_delta_vs_legacy": deployment_skip_delta,
         "deployment_skip_constraint_passed": bool(deployment_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12),
         "deployment_smoothing_constraint_passed": bool(metrics["smoothing"]["guardrail_passed"]),
+        "deployment_decision_policy_constraint_passed": bool(metrics["decision_policy"]["guardrail_passed"]),
     })
     print(json.dumps({"holdout": metrics}, ensure_ascii=False, indent=2))
     if not metrics["deployment_skip_constraint_passed"]:
         raise SystemExit(f"deployment blocked: holdout Skip increased by {deployment_skip_delta:.4f} (> {MAX_SKIP_RATE_INCREASE:.4f})")
     if not metrics["deployment_smoothing_constraint_passed"]:
         raise SystemExit("deployment blocked: smoothing reduced holdout EV, worsened Brier, or increased Skip beyond guardrail")
+    if not metrics["deployment_decision_policy_constraint_passed"]:
+        raise SystemExit("deployment blocked: soft EV policy reduced holdout EV or increased Skip beyond guardrail")
 
     deploy = train | calibration_rows
     final_model = build_xgboost_classifier(random_state=args.random_state, overrides=best_parameters)
@@ -1348,6 +1432,7 @@ def train_command(args: argparse.Namespace) -> int:
     final_model.bbb_calibration_ = calibration
     final_model.bbb_ev_thresholds_ = ev_tuning["thresholds"]
     final_model.bbb_smoothing_strength_ = smoothing_strength
+    final_model.bbb_decision_policy_ = decision_policy
     if args.joblib_output:
         joblib.dump(final_model, args.joblib_output)
     export_browser_bundle(
@@ -1358,6 +1443,7 @@ def train_command(args: argparse.Namespace) -> int:
         calibration=calibration,
         ev_thresholds=ev_tuning["thresholds"],
         smoothing_strength=smoothing_strength,
+        decision_policy=decision_policy,
         probability_bounds=args.probability_bounds,
     )
     print(f"wrote {args.output}")

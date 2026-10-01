@@ -103,6 +103,26 @@ class FinalProbabilityTests(unittest.TestCase):
             self.assertAlmostEqual(result["min_ev"], min_ev, places=6)
             self.assertEqual(result["final_direction"], direction)
 
+    def test_noise_separated_soft_policy_only_relaxes_clean_middle_and_late_rounds(self):
+        early=final.decision_policy_value(30,.50,final.DEFAULT_MIN_EV,enabled=True)
+        middle=final.decision_policy_value(45,.50,final.DEFAULT_MIN_EV,enabled=True)
+        late=final.decision_policy_value(55,.50,final.DEFAULT_MIN_EV,enabled=True)
+        noisy_late=final.decision_policy_value(55,1.0,final.DEFAULT_MIN_EV,enabled=True)
+        self.assertTrue(np.allclose(early,(.020,.020,0.0)))
+        self.assertTrue(np.allclose(middle,(.009,.008,.001)))
+        self.assertTrue(np.allclose(late,(.004,.0025,.0015)))
+        self.assertTrue(np.allclose(noisy_late,(.006,.006,0.0)))
+
+    def test_soft_transition_uses_small_confidence_floor(self):
+        model=FakeClassifier(.4955)
+        model.bbb_decision_policy_={"enabled":True}
+        original=self.original.copy();original[1]=45
+        result=final.predict_final_probability(self.core,original,self.physics,xgboost_model=model)
+        self.assertEqual(result["direction"],"P")
+        self.assertAlmostEqual(result["min_ev"],.009,places=6)
+        self.assertAlmostEqual(result["activation_ev"],.008,places=6)
+        self.assertAlmostEqual(result["confidence"],final.MIN_SOFT_CONFIDENCE,places=6)
+
     def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
         early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))
         late_original = self.original.copy(); late_original[1] = 55
@@ -233,6 +253,7 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertEqual(set(report["smoothing"]),{"method","strength","guardrail_passed","before","after","delta"})
         self.assertIn("realized_ev_per_bet",report["smoothing"]["before"])
         self.assertIn("skip_rate",report["smoothing"]["after"])
+        self.assertIn("guardrail_passed",report["decision_policy"])
 
     def test_ev_threshold_tuning_keeps_three_stages(self):
         probability = np.asarray([0.45, 0.55, 0.46, 0.54, 0.44, 0.56] * 4)

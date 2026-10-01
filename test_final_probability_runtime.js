@@ -81,6 +81,13 @@ require("./final_probability_runtime.js");
     finalBundle.base_margin=Math.log(.497/.503);
     const lateHistory=Array.from({length:54},(_,i)=>i%2?"P":"B"),lateCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(lateHistory),lateOut=api.applyFinalPrediction(lateHistory,lateCore);
     if(lateOut.direction!=="P"||Math.abs(lateOut.min_ev-.005)>1e-9)throw new Error("late EV threshold failed");
+    finalBundle.decision_policy={enabled:true,noise_threshold:1,max_noise_ev_penalty:.001,middle_relief:.001,late_relief:.001,middle_soft_band:.001,late_soft_band:.0015,min_confidence:.0005};
+    finalBundle.base_margin=Math.log(.4955/.5045);
+    const softOut=api.applyFinalPrediction(midHistory,midCore);
+    if(softOut.direction!=="P"||softOut.decision_policy_enabled!==true)throw new Error("soft middle EV transition failed");
+    if(Math.abs(softOut.min_ev-.009)>1e-9||Math.abs(softOut.activation_ev-.008)>1e-9||Math.abs(softOut.soft_band-.001)>1e-9)throw new Error("soft EV policy values mismatch");
+    if(Math.abs(softOut.confidence-.0005)>1e-9)throw new Error("soft confidence floor failed");
+    delete finalBundle.decision_policy;
     finalBundle.base_margin=Math.log(.90/.10);
   }
 
