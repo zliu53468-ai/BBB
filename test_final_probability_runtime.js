@@ -98,13 +98,14 @@ require("./final_probability_runtime.js");
   const snapshot=rows[0];
   if(snapshot.schema_version!==6||snapshot.actual_b!==1||snapshot.is_directional_label!==true)throw new Error("invalid directional snapshot metadata");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57)throw new Error("prediction snapshot is missing exact model features");
-  if(!Number.isFinite(snapshot.smoothed_p_b)||snapshot.smoothing_strength!==0)throw new Error("smoothing snapshot metadata is missing");
+  if(!Number.isFinite(snapshot.clipped_p_b)||!Number.isFinite(snapshot.smoothed_p_b)||snapshot.smoothing_alpha!==1||snapshot.smoothing_strength!==0)throw new Error("smoothing snapshot metadata is missing");
   if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==1)throw new Error("snapshot model metadata is missing");
 
   if(!useGeneratedBundle){
-    finalBundle.smoothing={method:"causal_ema",strength:.10};finalBundle.base_margin=Math.log(.40/.60);
+    finalBundle.smoothing={method:"dynamic_post_clip_ema",profile:"balanced",enabled:true,early_alpha:.40,middle_alpha:.55,late_alpha:.70,noise_gain:0};finalBundle.base_margin=Math.log(.40/.60);
     const smoothHistory=[...history,"B"],smoothCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(smoothHistory),smoothOut=api.applyFinalPrediction(smoothHistory,smoothCore);
-    if(Math.abs(smoothOut.finalProbability.smoothedPB-.45)>1e-9||Math.abs(smoothOut.finalProbability.smoothingStrength-.10)>1e-9)throw new Error("causal EMA failed");
+    if(Math.abs(smoothOut.finalProbability.clippedPB-.45)>1e-9||Math.abs(smoothOut.finalProbability.smoothedPB-.51)>1e-9)throw new Error("post-Clip dynamic EMA failed");
+    if(Math.abs(smoothOut.finalProbability.smoothingAlpha-.40)>1e-9||smoothOut.finalProbability.smoothingProfile!=="balanced")throw new Error("dynamic EMA alpha failed");
     delete finalBundle.smoothing;finalBundle.base_margin=Math.log(.90/.10);
   }
 

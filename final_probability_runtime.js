@@ -167,13 +167,22 @@ function applyProbabilityBounds(rawPB,roundIndex,noiseScore){
   const pair=roundIndex<=40?EARLY_BOUNDS:(roundIndex>50&&noiseScore<=PHYSICS_NOISE_LOW_THRESHOLD?LATE_CLEAN_BOUNDS:DEFAULT_BOUNDS);
   return {value:clip(rawPB,pair[0],pair[1]),low:pair[0],high:pair[1]};
 }
-function applyCausalSmoothing(rawPB,roundIndex){
-  const config=final56Bundle?.smoothing||{},strength=config.method==="causal_ema"?clip(+config.strength||0,0,.15):0;
-  if(!strength)return {value:rawPB,strength:0};
+function dynamicEmaAlpha(roundIndex,noiseScore,config){
+  const stage=roundIndex<=40?"early":roundIndex>50?"late":"middle",range=stage==="early"?[.35,.45]:stage==="middle"?[.50,.60]:[.65,.75];
+  const base=Number.isFinite(+config[stage+"_alpha"])?+config[stage+"_alpha"]:(range[0]+range[1])/2,gain=Math.max(0,Number.isFinite(+config.noise_gain)?+config.noise_gain:.05);
+  return clip(base+gain*(.5-clip(+noiseScore||0)),range[0],range[1]);
+}
+function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds){
+  const config=final56Bundle?.smoothing||{},dynamic=config.method==="dynamic_post_clip_ema"&&config.enabled===true;
+  const legacy=config.method==="causal_ema"&&(+config.strength||0)>0;
+  if(!dynamic&&!legacy)return {value:clippedPB,alpha:1,strength:0,profile:"off",applied:false};
   const shoeId=getShoeId(),rows=readRows();let previous=null;
   for(let i=rows.length-1;i>=0;i--){const row=rows[i];if(row?.shoe_id!==shoeId||+row.round_index>=roundIndex)continue;
-    const value=Number.isFinite(+row.smoothed_p_b)?+row.smoothed_p_b:+row.raw_p_b;if(Number.isFinite(value)){previous=value;break;}}
-  return {value:previous===null?rawPB:clip((1-strength)*rawPB+strength*previous),strength:previous===null?0:strength};
+    const value=Number.isFinite(+row.final_p_b)?+row.final_p_b:+row.smoothed_p_b;if(Number.isFinite(value)){previous=value;break;}}
+  if(previous===null)return {value:clippedPB,alpha:1,strength:0,profile:config.profile||"first_round",applied:false};
+  const alpha=dynamic?dynamicEmaAlpha(roundIndex,noiseScore,config):1-clip(+config.strength||0,0,.15);
+  const value=clip(alpha*clippedPB+(1-alpha)*previous,bounds.low,bounds.high);
+  return {value,alpha,strength:1-alpha,profile:config.profile||(legacy?"legacy":"custom"),applied:true};
 }
 function decisionPolicy(roundIndex,noiseScore){
   const threshold=final56Bundle?.ev_thresholds||{},pick=(key,fallback)=>Number.isFinite(+threshold[key])?+threshold[key]:fallback;
@@ -198,7 +207,7 @@ function softConfidence(edge,policy){
 
 function applyFinalPrediction(seq,corePrediction){
   const original7=buildOriginal7(seq,corePrediction),corePB=original7.core_p_b;
-  let physics=null,physicsForecast=null,physicsIntegrityReport=null,extended=null,rawPB=corePB,smoothedPB=corePB,smoothingStrength=0,finalPB=corePB,bounds=null,error="",mode="core",evDecision=null;
+  let physics=null,physicsForecast=null,physicsIntegrityReport=null,extended=null,rawPB=corePB,clippedPB=corePB,smoothedPB=corePB,smoothingAlpha=1,smoothingStrength=0,smoothingProfile="off",finalPB=corePB,bounds=null,error="",mode="core",evDecision=null;
   try{
     if(physicsBundle?.trained){
       physics=predictPhysics(seq);
@@ -208,9 +217,9 @@ function applyFinalPrediction(seq,corePrediction){
     if(physics&&final56Bundle?.trained){
       extended=buildExtended(corePB,original7,physics);
       rawPB=predictFinalProbability(final56Bundle,extended,EXTENDED_NAMES);
-      const smoothing=applyCausalSmoothing(rawPB,original7.round_index);smoothedPB=smoothing.value;smoothingStrength=smoothing.strength;
-      bounds=applyProbabilityBounds(smoothedPB,original7.round_index,extended.at(-1));
-      finalPB=bounds.value;
+      bounds=applyProbabilityBounds(rawPB,original7.round_index,extended.at(-1));clippedPB=bounds.value;
+      const smoothing=applyDynamicSmoothing(clippedPB,original7.round_index,extended.at(-1),bounds);
+      smoothedPB=smoothing.value;smoothingAlpha=smoothing.alpha;smoothingStrength=smoothing.strength;smoothingProfile=smoothing.profile;finalPB=smoothedPB;
       const pTie=clip(+physics[PHYSICS_INDEX["winner_p_t"]]),pPlayer=1-finalPB;
       const evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
       const policy=decisionPolicy(original7.round_index,extended.at(-1));
@@ -220,13 +229,13 @@ function applyFinalPrediction(seq,corePrediction){
         finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="Skip"?0:softConfidence(edge,policy)};
       mode="final56";
     }
-  }catch(e){error=String(e?.message||e||"runtime_error");rawPB=corePB;smoothedPB=corePB;finalPB=corePB;mode="core";}
+  }catch(e){error=String(e?.message||e||"runtime_error");rawPB=corePB;clippedPB=corePB;smoothedPB=corePB;finalPB=corePB;mode="core";}
   const direction=evDecision?.direction||corePrediction.direction,finalPP=1-finalPB;
   const confidence=evDecision?.confidence??corePrediction.confidence??0;
   return {...corePrediction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),confidence,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
     activation_ev:evDecision?.activationEv??null,soft_band:evDecision?.softBand??0,decision_policy_enabled:evDecision?.policyEnabled??false,probabilities:{B:finalPB,P:finalPP},
     regime:mode==="final56"?(direction==="Skip"?"EV 觀望":direction!==corePrediction.direction?"Final XGB換邊":"Final XGB裁決"):corePrediction.regime,
-    finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,smoothedPB,smoothingStrength,finalPB,bounds,
+    finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,clippedPB,smoothedPB,smoothingAlpha,smoothingStrength,smoothingProfile,finalPB,bounds,
       p_tie:evDecision?.pTie??null,p_player:evDecision?.pPlayer??null,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
       activation_ev:evDecision?.activationEv??null,soft_band:evDecision?.softBand??0,decision_policy_enabled:evDecision?.policyEnabled??false,
       coreDirection:corePrediction.direction,finalDirection:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),flipped:direction!==corePrediction.direction,
@@ -252,7 +261,9 @@ function registerPrediction(seq,prediction){
     entry_eligible:quality.entryEligible,preferred_entry:quality.preferredEntry,mode:r.mode||"core",model_versions:{final_probability:final56Bundle?.schema_version??null,physics:physicsBundle?.schema_version??null},
     core_p_b:f.core_p_b,round_index:f.round_index,estimated_total_hands:f.estimated_total_hands,remaining_ratio:f.remaining_ratio,
     sx_markov_p_same:f.sx_markov_p_same,stage:f.stage,depth:f.depth,original_7d:original7Vector(f),physics_48d:cloneFiniteVector(r.physics,PHYSICS_DIM),
-    features_57d:cloneFiniteVector(r.extended,FEATURE_DIM),shoe_progress_weight:Number.isFinite(+r.extended?.[1])?+r.extended[1]:null,physics_noise_score:Number.isFinite(+r.extended?.at(-1))?+r.extended.at(-1):null,raw_p_b:Number.isFinite(+r.rawPB)?+r.rawPB:null,smoothed_p_b:Number.isFinite(+r.smoothedPB)?+r.smoothedPB:null,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
+    features_57d:cloneFiniteVector(r.extended,FEATURE_DIM),shoe_progress_weight:Number.isFinite(+r.extended?.[1])?+r.extended[1]:null,physics_noise_score:Number.isFinite(+r.extended?.at(-1))?+r.extended.at(-1):null,
+    raw_p_b:Number.isFinite(+r.rawPB)?+r.rawPB:null,clipped_p_b:Number.isFinite(+r.clippedPB)?+r.clippedPB:null,smoothed_p_b:Number.isFinite(+r.smoothedPB)?+r.smoothedPB:null,
+    smoothing_alpha:Number.isFinite(+r.smoothingAlpha)?+r.smoothingAlpha:1,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,smoothing_profile:r.smoothingProfile||"off",final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
     probability_bounds:r.bounds?[r.bounds.low,r.bounds.high]:null,min_ev:Number.isFinite(+r.min_ev)?+r.min_ev:null,
     activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,decision_policy_enabled:r.decision_policy_enabled===true,
     predicted_direction:r.finalDirection||prediction.direction||"",physics_integrity:r.physicsIntegrity||null};
