@@ -23,6 +23,7 @@ from typing import Any, Iterable, Sequence
 
 import joblib
 import numpy as np
+from sklearn.isotonic import IsotonicRegression
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 
@@ -52,8 +53,10 @@ assert PHYSICS_DIM == 48
 DEFAULT_MODEL_PATH = "physics_multitask_model.joblib"
 DEFAULT_BROWSER_BUNDLE = "physics_multitask_model.json"
 DEFAULT_RANDOM_STATE = 20260922
-DEFAULT_PHYSICS_SHOES = 2500
-PHYSICS_LOSS_WEIGHTS = np.asarray([1.5]*3+[1.0]*20+[2.0]*3+[.75]*13+[.75]*4+[.5]*5,dtype=np.float32)
+DEFAULT_PHYSICS_SHOES = 5000
+# Multi-task emphasis: winner / point-distribution fidelity first, then card-count and composition.
+# Architecture remains fixed at 213D input -> ReLU MLP -> 48D output.
+PHYSICS_LOSS_WEIGHTS = np.asarray([1.25]*3+[1.10]*20+[2.50]*3+[.80]*13+[.65]*4+[.55]*5,dtype=np.float32)
 PROBABILITY_BLOCKS = {"card_count":slice(0,3),"player_points":slice(3,13),"banker_points":slice(13,23),"winner":slice(23,26),"suit":slice(39,43)}
 AFFINE_OUTPUT_INDICES = tuple(range(26,39)) + tuple(range(43,48))
 assert PHYSICS_LOSS_WEIGHTS.size == PHYSICS_DIM
@@ -312,6 +315,50 @@ def apply_output_affine(raw: np.ndarray,slope: np.ndarray,intercept: np.ndarray)
     return np.asarray(raw,dtype=float)*np.asarray(slope,dtype=float)+np.asarray(intercept,dtype=float)
 
 
+def physics_uncertainty_proxy(physics_48d: Sequence[float], round_index: float = 70.0) -> float:
+    """Deterministic pre-calibration uncertainty proxy from the existing 48D output."""
+    physics=np.asarray(physics_48d,dtype=np.float64).reshape(-1)
+    if physics.size!=PHYSICS_DIM: raise ValueError(f"expected {PHYSICS_DIM}, got {physics.size}")
+    def entropy(block: np.ndarray) -> float:
+        p=np.clip(block,1e-8,None);p/=p.sum()
+        return float(-np.sum(p*np.log(p))/math.log(len(p)))
+    winner=np.sort(physics[23:26])[::-1];winner_gap=float(winner[0]-winner[1])
+    density_gap=abs(_clip(physics[44])-_clip(physics[45]));density_ambiguity=1.0-min(1.0,density_gap/.25)
+    raw=_clip(.10*entropy(physics[0:3])+.075*entropy(physics[3:13])+.075*entropy(physics[13:23])+
+              .15*entropy(physics[23:26])+.25*entropy(physics[26:39])+.15*entropy(physics[39:43])+
+              .075*(1.0-winner_gap)+.125*density_ambiguity)
+    compressed=.50+.35*math.tanh((raw-.75)/.20)
+    influence=.35 if round_index<=40 else .65 if round_index<=50 else 1.0
+    return _clip(.50+(compressed-.50)*influence)
+
+
+def fit_uncertainty_calibration(pred: np.ndarray, truth: np.ndarray, rounds: Sequence[float]) -> dict[str,Any]:
+    """Calibrate the proxy against empirical 48D residual magnitude on held-out shoes."""
+    pp=np.asarray(pred,dtype=np.float64);tt=np.asarray(truth,dtype=np.float64);rr=np.asarray(rounds,dtype=np.float64)
+    if len(pp)!=len(tt) or len(pp)!=len(rr) or len(pp)<32:
+        return {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]}
+    weights=PHYSICS_LOSS_WEIGHTS.astype(np.float64);weights/=max(1e-12,float(np.mean(weights)))
+    residual=np.mean(((pp-tt)**2)*weights.reshape(1,-1),axis=1)
+    q10,q90=np.quantile(residual,[.10,.90]);span=max(1e-9,float(q90-q10))
+    target=np.clip((residual-q10)/span,0.0,1.0)
+    proxy=np.asarray([physics_uncertainty_proxy(row,rnd) for row,rnd in zip(pp,rr)],dtype=np.float64)
+    if len(np.unique(proxy))<8:
+        return {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0],"residual_q10":float(q10),"residual_q90":float(q90)}
+    iso=IsotonicRegression(y_min=0.0,y_max=1.0,out_of_bounds="clip")
+    iso.fit(proxy,target)
+    calibrated=np.asarray(iso.predict(proxy),dtype=np.float64)
+    corr=float(np.corrcoef(calibrated,residual)[0,1]) if np.std(calibrated)>1e-10 and np.std(residual)>1e-10 else 0.0
+    return {"method":"isotonic","x_thresholds":iso.X_thresholds_.tolist(),"y_thresholds":iso.y_thresholds_.tolist(),
+            "residual_q10":float(q10),"residual_q90":float(q90),"calibration_error_correlation":corr}
+
+
+def apply_uncertainty_calibration(values: Sequence[float], calibration: Mapping[str,Any] | None) -> np.ndarray:
+    v=np.clip(np.asarray(values,dtype=np.float64),0.0,1.0)
+    if not calibration or calibration.get("method")!="isotonic": return v
+    x=np.asarray(calibration.get("x_thresholds") or [],dtype=np.float64);y=np.asarray(calibration.get("y_thresholds") or [],dtype=np.float64)
+    return np.clip(np.interp(v,x,y),0.0,1.0) if len(x)>1 and len(x)==len(y) else v
+
+
 def shoe_bootstrap_ci(values: Sequence[float],shoe_ids: Sequence[int],*,samples: int=1000,random_state: int=DEFAULT_RANDOM_STATE) -> list[float]:
     values=np.asarray(values,dtype=float); groups=np.asarray(shoe_ids); unique=np.unique(groups)
     if len(unique)<2 or samples<=0:
@@ -352,6 +399,7 @@ class PhysicsFeatureExtractor:
         self.calibration_temperatures: dict[str,float]={}
         self.output_slope=np.ones(PHYSICS_DIM,dtype=np.float32)
         self.output_intercept=np.zeros(PHYSICS_DIM,dtype=np.float32)
+        self.uncertainty_calibration: dict[str,Any]={"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]}
         self.model=MLPRegressor(
             hidden_layer_sizes=(64,32),
             activation="relu",
@@ -381,7 +429,7 @@ class PhysicsFeatureExtractor:
         return self.target_scaler.inverse_transform(np.asarray(raw_scaled,dtype=float)/self.loss_scale)
 
     def train_from_simulation(self, *, n_shoes: int=DEFAULT_PHYSICS_SHOES, cut_cards: int=60, validation_fraction: float=.2,
-                              calibration_fraction: float=.1, augment_ratio: float=.2, bootstrap_samples: int=1000) -> dict[str,Any]:
+                              calibration_fraction: float=.1, augment_ratio: float=.25, bootstrap_samples: int=1000) -> dict[str,Any]:
         data=OfflineBaccaratSimulator(cut_cards=cut_cards,random_state=self.random_state).generate(n_shoes)
         unique=np.unique(data.shoe_ids)
         if len(unique)<3: raise ValueError("strict train/calibration/holdout split requires at least three shoes")
@@ -395,14 +443,23 @@ class PhysicsFeatureExtractor:
         self.output_slope,self.output_intercept=fit_output_affine(calibration_raw,data.y[calibration])
         calibration_raw=apply_output_affine(calibration_raw,self.output_slope,self.output_intercept)
         self.calibration_temperatures=fit_probability_temperatures(calibration_raw,data.y[calibration])
+        calibration_pred=np.vstack([sanitize_physics_prediction(v,self.calibration_temperatures) for v in calibration_raw])
+        calibration_rows=np.flatnonzero(calibration)
+        calibration_rounds=np.asarray([len(data.histories[int(i)])+1 for i in calibration_rows],dtype=np.float64)
+        self.uncertainty_calibration=fit_uncertainty_calibration(calibration_pred,data.y[calibration],calibration_rounds)
         raw=self._decode_scaled(self.model.predict(self.scaler.transform(data.x[valid])))
         raw=apply_output_affine(raw,self.output_slope,self.output_intercept)
         pred=np.vstack([sanitize_physics_prediction(v,self.calibration_temperatures) for v in raw])
         truth=data.y[valid]
         card_ok=(np.argmax(pred[:,:3],1)==np.argmax(truth[:,:3],1)).astype(float); winner_ok=(np.argmax(pred[:,23:26],1)==np.argmax(truth[:,23:26],1)).astype(float)
         row_mse=np.mean((pred-truth)**2,axis=1); valid_shoes=data.shoe_ids[valid]
+        valid_rows=np.flatnonzero(valid);valid_rounds=np.asarray([len(data.histories[int(i)])+1 for i in valid_rows],dtype=np.float64)
+        raw_noise=np.asarray([physics_uncertainty_proxy(row,rnd) for row,rnd in zip(pred,valid_rounds)],dtype=np.float64)
+        calibrated_noise=apply_uncertainty_calibration(raw_noise,self.uncertainty_calibration)
+        noise_error_corr=float(np.corrcoef(calibrated_noise,row_mse)[0,1]) if np.std(calibrated_noise)>1e-10 and np.std(row_mse)>1e-10 else 0.0
         metrics={
             "validation_rmse":float(np.sqrt(np.mean(row_mse))),"validation_mse_ci95":shoe_bootstrap_ci(row_mse,valid_shoes,samples=bootstrap_samples),
+            "uncertainty_error_correlation":noise_error_corr,"uncertainty_mean":float(np.mean(calibrated_noise)),
             "card_count_accuracy":float(card_ok.mean()),"card_count_accuracy_ci95":shoe_bootstrap_ci(card_ok,valid_shoes,samples=bootstrap_samples),
             "winner_accuracy":float(winner_ok.mean()),"winner_accuracy_ci95":shoe_bootstrap_ci(winner_ok,valid_shoes,samples=bootstrap_samples),
             "training_rows":float(train.sum()),"augmented_training_rows":float(len(train_x)),"calibration_rows":float(calibration.sum()),"validation_rows":float(valid.sum())
@@ -410,6 +467,7 @@ class PhysicsFeatureExtractor:
         self.metadata={**metrics,"n_shoes":int(n_shoes),"cut_cards":int(cut_cards),
                        "split":{"train_shoes":len(train_ids),"calibration_shoes":len(calibration_ids),"holdout_shoes":int(len(unique)-holdout_at)},
                        "augment_ratio":float(augment_ratio),"loss_weights":PHYSICS_LOSS_WEIGHTS.tolist(),"calibration_temperatures":self.calibration_temperatures,
+                       "uncertainty_calibration":self.uncertainty_calibration,
                        "output_calibration":{"slope":self.output_slope.tolist(),"intercept":self.output_intercept.tolist()},
                        "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
                        "feature_names":list(PHYSICS_FEATURE_NAMES),
@@ -425,25 +483,27 @@ class PhysicsFeatureExtractor:
 
     def save(self,path: str | Path) -> None:
         if not self.is_fitted: raise RuntimeError("cannot save unfitted model")
-        joblib.dump({"schema_version":5,"scaler":self.scaler,"target_scaler":self.target_scaler,"loss_scale":self.loss_scale,"calibration_temperatures":self.calibration_temperatures,"output_slope":self.output_slope,"output_intercept":self.output_intercept,"model":self.model,"metadata":self.metadata},path)
+        joblib.dump({"schema_version":6,"scaler":self.scaler,"target_scaler":self.target_scaler,"loss_scale":self.loss_scale,"calibration_temperatures":self.calibration_temperatures,"uncertainty_calibration":self.uncertainty_calibration,"output_slope":self.output_slope,"output_intercept":self.output_intercept,"model":self.model,"metadata":self.metadata},path)
 
     @classmethod
     def load(cls,path: str | Path) -> "PhysicsFeatureExtractor":
         payload=joblib.load(path); obj=cls()
         obj.scaler=payload["scaler"]; obj.target_scaler=payload["target_scaler"]; obj.model=payload["model"]; obj.metadata=dict(payload.get("metadata") or {})
         obj.loss_scale=np.asarray(payload.get("loss_scale",np.ones(PHYSICS_DIM)),dtype=np.float32); obj.calibration_temperatures=dict(payload.get("calibration_temperatures") or {})
+        obj.uncertainty_calibration=dict(payload.get("uncertainty_calibration") or obj.metadata.get("uncertainty_calibration") or {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]})
         obj.output_slope=np.asarray(payload.get("output_slope",np.ones(PHYSICS_DIM)),dtype=np.float32); obj.output_intercept=np.asarray(payload.get("output_intercept",np.zeros(PHYSICS_DIM)),dtype=np.float32)
         obj.is_fitted=True; return obj
 
     def export_browser_bundle(self,path: str | Path) -> dict[str,Any]:
         if not self.is_fitted: raise RuntimeError("physics model not fitted")
         bundle={
-            "schema_version":5,"model_type":"baccarat_physics_multitask_mlp","trained":True,
+            "schema_version":6,"model_type":"baccarat_physics_multitask_mlp","trained":True,
             "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
             "feature_names":list(PHYSICS_FEATURE_NAMES),
             "scaler":{"mean":self.scaler.mean_.tolist(),"scale":self.scaler.scale_.tolist()},
             "target_scaler":{"mean":self.target_scaler.mean_.tolist(),"scale":self.target_scaler.scale_.tolist()},
             "loss_scale":self.loss_scale.tolist(),"calibration_temperatures":self.calibration_temperatures,
+            "uncertainty_calibration":self.uncertainty_calibration,
             "output_calibration":{"slope":self.output_slope.tolist(),"intercept":self.output_intercept.tolist()},
             "activation":"relu",
             "coefs":[w.tolist() for w in self.model.coefs_],
@@ -481,7 +541,7 @@ def build_parser() -> argparse.ArgumentParser:
     t=sub.add_parser("train"); t.add_argument("--shoes",type=int,default=DEFAULT_PHYSICS_SHOES); t.add_argument("--cut-cards",type=int,default=60)
     t.add_argument("--output",default=DEFAULT_MODEL_PATH); t.add_argument("--browser-output",default=DEFAULT_BROWSER_BUNDLE)
     t.add_argument("--validation-fraction",type=float,default=.20); t.add_argument("--calibration-fraction",type=float,default=.10)
-    t.add_argument("--augment-ratio",type=float,default=.20); t.add_argument("--bootstrap-samples",type=int,default=1000)
+    t.add_argument("--augment-ratio",type=float,default=.25); t.add_argument("--bootstrap-samples",type=int,default=1000)
     t.add_argument("--random-state",type=int,default=DEFAULT_RANDOM_STATE)
     s=sub.add_parser("simulate"); s.add_argument("--shoes",type=int,default=100); s.add_argument("--cut-cards",type=int,default=60)
     s.add_argument("--output",default="physics_simulation_dataset.npz"); s.add_argument("--rows-output",default="")
