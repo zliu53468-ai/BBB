@@ -107,7 +107,8 @@ require("./final_probability_runtime.js");
   if(snapshot.schema_version!==6||snapshot.actual_b!==1||snapshot.is_directional_label!==true)throw new Error("invalid directional snapshot metadata");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57)throw new Error("prediction snapshot is missing exact model features");
   if(!Number.isFinite(snapshot.clipped_p_b)||!Number.isFinite(snapshot.smoothed_p_b)||snapshot.smoothing_alpha!==1||snapshot.smoothing_strength!==0)throw new Error("smoothing snapshot metadata is missing");
-  if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==1)throw new Error("snapshot model metadata is missing");
+  const expectedFinalSchema=useGeneratedBundle?JSON.parse(fs.readFileSync("final_probability_model.json","utf8")).schema_version:1;
+  if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==expectedFinalSchema)throw new Error("snapshot model metadata is missing");
 
   if(!useGeneratedBundle){
     finalBundle.smoothing={method:"dynamic_post_clip_ema",profile:"balanced",enabled:true,early_alpha:.40,middle_alpha:.55,late_alpha:.70,noise_gain:0};finalBundle.base_margin=Math.log(.40/.60);
