@@ -1,10 +1,23 @@
-name: Build Physics 56D Production Models
+name: Build Physics 57D Production Models
 
 on:
   push:
     branches:
       - main
       - feature/direct-global-probability-xgb
+    paths:
+      - "physics_feature_extractor.py"
+      - "xgb_final_probability.py"
+      - "build_synthetic_residual_rows.js"
+      - "final_probability_runtime.js"
+      - "test_physics_feature_extractor.py"
+      - "test_final_probability.py"
+      - "test_final_probability_runtime.js"
+      - "requirements-xgb.txt"
+      - ".github/workflows/physics-production.yml"
+  pull_request:
+    branches:
+      - main
     paths:
       - "physics_feature_extractor.py"
       - "xgb_final_probability.py"
@@ -65,7 +78,7 @@ jobs:
             /tmp/physics_final_rows.json \
             /tmp/physics_core_rows.json
 
-      - name: Train 56D XGBoost final probability
+      - name: Train 57D XGBoost final probability
         run: |
           python xgb_final_probability.py train \
             --input /tmp/physics_core_rows.json \
@@ -83,6 +96,7 @@ jobs:
           ls -lh physics_multitask_model.json final_probability_model.json physics_multitask_model.joblib
 
       - name: Commit generated production models
+        if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
