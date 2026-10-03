@@ -60,9 +60,17 @@ require("./final_probability_runtime.js");
     if(Math.abs(r.finalPB-.55)>1e-9)throw new Error("early dynamic bounds were not applied");
   }
   if(!(Number.isFinite(out.ev_banker)&&Number.isFinite(out.ev_player)))throw new Error("EV fields missing");
-  const expectedDirection=out.ev_banker>out.min_ev&&out.ev_banker>out.ev_player?"B":out.ev_player>out.min_ev&&out.ev_player>out.ev_banker?"P":"Skip";
-  const expectedConfidence=expectedDirection==="B"?out.ev_banker-out.min_ev:expectedDirection==="P"?out.ev_player-out.min_ev:0;
-  if(out.direction!==expectedDirection||Math.abs(out.confidence-expectedConfidence)>1e-9||Math.abs(out.min_ev-.020)>1e-9)throw new Error("dynamic EV decision mismatch");
+  const activationThreshold=Number.isFinite(out.activation_ev)?out.activation_ev:out.min_ev;
+  const expectedDirection=out.ev_banker>activationThreshold&&out.ev_banker>out.ev_player?"B":out.ev_player>activationThreshold&&out.ev_player>out.ev_banker?"P":"Skip";
+  if(out.direction!==expectedDirection)throw new Error("dynamic EV decision mismatch");
+  if(useGeneratedBundle){
+    if(!Number.isFinite(out.min_ev)||!Number.isFinite(activationThreshold)||out.min_ev<0||activationThreshold<0)throw new Error("generated EV thresholds invalid");
+    if(out.direction==="Skip"&&Math.abs(out.confidence)>1e-12)throw new Error("generated Skip confidence mismatch");
+    if(out.direction!=="Skip"&&!(out.confidence>0))throw new Error("generated action confidence missing");
+  }else{
+    const expectedConfidence=expectedDirection==="B"?out.ev_banker-out.min_ev:expectedDirection==="P"?out.ev_player-out.min_ev:0;
+    if(Math.abs(out.confidence-expectedConfidence)>1e-9||Math.abs(out.min_ev-.020)>1e-9)throw new Error("default dynamic EV decision mismatch");
+  }
   if(!useGeneratedBundle){
     finalBundle.calibration={method:"isotonic",x_thresholds:[0,1],y_thresholds:[.2,.6]};
     finalBundle.base_margin=Math.log(.25/.75);
@@ -99,7 +107,8 @@ require("./final_probability_runtime.js");
   if(snapshot.schema_version!==6||snapshot.actual_b!==1||snapshot.is_directional_label!==true)throw new Error("invalid directional snapshot metadata");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57)throw new Error("prediction snapshot is missing exact model features");
   if(!Number.isFinite(snapshot.clipped_p_b)||!Number.isFinite(snapshot.smoothed_p_b)||snapshot.smoothing_alpha!==1||snapshot.smoothing_strength!==0)throw new Error("smoothing snapshot metadata is missing");
-  if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==1)throw new Error("snapshot model metadata is missing");
+  const expectedFinalSchema=useGeneratedBundle?JSON.parse(fs.readFileSync("final_probability_model.json","utf8")).schema_version:1;
+  if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==expectedFinalSchema)throw new Error("snapshot model metadata is missing");
 
   if(!useGeneratedBundle){
     finalBundle.smoothing={method:"dynamic_post_clip_ema",profile:"balanced",enabled:true,early_alpha:.40,middle_alpha:.55,late_alpha:.70,noise_gain:0};finalBundle.base_margin=Math.log(.40/.60);

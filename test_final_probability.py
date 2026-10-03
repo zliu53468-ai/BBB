@@ -248,6 +248,19 @@ class FinalProbabilityTests(unittest.TestCase):
         weights=final.balanced_sample_weights(np.asarray([0,0,1,1]),x)
         self.assertGreater(weights[1],weights[0]);self.assertGreater(weights[3],weights[2])
 
+    def test_sample_weights_focus_clean_50_to_70_rows(self):
+        x=np.zeros((4,57),dtype=np.float32);x[:,0]=.50;x[:,2]=[30,45,55,65];x[:,-1]=[.2,.2,.2,.2]
+        weights=final.balanced_sample_weights(np.asarray([0,1,0,1]),x)
+        self.assertGreater(weights[2],weights[0]);self.assertGreater(weights[3],weights[1])
+
+    def test_recalibrated_noise_only_changes_feature_56(self):
+        x=np.zeros((2,57),dtype=np.float32);x[:,2]=[45,55];x[:,-1]=[.4,.6]
+        records=[{"physics_48d":self.physics.tolist()},{"physics_48d":self.physics.tolist()}]
+        calibration={"method":"isotonic","x_thresholds":[0,1],"y_thresholds":[0.1,0.9]}
+        out=final.recalibrate_noise_feature(x,records,calibration)
+        self.assertTrue(np.array_equal(out[:,:-1],x[:,:-1]))
+        self.assertFalse(np.array_equal(out[:,-1],x[:,-1]))
+
     def test_dynamic_post_clip_ema_never_crosses_shoes(self):
         x=np.zeros((4,57),dtype=np.float32);x[:,2]=20;x[:,-1]=.5
         values=final.dynamic_ema_by_shoe(np.asarray([.55,.45,.48,.52]),x,["A","A","B","A"],final.EMA_PROFILES["balanced"])
@@ -279,7 +292,7 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertIn("skip_rate",report["smoothing"]["after"])
         self.assertIn("guardrail_passed",report["decision_policy"])
         self.assertEqual(set(report["upgrade_comparison"]),{"guardrail_passed","before","after","delta"})
-        for stage in ("early","middle","late"):
+        for stage in ("early","middle","late","late_50_70"):
             self.assertIn("overall_accuracy",report["stage_decision_metrics"][stage])
             self.assertIn("brier",report["stage_decision_metrics"][stage])
 

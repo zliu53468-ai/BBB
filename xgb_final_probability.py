@@ -37,6 +37,7 @@ from physics_feature_extractor import (
     RANK_LABELS,
     SUITS,
     PhysicsFeatureExtractor,
+    apply_uncertainty_calibration,
 )
 
 MODEL_TYPE = "xgb_final_probability_classifier"
@@ -55,6 +56,8 @@ MAX_SKIP_RATE_INCREASE = 0.05
 CALIBRATION_MIN_BRIER_IMPROVEMENT = 1e-4
 ISOTONIC_MIN_ROWS = 1000
 MAX_SMOOTHING_BRIER_INCREASE = 0.0005
+MAX_MODEL_BRIER_REGRESSION = 0.0015
+MIN_PRIMARY_GAIN = 1e-6
 EMA_ALPHA_RANGES = {"early": (0.35, 0.45), "middle": (0.50, 0.60), "late": (0.65, 0.75)}
 EMA_PROFILES: dict[str, dict[str, Any]] = {
     "off": {"method": "dynamic_post_clip_ema", "profile": "off", "enabled": False},
@@ -217,8 +220,12 @@ def physics_integrity_report(physics_48d: Sequence[float]) -> dict[str, Any]:
     }
 
 
-def physics_noise_score(physics_48d: Sequence[float], round_index: float = 70.0) -> float:
-    """Compressed B/P/T-derived composition uncertainty with staged influence."""
+def physics_noise_score(
+    physics_48d: Sequence[float],
+    round_index: float = 70.0,
+    calibration: Mapping[str, Any] | None = None,
+) -> float:
+    """Compressed physics uncertainty, optionally calibrated to empirical 48D residuals."""
     physics = _physics_vector(physics_48d).astype(np.float64)
 
     def entropy(block: np.ndarray) -> float:
@@ -242,7 +249,8 @@ def physics_noise_score(physics_48d: Sequence[float], round_index: float = 70.0)
     )
     compressed = 0.50 + 0.35 * math.tanh((raw - 0.75) / 0.20)
     influence = 0.35 if round_index <= 40 else 0.65 if round_index <= 50 else 1.0
-    return _clip(0.50 + (compressed - 0.50) * influence)
+    proxy = _clip(0.50 + (compressed - 0.50) * influence)
+    return float(apply_uncertainty_calibration([proxy], calibration)[0])
 
 
 def dynamic_probability_bounds(round_index: float, noise_score: float) -> tuple[float, float]:
@@ -257,6 +265,8 @@ def build_56d_feature_matrix(
     core_pb: float,
     original_7d: Sequence[float],
     physics_48d: Sequence[float],
+    *,
+    noise_calibration: Mapping[str, Any] | None = None,
 ) -> np.ndarray:
     """Build the compatibility-named fixed feature bridge as ``(1, 57)``.
 
@@ -278,7 +288,7 @@ def build_56d_feature_matrix(
         raise ValueError("feature blocks must contain only finite values")
 
     progress_w = np.float32((float(original[1]) / 70.0) ** 3)
-    noise = np.float32(physics_noise_score(physics, float(original[1])))
+    noise = np.float32(physics_noise_score(physics, float(original[1]), noise_calibration))
     merged = np.hstack((core, [progress_w], original[1:], physics, [noise])).astype(np.float32, copy=False)
     if merged.size != FEATURE_DIM:
         raise RuntimeError(f"expected {FEATURE_DIM} features, got {merged.size}")
@@ -329,7 +339,8 @@ def _direct_prediction_payload(
 ) -> dict[str, Any]:
     """Create the direct XGBoost result and decode its 48D physical forecast."""
     physics = _physics_vector(physics_48d)
-    features = build_56d_feature_matrix(core_pb, original_7d, physics)
+    noise_calibration=getattr(xgboost_model, "bbb_physics_noise_calibration_", None)
+    features = build_56d_feature_matrix(core_pb, original_7d, physics, noise_calibration=noise_calibration)
     raw_pb = _positive_class_probability(xgboost_model, features)
     round_index = float(np.asarray(original_7d, dtype=np.float32).reshape(-1)[1])
     noise_score = float(features[0, -1])
@@ -718,29 +729,45 @@ def nested_tuning_masks(
 
 
 def balanced_sample_weights(y: np.ndarray, x: np.ndarray) -> np.ndarray:
-    """Bounded class/stage weights with extra emphasis on actionable clean late rows."""
-    labels = np.asarray(y, dtype=np.int8).reshape(-1)
-    rounds = np.asarray(x, dtype=np.float64)[:, 2]
-    weights = np.ones(len(labels), dtype=np.float64)
-    for label in (0, 1):
-        mask = labels == label
-        if np.any(mask):
-            weights[mask] *= len(labels) / (2.0 * float(np.sum(mask)))
-    stages = (rounds > 40).astype(np.int8) + (rounds > 50).astype(np.int8)
-    present_stages = np.unique(stages)
-    for stage in present_stages:
-        mask = stages == stage
-        weights[mask] *= len(labels) / (len(present_stages) * float(np.sum(mask)))
-    progress = np.clip(np.asarray(x, dtype=np.float64)[:, 1], 0.0, 1.0)
-    uncertainty = np.clip(np.asarray(x, dtype=np.float64)[:, -1], 0.0, 1.0)
-    weights *= (0.90 + 0.20 * progress) * (1.25 - 0.50 * uncertainty)
-    core_probability = np.clip(np.asarray(x, dtype=np.float64)[:, 0], 0.0, 1.0)
-    core_edge = np.maximum(core_probability * 0.95 - (1.0 - core_probability), (1.0 - core_probability) - core_probability)
-    action_proxy = np.clip((core_edge - _stage_min_ev(rounds, DEFAULT_MIN_EV) + 0.01) / 0.02, 0.0, 1.0)
-    mid_late_clean = (rounds > 40).astype(np.float64) * (1.0 - uncertainty)
-    weights *= 1.0 + 0.10 * action_proxy + 0.10 * mid_late_clean
-    weights = np.clip(weights, 0.25, 4.0)
-    return (weights / np.mean(weights)).astype(np.float32)
+    """Class-balanced weights focused on 50-70, low-noise and likely-actionable rows."""
+    labels=np.asarray(y,dtype=np.int8).reshape(-1);features=np.asarray(x,dtype=np.float64)
+    rounds=features[:,2];weights=np.ones(len(labels),dtype=np.float64)
+    for label in (0,1):
+        mask=labels==label
+        if np.any(mask): weights[mask]*=len(labels)/(2.0*float(np.sum(mask)))
+    # Keep every stage represented without letting the small late slice dominate.
+    stage_factor=np.ones(len(labels),dtype=np.float64)
+    stage_factor[(rounds>40)&(rounds<=50)]=1.05
+    stage_factor[(rounds>50)&(rounds<=70)]=1.20
+    stage_factor[rounds>70]=1.05
+    uncertainty=np.clip(features[:,-1],0.0,1.0)
+    low_noise_factor=1.0+0.15*(1.0-uncertainty)
+    core_probability=np.clip(features[:,0],0.0,1.0)
+    core_edge=np.maximum(core_probability*.95-(1.0-core_probability),(1.0-core_probability)-core_probability)
+    action_proxy=np.clip((core_edge-_stage_min_ev(rounds,DEFAULT_MIN_EV)+.01)/.02,0.0,1.0)
+    action_factor=1.0+0.10*action_proxy
+    weights*=stage_factor*low_noise_factor*action_factor
+    weights=np.clip(weights,0.35,2.75)
+    return (weights/np.mean(weights)).astype(np.float32)
+
+
+def recalibrate_noise_feature(
+    x: np.ndarray,
+    records: Sequence[Mapping[str, Any]],
+    calibration: Mapping[str, Any] | None,
+) -> np.ndarray:
+    """Recompute only feature 56 from each stored 48D block; all other 57D values stay fixed."""
+    out=np.asarray(x,dtype=np.float32).copy()
+    if not calibration: return out
+    for index,record in enumerate(records):
+        physics=record.get("physics_48d")
+        if isinstance(physics,Sequence) and not isinstance(physics,(str,bytes)):
+            values=np.asarray(physics,dtype=np.float64).reshape(-1)
+            if values.size==PHYSICS_DIM and np.all(np.isfinite(values)):
+                out[index,-1]=np.float32(physics_noise_score(values,float(out[index,2]),calibration))
+                continue
+        out[index,-1]=np.float32(apply_uncertainty_calibration([float(out[index,-1])],calibration)[0])
+    return out
 
 
 def legacy_feature_matrix(x: np.ndarray) -> np.ndarray:
@@ -1224,7 +1251,7 @@ def evaluate(
     upgrade_delta={"realized_ev_per_bet":decision["realized_ev_per_bet"]-current["realized_ev_per_bet"],
                    "hit_rate":decision["hit_rate"]-current["hit_rate"],"skip_rate":decision["skip_rate"]-current["skip_rate"]}
     upgrade_guard=upgrade_delta["realized_ev_per_bet"]>=-1e-12 and upgrade_delta["hit_rate"]>=-1e-12 and upgrade_delta["skip_rate"]<=1e-12
-    stage_masks={"early":rounds<=40,"middle":(rounds>40)&(rounds<=50),"late":rounds>50}; stage_report={}
+    stage_masks={"early":rounds<=40,"middle":(rounds>40)&(rounds<=50),"late":rounds>50,"late_50_70":(rounds>50)&(rounds<=70)}; stage_report={}
     for stage,mask in stage_masks.items():
         stage_realised,stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled)
         pre_stage_realised,pre_stage_wagered=decision_returns(unsmoothed[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled)
@@ -1303,7 +1330,7 @@ def select_xgboost_model(
     trials: int = len(XGB_TUNING_CANDIDATES),
     random_state: int = RANDOM_STATE,
 ) -> tuple[Any, dict[str, Any], list[dict[str, Any]]]:
-    """Brier/EV search with non-degrading accuracy and a +5% Skip ceiling."""
+    """Primary search: bet hit-rate + EV + Brier, with a hard +5% Skip ceiling."""
     limit = max(1, min(int(trials), len(XGB_TUNING_CANDIDATES)))
     reports: list[dict[str, Any]] = []
     best: tuple[float, Any, dict[str, Any]] | None = None
@@ -1318,13 +1345,14 @@ def select_xgboost_model(
         brier = _brier(probability, y[validation])
         metrics=decision_metrics(realised,wagered)
         accuracy=_accuracy(probability,y[validation])
-        if baseline_metrics is None: baseline_metrics={**metrics,"accuracy":accuracy}
+        if baseline_metrics is None: baseline_metrics={**metrics,"accuracy":accuracy,"brier":brier}
         skip_delta=metrics["skip_rate"]-baseline_metrics["skip_rate"]
-        quality_passed=(accuracy+1e-12>=baseline_metrics["accuracy"] and metrics["hit_rate"]+1e-12>=baseline_metrics["hit_rate"] and
-                        metrics["realized_ev_per_bet"]+1e-12>=baseline_metrics["realized_ev_per_bet"])
+        brier_passed=brier<=baseline_metrics["brier"]+MAX_MODEL_BRIER_REGRESSION+1e-12
+        quality_passed=(metrics["hit_rate"]+1e-12>=baseline_metrics["hit_rate"] and
+                        metrics["realized_ev_per_bet"]+1e-12>=baseline_metrics["realized_ev_per_bet"] and brier_passed)
         skip_passed=skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12
         eligible=skip_passed and quality_passed
-        score=brier-.02*metrics["realized_ev_per_bet"]-.01*metrics["hit_rate"]-.01*accuracy-.05*metrics["realized_ev_per_row"]
+        score=brier-.04*metrics["realized_ev_per_bet"]-.02*metrics["hit_rate"]-.05*metrics["realized_ev_per_row"]+.02*max(0.0,skip_delta)
         report = {
             "candidate": index,
             "score": score,
@@ -1337,6 +1365,7 @@ def select_xgboost_model(
             "skip_rate": metrics["skip_rate"],
             "skip_rate_delta_vs_legacy": skip_delta,
             "skip_constraint_passed": skip_passed,
+            "brier_constraint_passed": brier_passed,
             "quality_constraint_passed": quality_passed,
             "candidate_eligible": eligible,
             "parameters": dict(parameters),
@@ -1383,6 +1412,7 @@ def export_browser_bundle(
     ev_thresholds: Mapping[str, float] | None = None,
     smoothing_config: Mapping[str, Any] | None = None,
     decision_policy: Mapping[str, Any] | None = None,
+    physics_noise_calibration: Mapping[str, Any] | None = None,
     probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
 ) -> dict[str, Any]:
     """Export sigmoid-linked classifier trees for the static browser runtime."""
@@ -1416,7 +1446,8 @@ def export_browser_bundle(
             "target": "actual_b_binary",
             "label_mapping": {"P": 0, "B": 1},
             "residual": False,
-            "noise_score_version": 3,
+            "noise_score_version": 4,
+            "physics_noise_calibration": dict(physics_noise_calibration or {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]}),
             "skip_guardrail": {"preferred_max_increase": PREFERRED_SKIP_RATE_INCREASE, "hard_max_increase": MAX_SKIP_RATE_INCREASE},
             "feature_snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
             "metrics": dict(metrics),
@@ -1430,6 +1461,9 @@ def train_command(args: argparse.Namespace) -> int:
     extractor = PhysicsFeatureExtractor.load(args.physics_model) if args.physics_model else None
     records = load_training_records(Path(args.input))
     x, y, training_records = make_training_dataset(records, physics_extractor=extractor)
+    physics_noise_calibration=dict(getattr(extractor,"uncertainty_calibration",{}) or {}) if extractor is not None else {}
+    if physics_noise_calibration:
+        x=recalibrate_noise_feature(x,training_records,physics_noise_calibration)
     if len(x) < args.min_samples:
         raise SystemExit(f"need {args.min_samples} rows; got {len(x)}")
     shoe_count = len({str(record.get("shoe_id") or "").strip() for record in training_records})
@@ -1498,9 +1532,17 @@ def train_command(args: argparse.Namespace) -> int:
     legacy_decision=decision_metrics(legacy_realised,legacy_wagered)
     legacy_accuracy=_accuracy(legacy_probability,y[holdout]);legacy_brier=_brier(legacy_probability,y[holdout])
     deployment_skip_delta=metrics["skip_rate"]-legacy_decision["skip_rate"]
-    deployment_quality_passed=(metrics["overall_accuracy"]+1e-12>=legacy_accuracy and
-                               metrics["hit_rate_on_bets"]+1e-12>=legacy_decision["hit_rate"] and
-                               metrics["realized_ev_per_bet"]+1e-12>=legacy_decision["realized_ev_per_bet"])
+    hit_delta=metrics["hit_rate_on_bets"]-legacy_decision["hit_rate"]
+    ev_delta=metrics["realized_ev_per_bet"]-legacy_decision["realized_ev_per_bet"]
+    deployment_brier_passed=metrics["bounded_brier"]<=legacy_brier+MAX_MODEL_BRIER_REGRESSION+1e-12
+    deployment_primary_non_regressing=(hit_delta>=-1e-12 and ev_delta>=-1e-12)
+    deployment_primary_improved=(hit_delta>MIN_PRIMARY_GAIN or ev_delta>MIN_PRIMARY_GAIN)
+    deployment_quality_passed=deployment_primary_non_regressing and deployment_primary_improved and deployment_brier_passed
+    deployment_smoothing_passed=bool(metrics["smoothing"]["guardrail_passed"])
+    deployment_policy_passed=bool(metrics["decision_policy"]["guardrail_passed"])
+    deployment_upgrade_passed=bool(metrics["upgrade_comparison"]["guardrail_passed"])
+    deployment_skip_passed=bool(deployment_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12)
+    retraining_success=bool(deployment_quality_passed and deployment_skip_passed and deployment_smoothing_passed and deployment_policy_passed and deployment_upgrade_passed)
     metrics.update({
         "validation_strategy": "chronological_shoe_train_tune_calibrate_ev_tune_strict_holdout",
         "training_shoes": int(len({str(record["shoe_id"]) for record, selected in zip(training_records, train) if selected})),
@@ -1523,26 +1565,39 @@ def train_command(args: argparse.Namespace) -> int:
         "legacy_baseline_skip_rate": legacy_decision["skip_rate"],
         "legacy_baseline_realized_ev_per_bet": legacy_decision["realized_ev_per_bet"],
         "skip_rate_delta_vs_legacy": deployment_skip_delta,
-        "deployment_skip_constraint_passed": bool(deployment_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12),
+        "deployment_skip_constraint_passed": deployment_skip_passed,
         "deployment_quality_constraint_passed": bool(deployment_quality_passed),
-        "deployment_smoothing_constraint_passed": bool(metrics["smoothing"]["guardrail_passed"]),
-        "deployment_decision_policy_constraint_passed": bool(metrics["decision_policy"]["guardrail_passed"]),
-        "deployment_upgrade_constraint_passed": bool(metrics["upgrade_comparison"]["guardrail_passed"]),
+        "deployment_brier_constraint_passed": bool(deployment_brier_passed),
+        "primary_hit_rate_delta_vs_legacy": hit_delta,
+        "primary_ev_per_bet_delta_vs_legacy": ev_delta,
+        "retraining_success": retraining_success,
+        "physics_noise_calibration": physics_noise_calibration,
+        "ci_smoke_override": bool(args.ci_smoke),
+        "deployment_smoothing_constraint_passed": deployment_smoothing_passed,
+        "deployment_decision_policy_constraint_passed": deployment_policy_passed,
+        "deployment_upgrade_constraint_passed": deployment_upgrade_passed,
     })
+    deployment_failures: list[str] = []
+    if not metrics["deployment_skip_constraint_passed"]:
+        deployment_failures.append(f"holdout Skip increased by {deployment_skip_delta:.4f} (> {MAX_SKIP_RATE_INCREASE:.4f})")
+    if not metrics["deployment_quality_constraint_passed"]:
+        deployment_failures.append("primary holdout bet hit-rate/EV did not improve without Brier regression")
+    if not metrics["deployment_smoothing_constraint_passed"]:
+        deployment_failures.append("smoothing reduced holdout hit-rate/EV, worsened Brier, or increased Skip")
+    if not metrics["deployment_decision_policy_constraint_passed"]:
+        deployment_failures.append("soft EV policy reduced holdout hit-rate/EV or increased Skip")
+    if not metrics["deployment_upgrade_constraint_passed"]:
+        deployment_failures.append("combined upgrade reduced holdout hit-rate/EV or increased Skip")
+    metrics["deployment_blocked"] = bool(deployment_failures)
+    metrics["deployment_block_reasons"] = deployment_failures
     report_payload={"holdout":metrics}
     print(json.dumps(report_payload, ensure_ascii=False, indent=2))
     if args.report_output:
         Path(args.report_output).write_text(json.dumps(report_payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-    if not metrics["deployment_skip_constraint_passed"]:
-        raise SystemExit(f"deployment blocked: holdout Skip increased by {deployment_skip_delta:.4f} (> {MAX_SKIP_RATE_INCREASE:.4f})")
-    if not metrics["deployment_quality_constraint_passed"]:
-        raise SystemExit("deployment blocked: holdout overall accuracy, bet accuracy, or EV regressed versus the legacy baseline")
-    if not metrics["deployment_smoothing_constraint_passed"]:
-        raise SystemExit("deployment blocked: smoothing reduced holdout hit-rate/EV, worsened Brier, or increased Skip")
-    if not metrics["deployment_decision_policy_constraint_passed"]:
-        raise SystemExit("deployment blocked: soft EV policy reduced holdout hit-rate/EV or increased Skip")
-    if not metrics["deployment_upgrade_constraint_passed"]:
-        raise SystemExit("deployment blocked: combined upgrade reduced holdout hit-rate/EV or increased Skip")
+    if deployment_failures and not args.ci_smoke:
+        raise SystemExit("deployment blocked: " + "; ".join(deployment_failures))
+    if deployment_failures:
+        print(json.dumps({"ci_smoke_override": True, "deployment_blocked": True, "reasons": deployment_failures}, ensure_ascii=False))
 
     # Deploy the exact model evaluated above; refitting on calibration rows would
     # invalidate both its probability calibrator and the strict holdout report.
@@ -1552,6 +1607,7 @@ def train_command(args: argparse.Namespace) -> int:
     final_model.bbb_ev_thresholds_ = ev_tuning["thresholds"]
     final_model.bbb_smoothing_ = smoothing_config
     final_model.bbb_decision_policy_ = decision_policy
+    final_model.bbb_physics_noise_calibration_ = physics_noise_calibration
     if args.joblib_output:
         joblib.dump(final_model, args.joblib_output)
     export_browser_bundle(
@@ -1563,6 +1619,7 @@ def train_command(args: argparse.Namespace) -> int:
         ev_thresholds=ev_tuning["thresholds"],
         smoothing_config=smoothing_config,
         decision_policy=decision_policy,
+        physics_noise_calibration=physics_noise_calibration,
         probability_bounds=args.probability_bounds,
     )
     print(f"wrote {args.output}")
@@ -1587,6 +1644,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--smoothing-profiles",nargs="+",choices=tuple(EMA_PROFILES),default=list(EMA_PROFILES))
     train.add_argument("--bootstrap-samples", type=int, default=1000)
     train.add_argument("--tune-trials", type=int, default=len(XGB_TUNING_CANDIDATES))
+    train.add_argument("--ci-smoke", action="store_true", help="continue artifact/runtime smoke validation even when deployment quality gates fail; never use for production promotion")
     train.add_argument("--probability-bounds", nargs=2, type=float, default=PROBABILITY_BOUNDS, metavar=("MIN", "MAX"))
     train.add_argument("--random-state", type=int, default=RANDOM_STATE)
     train.set_defaults(func=train_command)

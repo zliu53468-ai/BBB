@@ -4,7 +4,7 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V5";
+const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V6";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -127,6 +127,13 @@ function predictFinalProbability(bundle,vector,names){
   return clip(probability);
 }
 function normalisedEntropy(block){const p=normalise(block,Array(block.length).fill(1/block.length));return-p.reduce((s,v)=>s+(v>0?v*Math.log(v):0),0)/Math.log(block.length);}
+function calibrateNoise(value,calibration){
+  const v=clip(value),xs=calibration?.x_thresholds||[],ys=calibration?.y_thresholds||[];
+  if(calibration?.method!=="isotonic"||xs.length<2||ys.length!==xs.length)return v;
+  if(v<=xs[0])return clip(ys[0]);if(v>=xs.at(-1))return clip(ys.at(-1));
+  let lo=0,hi=xs.length-1;while(hi-lo>1){const mid=(lo+hi)>>1;if(v<xs[mid])hi=mid;else lo=mid;}
+  const t=(v-xs[lo])/Math.max(1e-12,xs[hi]-xs[lo]);return clip(ys[lo]+t*(ys[hi]-ys[lo]));
+}
 function physicsNoiseScore(physics,roundIndex=70){
   const version=final56Bundle?.training?.noise_score_version||1;
   if(version<2){const r=physicsIntegrity(physics);return r?Math.abs(r.cardCountProbabilitySum-1)+Math.abs(r.suitRatioSum-1):1;}
@@ -135,7 +142,10 @@ function physicsNoiseScore(physics,roundIndex=70){
   const densityGap=Math.abs(clip(physics[44])-clip(physics[45])),densityAmbiguity=1-Math.min(1,densityGap/.25);
   const raw=clip(.10*normalisedEntropy(physics.slice(0,3))+.075*normalisedEntropy(physics.slice(3,13))+.075*normalisedEntropy(physics.slice(13,23))+.15*normalisedEntropy(physics.slice(23,26))+.25*normalisedEntropy(physics.slice(26,39))+.15*normalisedEntropy(physics.slice(39,43))+.075*(1-gap)+.125*densityAmbiguity);
   const compressed=.50+.35*Math.tanh((raw-.75)/.20),influence=roundIndex<=40?.35:roundIndex<=50?.65:1;
-  return clip(.50+(compressed-.50)*influence);
+  const proxy=clip(.50+(compressed-.50)*influence);
+  if(version<4)return proxy;
+  const calibration=final56Bundle?.training?.physics_noise_calibration||physicsBundle?.uncertainty_calibration||{};
+  return calibrateNoise(proxy,calibration);
 }
 function buildExtended(corePB,o7,physics){
   const original=original7Vector(o7),progress=(Number(original[1])/70)**3,noise=physicsNoiseScore(physics,original[1]);
