@@ -60,9 +60,17 @@ require("./final_probability_runtime.js");
     if(Math.abs(r.finalPB-.55)>1e-9)throw new Error("early dynamic bounds were not applied");
   }
   if(!(Number.isFinite(out.ev_banker)&&Number.isFinite(out.ev_player)))throw new Error("EV fields missing");
-  const expectedDirection=out.ev_banker>out.min_ev&&out.ev_banker>out.ev_player?"B":out.ev_player>out.min_ev&&out.ev_player>out.ev_banker?"P":"Skip";
-  const expectedConfidence=expectedDirection==="B"?out.ev_banker-out.min_ev:expectedDirection==="P"?out.ev_player-out.min_ev:0;
-  if(out.direction!==expectedDirection||Math.abs(out.confidence-expectedConfidence)>1e-9||Math.abs(out.min_ev-.020)>1e-9)throw new Error("dynamic EV decision mismatch");
+  const activationThreshold=Number.isFinite(out.activation_ev)?out.activation_ev:out.min_ev;
+  const expectedDirection=out.ev_banker>activationThreshold&&out.ev_banker>out.ev_player?"B":out.ev_player>activationThreshold&&out.ev_player>out.ev_banker?"P":"Skip";
+  if(out.direction!==expectedDirection)throw new Error("dynamic EV decision mismatch");
+  if(useGeneratedBundle){
+    if(!Number.isFinite(out.min_ev)||!Number.isFinite(activationThreshold)||out.min_ev<0||activationThreshold<0)throw new Error("generated EV thresholds invalid");
+    if(out.direction==="Skip"&&Math.abs(out.confidence)>1e-12)throw new Error("generated Skip confidence mismatch");
+    if(out.direction!=="Skip"&&!(out.confidence>0))throw new Error("generated action confidence missing");
+  }else{
+    const expectedConfidence=expectedDirection==="B"?out.ev_banker-out.min_ev:expectedDirection==="P"?out.ev_player-out.min_ev:0;
+    if(Math.abs(out.confidence-expectedConfidence)>1e-9||Math.abs(out.min_ev-.020)>1e-9)throw new Error("default dynamic EV decision mismatch");
+  }
   if(!useGeneratedBundle){
     finalBundle.calibration={method:"isotonic",x_thresholds:[0,1],y_thresholds:[.2,.6]};
     finalBundle.base_margin=Math.log(.25/.75);
