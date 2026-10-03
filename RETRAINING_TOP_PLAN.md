@@ -151,3 +151,13 @@ A retrain is deployable only when all hard gates pass:
 - EMA and soft decision policy independently pass their no-regression guardrails.
 
 If a hard gate fails, the trainer exits before writing a deployable model bundle.
+
+## CI smoke vs production promotion
+
+GitHub Actions uses `--ci-smoke` only for the synthetic end-to-end verification path. This does **not** change any reported success flag:
+
+- `retraining_success=false` remains false when hit-rate/EV/Brier/Skip gates are not met.
+- The smoke bundle may still be generated so serialization and browser inference can be tested.
+- A failed smoke retrain is never promoted or committed as a production model.
+- Manual/real-data production retraining must omit `--ci-smoke`; failed success gates stop before deployment.
+
