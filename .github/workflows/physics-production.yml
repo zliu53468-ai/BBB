@@ -87,6 +87,7 @@ jobs:
             --output final_probability_model.json \
             --min-samples 12000 \
             --min-shoes 1000 \
+            --ci-smoke \
             --probability-bounds 0.40 0.60
 
       - name: Browser production smoke test
@@ -97,8 +98,13 @@ jobs:
           ls -lh physics_multitask_model.json final_probability_model.json physics_multitask_model.joblib
 
       - name: Commit generated production models
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'feature/direct-global-probability-xgb')
         run: |
+          PROMOTE=$(python -c 'import json; m=json.load(open("final_probability_model.json",encoding="utf-8")); print("yes" if m.get("training",{}).get("metrics",{}).get("retraining_success") else "no")')
+          if [ "$PROMOTE" != "yes" ]; then
+            echo "Retraining success gate not met; smoke artifacts will not be promoted."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add physics_multitask_model.json final_probability_model.json physics_multitask_model.joblib
