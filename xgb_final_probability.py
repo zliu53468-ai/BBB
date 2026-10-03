@@ -1567,6 +1567,7 @@ def train_command(args: argparse.Namespace) -> int:
         "primary_ev_per_bet_delta_vs_legacy": ev_delta,
         "retraining_success": bool(deployment_quality_passed and deployment_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12),
         "physics_noise_calibration": physics_noise_calibration,
+        "ci_smoke_override": bool(args.ci_smoke),
         "deployment_smoothing_constraint_passed": bool(metrics["smoothing"]["guardrail_passed"]),
         "deployment_decision_policy_constraint_passed": bool(metrics["decision_policy"]["guardrail_passed"]),
         "deployment_upgrade_constraint_passed": bool(metrics["upgrade_comparison"]["guardrail_passed"]),
@@ -1575,16 +1576,23 @@ def train_command(args: argparse.Namespace) -> int:
     print(json.dumps(report_payload, ensure_ascii=False, indent=2))
     if args.report_output:
         Path(args.report_output).write_text(json.dumps(report_payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    deployment_failures: list[str] = []
     if not metrics["deployment_skip_constraint_passed"]:
-        raise SystemExit(f"deployment blocked: holdout Skip increased by {deployment_skip_delta:.4f} (> {MAX_SKIP_RATE_INCREASE:.4f})")
+        deployment_failures.append(f"holdout Skip increased by {deployment_skip_delta:.4f} (> {MAX_SKIP_RATE_INCREASE:.4f})")
     if not metrics["deployment_quality_constraint_passed"]:
-        raise SystemExit("deployment blocked: primary holdout bet hit-rate/EV did not improve without Brier regression")
+        deployment_failures.append("primary holdout bet hit-rate/EV did not improve without Brier regression")
     if not metrics["deployment_smoothing_constraint_passed"]:
-        raise SystemExit("deployment blocked: smoothing reduced holdout hit-rate/EV, worsened Brier, or increased Skip")
+        deployment_failures.append("smoothing reduced holdout hit-rate/EV, worsened Brier, or increased Skip")
     if not metrics["deployment_decision_policy_constraint_passed"]:
-        raise SystemExit("deployment blocked: soft EV policy reduced holdout hit-rate/EV or increased Skip")
+        deployment_failures.append("soft EV policy reduced holdout hit-rate/EV or increased Skip")
     if not metrics["deployment_upgrade_constraint_passed"]:
-        raise SystemExit("deployment blocked: combined upgrade reduced holdout hit-rate/EV or increased Skip")
+        deployment_failures.append("combined upgrade reduced holdout hit-rate/EV or increased Skip")
+    metrics["deployment_blocked"] = bool(deployment_failures)
+    metrics["deployment_block_reasons"] = deployment_failures
+    if deployment_failures and not args.ci_smoke:
+        raise SystemExit("deployment blocked: " + "; ".join(deployment_failures))
+    if deployment_failures:
+        print(json.dumps({"ci_smoke_override": True, "deployment_blocked": True, "reasons": deployment_failures}, ensure_ascii=False))
 
     # Deploy the exact model evaluated above; refitting on calibration rows would
     # invalidate both its probability calibrator and the strict holdout report.
@@ -1631,6 +1639,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--smoothing-profiles",nargs="+",choices=tuple(EMA_PROFILES),default=list(EMA_PROFILES))
     train.add_argument("--bootstrap-samples", type=int, default=1000)
     train.add_argument("--tune-trials", type=int, default=len(XGB_TUNING_CANDIDATES))
+    train.add_argument("--ci-smoke", action="store_true", help="continue artifact/runtime smoke validation even when deployment quality gates fail; never use for production promotion")
     train.add_argument("--probability-bounds", nargs=2, type=float, default=PROBABILITY_BOUNDS, metavar=("MIN", "MAX"))
     train.add_argument("--random-state", type=int, default=RANDOM_STATE)
     train.set_defaults(func=train_command)
