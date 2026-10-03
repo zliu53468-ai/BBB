@@ -225,6 +225,16 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertTrue(np.all(tuning[8:12]))
         self.assertFalse(np.any((fit | tuning) & (calibration | holdout)))
 
+    def test_time_split_rejects_interleaved_or_backwards_shoes(self):
+        with self.assertRaisesRegex(ValueError, "reappears"):
+            final.three_way_shoe_masks([
+                {"shoe_id":"A","round_index":1},{"shoe_id":"B","round_index":1},{"shoe_id":"A","round_index":2},
+            ])
+        with self.assertRaisesRegex(ValueError, "backwards"):
+            final.validate_chronological_shoes([
+                {"shoe_id":"A","round_index":2},{"shoe_id":"A","round_index":1},
+            ])
+
     def test_sample_weights_are_finite_and_normalized(self):
         x = np.zeros((6, 57), dtype=np.float32)
         x[:, 2] = [10, 20, 42, 48, 55, 60]
@@ -232,6 +242,11 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertEqual(weights.shape, (6,))
         self.assertTrue(np.all(np.isfinite(weights)))
         self.assertAlmostEqual(float(np.mean(weights)), 1.0, places=6)
+
+    def test_sample_weights_emphasize_actionable_rows_without_label_leakage(self):
+        x=np.zeros((4,57),dtype=np.float32);x[:,0]=[.50,.45,.50,.45];x[:,2]=45;x[:,-1]=.5
+        weights=final.balanced_sample_weights(np.asarray([0,0,1,1]),x)
+        self.assertGreater(weights[1],weights[0]);self.assertGreater(weights[3],weights[2])
 
     def test_dynamic_post_clip_ema_never_crosses_shoes(self):
         x=np.zeros((4,57),dtype=np.float32);x[:,2]=20;x[:,-1]=.5
@@ -264,6 +279,9 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertIn("skip_rate",report["smoothing"]["after"])
         self.assertIn("guardrail_passed",report["decision_policy"])
         self.assertEqual(set(report["upgrade_comparison"]),{"guardrail_passed","before","after","delta"})
+        for stage in ("early","middle","late"):
+            self.assertIn("overall_accuracy",report["stage_decision_metrics"][stage])
+            self.assertIn("brier",report["stage_decision_metrics"][stage])
 
     def test_ev_threshold_tuning_keeps_three_stages(self):
         probability = np.asarray([0.45, 0.55, 0.46, 0.54, 0.44, 0.56] * 4)
@@ -280,7 +298,8 @@ class FinalProbabilityTests(unittest.TestCase):
         actual=np.asarray(([0]*55)+([1]*45),dtype=np.int8)
         rounds=np.full(100,20,dtype=float)
         tuning=final.optimize_ev_thresholds(probability,actual,rounds)
-        self.assertLessEqual(tuning["skip_rate_delta"],.08+1e-12)
+        self.assertLessEqual(tuning["skip_rate_delta"],.05+1e-12)
+        self.assertTrue(tuning["quality_constraint"]["passed"])
 
     def test_isotonic_calibration_mapping(self):
         calibrated=final.apply_probability_calibration(np.asarray([.25,.50,.75]),{"method":"isotonic","x_thresholds":[0.0,.5,1.0],"y_thresholds":[.1,.45,.9]})
@@ -295,6 +314,14 @@ class FinalProbabilityTests(unittest.TestCase):
         output=final.apply_probability_calibration(probability,calibration)
         self.assertTrue(np.all(np.isfinite(output)))
         self.assertTrue(np.all((output>0)&(output<1)))
+
+    def test_calibration_keeps_identity_when_brier_does_not_improve(self):
+        probability=np.tile(np.asarray([.4]*5+[.6]*5),60)
+        labels=np.tile(np.asarray([0,0,0,1,1,0,0,1,1,1],dtype=np.int8),60)
+        features=np.zeros((len(probability),57),dtype=np.float32);features[:,0]=probability
+        calibration=final.fit_probability_calibration(VectorClassifier(),features,labels,shoe_ids=[f"shoe-{index//10}" for index in range(len(labels))])
+        self.assertEqual(calibration["method"],"identity")
+        self.assertIn("identity_brier",calibration["selection"])
 
     def test_classifier_is_binary_logistic(self):
         class CapturingClassifier:
