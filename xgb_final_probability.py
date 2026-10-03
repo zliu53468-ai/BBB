@@ -1538,6 +1538,11 @@ def train_command(args: argparse.Namespace) -> int:
     deployment_primary_non_regressing=(hit_delta>=-1e-12 and ev_delta>=-1e-12)
     deployment_primary_improved=(hit_delta>MIN_PRIMARY_GAIN or ev_delta>MIN_PRIMARY_GAIN)
     deployment_quality_passed=deployment_primary_non_regressing and deployment_primary_improved and deployment_brier_passed
+    deployment_smoothing_passed=bool(metrics["smoothing"]["guardrail_passed"])
+    deployment_policy_passed=bool(metrics["decision_policy"]["guardrail_passed"])
+    deployment_upgrade_passed=bool(metrics["upgrade_comparison"]["guardrail_passed"])
+    deployment_skip_passed=bool(deployment_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12)
+    retraining_success=bool(deployment_quality_passed and deployment_skip_passed and deployment_smoothing_passed and deployment_policy_passed and deployment_upgrade_passed)
     metrics.update({
         "validation_strategy": "chronological_shoe_train_tune_calibrate_ev_tune_strict_holdout",
         "training_shoes": int(len({str(record["shoe_id"]) for record, selected in zip(training_records, train) if selected})),
@@ -1560,17 +1565,17 @@ def train_command(args: argparse.Namespace) -> int:
         "legacy_baseline_skip_rate": legacy_decision["skip_rate"],
         "legacy_baseline_realized_ev_per_bet": legacy_decision["realized_ev_per_bet"],
         "skip_rate_delta_vs_legacy": deployment_skip_delta,
-        "deployment_skip_constraint_passed": bool(deployment_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12),
+        "deployment_skip_constraint_passed": deployment_skip_passed,
         "deployment_quality_constraint_passed": bool(deployment_quality_passed),
         "deployment_brier_constraint_passed": bool(deployment_brier_passed),
         "primary_hit_rate_delta_vs_legacy": hit_delta,
         "primary_ev_per_bet_delta_vs_legacy": ev_delta,
-        "retraining_success": bool(deployment_quality_passed and deployment_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12),
+        "retraining_success": retraining_success,
         "physics_noise_calibration": physics_noise_calibration,
         "ci_smoke_override": bool(args.ci_smoke),
-        "deployment_smoothing_constraint_passed": bool(metrics["smoothing"]["guardrail_passed"]),
-        "deployment_decision_policy_constraint_passed": bool(metrics["decision_policy"]["guardrail_passed"]),
-        "deployment_upgrade_constraint_passed": bool(metrics["upgrade_comparison"]["guardrail_passed"]),
+        "deployment_smoothing_constraint_passed": deployment_smoothing_passed,
+        "deployment_decision_policy_constraint_passed": deployment_policy_passed,
+        "deployment_upgrade_constraint_passed": deployment_upgrade_passed,
     })
     deployment_failures: list[str] = []
     if not metrics["deployment_skip_constraint_passed"]:
