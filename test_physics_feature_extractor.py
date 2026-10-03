@@ -5,8 +5,11 @@ from physics_feature_extractor import (
     HISTORY_INPUT_DIM,
     PHYSICS_DIM,
     OfflineBaccaratSimulator,
+    apply_uncertainty_calibration,
     augment_213d,
+    fit_uncertainty_calibration,
     history_to_vector,
+    physics_uncertainty_proxy,
     prepare_xgboost_input,
     sanitize_physics_prediction,
 )
@@ -62,6 +65,21 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
         output=sanitize_physics_prediction(raw,{"card_count":.8,"winner":1.2})
         for block in (output[:3],output[3:13],output[13:23],output[23:26],output[39:43]):
             self.assertAlmostEqual(float(np.sum(block)),1.0,places=6)
+
+    def test_uncertainty_calibration_is_bounded_and_monotone(self):
+        base=np.zeros((64,PHYSICS_DIM),dtype=np.float32)
+        base[:,0]=1.0;base[:,3]=1.0;base[:,13]=1.0;base[:,23]=1.0;base[:,39]=1.0
+        truth=base.copy()
+        for i in range(64):
+            base[i,23:26]=[1-i/126.0,i/126.0,0.0]
+            truth[i,23:26]=[1.0,0.0,0.0]
+        rounds=np.linspace(10,70,64)
+        calibration=fit_uncertainty_calibration(base,truth,rounds)
+        proxy=np.asarray([physics_uncertainty_proxy(row,rnd) for row,rnd in zip(base,rounds)])
+        calibrated=apply_uncertainty_calibration(proxy,calibration)
+        self.assertTrue(np.all((calibrated>=0)&(calibrated<=1)))
+        order=np.argsort(proxy)
+        self.assertTrue(np.all(np.diff(calibrated[order])>=-1e-9))
 
 
 if __name__=="__main__":
