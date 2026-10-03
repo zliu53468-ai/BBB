@@ -1572,10 +1572,6 @@ def train_command(args: argparse.Namespace) -> int:
         "deployment_decision_policy_constraint_passed": bool(metrics["decision_policy"]["guardrail_passed"]),
         "deployment_upgrade_constraint_passed": bool(metrics["upgrade_comparison"]["guardrail_passed"]),
     })
-    report_payload={"holdout":metrics}
-    print(json.dumps(report_payload, ensure_ascii=False, indent=2))
-    if args.report_output:
-        Path(args.report_output).write_text(json.dumps(report_payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     deployment_failures: list[str] = []
     if not metrics["deployment_skip_constraint_passed"]:
         deployment_failures.append(f"holdout Skip increased by {deployment_skip_delta:.4f} (> {MAX_SKIP_RATE_INCREASE:.4f})")
@@ -1589,6 +1585,10 @@ def train_command(args: argparse.Namespace) -> int:
         deployment_failures.append("combined upgrade reduced holdout hit-rate/EV or increased Skip")
     metrics["deployment_blocked"] = bool(deployment_failures)
     metrics["deployment_block_reasons"] = deployment_failures
+    report_payload={"holdout":metrics}
+    print(json.dumps(report_payload, ensure_ascii=False, indent=2))
+    if args.report_output:
+        Path(args.report_output).write_text(json.dumps(report_payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     if deployment_failures and not args.ci_smoke:
         raise SystemExit("deployment blocked: " + "; ".join(deployment_failures))
     if deployment_failures:
