@@ -51,7 +51,9 @@ PHYSICS_NOISE_LOW_THRESHOLD = 0.78
 PHYSICS_RANK_CONSUMPTION_TOLERANCE = 0.50
 DEFAULT_MIN_EV = {"early": 0.020, "middle": 0.010, "late": 0.005}
 PREFERRED_SKIP_RATE_INCREASE = 0.05
-MAX_SKIP_RATE_INCREASE = 0.08
+MAX_SKIP_RATE_INCREASE = 0.05
+CALIBRATION_MIN_BRIER_IMPROVEMENT = 1e-4
+ISOTONIC_MIN_ROWS = 1000
 MAX_SMOOTHING_BRIER_INCREASE = 0.0005
 EMA_ALPHA_RANGES = {"early": (0.35, 0.45), "middle": (0.50, 0.60), "late": (0.65, 0.75)}
 EMA_PROFILES: dict[str, dict[str, Any]] = {
@@ -551,7 +553,7 @@ def make_training_dataset(
 ) -> tuple[np.ndarray, np.ndarray, list[Mapping[str, Any]]]:
     """Build direct-label training data and retain the matching chronological rows.
 
-    New browser records provide the exact 56D vector that was used at
+    New browser records provide the exact 57D vector that was used at
     prediction-time.  Older records remain supported by rebuilding the feature
     blocks only when no snapshot is available.
     """
@@ -635,6 +637,41 @@ def shoe_level_validation_mask(
     return np.asarray([shoe_id in validation_shoes for shoe_id in shoe_keys], dtype=bool)
 
 
+def validate_chronological_shoes(records: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    """Reject interleaved shoes or backwards rounds before any time split."""
+    closed: set[str] = set()
+    previous_shoe = ""
+    last_round: dict[str, float] = {}
+    shoes: set[str] = set()
+    for index, record in enumerate(records):
+        shoe_id = str(record.get("shoe_id") or "").strip()
+        if not shoe_id:
+            raise ValueError("chronological validation requires a non-empty shoe_id")
+        if shoe_id != previous_shoe:
+            if shoe_id in closed:
+                raise ValueError(f"shoe_id {shoe_id!r} reappears after another shoe at row {index}")
+            if previous_shoe:
+                closed.add(previous_shoe)
+            previous_shoe = shoe_id
+        shoes.add(shoe_id)
+
+        raw_round = record.get("round_index")
+        if raw_round is None:
+            snapshot = record.get("features_57d")
+            if isinstance(snapshot, Sequence) and not isinstance(snapshot, (str, bytes)):
+                flattened = np.asarray(snapshot, dtype=np.float64).reshape(-1)
+                raw_round = flattened[2] if flattened.size == FEATURE_DIM else None
+        if raw_round is None:
+            continue
+        round_index = float(raw_round)
+        if not math.isfinite(round_index):
+            raise ValueError(f"round_index must be finite at row {index}")
+        if shoe_id in last_round and round_index < last_round[shoe_id]:
+            raise ValueError(f"round_index moves backwards inside shoe_id {shoe_id!r} at row {index}")
+        last_round[shoe_id] = round_index
+    return {"rows": len(records), "shoes": len(shoes)}
+
+
 def three_way_shoe_masks(
     records: Sequence[Mapping[str, Any]],
     *,
@@ -642,6 +679,7 @@ def three_way_shoe_masks(
     holdout_fraction: float = 0.20,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Chronological whole-shoe train/calibration/strict-holdout split."""
+    validate_chronological_shoes(records)
     shoe_keys = [str(record.get("shoe_id") or "").strip() for record in records]
     if any(not key for key in shoe_keys):
         raise ValueError("three-way shoe split requires a non-empty shoe_id")
@@ -680,7 +718,7 @@ def nested_tuning_masks(
 
 
 def balanced_sample_weights(y: np.ndarray, x: np.ndarray) -> np.ndarray:
-    """Class- and round-stage-stratified weights without changing chronology."""
+    """Bounded class/stage weights with extra emphasis on actionable clean late rows."""
     labels = np.asarray(y, dtype=np.int8).reshape(-1)
     rounds = np.asarray(x, dtype=np.float64)[:, 2]
     weights = np.ones(len(labels), dtype=np.float64)
@@ -696,6 +734,11 @@ def balanced_sample_weights(y: np.ndarray, x: np.ndarray) -> np.ndarray:
     progress = np.clip(np.asarray(x, dtype=np.float64)[:, 1], 0.0, 1.0)
     uncertainty = np.clip(np.asarray(x, dtype=np.float64)[:, -1], 0.0, 1.0)
     weights *= (0.90 + 0.20 * progress) * (1.25 - 0.50 * uncertainty)
+    core_probability = np.clip(np.asarray(x, dtype=np.float64)[:, 0], 0.0, 1.0)
+    core_edge = np.maximum(core_probability * 0.95 - (1.0 - core_probability), (1.0 - core_probability) - core_probability)
+    action_proxy = np.clip((core_edge - _stage_min_ev(rounds, DEFAULT_MIN_EV) + 0.01) / 0.02, 0.0, 1.0)
+    mid_late_clean = (rounds > 40).astype(np.float64) * (1.0 - uncertainty)
+    weights *= 1.0 + 0.10 * action_proxy + 0.10 * mid_late_clean
     weights = np.clip(weights, 0.25, 4.0)
     return (weights / np.mean(weights)).astype(np.float32)
 
@@ -724,7 +767,7 @@ def fit_probability_calibration(
     sample_weight: np.ndarray | None = None,
     shoe_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Choose Platt or isotonic on a chronological calibration tail."""
+    """Choose identity/Platt/isotonic on a chronological calibration tail."""
     labels = np.asarray(y, dtype=np.int8)
     if len(np.unique(labels)) < 2:
         return {"method": "identity", "slope": 1.0, "intercept": 0.0}
@@ -745,18 +788,36 @@ def fit_probability_calibration(
     probe_test=~probe_fit
     can_compare = len(labels) >= 500 and len(np.unique(labels[probe_fit])) == 2 and len(np.unique(labels[probe_test])) == 2
     method = "platt"
-    selection: dict[str, float] = {}
+    selection: dict[str, Any] = {}
     if can_compare:
         fit_weight = sample_weight[probe_fit] if sample_weight is not None else None
         platt_probe = fit_platt(probability[probe_fit], labels[probe_fit], fit_weight)
         probe_logits = np.log(probability[probe_test] / (1.0 - probability[probe_test])).reshape(-1, 1)
         platt_probability = platt_probe.predict_proba(probe_logits)[:, 1]
-        isotonic_probe = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
-        isotonic_probe.fit(probability[probe_fit], labels[probe_fit], sample_weight=fit_weight)
-        isotonic_probability = isotonic_probe.predict(probability[probe_test])
-        selection = {"platt_brier": _brier(platt_probability, labels[probe_test]), "isotonic_brier": _brier(isotonic_probability, labels[probe_test])}
-        if selection["isotonic_brier"] + 1e-4 < selection["platt_brier"]:
-            method = "isotonic"
+        selection = {
+            "identity_brier": _brier(probability[probe_test], labels[probe_test]),
+            "platt_brier": _brier(platt_probability, labels[probe_test]),
+        }
+        isotonic_allowed = len(labels) >= ISOTONIC_MIN_ROWS and len(np.unique(probability[probe_fit])) >= 32
+        if isotonic_allowed:
+            isotonic_probe = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
+            isotonic_probe.fit(probability[probe_fit], labels[probe_fit], sample_weight=fit_weight)
+            isotonic_probability = isotonic_probe.predict(probability[probe_test])
+            selection["isotonic_brier"] = _brier(isotonic_probability, labels[probe_test])
+        calibrated_scores = [
+            (name.removesuffix("_brier"), score)
+            for name, score in selection.items()
+            if name != "identity_brier" and name.endswith("_brier")
+        ]
+        best_calibrated = min(calibrated_scores, key=lambda item: item[1])
+        method = best_calibrated[0] if selection["identity_brier"] - best_calibrated[1] >= CALIBRATION_MIN_BRIER_IMPROVEMENT else "identity"
+        selection.update({
+            "selected_method": method,
+            "minimum_brier_improvement": CALIBRATION_MIN_BRIER_IMPROVEMENT,
+            "isotonic_allowed": isotonic_allowed,
+        })
+    if method == "identity":
+        return {"method": "identity", "slope": 1.0, "intercept": 0.0, "selection": selection}
     if method == "isotonic":
         calibrator = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
         calibrator.fit(probability, labels, sample_weight=sample_weight)
@@ -903,7 +964,7 @@ def optimize_ev_thresholds(
     *,
     policy_enabled: bool = False,
 ) -> dict[str, Any]:
-    """Tune the existing three numbers with an absolute +8% Skip guardrail."""
+    """Tune the existing three numbers under accuracy/EV and +5% Skip guardrails."""
     thresholds = dict(DEFAULT_MIN_EV); noise=np.full(len(rounds),.5) if noise_scores is None else np.asarray(noise_scores,dtype=np.float64)
     grids = {
         "early": np.arange(0.010, 0.0351, 0.0025),
@@ -935,7 +996,8 @@ def optimize_ev_thresholds(
                 continue
             metrics=decision_metrics(realised,wagered); skip_delta=metrics["skip_rate"]-baseline["skip_rate"]
             if skip_delta > MAX_SKIP_RATE_INCREASE + 1e-12: continue
-            score=metrics["realized_ev_per_bet"]+.25*metrics["realized_ev_per_row"]-.50*max(0.0,skip_delta-PREFERRED_SKIP_RATE_INCREASE)
+            if metrics["hit_rate"] + 1e-12 < baseline["hit_rate"] or metrics["realized_ev_per_bet"] + 1e-12 < baseline["realized_ev_per_bet"]: continue
+            score=metrics["realized_ev_per_bet"]+.25*metrics["realized_ev_per_row"]+.10*metrics["hit_rate"]
             result=(score,metrics["realized_ev_per_bet"],metrics["realized_ev_per_row"],-candidate)
             if best is None or result > best:
                 best = result
@@ -949,17 +1011,24 @@ def optimize_ev_thresholds(
             "action_rate": tuned["action_rate"],
             "skip_rate": tuned["skip_rate"],
             "baseline_skip_rate": baseline["skip_rate"],
+            "baseline_hit_rate": baseline["hit_rate"],
+            "baseline_realized_ev_per_bet": baseline["realized_ev_per_bet"],
             "skip_rate_delta": tuned["skip_rate"]-baseline["skip_rate"],
+            "hit_rate": tuned["hit_rate"],
             "realized_ev_per_bet": tuned["realized_ev_per_bet"],
+            "quality_constraint_passed": bool(tuned["hit_rate"]+1e-12>=baseline["hit_rate"] and tuned["realized_ev_per_bet"]+1e-12>=baseline["realized_ev_per_bet"]),
             "min_ev": thresholds[stage],
         }
     baseline_realised,baseline_wagered=decision_returns(probability_b,actual_b,rounds,DEFAULT_MIN_EV,noise,policy_enabled=policy_enabled)
     tuned_realised,tuned_wagered=decision_returns(probability_b,actual_b,rounds,thresholds,noise,policy_enabled=policy_enabled)
     baseline=decision_metrics(baseline_realised,baseline_wagered); tuned=decision_metrics(tuned_realised,tuned_wagered)
     skip_delta=tuned["skip_rate"]-baseline["skip_rate"]
-    if skip_delta > MAX_SKIP_RATE_INCREASE + 1e-12:
+    quality_passed=tuned["hit_rate"]+1e-12>=baseline["hit_rate"] and tuned["realized_ev_per_bet"]+1e-12>=baseline["realized_ev_per_bet"]
+    if skip_delta > MAX_SKIP_RATE_INCREASE + 1e-12 or not quality_passed:
         thresholds=dict(DEFAULT_MIN_EV); tuned=baseline; skip_delta=0.0
+        quality_passed=True
     return {"thresholds":thresholds,"stages":stages,"baseline":baseline,"tuned":tuned,"skip_rate_delta":skip_delta,"decision_policy_enabled":bool(policy_enabled),
+            "quality_constraint":{"requires_non_decreasing_hit_rate":True,"requires_non_decreasing_ev_per_bet":True,"passed":bool(quality_passed)},
             "skip_constraint":{"preferred_max_increase":PREFERRED_SKIP_RATE_INCREASE,"hard_max_increase":MAX_SKIP_RATE_INCREASE,"passed":skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12}}
 
 
@@ -1163,7 +1232,13 @@ def evaluate(
         hard_stage_realised,hard_stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=False)
         tuned_stage=decision_metrics(stage_realised,stage_wagered); pre_stage=decision_metrics(pre_stage_realised,pre_stage_wagered); base_stage=decision_metrics(base_realised,base_wagered)
         hard_stage=decision_metrics(hard_stage_realised,hard_stage_wagered)
-        stage_report[stage]={**tuned_stage,"baseline_skip_rate":base_stage["skip_rate"],"skip_rate_delta":tuned_stage["skip_rate"]-base_stage["skip_rate"],
+        stage_rows=int(np.sum(mask))
+        stage_report[stage]={**tuned_stage,
+                             "overall_accuracy":_accuracy(final[mask],y[mask]) if stage_rows else None,
+                             "brier":_brier(final[mask],y[mask]) if stage_rows else None,
+                             "pre_smoothing_overall_accuracy":_accuracy(unsmoothed[mask],y[mask]) if stage_rows else None,
+                             "pre_smoothing_brier":_brier(unsmoothed[mask],y[mask]) if stage_rows else None,
+                             "baseline_skip_rate":base_stage["skip_rate"],"skip_rate_delta":tuned_stage["skip_rate"]-base_stage["skip_rate"],
                              "hard_policy_ev_per_bet":hard_stage["realized_ev_per_bet"],"hard_policy_skip_rate":hard_stage["skip_rate"],
                              "policy_ev_per_bet_delta":tuned_stage["realized_ev_per_bet"]-hard_stage["realized_ev_per_bet"],
                              "policy_hit_rate_delta":tuned_stage["hit_rate"]-hard_stage["hit_rate"],
@@ -1177,6 +1252,7 @@ def evaluate(
         "uncalibrated_brier": _brier(uncalibrated, y),
         "raw_accuracy": _accuracy(raw, y),
         "raw_brier": _brier(raw, y),
+        "overall_accuracy": _accuracy(final, y),
         "bounded_accuracy": _accuracy(final, y),
         "bounded_accuracy_ci95": shoe_bootstrap_ci(correct, shoe_ids, samples=bootstrap_samples),
         "bounded_brier": _brier(final, y),
@@ -1184,6 +1260,7 @@ def evaluate(
         "realized_ev_per_row": decision["realized_ev_per_row"],
         "realized_ev_per_bet": decision["realized_ev_per_bet"],
         "hit_rate_on_bets": decision["hit_rate"],
+        "bet_accuracy": decision["hit_rate"],
         "hit_rate_on_bets_ci95": shoe_bootstrap_ratio_ci((realised>0.0).astype(float),wagered,shoe_ids,samples=bootstrap_samples),
         "realized_ev_per_bet_ci95": shoe_bootstrap_ratio_ci(realised, wagered, shoe_ids, samples=bootstrap_samples),
         "realized_ev_per_row_ci95": shoe_bootstrap_ci(realised, shoe_ids, samples=bootstrap_samples),
@@ -1226,11 +1303,11 @@ def select_xgboost_model(
     trials: int = len(XGB_TUNING_CANDIDATES),
     random_state: int = RANDOM_STATE,
 ) -> tuple[Any, dict[str, Any], list[dict[str, Any]]]:
-    """Brier/EV search with the legacy classifier as the Skip-rate baseline."""
+    """Brier/EV search with non-degrading accuracy and a +5% Skip ceiling."""
     limit = max(1, min(int(trials), len(XGB_TUNING_CANDIDATES)))
     reports: list[dict[str, Any]] = []
     best: tuple[float, Any, dict[str, Any]] | None = None
-    baseline_skip: float | None = None
+    baseline_metrics: dict[str, float] | None = None
     weights = balanced_sample_weights(y[train], x[train])
     rounds = np.asarray(x[validation, 2], dtype=np.float64)
     for index, parameters in enumerate(XGB_TUNING_CANDIDATES[:limit]):
@@ -1240,20 +1317,28 @@ def select_xgboost_model(
         realised, wagered = decision_returns(probability, y[validation], rounds, DEFAULT_MIN_EV)
         brier = _brier(probability, y[validation])
         metrics=decision_metrics(realised,wagered)
-        if baseline_skip is None: baseline_skip=metrics["skip_rate"]
-        skip_delta=metrics["skip_rate"]-baseline_skip
-        eligible=skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12
-        score=brier-.02*metrics["realized_ev_per_bet"]-.05*metrics["realized_ev_per_row"]+.25*max(0.0,skip_delta-PREFERRED_SKIP_RATE_INCREASE)
+        accuracy=_accuracy(probability,y[validation])
+        if baseline_metrics is None: baseline_metrics={**metrics,"accuracy":accuracy}
+        skip_delta=metrics["skip_rate"]-baseline_metrics["skip_rate"]
+        quality_passed=(accuracy+1e-12>=baseline_metrics["accuracy"] and metrics["hit_rate"]+1e-12>=baseline_metrics["hit_rate"] and
+                        metrics["realized_ev_per_bet"]+1e-12>=baseline_metrics["realized_ev_per_bet"])
+        skip_passed=skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12
+        eligible=skip_passed and quality_passed
+        score=brier-.02*metrics["realized_ev_per_bet"]-.01*metrics["hit_rate"]-.01*accuracy-.05*metrics["realized_ev_per_row"]
         report = {
             "candidate": index,
             "score": score,
             "bounded_brier": brier,
+            "bounded_accuracy": accuracy,
+            "hit_rate_on_bets": metrics["hit_rate"],
             "realized_ev_per_row": metrics["realized_ev_per_row"],
             "realized_ev_per_bet": metrics["realized_ev_per_bet"],
             "action_rate": metrics["action_rate"],
             "skip_rate": metrics["skip_rate"],
             "skip_rate_delta_vs_legacy": skip_delta,
-            "skip_constraint_passed": eligible,
+            "skip_constraint_passed": skip_passed,
+            "quality_constraint_passed": quality_passed,
+            "candidate_eligible": eligible,
             "parameters": dict(parameters),
         }
         reports.append(report)
@@ -1411,7 +1496,11 @@ def train_command(args: argparse.Namespace) -> int:
     _,_,legacy_probability=bounded_probabilities(legacy_model,legacy_x[holdout])
     legacy_realised,legacy_wagered=decision_returns(legacy_probability,y[holdout],legacy_x[holdout,2],DEFAULT_MIN_EV)
     legacy_decision=decision_metrics(legacy_realised,legacy_wagered)
+    legacy_accuracy=_accuracy(legacy_probability,y[holdout]);legacy_brier=_brier(legacy_probability,y[holdout])
     deployment_skip_delta=metrics["skip_rate"]-legacy_decision["skip_rate"]
+    deployment_quality_passed=(metrics["overall_accuracy"]+1e-12>=legacy_accuracy and
+                               metrics["hit_rate_on_bets"]+1e-12>=legacy_decision["hit_rate"] and
+                               metrics["realized_ev_per_bet"]+1e-12>=legacy_decision["realized_ev_per_bet"])
     metrics.update({
         "validation_strategy": "chronological_shoe_train_tune_calibrate_ev_tune_strict_holdout",
         "training_shoes": int(len({str(record["shoe_id"]) for record, selected in zip(training_records, train) if selected})),
@@ -1427,17 +1516,27 @@ def train_command(args: argparse.Namespace) -> int:
         "hyperparameter_search": search_report,
         "selected_parameters": best_parameters,
         "feature_importance": feature_importance_report(model, x[calibration_rows]),
+        "chronology_validation": validate_chronological_shoes(training_records),
+        "legacy_baseline_accuracy": legacy_accuracy,
+        "legacy_baseline_brier": legacy_brier,
+        "legacy_baseline_hit_rate_on_bets": legacy_decision["hit_rate"],
         "legacy_baseline_skip_rate": legacy_decision["skip_rate"],
         "legacy_baseline_realized_ev_per_bet": legacy_decision["realized_ev_per_bet"],
         "skip_rate_delta_vs_legacy": deployment_skip_delta,
         "deployment_skip_constraint_passed": bool(deployment_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12),
+        "deployment_quality_constraint_passed": bool(deployment_quality_passed),
         "deployment_smoothing_constraint_passed": bool(metrics["smoothing"]["guardrail_passed"]),
         "deployment_decision_policy_constraint_passed": bool(metrics["decision_policy"]["guardrail_passed"]),
         "deployment_upgrade_constraint_passed": bool(metrics["upgrade_comparison"]["guardrail_passed"]),
     })
-    print(json.dumps({"holdout": metrics}, ensure_ascii=False, indent=2))
+    report_payload={"holdout":metrics}
+    print(json.dumps(report_payload, ensure_ascii=False, indent=2))
+    if args.report_output:
+        Path(args.report_output).write_text(json.dumps(report_payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     if not metrics["deployment_skip_constraint_passed"]:
         raise SystemExit(f"deployment blocked: holdout Skip increased by {deployment_skip_delta:.4f} (> {MAX_SKIP_RATE_INCREASE:.4f})")
+    if not metrics["deployment_quality_constraint_passed"]:
+        raise SystemExit("deployment blocked: holdout overall accuracy, bet accuracy, or EV regressed versus the legacy baseline")
     if not metrics["deployment_smoothing_constraint_passed"]:
         raise SystemExit("deployment blocked: smoothing reduced holdout hit-rate/EV, worsened Brier, or increased Skip")
     if not metrics["deployment_decision_policy_constraint_passed"]:
@@ -1445,9 +1544,10 @@ def train_command(args: argparse.Namespace) -> int:
     if not metrics["deployment_upgrade_constraint_passed"]:
         raise SystemExit("deployment blocked: combined upgrade reduced holdout hit-rate/EV or increased Skip")
 
-    deploy = train | calibration_rows
-    final_model = build_xgboost_classifier(random_state=args.random_state, overrides=best_parameters)
-    final_model.fit(x[deploy], y[deploy], sample_weight=balanced_sample_weights(y[deploy], x[deploy]))
+    # Deploy the exact model evaluated above; refitting on calibration rows would
+    # invalidate both its probability calibrator and the strict holdout report.
+    deploy = train
+    final_model = model
     final_model.bbb_calibration_ = calibration
     final_model.bbb_ev_thresholds_ = ev_tuning["thresholds"]
     final_model.bbb_smoothing_ = smoothing_config
@@ -1476,6 +1576,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--input", required=True)
     train.add_argument("--physics-model", default="")
     train.add_argument("--output", default="final_probability_model.json")
+    train.add_argument("--report-output", default="")
     train.add_argument("--joblib-output", default="")
     train.add_argument("--min-samples", type=int, default=12000)
     train.add_argument("--min-shoes", type=int, default=1000)
