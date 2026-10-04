@@ -21,7 +21,7 @@ const PHYSICS_INDEX=Object.fromEntries(PHYSICS_NAMES.map((name,index)=>[name,ind
 const EXTENDED_NAMES=["core_p_b_external","shoe_progress_weight",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...PHYSICS_NAMES,"physics_noise_score"];
 const HISTORY_WINDOW=64,HISTORY_INPUT_DIM=213,PHYSICS_DIM=48,FEATURE_DIM=57;
 const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.78;
-const SNAPSHOT_SCHEMA_VERSION=6;
+const SNAPSHOT_SCHEMA_VERSION=7;
 const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
 const SHOE_KEY="bgs_xgb_final_shoe_id_v5",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
 const STORAGE_KEY="bgs256d_short_x_dynamic_v23",MAX_TRAINING_ROWS=15000;
@@ -199,7 +199,7 @@ function decisionPolicy(roundIndex,noiseScore){
   const base=roundIndex<=40?pick("early",.020):roundIndex>50?pick("late",.005):pick("middle",.010);
   const config=final56Bundle?.decision_policy||{};
   const profile=String(config.profile||final56Bundle?.decision_policy_profile||(config.enabled===true?"custom":"hard_ev"));
-  if(config.enabled!==true)return {enabled:false,profile,minEv:base,activationEv:base,softBand:0,minConfidence:0};
+  if(config.enabled!==true)return {enabled:false,profile,minEv:base,activationEv:base,softBand:0,minConfidence:0,confidenceBand:0,strongMargin:0,bandMinimum:0,volumeGuard:{}};
   const value=(key,fallback)=>Number.isFinite(+config[key])?+config[key]:fallback;
   const noiseThreshold=value("noise_threshold",.78),noise=clip(+noiseScore||0),lowNoise=noise<=noiseThreshold;
   const middle=roundIndex>40&&roundIndex<=50,late=roundIndex>50;
@@ -208,12 +208,45 @@ function decisionPolicy(roundIndex,noiseScore){
   const penalty=Math.min(maxPenalty,Math.max(0,noise-noiseThreshold)*(maxPenalty/Math.max(1e-9,1-noiseThreshold)));
   const minEv=Math.max(0,base-relief+penalty);
   const softBand=lowNoise?(middle?value("middle_soft_band",.001):late?value("late_soft_band",.0015):0):0;
-  return {enabled:true,profile,minEv,activationEv:Math.max(0,minEv-softBand),softBand,minConfidence:Math.max(0,value("min_confidence",.0005))};
+  const bandConfig=config.confidence_band&&typeof config.confidence_band==="object"?config.confidence_band:{};
+  const stage=roundIndex<=40?"early":roundIndex<=50?"middle":"late";
+  const bandBase=Math.max(0,Number.isFinite(+bandConfig[stage])?+bandConfig[stage]:0);
+  const bandReference=clip(Number.isFinite(+bandConfig.noise_reference)?+bandConfig.noise_reference:.50);
+  const bandGain=Math.max(0,Number.isFinite(+bandConfig.noise_gain)?+bandConfig.noise_gain:0);
+  const cleanLate=stage==="late"&&noise<=PHYSICS_NOISE_LOW_THRESHOLD;
+  const cleanLateRelief=cleanLate?Math.max(0,Number.isFinite(+bandConfig.clean_late_relief)?+bandConfig.clean_late_relief:0):0;
+  const bandMinimum=Math.max(0,Number.isFinite(+bandConfig.minimum)?+bandConfig.minimum:0);
+  const bandMaximum=Math.max(bandMinimum,Number.isFinite(+bandConfig.maximum)?+bandConfig.maximum:.5);
+  const confidenceBand=clip(bandBase+bandGain*Math.max(0,noise-bandReference)-cleanLateRelief,bandMinimum,bandMaximum);
+  const strong=bandConfig.strong_margin&&typeof bandConfig.strong_margin==="object"?bandConfig.strong_margin:{};
+  const strongMargin=Math.max(0,Number.isFinite(+strong[stage])?+strong[stage]:0);
+  return {enabled:true,profile,minEv,activationEv:Math.max(0,minEv-softBand),softBand,minConfidence:Math.max(0,value("min_confidence",.0005)),confidenceBand,strongMargin,bandMinimum,volumeGuard:config.volume_guard||{}};
 }
 function softConfidence(edge,policy){
   if(edge<=policy.activationEv)return 0;
   const premium=Math.max(0,edge-policy.minEv);
   return policy.softBand<=0?premium:Math.max(policy.minConfidence,premium,.5*Math.min(policy.softBand,edge-policy.activationEv));
+}
+function volumeGuardState(roundIndex,probabilityB,policy){
+  const config=policy?.volumeGuard||{};
+  if(policy?.enabled!==true||config.enabled!==true)return {active:false,bandRelief:0,evRelief:0};
+  const window=Math.max(1,Math.floor(+config.window||16)),minimum=Math.max(0,Math.floor(+config.min_history||8));
+  const shoeId=getShoeId(),rows=readRows().filter(row=>row?.shoe_id===shoeId&&+row.round_index<roundIndex&&Number.isFinite(+row.final_p_b)).slice(-window);
+  if(rows.length<minimum)return {active:false,bandRelief:0,evRelief:0};
+  const p=clip(probabilityB),expectedProbability=value=>Math.max(clip(value),1-clip(value));
+  let actions=0,expected=0,baseline=0;
+  for(const row of rows){
+    const priorP=clip(+row.final_p_b),priorPlayer=1-priorP;
+    const priorActivation=Math.max(0,Number.isFinite(+row.activation_ev)?+row.activation_ev:policy.activationEv);
+    const baseAction=(priorP*.95-priorPlayer)>priorActivation||(priorPlayer-priorP)>priorActivation;
+    const action=String(row.predicted_direction||"").includes("莊 B")||String(row.predicted_direction||"").includes("閒 P");
+    if(action){actions++;expected+=expectedProbability(priorP);}
+    if(baseAction)baseline+=expectedProbability(priorP);
+  }
+  const stage=roundIndex<=40?"early":roundIndex<=50?"middle":"late",rates=config.target_action_rate&&typeof config.target_action_rate==="object"?config.target_action_rate:{};
+  const target=Math.max(0,Number.isFinite(+rates[stage])?+rates[stage]:0),floor=clip(Number.isFinite(+config.expected_correct_floor)?+config.expected_correct_floor:.95);
+  const active=actions/rows.length<target||(baseline>0&&expected+1e-12<floor*baseline);
+  return {active,bandRelief:active?Math.max(0,+config.band_relief||0):0,evRelief:active?Math.max(0,+config.ev_relief||0):0};
 }
 
 function applyFinalPrediction(seq,corePrediction){
@@ -234,21 +267,25 @@ function applyFinalPrediction(seq,corePrediction){
       const pTie=clip(+physics[PHYSICS_INDEX["winner_p_t"]]),pPlayer=1-finalPB;
       const evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
       const policy=decisionPolicy(original7.round_index,extended.at(-1));
-      const direction=evBanker>policy.activationEv&&evBanker>evPlayer?"B":evPlayer>policy.activationEv&&evPlayer>evBanker?"P":"Skip";
+      const guard=volumeGuardState(original7.round_index,finalPB,policy);
+      const effectiveBand=Math.max(policy.bandMinimum,policy.confidenceBand-guard.bandRelief),effectiveActivationEv=Math.max(0,policy.activationEv-guard.evRelief);
+      const distance=Math.abs(finalPB-.5);
+      const direction=distance>=effectiveBand&&evBanker>effectiveActivationEv&&evBanker>evPlayer?"B":distance>=effectiveBand&&evPlayer>effectiveActivationEv&&evPlayer>evBanker?"P":"Skip";
       const edge=direction==="B"?evBanker:direction==="P"?evPlayer:0;
-      evDecision={pTie,pPlayer,evBanker,evPlayer,minEv:policy.minEv,activationEv:policy.activationEv,softBand:policy.softBand,policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
-        finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="Skip"?0:softConfidence(edge,policy)};
+      const entryTier=direction==="Skip"?"skip":distance>=effectiveBand+policy.strongMargin?"strong":"weak";
+      evDecision={pTie,pPlayer,evBanker,evPlayer,minEv:policy.minEv,activationEv:policy.activationEv,effectiveActivationEv,softBand:policy.softBand,confidenceBand:policy.confidenceBand,effectiveConfidenceBand:effectiveBand,volumeGuardActive:guard.active,entryTier,stakeMultiplier:entryTier==="weak"?.5:entryTier==="strong"?1:0,policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
+        finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="Skip"?0:softConfidence(edge,{...policy,activationEv:effectiveActivationEv})};
       mode="final56";
     }
   }catch(e){error=String(e?.message||e||"runtime_error");rawPB=corePB;clippedPB=corePB;smoothedPB=corePB;finalPB=corePB;mode="core";}
   const direction=evDecision?.direction||corePrediction.direction,finalPP=1-finalPB;
   const confidence=evDecision?.confidence??corePrediction.confidence??0;
   return {...corePrediction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),confidence,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
-    activation_ev:evDecision?.activationEv??null,soft_band:evDecision?.softBand??0,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
+    activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
     regime:mode==="final56"?(direction==="Skip"?"EV 觀望":direction!==corePrediction.direction?"Final XGB換邊":"Final XGB裁決"):corePrediction.regime,
     finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,clippedPB,smoothedPB,smoothingAlpha,smoothingStrength,smoothingProfile,finalPB,bounds,
       p_tie:evDecision?.pTie??null,p_player:evDecision?.pPlayer??null,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
-      activation_ev:evDecision?.activationEv??null,soft_band:evDecision?.softBand??0,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",
+      activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",
       coreDirection:corePrediction.direction,finalDirection:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),flipped:direction!==corePrediction.direction,
       original7,physics,physicsForecast,physicsIntegrity:physicsIntegrityReport,dataQuality:dataQuality(seq),extended,error}};
 }
@@ -276,7 +313,7 @@ function registerPrediction(seq,prediction){
     raw_p_b:Number.isFinite(+r.rawPB)?+r.rawPB:null,clipped_p_b:Number.isFinite(+r.clippedPB)?+r.clippedPB:null,smoothed_p_b:Number.isFinite(+r.smoothedPB)?+r.smoothedPB:null,
     smoothing_alpha:Number.isFinite(+r.smoothingAlpha)?+r.smoothingAlpha:1,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,smoothing_profile:r.smoothingProfile||"off",final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
     probability_bounds:r.bounds?[r.bounds.low,r.bounds.high]:null,min_ev:Number.isFinite(+r.min_ev)?+r.min_ev:null,
-    activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,decision_policy_enabled:r.decision_policy_enabled===true,decision_policy_profile:r.decision_policy_profile||"hard_ev",
+    activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,effective_activation_ev:Number.isFinite(+r.effective_activation_ev)?+r.effective_activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,confidence_band:Number.isFinite(+r.confidence_band)?+r.confidence_band:0,effective_confidence_band:Number.isFinite(+r.effective_confidence_band)?+r.effective_confidence_band:0,volume_guard_active:r.volume_guard_active===true,entry_tier:r.entry_tier||"core",stake_multiplier:Number.isFinite(+r.stake_multiplier)?+r.stake_multiplier:1,decision_policy_enabled:r.decision_policy_enabled===true,decision_policy_profile:r.decision_policy_profile||"hard_ev",
     predicted_direction:r.finalDirection||prediction.direction||"",physics_integrity:r.physicsIntegrity||null};
   try{localStorage.setItem(PENDING_KEY,JSON.stringify(pending));}catch(_){}
 }
