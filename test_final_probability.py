@@ -123,6 +123,22 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertAlmostEqual(result["activation_ev"],.008,places=6)
         self.assertAlmostEqual(result["confidence"],final.MIN_SOFT_CONFIDENCE,places=6)
 
+    def test_strict_selective_policy_removes_soft_entries_and_penalizes_noise(self):
+        policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
+        thresholds={"early":.038,"middle":.024,"late":.018}
+        clean=final.decision_policy_value(55,.50,thresholds,enabled=True,policy_config=policy)
+        noisy=final.decision_policy_value(55,1.0,thresholds,enabled=True,policy_config=policy)
+        self.assertTrue(np.allclose(clean,(.018,.018,0.0)))
+        self.assertTrue(np.allclose(noisy,(.024,.024,0.0)))
+        model=FakeClassifier(.4955)
+        model.bbb_ev_thresholds_=thresholds
+        model.bbb_decision_policy_=policy
+        original=self.original.copy(); original[1]=45
+        result=final.predict_final_probability(self.core,original,self.physics,xgboost_model=model)
+        self.assertEqual(result["direction"],"Skip")
+        self.assertAlmostEqual(result["min_ev"],.024,places=6)
+        self.assertAlmostEqual(result["activation_ev"],.024,places=6)
+
     def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
         early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))
         late_original = self.original.copy(); late_original[1] = 55
@@ -279,6 +295,7 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertEqual(tuning["method"],"dynamic_post_clip_ema")
         self.assertEqual(tuning["smoothing"]["profile"],"off")
         self.assertTrue(all("guardrail_passed" in row for row in tuning["candidates"]))
+        self.assertIn("strict_selective_entry",{row["decision_policy_profile"] for row in tuning["candidates"]})
 
     def test_evaluation_reports_smoothing_before_and_after(self):
         x=np.zeros((20,57),dtype=np.float32);x[:,0]=np.asarray([.55,.45]*10);x[:,2]=np.arange(20,40);x[:,-1]=.5
