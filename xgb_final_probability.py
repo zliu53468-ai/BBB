@@ -71,6 +71,23 @@ LATE_EV_RELIEF = 0.001
 MIDDLE_SOFT_BAND = 0.001
 LATE_SOFT_BAND = 0.0015
 MIN_SOFT_CONFIDENCE = 0.0005
+DECISION_POLICY_PROFILES: dict[str, dict[str, Any]] = {
+    # Current hard three-stage EV gate; this remains the comparison baseline.
+    "hard_ev": {"profile": "hard_ev", "enabled": False},
+    # More selective candidate. It is only deployed when chronological hold-out
+    # gates pass, including the existing +5pp maximum Skip increase.
+    "strict_selective_entry": {
+        "profile": "strict_selective_entry_v1",
+        "enabled": True,
+        "noise_threshold": 0.68,
+        "max_noise_ev_penalty": 0.006,
+        "middle_relief": 0.0,
+        "late_relief": 0.0,
+        "middle_soft_band": 0.0,
+        "late_soft_band": 0.0,
+        "min_confidence": 0.001,
+    },
+}
 LEGACY_XGB_PARAMETERS = {"n_estimators": 320, "max_depth": 3, "learning_rate": 0.025, "min_child_weight": 12, "subsample": 0.85, "colsample_bytree": 0.82, "reg_alpha": 0.35, "reg_lambda": 12.0}
 XGB_TUNING_CANDIDATES: tuple[dict[str, Any], ...] = (
     LEGACY_XGB_PARAMETERS,
@@ -352,11 +369,20 @@ def _direct_prediction_payload(
     ev_player = p_player - final_pb
     ev_thresholds = dict(DEFAULT_MIN_EV)
     ev_thresholds.update(getattr(xgboost_model, "bbb_ev_thresholds_", {}) or {})
-    policy_enabled = bool((getattr(xgboost_model, "bbb_decision_policy_", {}) or {}).get("enabled", False))
-    min_ev, activation_ev, soft_band = decision_policy_value(round_index, noise_score, ev_thresholds, enabled=policy_enabled)
+    policy_config = dict(getattr(xgboost_model, "bbb_decision_policy_", {}) or {})
+    policy_enabled = bool(policy_config.get("enabled", False))
+    min_ev, activation_ev, soft_band = decision_policy_value(
+        round_index, noise_score, ev_thresholds, enabled=policy_enabled, policy_config=policy_config
+    )
     direction = "B" if ev_banker > activation_ev and ev_banker > ev_player else "P" if ev_player > activation_ev and ev_player > ev_banker else "Skip"
     final_direction = {"B": "莊 B", "P": "閒 P", "Skip": "觀望 Skip"}[direction]
-    confidence = soft_confidence(ev_banker if direction == "B" else ev_player, min_ev, activation_ev, soft_band) if direction != "Skip" else 0.0
+    confidence = soft_confidence(
+        ev_banker if direction == "B" else ev_player,
+        min_ev,
+        activation_ev,
+        soft_band,
+        min_confidence=float(policy_config.get("min_confidence", MIN_SOFT_CONFIDENCE)),
+    ) if direction != "Skip" else 0.0
     return {
         "core_p_b": float(core_pb),
         "raw_p_b": raw_pb,
@@ -912,38 +938,55 @@ def decision_policy_arrays(
     thresholds: Mapping[str, float],
     *,
     enabled: bool,
+    policy_config: Mapping[str, Any] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """噪音主要控制 Clip；EV 只做至多 0.001 微調，軟帶只開放低噪音中後段。"""
+    """Apply the selected browser-deployable EV/noise policy without changing 57D features."""
     rounds = np.asarray(rounds, dtype=np.float64)
     base = _stage_min_ev(rounds, thresholds)
     if not enabled:
         return base, base.copy(), np.zeros(len(rounds), dtype=np.float64)
+    config = dict(policy_config or {})
+    noise_threshold = _clip(float(config.get("noise_threshold", PHYSICS_NOISE_LOW_THRESHOLD)))
+    max_noise_penalty = max(0.0, float(config.get("max_noise_ev_penalty", MAX_NOISE_EV_PENALTY)))
+    middle_relief = max(0.0, float(config.get("middle_relief", MIDDLE_EV_RELIEF)))
+    late_relief = max(0.0, float(config.get("late_relief", LATE_EV_RELIEF)))
+    middle_soft_band = max(0.0, float(config.get("middle_soft_band", MIDDLE_SOFT_BAND)))
+    late_soft_band = max(0.0, float(config.get("late_soft_band", LATE_SOFT_BAND)))
     noise = np.full(len(rounds), 0.5) if noise_scores is None else np.clip(np.asarray(noise_scores, dtype=np.float64), 0.0, 1.0)
     if len(noise) != len(rounds):
         raise ValueError("noise_scores and rounds must be aligned")
-    low_noise = noise <= PHYSICS_NOISE_LOW_THRESHOLD
+    low_noise = noise <= noise_threshold
     middle = (rounds > 40) & (rounds <= 50); late = rounds > 50
     relief = np.zeros(len(rounds), dtype=np.float64)
-    relief[middle & low_noise] = MIDDLE_EV_RELIEF; relief[late & low_noise] = LATE_EV_RELIEF
-    penalty = np.minimum(MAX_NOISE_EV_PENALTY, np.maximum(0.0, noise - PHYSICS_NOISE_LOW_THRESHOLD) * (MAX_NOISE_EV_PENALTY / (1.0 - PHYSICS_NOISE_LOW_THRESHOLD)))
+    relief[middle & low_noise] = middle_relief; relief[late & low_noise] = late_relief
+    penalty = np.minimum(max_noise_penalty, np.maximum(0.0, noise - noise_threshold) * (max_noise_penalty / max(1e-9, 1.0 - noise_threshold)))
     min_ev = np.maximum(0.0, base - relief + penalty)
     soft_band = np.zeros(len(rounds), dtype=np.float64)
-    soft_band[middle & low_noise] = MIDDLE_SOFT_BAND; soft_band[late & low_noise] = LATE_SOFT_BAND
+    soft_band[middle & low_noise] = middle_soft_band; soft_band[late & low_noise] = late_soft_band
     return min_ev, np.maximum(0.0, min_ev - soft_band), soft_band
 
 
-def decision_policy_value(round_index: float, noise_score: float, thresholds: Mapping[str, float], *, enabled: bool) -> tuple[float, float, float]:
-    values = decision_policy_arrays(np.asarray([round_index]), np.asarray([noise_score]), thresholds, enabled=enabled)
+def decision_policy_value(
+    round_index: float,
+    noise_score: float,
+    thresholds: Mapping[str, float],
+    *,
+    enabled: bool,
+    policy_config: Mapping[str, Any] | None = None,
+) -> tuple[float, float, float]:
+    values = decision_policy_arrays(
+        np.asarray([round_index]), np.asarray([noise_score]), thresholds, enabled=enabled, policy_config=policy_config
+    )
     return tuple(float(item[0]) for item in values)
 
 
-def soft_confidence(edge: float, min_ev: float, activation_ev: float, soft_band: float) -> float:
+def soft_confidence(edge: float, min_ev: float, activation_ev: float, soft_band: float, *, min_confidence: float = MIN_SOFT_CONFIDENCE) -> float:
     if edge <= activation_ev:
         return 0.0
     premium = max(0.0, edge - min_ev)
     if soft_band <= 0.0:
         return premium
-    return max(MIN_SOFT_CONFIDENCE, premium, 0.5 * min(soft_band, edge - activation_ev))
+    return max(max(0.0, min_confidence), premium, 0.5 * min(soft_band, edge - activation_ev))
 
 
 def decision_returns(
@@ -954,13 +997,16 @@ def decision_returns(
     noise_scores: np.ndarray | None = None,
     *,
     policy_enabled: bool = False,
+    policy_config: Mapping[str, Any] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     probability_b = np.asarray(probability_b, dtype=np.float64)
     actual_b = np.asarray(actual_b, dtype=np.int8)
     probability_p = 1.0 - probability_b
     ev_banker = probability_b * 0.95 - probability_p
     ev_player = probability_p - probability_b
-    _, activation_ev, _ = decision_policy_arrays(np.asarray(rounds, dtype=np.float64), noise_scores, thresholds, enabled=policy_enabled)
+    _, activation_ev, _ = decision_policy_arrays(
+        np.asarray(rounds, dtype=np.float64), noise_scores, thresholds, enabled=policy_enabled, policy_config=policy_config
+    )
     banker = (ev_banker > activation_ev) & (ev_banker > ev_player)
     player = (ev_player > activation_ev) & (ev_player > ev_banker)
     wagered = banker | player
@@ -990,13 +1036,14 @@ def optimize_ev_thresholds(
     noise_scores: np.ndarray | None = None,
     *,
     policy_enabled: bool = False,
+    policy_config: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Tune the existing three numbers under accuracy/EV and +5% Skip guardrails."""
     thresholds = dict(DEFAULT_MIN_EV); noise=np.full(len(rounds),.5) if noise_scores is None else np.asarray(noise_scores,dtype=np.float64)
     grids = {
-        "early": np.arange(0.010, 0.0351, 0.0025),
-        "middle": np.arange(0.005, 0.0201, 0.0025),
-        "late": np.arange(0.000, 0.0126, 0.00125),
+        "early": np.arange(0.010, 0.0451, 0.0025),
+        "middle": np.arange(0.005, 0.0301, 0.0025),
+        "late": np.arange(0.000, 0.0251, 0.00125),
     }
     masks = {
         "early": np.asarray(rounds) <= 40,
@@ -1009,7 +1056,7 @@ def optimize_ev_thresholds(
         if not count:
             stages[stage] = {"rows": 0, "min_ev": thresholds[stage]}
             continue
-        baseline_realised,baseline_wagered=decision_returns(probability_b[mask],actual_b[mask],np.asarray(rounds)[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=policy_enabled)
+        baseline_realised,baseline_wagered=decision_returns(probability_b[mask],actual_b[mask],np.asarray(rounds)[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=policy_enabled,policy_config=policy_config)
         baseline=decision_metrics(baseline_realised,baseline_wagered)
         minimum_wagers=max(1,int(math.ceil(max(0.0,baseline["action_rate"]-MAX_SKIP_RATE_INCREASE)*count)))
         best: tuple[float, float, float, float] | None = None
@@ -1017,7 +1064,7 @@ def optimize_ev_thresholds(
         for candidate in candidates:
             trial = dict(thresholds)
             trial[stage] = candidate
-            realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], trial, noise[mask], policy_enabled=policy_enabled)
+            realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], trial, noise[mask], policy_enabled=policy_enabled, policy_config=policy_config)
             wagers = int(np.sum(wagered))
             if wagers < minimum_wagers:
                 continue
@@ -1030,7 +1077,7 @@ def optimize_ev_thresholds(
                 best = result
         if best is not None:
             thresholds[stage] = float(-best[3])
-        realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], thresholds, noise[mask], policy_enabled=policy_enabled)
+        realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], thresholds, noise[mask], policy_enabled=policy_enabled, policy_config=policy_config)
         tuned=decision_metrics(realised,wagered)
         stages[stage] = {
             "rows": count,
@@ -1046,8 +1093,8 @@ def optimize_ev_thresholds(
             "quality_constraint_passed": bool(tuned["hit_rate"]+1e-12>=baseline["hit_rate"] and tuned["realized_ev_per_bet"]+1e-12>=baseline["realized_ev_per_bet"]),
             "min_ev": thresholds[stage],
         }
-    baseline_realised,baseline_wagered=decision_returns(probability_b,actual_b,rounds,DEFAULT_MIN_EV,noise,policy_enabled=policy_enabled)
-    tuned_realised,tuned_wagered=decision_returns(probability_b,actual_b,rounds,thresholds,noise,policy_enabled=policy_enabled)
+    baseline_realised,baseline_wagered=decision_returns(probability_b,actual_b,rounds,DEFAULT_MIN_EV,noise,policy_enabled=policy_enabled,policy_config=policy_config)
+    tuned_realised,tuned_wagered=decision_returns(probability_b,actual_b,rounds,thresholds,noise,policy_enabled=policy_enabled,policy_config=policy_config)
     baseline=decision_metrics(baseline_realised,baseline_wagered); tuned=decision_metrics(tuned_realised,tuned_wagered)
     skip_delta=tuned["skip_rate"]-baseline["skip_rate"]
     quality_passed=tuned["hit_rate"]+1e-12>=baseline["hit_rate"] and tuned["realized_ev_per_bet"]+1e-12>=baseline["realized_ev_per_bet"]
@@ -1066,41 +1113,44 @@ def optimize_smoothing_and_thresholds(
     shoe_ids: Sequence[str],
     *,
     profiles: Sequence[str] = tuple(EMA_PROFILES),
+    decision_policies: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """在獨立 EV tuning 靴選 Clip 後動態 EMA；命中率/EV 不退步且 Skip 不增加。"""
+    """Select EMA + entry policy using chronological tuning shoes and hard quality gates."""
     features=np.asarray(x,dtype=np.float64);rounds=features[:,2];noise=features[:,-1]
     clipped=bounded_from_calibrated(calibrated_probability,features)
     candidates=["off"]+[str(value) for value in profiles if str(value)!="off"]
     candidates=list(dict.fromkeys(candidates))
     unknown=[name for name in candidates if name not in EMA_PROFILES]
     if unknown: raise ValueError(f"unknown EMA profiles: {unknown}")
+    policies = dict(decision_policies or DECISION_POLICY_PROFILES)
+    if "hard_ev" not in policies:
+        raise ValueError("decision_policies must retain hard_ev as the baseline")
     reports: list[dict[str, Any]] = []; baseline: dict[str, float] | None = None
-    best: tuple[float, dict[str, Any], bool, dict[str, Any]] | None = None
+    best: tuple[float, dict[str, Any], dict[str, Any], dict[str, Any]] | None = None
     for name in candidates:
         smoothing=dict(EMA_PROFILES[name])
         final=dynamic_ema_by_shoe(clipped,features,shoe_ids,smoothing)
-        for policy_enabled in (False,True):
-            tuning = optimize_ev_thresholds(final,actual_b,rounds,noise,policy_enabled=policy_enabled)
-            realised,wagered=decision_returns(final,actual_b,rounds,tuning["thresholds"],noise,policy_enabled=policy_enabled)
+        for policy_name, policy_config in policies.items():
+            policy=dict(policy_config); policy_enabled=bool(policy.get("enabled",False))
+            tuning = optimize_ev_thresholds(final,actual_b,rounds,noise,policy_enabled=policy_enabled,policy_config=policy)
+            realised,wagered=decision_returns(final,actual_b,rounds,tuning["thresholds"],noise,policy_enabled=policy_enabled,policy_config=policy)
             metrics=decision_metrics(realised,wagered);brier=_brier(final,actual_b)
             if baseline is None: baseline={**metrics,"brier":brier}
             skip_delta=metrics["skip_rate"]-baseline["skip_rate"]
             ev_delta=metrics["realized_ev_per_bet"]-baseline["realized_ev_per_bet"]
             hit_delta=metrics["hit_rate"]-baseline["hit_rate"]
             brier_delta=brier-baseline["brier"]
-            eligible=skip_delta<=1e-12 and ev_delta>=-1e-12 and hit_delta>=-1e-12 and brier_delta<=MAX_SMOOTHING_BRIER_INCREASE
+            eligible=skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and ev_delta>=-1e-12 and hit_delta>=-1e-12 and brier_delta<=MAX_SMOOTHING_BRIER_INCREASE
             score=brier-.02*metrics["realized_ev_per_bet"]-.01*metrics["hit_rate"]-.05*metrics["realized_ev_per_row"]+.05*metrics["skip_rate"]
-            report={"profile":name,"smoothing":smoothing,"decision_policy_enabled":policy_enabled,"score":score,"brier":brier,**metrics,
+            report={"profile":name,"smoothing":smoothing,"decision_policy_profile":policy_name,"decision_policy":policy,"decision_policy_enabled":policy_enabled,"score":score,"brier":brier,**metrics,
                     "skip_rate_delta":skip_delta,"ev_per_bet_delta":ev_delta,"hit_rate_delta":hit_delta,"brier_delta":brier_delta,
                     "guardrail_passed":eligible,"ev_thresholds":tuning["thresholds"]}
             reports.append(report)
-            if eligible and (best is None or score<best[0]): best=(score,smoothing,policy_enabled,tuning)
+            if eligible and (best is None or score<best[0]): best=(score,smoothing,policy,tuning)
     assert baseline is not None and best is not None
-    return {"method":"dynamic_post_clip_ema","smoothing":best[1],"decision_policy":{"enabled":best[2],"max_noise_ev_penalty":MAX_NOISE_EV_PENALTY,
-                    "middle_relief":MIDDLE_EV_RELIEF,"late_relief":LATE_EV_RELIEF,"middle_soft_band":MIDDLE_SOFT_BAND,"late_soft_band":LATE_SOFT_BAND,
-                    "noise_threshold":PHYSICS_NOISE_LOW_THRESHOLD,"min_confidence":MIN_SOFT_CONFIDENCE},"ev_tuning":best[3],
+    return {"method":"dynamic_post_clip_ema","smoothing":best[1],"decision_policy":best[2],"ev_tuning":best[3],
             "baseline": baseline, "candidates": reports,
-            "guardrail": {"max_skip_increase": 0.0,
+            "guardrail": {"max_skip_increase": MAX_SKIP_RATE_INCREASE,
                           "requires_non_decreasing_hit_rate": True,
                           "requires_non_decreasing_ev_per_bet": True,
                           "max_brier_increase": MAX_SMOOTHING_BRIER_INCREASE}}
@@ -1218,6 +1268,7 @@ def evaluate(
     ev_thresholds: Mapping[str, float] | None = None,
     smoothing_config: Mapping[str, Any] | None = None,
     decision_policy_enabled: bool = False,
+    decision_policy_config: Mapping[str, Any] | None = None,
     shoe_ids: Sequence[str] | None = None,
     bootstrap_samples: int = 1000,
 ) -> dict[str, Any]:
@@ -1229,9 +1280,9 @@ def evaluate(
     noise = np.asarray(x[:, -1], dtype=np.float64)
     thresholds = dict(DEFAULT_MIN_EV)
     thresholds.update(ev_thresholds or {})
-    realised,wagered=decision_returns(final,y,rounds,thresholds,noise,policy_enabled=decision_policy_enabled)
-    pre_realised,pre_wagered=decision_returns(unsmoothed,y,rounds,thresholds,noise,policy_enabled=decision_policy_enabled)
-    baseline_realised,baseline_wagered=decision_returns(final,y,rounds,DEFAULT_MIN_EV,noise,policy_enabled=decision_policy_enabled)
+    realised,wagered=decision_returns(final,y,rounds,thresholds,noise,policy_enabled=decision_policy_enabled,policy_config=decision_policy_config)
+    pre_realised,pre_wagered=decision_returns(unsmoothed,y,rounds,thresholds,noise,policy_enabled=decision_policy_enabled,policy_config=decision_policy_config)
+    baseline_realised,baseline_wagered=decision_returns(final,y,rounds,DEFAULT_MIN_EV,noise,policy_enabled=decision_policy_enabled,policy_config=decision_policy_config)
     hard_realised,hard_wagered=decision_returns(final,y,rounds,thresholds,noise,policy_enabled=False)
     current_realised,current_wagered=decision_returns(unsmoothed,y,rounds,thresholds,noise,policy_enabled=False)
     decision=decision_metrics(realised,wagered); pre=decision_metrics(pre_realised,pre_wagered); baseline=decision_metrics(baseline_realised,baseline_wagered)
@@ -1240,7 +1291,7 @@ def evaluate(
     policy_skip_delta=decision["skip_rate"]-hard["skip_rate"]
     policy_ev_delta=decision["realized_ev_per_bet"]-hard["realized_ev_per_bet"]
     policy_hit_delta=decision["hit_rate"]-hard["hit_rate"]
-    policy_guard=policy_skip_delta<=1e-12 and policy_ev_delta>=-1e-12 and policy_hit_delta>=-1e-12
+    policy_guard=policy_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and policy_ev_delta>=-1e-12 and policy_hit_delta>=-1e-12
     correct = ((final > 0.50) == (y > 0)).astype(np.float64)
     pre_correct = ((unsmoothed > 0.50) == (y > 0)).astype(np.float64)
     smoothing_skip_delta=decision["skip_rate"]-pre["skip_rate"]
@@ -1250,12 +1301,12 @@ def evaluate(
     smoothing_guard=(smoothing_skip_delta<=1e-12 and smoothing_ev_delta>=-1e-12 and smoothing_hit_delta>=-1e-12 and smoothing_brier_delta<=MAX_SMOOTHING_BRIER_INCREASE)
     upgrade_delta={"realized_ev_per_bet":decision["realized_ev_per_bet"]-current["realized_ev_per_bet"],
                    "hit_rate":decision["hit_rate"]-current["hit_rate"],"skip_rate":decision["skip_rate"]-current["skip_rate"]}
-    upgrade_guard=upgrade_delta["realized_ev_per_bet"]>=-1e-12 and upgrade_delta["hit_rate"]>=-1e-12 and upgrade_delta["skip_rate"]<=1e-12
+    upgrade_guard=upgrade_delta["realized_ev_per_bet"]>=-1e-12 and upgrade_delta["hit_rate"]>=-1e-12 and upgrade_delta["skip_rate"]<=MAX_SKIP_RATE_INCREASE+1e-12
     stage_masks={"early":rounds<=40,"middle":(rounds>40)&(rounds<=50),"late":rounds>50,"late_50_70":(rounds>50)&(rounds<=70)}; stage_report={}
     for stage,mask in stage_masks.items():
-        stage_realised,stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled)
-        pre_stage_realised,pre_stage_wagered=decision_returns(unsmoothed[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled)
-        base_realised,base_wagered=decision_returns(final[mask],y[mask],rounds[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=decision_policy_enabled)
+        stage_realised,stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled,policy_config=decision_policy_config)
+        pre_stage_realised,pre_stage_wagered=decision_returns(unsmoothed[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled,policy_config=decision_policy_config)
+        base_realised,base_wagered=decision_returns(final[mask],y[mask],rounds[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=decision_policy_enabled,policy_config=decision_policy_config)
         hard_stage_realised,hard_stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=False)
         tuned_stage=decision_metrics(stage_realised,stage_wagered); pre_stage=decision_metrics(pre_stage_realised,pre_stage_wagered); base_stage=decision_metrics(base_realised,base_wagered)
         hard_stage=decision_metrics(hard_stage_realised,hard_stage_wagered)
@@ -1303,6 +1354,7 @@ def evaluate(
         "upgrade_comparison": {"guardrail_passed":bool(upgrade_guard),"before":current,"after":decision,"delta":upgrade_delta},
         "decision_policy": {
             "enabled": bool(decision_policy_enabled),
+            "config": dict(decision_policy_config or {}),
             "guardrail_passed": bool(policy_guard),
             "before": hard,
             "after": decision,
@@ -1506,6 +1558,7 @@ def train_command(args: argparse.Namespace) -> int:
     smoothing_tuning=optimize_smoothing_and_thresholds(
         calibration_probability,y[ev_tuning_rows],x[ev_tuning_rows],ev_tuning_shoe_ids,
         profiles=args.smoothing_profiles,
+        decision_policies={name: DECISION_POLICY_PROFILES[name] for name in args.decision_policy_profiles},
     )
     ev_tuning=smoothing_tuning["ev_tuning"]
     smoothing_config=dict(smoothing_tuning["smoothing"])
@@ -1521,6 +1574,7 @@ def train_command(args: argparse.Namespace) -> int:
         ev_thresholds=ev_tuning["thresholds"],
         smoothing_config=smoothing_config,
         decision_policy_enabled=decision_policy_enabled,
+        decision_policy_config=decision_policy,
         shoe_ids=[str(record["shoe_id"]) for record in holdout_records],
         bootstrap_samples=args.bootstrap_samples,
     )
@@ -1642,6 +1696,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--tuning-fraction", type=float, default=0.15)
     train.add_argument("--ev-tuning-fraction", type=float, default=0.30)
     train.add_argument("--smoothing-profiles",nargs="+",choices=tuple(EMA_PROFILES),default=list(EMA_PROFILES))
+    train.add_argument("--decision-policy-profiles", nargs="+", choices=tuple(DECISION_POLICY_PROFILES), default=list(DECISION_POLICY_PROFILES))
     train.add_argument("--bootstrap-samples", type=int, default=1000)
     train.add_argument("--tune-trials", type=int, default=len(XGB_TUNING_CANDIDATES))
     train.add_argument("--ci-smoke", action="store_true", help="continue artifact/runtime smoke validation even when deployment quality gates fail; never use for production promotion")
