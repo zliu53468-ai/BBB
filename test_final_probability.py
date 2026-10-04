@@ -139,6 +139,22 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertAlmostEqual(result["min_ev"],.024,places=6)
         self.assertAlmostEqual(result["activation_ev"],.024,places=6)
 
+    def test_confidence_band_is_stage_and_noise_aware(self):
+        policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
+        band,strong=final.confidence_band_arrays(np.asarray([30,45,55,55]),np.asarray([.50,.50,.50,.90]),policy)
+        self.assertTrue(np.allclose(band,[.028,.020,.011,.0212]))
+        self.assertTrue(np.allclose(strong,[.007,.005,.003,.003]))
+
+    def test_volume_guard_relaxes_only_after_prior_entry_density_is_too_low(self):
+        policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
+        probabilities=np.asarray([.525]*8+[.532],dtype=np.float64)
+        actual=np.asarray([1]*9,dtype=np.int8)
+        rounds=np.asarray([30]*9,dtype=np.float64)
+        realised,wagered=final.decision_returns(probabilities,actual,rounds,{"early":.038,"middle":.024,"late":.018},np.full(9,.5),policy_enabled=True,policy_config=policy,shoe_ids=["A"]*9)
+        self.assertFalse(np.any(wagered[:8]))
+        self.assertTrue(wagered[8])
+        self.assertEqual(final.decision_metrics(realised,wagered)["absolute_correct_bets"],1.0)
+
     def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
         early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))
         late_original = self.original.copy(); late_original[1] = 55
@@ -308,7 +324,8 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertIn("hit_rate",report["smoothing"]["before"])
         self.assertIn("skip_rate",report["smoothing"]["after"])
         self.assertIn("guardrail_passed",report["decision_policy"])
-        self.assertEqual(set(report["upgrade_comparison"]),{"guardrail_passed","before","after","delta"})
+        self.assertEqual(set(report["upgrade_comparison"]),{"guardrail_passed","before","after","delta","absolute_correct_bets_constraint_passed"})
+        self.assertIn("absolute_correct_bets",report)
         for stage in ("early","middle","late","late_50_70"):
             self.assertIn("overall_accuracy",report["stage_decision_metrics"][stage])
             self.assertIn("brier",report["stage_decision_metrics"][stage])
