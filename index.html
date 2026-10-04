@@ -3,29 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#08111f">
-  <title>BGS AI 預測分析</title>
-  <meta name="description" content="BGS 256維 Frozen Direct 前瞻分析面板">
+  <meta name="theme-color" content="#090716">
+  <title>莊家剋星AI百家程式</title>
+  <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="app-shell">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark">BGS</div>
-        <div>
-          <h1>AI 預測分析</h1>
-          <p>256維前瞻分析核心</p>
+        <div class="brand-mark" aria-hidden="true">
+          <span class="mark-glow"></span>
+          <img src="assets/ai-robot.svg" alt="">
+        </div>
+        <div class="brand-copy">
+          <p class="eyebrow">BANKER SLAYER · AI ANALYSIS</p>
+          <h1>莊家剋星AI百家程式</h1>
+          <p class="brand-subtitle">即時牌路分析・智慧決策輔助</p>
         </div>
       </div>
       <div class="status-area">
-        <span class="status-pill" id="modePill">準備中</span>
+        <span class="status-pill"><i></i><span id="modePill">準備中</span></span>
         <span class="round-pill" id="roundPill">0 局</span>
       </div>
     </header>
 
     <section class="card prediction-card">
-      <div class="card-title"><span>下一局方向</span><small>即時分析</small></div>
+      <div class="card-title"><span>下一局方向</span><small>LIVE ANALYSIS</small></div>
       <div class="prediction-layout">
         <div class="direction-orb idle" id="directionOrb"><span id="directionText">—</span><small id="directionCode">等待分析</small></div>
         <div class="metrics">
@@ -57,7 +61,7 @@
       <div class="history-track" id="historyTrack"><div class="empty-history">尚未輸入牌局</div></div>
     </section>
 
-    <footer>256維 V23 Frozen Core · Physics 56D Final Probability</footer>
+    <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
   </main>
 
   <script src="app256forward.js"></script>
