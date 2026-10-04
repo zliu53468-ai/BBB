@@ -65,6 +65,7 @@ require("./final_probability_runtime.js");
   if(out.direction!==expectedDirection)throw new Error("dynamic EV decision mismatch");
   if(useGeneratedBundle){
     if(!Number.isFinite(out.min_ev)||!Number.isFinite(activationThreshold)||out.min_ev<0||activationThreshold<0)throw new Error("generated EV thresholds invalid");
+    if(out.decision_policy_profile!=="strict_selective_entry_v1"||out.soft_band!==0)throw new Error("generated strict policy was not auditable in runtime");
     if(out.direction==="Skip"&&Math.abs(out.confidence)>1e-12)throw new Error("generated Skip confidence mismatch");
     if(out.direction!=="Skip"&&!(out.confidence>0))throw new Error("generated action confidence missing");
   }else{
