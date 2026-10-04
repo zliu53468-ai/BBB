@@ -60,12 +60,14 @@ require("./final_probability_runtime.js");
     if(Math.abs(r.finalPB-.55)>1e-9)throw new Error("early dynamic bounds were not applied");
   }
   if(!(Number.isFinite(out.ev_banker)&&Number.isFinite(out.ev_player)))throw new Error("EV fields missing");
-  const activationThreshold=Number.isFinite(out.activation_ev)?out.activation_ev:out.min_ev;
-  const expectedDirection=out.ev_banker>activationThreshold&&out.ev_banker>out.ev_player?"B":out.ev_player>activationThreshold&&out.ev_player>out.ev_banker?"P":"Skip";
+  const activationThreshold=Number.isFinite(out.effective_activation_ev)?out.effective_activation_ev:(Number.isFinite(out.activation_ev)?out.activation_ev:out.min_ev);
+  const confidenceBand=Number.isFinite(out.effective_confidence_band)?out.effective_confidence_band:0;
+  const expectedDirection=Math.abs(r.finalPB-.5)>=confidenceBand&&out.ev_banker>activationThreshold&&out.ev_banker>out.ev_player?"B":Math.abs(r.finalPB-.5)>=confidenceBand&&out.ev_player>activationThreshold&&out.ev_player>out.ev_banker?"P":"Skip";
   if(out.direction!==expectedDirection)throw new Error("dynamic EV decision mismatch");
   if(useGeneratedBundle){
     if(!Number.isFinite(out.min_ev)||!Number.isFinite(activationThreshold)||out.min_ev<0||activationThreshold<0)throw new Error("generated EV thresholds invalid");
     if(out.decision_policy_profile!=="strict_selective_entry_v1"||out.soft_band!==0)throw new Error("generated strict policy was not auditable in runtime");
+    if(!Number.isFinite(out.confidence_band)||!Number.isFinite(out.effective_confidence_band)||!["strong","weak","skip"].includes(out.entry_tier))throw new Error("confidence-band metadata missing");
     if(out.direction==="Skip"&&Math.abs(out.confidence)>1e-12)throw new Error("generated Skip confidence mismatch");
     if(out.direction!=="Skip"&&!(out.confidence>0))throw new Error("generated action confidence missing");
   }else{
@@ -105,9 +107,10 @@ require("./final_probability_runtime.js");
   let rows=api.getTrainingRows();
   if(rows.length!==1)throw new Error("directional prediction snapshot was not retained");
   const snapshot=rows[0];
-  if(snapshot.schema_version!==6||snapshot.actual_b!==1||snapshot.is_directional_label!==true)throw new Error("invalid directional snapshot metadata");
+  if(snapshot.schema_version!==7||snapshot.actual_b!==1||snapshot.is_directional_label!==true)throw new Error("invalid directional snapshot metadata");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57)throw new Error("prediction snapshot is missing exact model features");
   if(!Number.isFinite(snapshot.clipped_p_b)||!Number.isFinite(snapshot.smoothed_p_b)||snapshot.smoothing_alpha!==1||snapshot.smoothing_strength!==0)throw new Error("smoothing snapshot metadata is missing");
+  if(!Number.isFinite(snapshot.confidence_band)||!Number.isFinite(snapshot.effective_confidence_band)||!["strong","weak","skip","core"].includes(snapshot.entry_tier))throw new Error("entry policy snapshot metadata is missing");
   const expectedFinalSchema=useGeneratedBundle?JSON.parse(fs.readFileSync("final_probability_model.json","utf8")).schema_version:1;
   if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==expectedFinalSchema)throw new Error("snapshot model metadata is missing");
 
@@ -125,7 +128,7 @@ require("./final_probability_runtime.js");
   rows=api.getTrainingRows();
   if(rows.length!==2||rows[1].actual_outcome!=="T"||rows[1].actual_b!==null||rows[1].is_directional_label!==false)throw new Error("tie context snapshot was not retained");
   const exported=JSON.parse(api.exportTrainingData());
-  if(exported.schema_version!==6||exported.feature_names?.length!==57||exported.rows?.length!==2)throw new Error("snapshot export contract is incomplete");
+  if(exported.schema_version!==7||exported.feature_names?.length!==57||exported.rows?.length!==2)throw new Error("snapshot export contract is incomplete");
 
   console.log(JSON.stringify({ok:true,rawPB:r.rawPB,finalPB:r.finalPB,direction:out.direction,snapshots:rows.length}));
 })().catch(error=>{console.error(error);process.exit(1);});
