@@ -30,16 +30,16 @@ body::before{
 }
 button{font:inherit}
 .app-shell{width:min(760px,calc(100% - 24px));margin:0 auto;padding:27px 0 38px}
-.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px;padding:4px 2px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px;padding:4px 2px}
 .brand{display:flex;align-items:center;gap:13px;min-width:0}
 .brand-mark{
-  width:57px;height:57px;flex:0 0 57px;position:relative;display:grid;place-items:center;overflow:hidden;
-  border-radius:19px;border:1px solid rgba(209,173,255,.48);
+  width:70px;height:50px;flex:0 0 70px;position:relative;display:grid;place-items:center;overflow:hidden;
+  border-radius:16px;border:1px solid rgba(209,173,255,.48);
   background:linear-gradient(145deg,rgba(203,132,255,.25),rgba(55,31,114,.34));
   box-shadow:0 0 0 1px rgba(103,191,255,.12) inset,0 0 26px rgba(157,89,255,.28),0 13px 32px rgba(0,0,0,.30);
 }
-.brand-mark::before{content:"";position:absolute;inset:1px;border-radius:18px;background:linear-gradient(135deg,rgba(255,255,255,.15),transparent 40%);pointer-events:none}
-.brand-mark img{width:43px;height:43px;position:relative;z-index:1;filter:drop-shadow(0 0 7px rgba(203,152,255,.60))}
+.brand-mark::before{content:"";position:absolute;inset:1px;border-radius:15px;background:linear-gradient(135deg,rgba(255,255,255,.15),transparent 40%);pointer-events:none}
+.brand-mark img{width:66px;height:46px;position:relative;z-index:1;object-fit:contain;filter:drop-shadow(0 0 7px rgba(203,152,255,.60))}
 .mark-glow{position:absolute;width:30px;height:76px;transform:rotate(27deg);background:linear-gradient(transparent,rgba(255,255,255,.80),transparent);opacity:.62;animation:logo-sweep 4.4s ease-in-out infinite}
 .brand-copy{min-width:0}
 .eyebrow{margin:0 0 4px;color:#c7a7ff;font-size:9px;font-weight:800;letter-spacing:.14em}
@@ -52,6 +52,18 @@ button{font:inherit}
 }
 .status-pill{display:flex;align-items:center;gap:6px;color:#eadbff;border-color:rgba(194,132,255,.38);background:rgba(160,86,255,.12)}
 .status-pill i{width:6px;height:6px;border-radius:50%;background:#b67dff;box-shadow:0 0 9px #b67dff;animation:status-pulse 1.8s ease-in-out infinite}
+.brand-hero{
+  position:relative;isolation:isolate;overflow:hidden;height:clamp(190px,31vw,255px);margin:0 0 13px;
+  border:1px solid rgba(196,134,255,.42);border-radius:21px;background:#0a0615;
+  box-shadow:0 18px 45px rgba(0,0,0,.36),0 0 35px rgba(152,66,255,.15);
+}
+.hero-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 45%;opacity:.87;transform:scale(1.035);animation:hero-drift 9s ease-in-out infinite alternate}
+.hero-vignette{position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,5,17,.78),rgba(12,6,24,.06) 52%,rgba(8,5,17,.58)),linear-gradient(0deg,rgba(7,4,15,.62),transparent 65%);z-index:1}
+.hero-scan{position:absolute;z-index:2;top:-20%;bottom:-20%;width:16%;left:-25%;transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(246,228,255,.70),rgba(187,105,255,.20),transparent);filter:blur(1px);mix-blend-mode:screen;animation:hero-sweep 5.8s ease-in-out infinite}
+.hero-particles{position:absolute;inset:0;z-index:2;opacity:.55;background-image:radial-gradient(circle,rgba(244,218,255,.95) 0 1px,transparent 1.6px),radial-gradient(circle,rgba(159,87,255,.80) 0 1px,transparent 1.7px);background-size:47px 47px,71px 71px;background-position:0 0,18px 25px;mask-image:linear-gradient(90deg,transparent,black 18%,black 82%,transparent);animation:particle-drift 8s linear infinite}
+.hero-content{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:18px 10px 14px;text-align:center}
+.hero-logo{width:min(360px,67%);max-height:106px;object-fit:contain;filter:drop-shadow(0 5px 12px rgba(7,1,16,.95)) drop-shadow(0 0 14px rgba(195,96,255,.58));animation:hero-logo-float 3.8s ease-in-out infinite}
+.hero-content p{margin:1px 0 0;color:#f1dcff;font-size:9px;font-weight:800;letter-spacing:.22em;text-shadow:0 1px 7px #12041f}
 .card{
   position:relative;overflow:hidden;
   background:linear-gradient(140deg,rgba(25,18,48,.93),rgba(13,10,27,.96));
@@ -112,9 +124,14 @@ button{font:inherit}
 .empty-history{color:#81789c;font-size:12px;align-self:center}
 footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;padding-top:7px}
 @keyframes logo-sweep{0%,42%{transform:translateX(-55px) rotate(27deg);opacity:0}50%{opacity:.70}61%,100%{transform:translateX(62px) rotate(27deg);opacity:0}}
+@keyframes hero-drift{from{transform:scale(1.035) translate3d(-.6%,0,0)}to{transform:scale(1.09) translate3d(.6%,-.6%,0)}}
+@keyframes hero-sweep{0%,22%{left:-28%;opacity:0}30%{opacity:.82}47%,100%{left:118%;opacity:0}}
+@keyframes particle-drift{to{background-position:47px 47px,89px 96px}}
+@keyframes hero-logo-float{50%{transform:translateY(-4px);filter:drop-shadow(0 7px 14px rgba(7,1,16,.95)) drop-shadow(0 0 20px rgba(214,132,255,.78))}}
 @keyframes orb-breathe{50%{transform:scale(1.045);opacity:.38}}@keyframes status-pulse{50%{opacity:.34;box-shadow:0 0 2px #b67dff}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}}
 @media(max-width:620px){
-  .app-shell{width:min(100% - 14px,760px);padding-top:14px}.topbar{align-items:flex-start}.brand-mark{width:49px;height:49px;flex-basis:49px;border-radius:16px}.brand-mark img{width:37px;height:37px}.brand h1{font-size:17px}.brand-subtitle{font-size:10px}.eyebrow{font-size:8px}
+  .app-shell{width:min(100% - 14px,760px);padding-top:14px}.topbar{align-items:flex-start}.brand-mark{width:58px;height:43px;flex-basis:58px;border-radius:14px}.brand-mark img{width:55px;height:39px}.brand h1{font-size:17px}.brand-subtitle{font-size:10px}.eyebrow{font-size:8px}
+  .brand-hero{height:190px;border-radius:17px}.hero-art{object-position:center}.hero-logo{width:min(320px,82%);max-height:92px}.hero-content{padding-bottom:11px}.hero-content p{font-size:8px;letter-spacing:.16em}
   .status-area{flex-direction:column;align-items:flex-end;gap:5px}.card{padding:14px;border-radius:17px}.prediction-layout{grid-template-columns:1fr}.direction-orb{width:144px;height:144px}.direction-orb span{font-size:48px}.metrics{grid-template-columns:1fr 1fr}.result-btn{min-height:82px}.result-btn strong{font-size:27px}.action-buttons{grid-template-columns:1fr}.clear-note{text-align:center}
 }
