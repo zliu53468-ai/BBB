@@ -4,9 +4,9 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V7";
-const PHYSICS_URL="physics_multitask_model.json?v=7";
-const FINAL56_URL="final_probability_model.json?v=7";
+const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V8";
+const PHYSICS_URL="physics_multitask_model.json?v=8";
+const FINAL56_URL="final_probability_model.json?v=8";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
 const PHYSICS_NAMES=[
 "cards_p4","cards_p5","cards_p6",
@@ -329,7 +329,9 @@ function downloadTrainingData(){const blob=new Blob([exportTrainingData()],{type
 async function fetchBundle(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(url+":HTTP"+r.status);return await r.json();}
 async function loadModels(){
   status={physics:false,final56:false,errors:[]};
-  const rs=await Promise.allSettled([fetchBundle(PHYSICS_URL),fetchBundle(FINAL56_URL)]);
+  const bundledPhysics=typeof window!=="undefined"?window.__BGS_PHYSICS_BUNDLE__:null;
+  const bundledFinal=typeof window!=="undefined"?window.__BGS_FINAL56_BUNDLE__:null;
+  const rs=await Promise.allSettled([bundledPhysics?Promise.resolve(bundledPhysics):fetchBundle(PHYSICS_URL),bundledFinal?Promise.resolve(bundledFinal):fetchBundle(FINAL56_URL)]);
   if(rs[0].status==="fulfilled"&&rs[0].value?.model_type==="baccarat_physics_multitask_mlp"){physicsBundle=rs[0].value;status.physics=!!physicsBundle.trained;}else status.errors.push("physics_model");
   if(rs[1].status==="fulfilled"&&rs[1].value?.model_type==="xgb_final_probability_classifier"&&rs[1].value?.feature_names?.length===FEATURE_DIM){final56Bundle=rs[1].value;status.final56=!!final56Bundle.trained;}else{final56Bundle=null;status.errors.push("final57_model");}
   return status;
