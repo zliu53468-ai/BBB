@@ -159,7 +159,14 @@ function predictPhysics(seq){
   const outputSlope=physicsBundle.output_calibration?.slope||[],outputIntercept=physicsBundle.output_calibration?.intercept||[];
   h=h.map((v,i)=>v*(Number.isFinite(+outputSlope[i])?+outputSlope[i]:1)+(Number.isFinite(+outputIntercept[i])?+outputIntercept[i]:0));
   const mlp=sanitizePhysics(h,physicsBundle.calibration_temperatures||{});
-  return fuseParticlePhysics(mlp,seq);
+  const particleCompatible=(+final56Bundle?.training?.particle_physics_version||0)>=1;
+  if(!particleCompatible){
+    lastParticleDiagnostics={enabled:false,reason:"legacy_final_model",particle_physics_version:0};
+    return mlp;
+  }
+  const fused=fuseParticlePhysics(mlp,seq);
+  lastParticleDiagnostics={enabled:true,particle_physics_version:1,...lastParticleDiagnostics};
+  return fused;
 }
 
 function findChild(node,id){return(node?.children||[]).find(c=>+c.nodeid===+id)||null;}
