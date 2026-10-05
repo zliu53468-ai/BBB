@@ -251,6 +251,97 @@ def _forecast_particles(
     return out.astype(np.float32)
 
 
+class ParticleShoeTracker:
+    """Incremental particle state for chronological rows from the same shoe."""
+
+    def __init__(self, *, particle_count: int = PARTICLE_COUNT, random_state: int = RANDOM_STATE):
+        self.particle_count = max(16, int(particle_count))
+        self.random_state = int(random_state)
+        self.reset()
+
+    def reset(self) -> None:
+        self.rng = np.random.default_rng(self.random_state)
+        self.particles = [np.full(RANKS, INITIAL_PER_RANK, dtype=np.int16) for _ in range(self.particle_count)]
+        self.consumed = np.zeros(self.particle_count, dtype=np.float64)
+        self.ess_history: list[float] = []
+        self.history: list[str] = []
+
+    def _advance(self, actual: str) -> None:
+        next_particles: list[np.ndarray] = []
+        next_consumed = np.zeros(self.particle_count, dtype=np.float64)
+        raw_weights = np.zeros(self.particle_count, dtype=np.float64)
+
+        for index, base in enumerate(self.particles):
+            proposals: list[tuple[SimulatedHand, np.ndarray]] = []
+            matches: list[tuple[SimulatedHand, np.ndarray]] = []
+            for _ in range(LIKELIHOOD_DRAWS):
+                hand, after = _deal_from_counts(base, self.rng)
+                proposals.append((hand, after))
+                if hand.outcome == actual:
+                    matches.append((hand, after))
+
+            match_count = len(matches)
+            likelihood = (match_count + 0.15) / (LIKELIHOOD_DRAWS + 0.45)
+            if not matches:
+                for _ in range(FALLBACK_DRAWS):
+                    hand, after = _deal_from_counts(base, self.rng)
+                    if hand.outcome == actual:
+                        matches.append((hand, after))
+                        break
+
+            if matches:
+                chosen_hand, chosen_after = matches[int(self.rng.integers(len(matches)))]
+                if match_count == 0:
+                    likelihood = max(likelihood, 0.02)
+            else:
+                chosen_hand, chosen_after = proposals[int(self.rng.integers(len(proposals)))]
+                likelihood = 1e-4
+
+            next_particles.append(chosen_after)
+            next_consumed[index] = self.consumed[index] + chosen_hand.card_count
+            raw_weights[index] = likelihood
+
+        weight_sum = float(raw_weights.sum())
+        weights = raw_weights / weight_sum if weight_sum > 1e-12 else np.full(self.particle_count, 1.0 / self.particle_count)
+        ess = 1.0 / max(1e-12, float(np.sum(weights * weights)))
+        self.ess_history.append(_clip(ess / self.particle_count))
+        self.particles, self.consumed = _systematic_resample(next_particles, next_consumed, weights, self.rng)
+        self.history.append(actual)
+
+    def sync(self, history: str | Sequence[str]) -> None:
+        seq = _tokens(history)
+        prefix = self.history
+        if len(seq) < len(prefix) or seq[:len(prefix)] != prefix:
+            self.reset()
+        for actual in seq[len(self.history):]:
+            self._advance(actual)
+
+    def estimate(self, history: str | Sequence[str] | None = None, *, forecast_draws: int = FORECAST_DRAWS) -> ParticlePhysicsEstimate:
+        if history is not None:
+            self.sync(history)
+        physics = _forecast_particles(
+            self.particles,
+            self.consumed,
+            random_state=self.random_state + len(self.history) * 1009,
+            forecast_draws=max(1, int(forecast_draws)),
+        )
+        matrix = np.vstack(self.particles).astype(np.float64)
+        spread = float(np.mean(np.std(matrix, axis=0) / INITIAL_PER_RANK))
+        recent_ess = float(np.mean(self.ess_history[-8:])) if self.ess_history else 1.0
+        consumed_std = float(np.std(self.consumed)) if len(self.consumed) else 0.0
+        uncertainty = _clip(0.60 * min(1.0, spread * 4.0) + 0.40 * (1.0 - recent_ess))
+        diagnostics = {
+            "particle_count": float(self.particle_count),
+            "history_rounds": float(len(self.history)),
+            "expected_consumed_cards": float(physics[43]),
+            "consumed_cards_std": consumed_std,
+            "recent_ess_ratio": recent_ess,
+            "composition_spread": spread,
+            "posterior_uncertainty": uncertainty,
+        }
+        return ParticlePhysicsEstimate(physics, diagnostics)
+
+
 def estimate_particle_physics(
     history: str | Sequence[str],
     *,
@@ -258,28 +349,8 @@ def estimate_particle_physics(
     forecast_draws: int = FORECAST_DRAWS,
     random_state: int = RANDOM_STATE,
 ) -> ParticlePhysicsEstimate:
-    seq = _tokens(history)
-    particle_count = max(16, int(particle_count))
-    forecast_draws = max(1, int(forecast_draws))
-    particles, consumed, ess_history = _filter_particles(seq, particle_count=particle_count, random_state=random_state)
-    physics = _forecast_particles(particles, consumed, random_state=random_state, forecast_draws=forecast_draws)
-
-    matrix = np.vstack(particles).astype(np.float64)
-    spread = float(np.mean(np.std(matrix, axis=0) / INITIAL_PER_RANK))
-    recent_ess = float(np.mean(ess_history[-8:])) if ess_history else 1.0
-    consumed_std = float(np.std(consumed)) if len(consumed) else 0.0
-    uncertainty = _clip(0.60 * min(1.0, spread * 4.0) + 0.40 * (1.0 - recent_ess))
-
-    diagnostics = {
-        "particle_count": float(particle_count),
-        "history_rounds": float(len(seq)),
-        "expected_consumed_cards": float(physics[43]),
-        "consumed_cards_std": consumed_std,
-        "recent_ess_ratio": recent_ess,
-        "composition_spread": spread,
-        "posterior_uncertainty": uncertainty,
-    }
-    return ParticlePhysicsEstimate(physics, diagnostics)
+    tracker = ParticleShoeTracker(particle_count=particle_count, random_state=random_state)
+    return tracker.estimate(history, forecast_draws=forecast_draws)
 
 
 def _fusion_weight(rounds: int, diagnostics: dict[str, float]) -> float:
@@ -304,6 +375,7 @@ def fuse_particle_physics(
     particle_count: int = PARTICLE_COUNT,
     forecast_draws: int = FORECAST_DRAWS,
     random_state: int = RANDOM_STATE,
+    tracker: ParticleShoeTracker | None = None,
 ) -> tuple[np.ndarray, dict[str, float]]:
     """Fuse rule-consistent particle estimates into the existing 48D semantics."""
     mlp = np.asarray(mlp_48d, dtype=np.float64).reshape(-1)
@@ -311,11 +383,15 @@ def fuse_particle_physics(
         raise ValueError(f"expected {PHYSICS_DIM} MLP features, got {mlp.size}")
 
     seq = _tokens(history)
-    estimate = estimate_particle_physics(
-        seq,
-        particle_count=particle_count,
-        forecast_draws=forecast_draws,
-        random_state=random_state,
+    estimate = (
+        tracker.estimate(seq, forecast_draws=forecast_draws)
+        if tracker is not None
+        else estimate_particle_physics(
+            seq,
+            particle_count=particle_count,
+            forecast_draws=forecast_draws,
+            random_state=random_state,
+        )
     )
     particle = estimate.physics_48d.astype(np.float64)
     weight = _fusion_weight(len(seq), estimate.diagnostics)
