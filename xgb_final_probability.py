@@ -31,6 +31,7 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only in lean dev env
     DMatrix = None  # type: ignore[assignment,misc]
     XGBClassifier = None  # type: ignore[assignment,misc]
 
+from particle_shoe_filter import ParticleShoeTracker
 from physics_feature_extractor import (
     PHYSICS_DIM,
     PHYSICS_FEATURE_NAMES,
@@ -565,13 +566,21 @@ def _original_7d(record: Mapping[str, Any], core_pb: float) -> np.ndarray:
     return _rebuild_original_7d(record, core_pb)
 
 
-def _physics_48d(record: Mapping[str, Any], extractor: PhysicsFeatureExtractor | None) -> np.ndarray:
+def _physics_48d(
+    record: Mapping[str, Any],
+    extractor: PhysicsFeatureExtractor | None,
+    particle_tracker: ParticleShoeTracker | None = None,
+) -> np.ndarray:
     supplied = record.get("physics_48d")
     if supplied is not None:
         return np.asarray(supplied, dtype=np.float32).reshape(-1)
     if extractor is None:
         raise ValueError("physics_48d is missing and no physics extractor was supplied")
-    return extractor.predict_features(_history(record))
+    if particle_tracker is None:
+        return extractor.predict_features(_history(record))
+    return extractor.predict_features_with_diagnostics(
+        _history(record), particle_tracker=particle_tracker
+    )[0]
 
 
 def _snapshot_56d(record: Mapping[str, Any]) -> np.ndarray | None:
@@ -617,15 +626,24 @@ def make_training_dataset(
     rows: list[np.ndarray] = []
     labels: list[int] = []
     used_records: list[Mapping[str, Any]] = []
+    active_shoe = ""
+    particle_tracker: ParticleShoeTracker | None = None
     for record in records:
         try:
             x = _snapshot_56d(record)
             if x is None:
                 pb = _core_pb(record)
+                shoe_id = str(record.get("shoe_id") or "").strip()
+                if physics_extractor is not None and shoe_id:
+                    if shoe_id != active_shoe:
+                        active_shoe = shoe_id
+                        particle_tracker = ParticleShoeTracker()
+                else:
+                    particle_tracker = None
                 x = build_56d_feature_matrix(
                     pb,
                     _original_7d(record, pb),
-                    _physics_48d(record, physics_extractor),
+                    _physics_48d(record, physics_extractor, particle_tracker),
                 )
             y = _actual_b(record)
         except (KeyError, TypeError, ValueError):
