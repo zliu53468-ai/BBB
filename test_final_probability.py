@@ -42,13 +42,25 @@ class FinalProbabilityTests(unittest.TestCase):
         matrix = final.build_56d_feature_matrix(self.core, self.original, self.physics)
         self.assertEqual(matrix.shape, (1, 57))
         self.assertAlmostEqual(float(matrix[0, 0]), self.core, places=6)
-        self.assertAlmostEqual(float(matrix[0, 1]), (15 / 70.0) ** 3, places=6)
+        expected_progress=final.effective_shoe_progress(self.original[1],self.physics)
+        self.assertAlmostEqual(float(matrix[0, 1]), expected_progress ** 3, places=6)
         self.assertTrue(np.array_equal(matrix[0, 2:8], self.original[1:]))
         self.assertTrue(np.array_equal(matrix[0, 8:56], self.physics))
         self.assertAlmostEqual(float(matrix[0, 56]), final.physics_noise_score(self.physics, self.original[1]), places=6)
         legacy=final.legacy_feature_matrix(matrix)
         self.assertEqual(legacy.shape,(1,57))
         self.assertAlmostEqual(float(legacy[0,-1]),0.0,places=6)
+
+    def test_effective_progress_uses_card_consumption_without_changing_dimension(self):
+        low=self.physics.copy();high=self.physics.copy()
+        low[43]=40.0;high[43]=250.0
+        low_progress=final.effective_shoe_progress(50,low)
+        high_progress=final.effective_shoe_progress(50,high)
+        self.assertGreater(high_progress,low_progress)
+        low_matrix=final.build_56d_feature_matrix(self.core,[self.core,50,60,.2,.5,2,1],low)
+        high_matrix=final.build_56d_feature_matrix(self.core,[self.core,50,60,.2,.5,2,1],high)
+        self.assertEqual(low_matrix.shape,(1,57));self.assertEqual(high_matrix.shape,(1,57))
+        self.assertGreater(high_matrix[0,1],low_matrix[0,1])
 
     def test_physics_noise_score_tracks_predictive_uncertainty(self):
         uncertain = self.physics.copy()
@@ -275,15 +287,20 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(weights)))
         self.assertAlmostEqual(float(np.mean(weights)), 1.0, places=6)
 
-    def test_sample_weights_emphasize_actionable_rows_without_label_leakage(self):
-        x=np.zeros((4,57),dtype=np.float32);x[:,0]=[.50,.45,.50,.45];x[:,2]=45;x[:,-1]=.5
+    def test_sample_weights_emphasize_physical_ev_without_label_leakage(self):
+        x=np.zeros((4,57),dtype=np.float32);x[:,2]=45;x[:,1]=(45/70)**3;x[:,-1]=.5
+        x[:,8+final._PHYSICS_INDEX["particle_uncertainty"]]=.3
+        x[:,8+final._PHYSICS_INDEX["physical_ev_banker"]]=[.0,.04,.0,.04]
         weights=final.balanced_sample_weights(np.asarray([0,0,1,1]),x)
         self.assertGreater(weights[1],weights[0]);self.assertGreater(weights[3],weights[2])
 
-    def test_sample_weights_focus_clean_50_to_70_rows(self):
-        x=np.zeros((4,57),dtype=np.float32);x[:,0]=.50;x[:,2]=[30,45,55,65];x[:,-1]=[.2,.2,.2,.2]
-        weights=final.balanced_sample_weights(np.asarray([0,1,0,1]),x)
-        self.assertGreater(weights[2],weights[0]);self.assertGreater(weights[3],weights[1])
+    def test_sample_weights_focus_clean_50_to_70_rows_smoothly(self):
+        x=np.zeros((5,57),dtype=np.float32);rounds=np.asarray([30,45,55,60,65],dtype=float);x[:,2]=rounds;x[:,1]=(rounds/70)**3;x[:,-1]=.2
+        x[:,8+final._PHYSICS_INDEX["particle_uncertainty"]]=.2
+        x[:,8+final._PHYSICS_INDEX["physical_ev_banker"]]=.03
+        weights=final.balanced_sample_weights(np.asarray([0,1,0,1,0]),x)
+        self.assertGreater(weights[2],weights[0]);self.assertGreater(weights[4],weights[1])
+        self.assertLess(weights[2],weights[3]);self.assertLess(weights[3],weights[4])
 
     def test_recalibrated_noise_only_changes_feature_56(self):
         x=np.zeros((2,57),dtype=np.float32);x[:,2]=[45,55];x[:,-1]=[.4,.6]
@@ -298,11 +315,14 @@ class FinalProbabilityTests(unittest.TestCase):
         values=final.dynamic_ema_by_shoe(np.asarray([.55,.45,.48,.52]),x,["A","A","B","A"],final.EMA_PROFILES["balanced"])
         self.assertTrue(np.allclose(values,[.55,.51,.48,.514]))
 
-    def test_dynamic_ema_alpha_uses_stage_ranges_and_more_noise_smoothing(self):
+    def test_dynamic_ema_alpha_is_continuous_and_more_noise_smoothing(self):
         config=final.EMA_PROFILES["balanced"]
-        for round_index,bounds in ((30,(.35,.45)),(45,(.50,.60)),(55,(.65,.75))):
+        values=[final.dynamic_ema_alpha(r,.5,config) for r in (40,49,50,51,60,70)]
+        self.assertTrue(all(a<=b+1e-12 for a,b in zip(values,values[1:])))
+        self.assertLess(abs(values[1]-values[2]),.03);self.assertLess(abs(values[2]-values[3]),.03)
+        for round_index in (30,45,55,65):
             high=final.dynamic_ema_alpha(round_index,1.0,config);low=final.dynamic_ema_alpha(round_index,0.0,config)
-            self.assertLess(high,low);self.assertGreaterEqual(high,bounds[0]);self.assertLessEqual(low,bounds[1])
+            self.assertLess(high,low);self.assertGreaterEqual(high,.35);self.assertLessEqual(low,.75)
 
     def test_smoothing_selection_can_safely_disable_itself(self):
         probability=np.asarray([.9,.1]*20);actual=np.asarray([1,0]*20,dtype=np.int8)
@@ -326,9 +346,10 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertIn("guardrail_passed",report["decision_policy"])
         self.assertEqual(set(report["upgrade_comparison"]),{"guardrail_passed","before","after","delta","absolute_correct_bets_constraint_passed"})
         self.assertIn("absolute_correct_bets",report)
-        for stage in ("early","middle","late","late_50_70"):
+        for stage in ("early","middle","late","late_50_70","late_50_55","late_56_60","late_61_65","late_66_70"):
             self.assertIn("overall_accuracy",report["stage_decision_metrics"][stage])
             self.assertIn("brier",report["stage_decision_metrics"][stage])
+            self.assertIn("mean_effective_progress_round",report["stage_decision_metrics"][stage])
 
     def test_ev_threshold_tuning_keeps_three_stages(self):
         probability = np.asarray([0.45, 0.55, 0.46, 0.54, 0.44, 0.56] * 4)
