@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 
-from particle_shoe_filter import estimate_particle_physics, fuse_particle_physics
+from particle_shoe_filter import ParticleShoeTracker, estimate_particle_physics, fuse_particle_physics
 from physics_feature_extractor import (
     HISTORY_INPUT_DIM,
     PHYSICS_DIM,
@@ -81,6 +81,16 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
         self.assertLess(a.diagnostics["expected_consumed_cards"],6*len(history))
         self.assertGreaterEqual(a.diagnostics["posterior_uncertainty"],0.0)
         self.assertLessEqual(a.diagnostics["posterior_uncertainty"],1.0)
+
+    def test_incremental_particle_tracker_matches_same_prefix_contract(self):
+        tracker=ParticleShoeTracker()
+        tracker.estimate("BPPB")
+        incremental=tracker.estimate("BPPBTBBP")
+        fresh=estimate_particle_physics("BPPBTBBP")
+        self.assertEqual(incremental.physics_48d.shape,fresh.physics_48d.shape)
+        self.assertAlmostEqual(incremental.diagnostics["history_rounds"],8.0,places=6)
+        self.assertGreater(incremental.diagnostics["expected_consumed_cards"],32.0)
+        self.assertLess(incremental.diagnostics["expected_consumed_cards"],48.0)
 
     def test_particle_fusion_preserves_48d_contract_and_uses_more_physics_late(self):
         mlp=np.zeros(PHYSICS_DIM,dtype=np.float32)
