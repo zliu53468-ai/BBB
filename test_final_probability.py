@@ -166,6 +166,7 @@ class FinalProbabilityTests(unittest.TestCase):
         noisy[3:13] = 0.1
         noisy[13:23] = 0.1
         noisy[23:26] = 1.0 / 3.0
+        noisy[42] = 1.0
         late_noisy = final.predict_final_probability(self.core, late_original, noisy, xgboost_model=FakeClassifier(0.90))
         self.assertAlmostEqual(early["final_p_b"], 0.55, places=6)
         self.assertAlmostEqual(late["final_p_b"], 0.65, places=6)
