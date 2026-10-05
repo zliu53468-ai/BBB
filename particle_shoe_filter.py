@@ -20,6 +20,7 @@ DECKS = 8
 RANKS = 13
 INITIAL_PER_RANK = DECKS * 4
 TOTAL_CARDS = 52 * DECKS
+PLAYABLE_CARDS_ESTIMATE = TOTAL_CARDS - 60
 PHYSICS_DIM = 48
 PARTICLE_COUNT = 64
 LIKELIHOOD_DRAWS = 4
@@ -40,6 +41,12 @@ def _normalise(block: np.ndarray) -> np.ndarray:
     if total <= 1e-12:
         return np.full(len(x), 1.0 / max(1, len(x)), dtype=np.float64)
     return x / total
+
+
+def _interp(value: float, anchors: Sequence[tuple[float, float]]) -> float:
+    xs=np.asarray([item[0] for item in anchors],dtype=np.float64)
+    ys=np.asarray([item[1] for item in anchors],dtype=np.float64)
+    return float(np.interp(float(value),xs,ys))
 
 
 def _tokens(history: str | Iterable[Any] | None) -> list[str]:
@@ -363,19 +370,36 @@ def estimate_particle_physics(
     return tracker.estimate(history, forecast_draws=forecast_draws)
 
 
+def _effective_progress(rounds: int, diagnostics: dict[str, float]) -> float:
+    """Continuous shoe progress using both hand count and inferred card consumption."""
+    round_progress=_clip(float(rounds)/70.0)
+    card_progress=_clip(float(diagnostics.get("expected_consumed_cards",0.0))/PLAYABLE_CARDS_ESTIMATE)
+    uncertainty=_clip(diagnostics.get("posterior_uncertainty",1.0))
+    round_weight=.55+.25*uncertainty
+    return _clip(round_weight*round_progress+(1.0-round_weight)*card_progress)
+
+
 def _fusion_weight(rounds: int, diagnostics: dict[str, float]) -> float:
-    if rounds < 12:
-        base = 0.18
-    elif rounds < 20:
-        base = 0.25
-    elif rounds <= 40:
-        base = 0.34
-    elif rounds <= 50:
-        base = 0.40
-    else:
-        base = 0.46
-    reliability = 0.75 + 0.25 * _clip(diagnostics.get("recent_ess_ratio", 1.0))
-    return _clip(base * reliability, 0.10, 0.46)
+    progress_round=70.0*_effective_progress(rounds,diagnostics)
+    base=_interp(progress_round,(
+        (0,.18),(10,.20),(20,.27),(30,.33),(40,.39),
+        (50,.45),(55,.48),(60,.52),(65,.55),(70,.57),
+    ))
+    ess=_clip(diagnostics.get("recent_ess_ratio",1.0))
+    uncertainty=_clip(diagnostics.get("posterior_uncertainty",1.0))
+    reliability=(.70+.30*ess)*(1.0-.20*uncertainty)
+    return _clip(base*reliability,.10,.58)
+
+
+def _physical_ev_reliability(rounds: int, diagnostics: dict[str, float]) -> float:
+    progress_round=70.0*_effective_progress(rounds,diagnostics)
+    stage=_interp(progress_round,(
+        (0,.32),(10,.36),(20,.45),(30,.53),(40,.61),
+        (50,.70),(55,.75),(60,.80),(65,.84),(70,.87),
+    ))
+    ess=_clip(diagnostics.get("recent_ess_ratio",1.0))
+    uncertainty=_clip(diagnostics.get("posterior_uncertainty",1.0))
+    return _clip(stage*(.72+.28*ess)*(1.0-.30*uncertainty),.20,.90)
 
 
 def fuse_particle_physics(
@@ -405,6 +429,9 @@ def fuse_particle_physics(
     )
     particle = estimate.physics_48d.astype(np.float64)
     weight = _fusion_weight(len(seq), estimate.diagnostics)
+    ev_reliability=_physical_ev_reliability(len(seq),estimate.diagnostics)
+    raw_ev=particle[39:42].copy()
+    particle[39:42]*=ev_reliability
     fused = mlp.copy()
 
     for start, end in ((0, 3), (3, 13), (13, 23), (23, 26)):
@@ -431,6 +458,14 @@ def fuse_particle_physics(
     fused[47] = np.clip(fused[47], 0.0, 1.0)
 
     diagnostics = dict(estimate.diagnostics)
+    diagnostics["effective_progress"] = _effective_progress(len(seq),estimate.diagnostics)
+    diagnostics["effective_progress_round"] = 70.0*diagnostics["effective_progress"]
     diagnostics["fusion_weight"] = float(weight)
+    diagnostics["physical_ev_reliability"] = float(ev_reliability)
+    diagnostics["raw_physical_ev_banker"] = float(raw_ev[0])
+    diagnostics["raw_physical_ev_player"] = float(raw_ev[1])
+    diagnostics["physical_ev_banker"] = float(fused[39])
+    diagnostics["physical_ev_player"] = float(fused[40])
+    diagnostics["physical_ev_gap"] = float(fused[41])
     diagnostics["expected_next_card_count"] = expected_cards
     return fused.astype(np.float32), diagnostics
