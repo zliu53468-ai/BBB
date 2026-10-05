@@ -227,56 +227,26 @@ function softConfidence(edge,policy){
   const premium=Math.max(0,edge-policy.minEv);
   return policy.softBand<=0?premium:Math.max(policy.minConfidence,premium,.5*Math.min(policy.softBand,edge-policy.activationEv));
 }
-function physicsWinnerDistribution(physics){
-  const fallback={b:.4586,p:.4462,t:.0952};
-  if(!Array.isArray(physics)||physics.length<=PHYSICS_INDEX.winner_p_t)return fallback;
-  const b=+physics[PHYSICS_INDEX.winner_p_b],p=+physics[PHYSICS_INDEX.winner_p_p],t=+physics[PHYSICS_INDEX.winner_p_t];
-  if(!Number.isFinite(b)||!Number.isFinite(p)||!Number.isFinite(t))return fallback;
-  const total=Math.max(0,b)+Math.max(0,p)+Math.max(0,t);
-  return total>1e-12?{b:Math.max(0,b)/total,p:Math.max(0,p)/total,t:Math.max(0,t)/total}:fallback;
-}
-function conditionalProbability(probabilityB,roundIndex,remainingRatio,noiseScore,policy){
-  const config=final56Bundle?.decision_policy?.conditional_calibration||{},stage=roundIndex<=40?"early":roundIndex<=50?"middle":"late",raw=clip(probabilityB,1e-7,1-1e-7);
-  if(policy?.enabled!==true||config.enabled!==true)return {pB:raw,temperature:1,shrinkage:0};
-  const stageConfig=config.stages&&typeof config.stages==="object"?config.stages[stage]||{}:{};
-  const temperature=Math.max(1e-6,Number.isFinite(+stageConfig.temperature)?+stageConfig.temperature:1),bias=Number.isFinite(+stageConfig.bias)?+stageConfig.bias:0;
-  const noise=clip(noiseScore),remaining=clip(remainingRatio,.0,1),noiseShrink=Math.max(0,+config.noise_shrink||0),remainingGain=Math.max(0,+config.remaining_uncertainty_gain||0);
-  const shrinkage=clip(noiseShrink*noise+remainingGain*(2*Math.abs(remaining-.5)),0,.95);
-  const logit=Math.log(raw/(1-raw)),mapped=sigmoid(clip((logit+bias)/temperature,-40,40));
-  return {pB:clip(.5+(mapped-.5)*(1-shrinkage),1e-7,1-1e-7),temperature,shrinkage};
-}
-function sanityConflict(probabilityB,winner,policy){
-  const config=final56Bundle?.decision_policy?.sanity_cross_check||{};
-  if(policy?.enabled!==true||config.enabled!==true)return {active:false,reason:""};
-  const extreme=Math.max(0,Number.isFinite(+config.model_extreme_distance)?+config.model_extreme_distance:.035),advantage=Math.max(0,Number.isFinite(+config.opposite_physics_advantage)?+config.opposite_physics_advantage:.08);
-  if(Math.abs(probabilityB-.5)<extreme)return {active:false,reason:""};
-  const active=probabilityB>.5?winner.p-winner.b>advantage:winner.b-winner.p>advantage;
-  return {active,reason:active?(probabilityB>.5?"model_B_vs_physics_P":"model_P_vs_physics_B"):""};
-}
-function volumeGuardState(roundIndex,probabilityB,pNonTie,policy){
+function volumeGuardState(roundIndex,probabilityB,policy){
   const config=policy?.volumeGuard||{};
-  if(policy?.enabled!==true||config.enabled!==true)return {active:false,relaxationWeight:0,bandRelief:0,evRelief:0,actionRateDeficit:0,correctDeficit:0,integral:0,derivative:0};
+  if(policy?.enabled!==true||config.enabled!==true)return {active:false,bandRelief:0,evRelief:0};
   const window=Math.max(1,Math.floor(+config.window||16)),minimum=Math.max(0,Math.floor(+config.min_history||8));
   const shoeId=getShoeId(),rows=readRows().filter(row=>row?.shoe_id===shoeId&&+row.round_index<roundIndex&&Number.isFinite(+row.final_p_b)).slice(-window);
-  if(rows.length<minimum)return {active:false,relaxationWeight:0,bandRelief:0,evRelief:0,actionRateDeficit:0,correctDeficit:0,integral:0,derivative:0};
-  const expectedProbability=(value,nonTie=1)=>clip(nonTie)*Math.max(clip(value),1-clip(value));
-  let actions=0,expected=0,baseline=0,pressureSum=0,previousPressure=0;
+  if(rows.length<minimum)return {active:false,bandRelief:0,evRelief:0};
+  const p=clip(probabilityB),expectedProbability=value=>Math.max(clip(value),1-clip(value));
+  let actions=0,expected=0,baseline=0;
   for(const row of rows){
-    const priorP=clip(Number.isFinite(+row.conditional_p_b)?+row.conditional_p_b:+row.final_p_b),priorPlayer=1-priorP,priorNonTie=Math.max(.001,clip(Number.isFinite(+row.p_non_tie)?+row.p_non_tie:1));
+    const priorP=clip(+row.final_p_b),priorPlayer=1-priorP;
     const priorActivation=Math.max(0,Number.isFinite(+row.activation_ev)?+row.activation_ev:policy.activationEv);
-    const baseAction=priorNonTie*(priorP*.95-priorPlayer)>priorActivation||priorNonTie*(priorPlayer-priorP)>priorActivation;
+    const baseAction=(priorP*.95-priorPlayer)>priorActivation||(priorPlayer-priorP)>priorActivation;
     const action=String(row.predicted_direction||"").includes("莊 B")||String(row.predicted_direction||"").includes("閒 P");
-    if(action){actions++;expected+=expectedProbability(priorP,priorNonTie);}
-    if(baseAction)baseline+=expectedProbability(priorP,priorNonTie);
-    const pressure=clip(+row.volume_pressure||0);pressureSum+=pressure;previousPressure=pressure;
+    if(action){actions++;expected+=expectedProbability(priorP);}
+    if(baseAction)baseline+=expectedProbability(priorP);
   }
   const stage=roundIndex<=40?"early":roundIndex<=50?"middle":"late",rates=config.target_action_rate&&typeof config.target_action_rate==="object"?config.target_action_rate:{};
   const target=Math.max(0,Number.isFinite(+rates[stage])?+rates[stage]:0),floor=clip(Number.isFinite(+config.expected_correct_floor)?+config.expected_correct_floor:.95);
-  const actionRateDeficit=Math.max(0,target-actions/rows.length),correctDeficit=Math.max(0,floor*baseline-expected);
-  const actionScale=Math.max(1e-9,+config.action_deficit_full_scale||.10),correctScale=Math.max(1e-9,+config.correct_deficit_full_scale||.05);
-  const proportional=Math.max(actionRateDeficit/actionScale,baseline>0?correctDeficit/Math.max(1e-9,correctScale*baseline):0),integral=pressureSum/rows.length,derivative=proportional-previousPressure;
-  const relaxationWeight=clip(proportional+Math.max(0,+config.integral_gain||0)*integral+Math.max(0,+config.derivative_gain||0)*derivative);
-  return {active:relaxationWeight>1e-12,relaxationWeight,bandRelief:Math.max(0,+config.band_relief||0)*relaxationWeight,evRelief:Math.max(0,+config.ev_relief||0)*relaxationWeight,actionRateDeficit,correctDeficit,integral,derivative};
+  const active=actions/rows.length<target||(baseline>0&&expected+1e-12<floor*baseline);
+  return {active,bandRelief:active?Math.max(0,+config.band_relief||0):0,evRelief:active?Math.max(0,+config.ev_relief||0):0};
 }
 
 function applyFinalPrediction(seq,corePrediction){
@@ -294,28 +264,28 @@ function applyFinalPrediction(seq,corePrediction){
       bounds=applyProbabilityBounds(rawPB,original7.round_index,extended.at(-1));clippedPB=bounds.value;
       const smoothing=applyDynamicSmoothing(clippedPB,original7.round_index,extended.at(-1),bounds);
       smoothedPB=smoothing.value;smoothingAlpha=smoothing.alpha;smoothingStrength=smoothing.strength;smoothingProfile=smoothing.profile;finalPB=smoothedPB;
+      const pTie=clip(+physics[PHYSICS_INDEX["winner_p_t"]]),pPlayer=1-finalPB;
+      const evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
       const policy=decisionPolicy(original7.round_index,extended.at(-1));
-      const winner=physicsWinnerDistribution(physics),pTie=winner.t,pNonTie=Math.max(.001,1-pTie),conditional=conditionalProbability(finalPB,original7.round_index,original7.remaining_ratio,extended.at(-1),policy),pBCond=conditional.pB,pPlayer=1-pBCond;
-      const evBanker=pNonTie*(pBCond*.95-pPlayer),evPlayer=pNonTie*(pPlayer-pBCond);
-      const guard=volumeGuardState(original7.round_index,pBCond,pNonTie,policy);
+      const guard=volumeGuardState(original7.round_index,finalPB,policy);
       const effectiveBand=Math.max(policy.bandMinimum,policy.confidenceBand-guard.bandRelief),effectiveActivationEv=Math.max(0,policy.activationEv-guard.evRelief);
-      const distance=Math.abs(pBCond-.5),conflict=sanityConflict(pBCond,winner,policy);
-      const direction=!conflict.active&&distance>=effectiveBand&&evBanker>effectiveActivationEv&&evBanker>evPlayer?"B":!conflict.active&&distance>=effectiveBand&&evPlayer>effectiveActivationEv&&evPlayer>evBanker?"P":"Skip";
+      const distance=Math.abs(finalPB-.5);
+      const direction=distance>=effectiveBand&&evBanker>effectiveActivationEv&&evBanker>evPlayer?"B":distance>=effectiveBand&&evPlayer>effectiveActivationEv&&evPlayer>evBanker?"P":"Skip";
       const edge=direction==="B"?evBanker:direction==="P"?evPlayer:0;
       const entryTier=direction==="Skip"?"skip":distance>=effectiveBand+policy.strongMargin?"strong":"weak";
-      evDecision={pTie,pNonTie,pBCond,pPlayer,physicsPB:winner.b,physicsPP:winner.p,conditionalTemperature:conditional.temperature,conditionalShrinkage:conditional.shrinkage,sanityConflict:conflict.active,sanityReason:conflict.reason,evBanker,evPlayer,minEv:policy.minEv,activationEv:policy.activationEv,effectiveActivationEv,softBand:policy.softBand,confidenceBand:policy.confidenceBand,effectiveConfidenceBand:effectiveBand,volumeGuardActive:guard.active,volumeRelaxationWeight:guard.relaxationWeight,volumeActionRateDeficit:guard.actionRateDeficit,volumeCorrectDeficit:guard.correctDeficit,volumeIntegral:guard.integral,volumeDerivative:guard.derivative,entryTier,stakeMultiplier:entryTier==="weak"?.5:entryTier==="strong"?1:0,policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
+      evDecision={pTie,pPlayer,evBanker,evPlayer,minEv:policy.minEv,activationEv:policy.activationEv,effectiveActivationEv,softBand:policy.softBand,confidenceBand:policy.confidenceBand,effectiveConfidenceBand:effectiveBand,volumeGuardActive:guard.active,entryTier,stakeMultiplier:entryTier==="weak"?.5:entryTier==="strong"?1:0,policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
         finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="Skip"?0:softConfidence(edge,{...policy,activationEv:effectiveActivationEv})};
       mode="final56";
     }
   }catch(e){error=String(e?.message||e||"runtime_error");rawPB=corePB;clippedPB=corePB;smoothedPB=corePB;finalPB=corePB;mode="core";}
-  const direction=evDecision?.direction||corePrediction.direction,decisionPB=evDecision?.pBCond??finalPB,finalPP=1-decisionPB;
+  const direction=evDecision?.direction||corePrediction.direction,finalPP=1-finalPB;
   const confidence=evDecision?.confidence??corePrediction.confidence??0;
   return {...corePrediction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),confidence,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
-    activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,p_tie:evDecision?.pTie??null,p_non_tie:evDecision?.pNonTie??null,conditional_p_b:evDecision?.pBCond??null,conditional_p_p:evDecision?.pPlayer??null,conditional_temperature:evDecision?.conditionalTemperature??null,conditional_shrinkage:evDecision?.conditionalShrinkage??null,physics_p_b:evDecision?.physicsPB??null,physics_p_p:evDecision?.physicsPP??null,sanity_conflict:evDecision?.sanityConflict??false,sanity_reason:evDecision?.sanityReason??"",volume_guard_active:evDecision?.volumeGuardActive??false,volume_relaxation_weight:evDecision?.volumeRelaxationWeight??0,volume_action_rate_deficit:evDecision?.volumeActionRateDeficit??0,volume_correct_deficit:evDecision?.volumeCorrectDeficit??0,volume_integral:evDecision?.volumeIntegral??0,volume_derivative:evDecision?.volumeDerivative??0,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:decisionPB,P:finalPP},
+    activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
     regime:mode==="final56"?(direction==="Skip"?"EV 觀望":direction!==corePrediction.direction?"Final XGB換邊":"Final XGB裁決"):corePrediction.regime,
     finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,clippedPB,smoothedPB,smoothingAlpha,smoothingStrength,smoothingProfile,finalPB,bounds,
-      p_tie:evDecision?.pTie??null,p_non_tie:evDecision?.pNonTie??null,p_b_cond:evDecision?.pBCond??null,p_player:evDecision?.pPlayer??null,conditional_temperature:evDecision?.conditionalTemperature??null,conditional_shrinkage:evDecision?.conditionalShrinkage??null,physics_p_b:evDecision?.physicsPB??null,physics_p_p:evDecision?.physicsPP??null,sanity_conflict:evDecision?.sanityConflict??false,sanity_reason:evDecision?.sanityReason??"",ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
-      activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,volume_relaxation_weight:evDecision?.volumeRelaxationWeight??0,volume_action_rate_deficit:evDecision?.volumeActionRateDeficit??0,volume_correct_deficit:evDecision?.volumeCorrectDeficit??0,volume_integral:evDecision?.volumeIntegral??0,volume_derivative:evDecision?.volumeDerivative??0,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",
+      p_tie:evDecision?.pTie??null,p_player:evDecision?.pPlayer??null,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
+      activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",
       coreDirection:corePrediction.direction,finalDirection:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),flipped:direction!==corePrediction.direction,
       original7,physics,physicsForecast,physicsIntegrity:physicsIntegrityReport,dataQuality:dataQuality(seq),extended,error}};
 }
@@ -343,7 +313,7 @@ function registerPrediction(seq,prediction){
     raw_p_b:Number.isFinite(+r.rawPB)?+r.rawPB:null,clipped_p_b:Number.isFinite(+r.clippedPB)?+r.clippedPB:null,smoothed_p_b:Number.isFinite(+r.smoothedPB)?+r.smoothedPB:null,
     smoothing_alpha:Number.isFinite(+r.smoothingAlpha)?+r.smoothingAlpha:1,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,smoothing_profile:r.smoothingProfile||"off",final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
     probability_bounds:r.bounds?[r.bounds.low,r.bounds.high]:null,min_ev:Number.isFinite(+r.min_ev)?+r.min_ev:null,
-    activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,effective_activation_ev:Number.isFinite(+r.effective_activation_ev)?+r.effective_activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,confidence_band:Number.isFinite(+r.confidence_band)?+r.confidence_band:0,effective_confidence_band:Number.isFinite(+r.effective_confidence_band)?+r.effective_confidence_band:0,p_tie:Number.isFinite(+r.p_tie)?+r.p_tie:null,p_non_tie:Number.isFinite(+r.p_non_tie)?+r.p_non_tie:null,conditional_p_b:Number.isFinite(+(r.conditional_p_b??r.p_b_cond))?+(r.conditional_p_b??r.p_b_cond):null,conditional_p_p:Number.isFinite(+(r.conditional_p_p??r.p_player))?+(r.conditional_p_p??r.p_player):null,conditional_temperature:Number.isFinite(+r.conditional_temperature)?+r.conditional_temperature:null,conditional_shrinkage:Number.isFinite(+r.conditional_shrinkage)?+r.conditional_shrinkage:null,physics_p_b:Number.isFinite(+r.physics_p_b)?+r.physics_p_b:null,physics_p_p:Number.isFinite(+r.physics_p_p)?+r.physics_p_p:null,sanity_conflict:r.sanity_conflict===true,sanity_reason:r.sanity_reason||"",volume_guard_active:r.volume_guard_active===true,volume_relaxation_weight:Number.isFinite(+r.volume_relaxation_weight)?+r.volume_relaxation_weight:0,volume_action_rate_deficit:Number.isFinite(+r.volume_action_rate_deficit)?+r.volume_action_rate_deficit:0,volume_correct_deficit:Number.isFinite(+r.volume_correct_deficit)?+r.volume_correct_deficit:0,volume_integral:Number.isFinite(+r.volume_integral)?+r.volume_integral:0,volume_derivative:Number.isFinite(+r.volume_derivative)?+r.volume_derivative:0,volume_pressure:Number.isFinite(+r.volume_relaxation_weight)?+r.volume_relaxation_weight:0,entry_tier:r.entry_tier||"core",stake_multiplier:Number.isFinite(+r.stake_multiplier)?+r.stake_multiplier:1,decision_policy_enabled:r.decision_policy_enabled===true,decision_policy_profile:r.decision_policy_profile||"hard_ev",
+    activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,effective_activation_ev:Number.isFinite(+r.effective_activation_ev)?+r.effective_activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,confidence_band:Number.isFinite(+r.confidence_band)?+r.confidence_band:0,effective_confidence_band:Number.isFinite(+r.effective_confidence_band)?+r.effective_confidence_band:0,volume_guard_active:r.volume_guard_active===true,entry_tier:r.entry_tier||"core",stake_multiplier:Number.isFinite(+r.stake_multiplier)?+r.stake_multiplier:1,decision_policy_enabled:r.decision_policy_enabled===true,decision_policy_profile:r.decision_policy_profile||"hard_ev",
     predicted_direction:r.finalDirection||prediction.direction||"",physics_integrity:r.physicsIntegrity||null};
   try{localStorage.setItem(PENDING_KEY,JSON.stringify(pending));}catch(_){}
 }

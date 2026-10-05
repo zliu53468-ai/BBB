@@ -62,14 +62,12 @@ require("./final_probability_runtime.js");
   if(!(Number.isFinite(out.ev_banker)&&Number.isFinite(out.ev_player)))throw new Error("EV fields missing");
   const activationThreshold=Number.isFinite(out.effective_activation_ev)?out.effective_activation_ev:(Number.isFinite(out.activation_ev)?out.activation_ev:out.min_ev);
   const confidenceBand=Number.isFinite(out.effective_confidence_band)?out.effective_confidence_band:0;
-  const conditionalPB=Number.isFinite(out.conditional_p_b)?out.conditional_p_b:r.finalPB;
-  const expectedDirection=out.sanity_conflict===true?"Skip":Math.abs(conditionalPB-.5)>=confidenceBand&&out.ev_banker>activationThreshold&&out.ev_banker>out.ev_player?"B":Math.abs(conditionalPB-.5)>=confidenceBand&&out.ev_player>activationThreshold&&out.ev_player>out.ev_banker?"P":"Skip";
+  const expectedDirection=Math.abs(r.finalPB-.5)>=confidenceBand&&out.ev_banker>activationThreshold&&out.ev_banker>out.ev_player?"B":Math.abs(r.finalPB-.5)>=confidenceBand&&out.ev_player>activationThreshold&&out.ev_player>out.ev_banker?"P":"Skip";
   if(out.direction!==expectedDirection)throw new Error("dynamic EV decision mismatch");
   if(useGeneratedBundle){
     if(!Number.isFinite(out.min_ev)||!Number.isFinite(activationThreshold)||out.min_ev<0||activationThreshold<0)throw new Error("generated EV thresholds invalid");
     if(out.decision_policy_profile!=="strict_selective_entry_v1"||out.soft_band!==0)throw new Error("generated strict policy was not auditable in runtime");
     if(!Number.isFinite(out.confidence_band)||!Number.isFinite(out.effective_confidence_band)||!["strong","weak","skip"].includes(out.entry_tier))throw new Error("confidence-band metadata missing");
-    if(!Number.isFinite(out.p_tie)||!Number.isFinite(out.p_non_tie)||!Number.isFinite(out.conditional_p_b)||!Number.isFinite(out.volume_relaxation_weight))throw new Error("conditional/PID metadata missing");
     if(out.direction==="Skip"&&Math.abs(out.confidence)>1e-12)throw new Error("generated Skip confidence mismatch");
     if(out.direction!=="Skip"&&!(out.confidence>0))throw new Error("generated action confidence missing");
   }else{
@@ -85,8 +83,7 @@ require("./final_probability_runtime.js");
     finalBundle.base_margin=Math.log(.48/.52);
     const playerOut=api.applyFinalPrediction(history,core),playerResult=playerOut.finalProbability;
     if(playerOut.direction!=="P"||playerOut.final_direction!=="閒 P")throw new Error("binary Player EV normalization failed");
-    const expectedTieAdjustedEv=(.52-.48)*(1-playerResult.p_tie);
-    if(Math.abs(playerResult.p_player-.52)>1e-9||Math.abs(playerOut.ev_player-expectedTieAdjustedEv)>1e-9||Math.abs(playerOut.confidence-(expectedTieAdjustedEv-.02))>1e-9)throw new Error("Player EV normalization or premium failed");
+    if(Math.abs(playerResult.p_player-.52)>1e-9||Math.abs(playerOut.ev_player-.04)>1e-9||Math.abs(playerOut.confidence-.02)>1e-9)throw new Error("Player EV normalization or premium failed");
     finalBundle.base_margin=Math.log(.494/.506);
     const earlySkip=api.applyFinalPrediction(history,core);
     if(earlySkip.direction!=="Skip"||Math.abs(earlySkip.min_ev-.020)>1e-9)throw new Error("early EV threshold failed");
@@ -114,7 +111,6 @@ require("./final_probability_runtime.js");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57)throw new Error("prediction snapshot is missing exact model features");
   if(!Number.isFinite(snapshot.clipped_p_b)||!Number.isFinite(snapshot.smoothed_p_b)||snapshot.smoothing_alpha!==1||snapshot.smoothing_strength!==0)throw new Error("smoothing snapshot metadata is missing");
   if(!Number.isFinite(snapshot.confidence_band)||!Number.isFinite(snapshot.effective_confidence_band)||!["strong","weak","skip","core"].includes(snapshot.entry_tier))throw new Error("entry policy snapshot metadata is missing");
-  if(!Number.isFinite(snapshot.p_tie)||!Number.isFinite(snapshot.p_non_tie)||!Number.isFinite(snapshot.conditional_p_b)||!Number.isFinite(snapshot.volume_pressure))throw new Error("conditional/PID snapshot metadata is missing");
   const expectedFinalSchema=useGeneratedBundle?JSON.parse(fs.readFileSync("final_probability_model.json","utf8")).schema_version:1;
   if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==expectedFinalSchema)throw new Error("snapshot model metadata is missing");
 
