@@ -33,8 +33,9 @@ DECKS = 8
 TOTAL_CARDS = 52 * DECKS
 RANKS = tuple(range(1, 14))
 RANK_LABELS = ("A","2","3","4","5","6","7","8","9","10","J","Q","K")
-SUITS = ("spades","hearts","diamonds","clubs")
+SUITS = ("spades","hearts","diamonds","clubs")  # legacy export compatibility only
 OUTCOMES = ("B","P","T")
+PHYSICAL_EV_NAMES = ("physical_ev_banker","physical_ev_player","physical_ev_gap","particle_uncertainty")
 HISTORY_WINDOW = 64
 HISTORY_SUMMARY_DIM = 21
 HISTORY_INPUT_DIM = HISTORY_WINDOW * 3 + HISTORY_SUMMARY_DIM
@@ -45,7 +46,7 @@ PHYSICS_FEATURE_NAMES: tuple[str, ...] = (
     + tuple(f"banker_point_p{i}" for i in range(10))
     + ("winner_p_b","winner_p_p","winner_p_t")
     + tuple(f"next_rank_expected_{x}" for x in RANK_LABELS)
-    + tuple(f"next_suit_ratio_{x}" for x in SUITS)
+    + PHYSICAL_EV_NAMES
     + ("shoe_consumed_cards","remaining_low_rank_density","remaining_high_rank_density")
     + ("expected_point_diff_norm","expected_abs_point_diff_norm")
 )
@@ -58,9 +59,9 @@ DEFAULT_RANDOM_STATE = 20260922
 DEFAULT_PHYSICS_SHOES = 5000
 # Multi-task emphasis: winner / point-distribution fidelity first, then card-count and composition.
 # Architecture remains fixed at 213D input -> ReLU MLP -> 48D output.
-PHYSICS_LOSS_WEIGHTS = np.asarray([1.25]*3+[1.10]*20+[2.50]*3+[.80]*13+[.65]*4+[.55]*5,dtype=np.float32)
-PROBABILITY_BLOCKS = {"card_count":slice(0,3),"player_points":slice(3,13),"banker_points":slice(13,23),"winner":slice(23,26),"suit":slice(39,43)}
-AFFINE_OUTPUT_INDICES = tuple(range(26,39)) + tuple(range(43,48))
+PHYSICS_LOSS_WEIGHTS = np.asarray([1.25]*3+[1.10]*20+[2.50]*3+[.80]*13+[1.50,1.50,1.25,.90]+[.55]*5,dtype=np.float32)
+PROBABILITY_BLOCKS = {"card_count":slice(0,3),"player_points":slice(3,13),"banker_points":slice(13,23),"winner":slice(23,26)}
+AFFINE_OUTPUT_INDICES = tuple(range(26,48))
 assert PHYSICS_LOSS_WEIGHTS.size == PHYSICS_DIM
 
 
@@ -230,11 +231,15 @@ def build_physics_target(hand: HandResult, shoe: Sequence[Card], cursor_before: 
     y[k+hand.player_point]=1; k+=10
     y[k+hand.banker_point]=1; k+=10
     y[k+{"B":0,"P":1,"T":2}[hand.outcome]]=1; k+=3
-    ranks=np.zeros(13,dtype=np.float32); suits=np.zeros(4,dtype=np.float32)
+    ranks=np.zeros(13,dtype=np.float32)
     for c in hand.cards:
-        ranks[c.rank-1]+=1; suits[c.suit]+=1
+        ranks[c.rank-1]+=1
     y[k:k+13]=ranks; k+=13
-    y[k:k+4]=suits/max(1.0,float(hand.card_count)); k+=4
+    p_b=1.0 if hand.outcome=="B" else 0.0
+    p_p=1.0 if hand.outcome=="P" else 0.0
+    physical_ev_b=p_b*.95-p_p
+    physical_ev_p=p_p-p_b
+    y[k:k+4]=[physical_ev_b,physical_ev_p,physical_ev_b-physical_ev_p,.50]; k+=4
     low,high=_remaining_rank_density(shoe,cursor_before)
     y[k]=float(cursor_before); y[k+1]=low; y[k+2]=high; k+=3
     diff=hand.banker_point-hand.player_point
@@ -289,7 +294,7 @@ def _temperature_norm(block: np.ndarray,fallback: np.ndarray,temperature: float)
 
 
 def fit_probability_temperatures(raw: np.ndarray,truth: np.ndarray) -> dict[str,float]:
-    fallbacks={"card_count":np.array([.58,.34,.08]),"player_points":np.full(10,.1),"banker_points":np.full(10,.1),"winner":np.array([.4586,.4462,.0952]),"suit":np.full(4,.25)}
+    fallbacks={"card_count":np.array([.58,.34,.08]),"player_points":np.full(10,.1),"banker_points":np.full(10,.1),"winner":np.array([.4586,.4462,.0952])}
     result={}
     for name,block in PROBABILITY_BLOCKS.items():
         base=np.vstack([_norm(row[block],fallbacks[name]) for row in raw]); target=np.asarray(truth[:,block],dtype=float)
@@ -327,7 +332,7 @@ def physics_uncertainty_proxy(physics_48d: Sequence[float], round_index: float =
     winner=np.sort(physics[23:26])[::-1];winner_gap=float(winner[0]-winner[1])
     density_gap=abs(_clip(physics[44])-_clip(physics[45]));density_ambiguity=1.0-min(1.0,density_gap/.25)
     raw=_clip(.10*entropy(physics[0:3])+.075*entropy(physics[3:13])+.075*entropy(physics[13:23])+
-              .15*entropy(physics[23:26])+.25*entropy(physics[26:39])+.15*entropy(physics[39:43])+
+              .15*entropy(physics[23:26])+.25*entropy(physics[26:39])+.15*_clip(physics[42])+
               .075*(1.0-winner_gap)+.125*density_ambiguity)
     compressed=.50+.35*math.tanh((raw-.75)/.20)
     influence=.35 if round_index<=40 else .65 if round_index<=50 else 1.0
@@ -382,7 +387,8 @@ def sanitize_physics_prediction(raw: Sequence[float],temperatures: dict[str,floa
     out[k:k+10]=_temperature_norm(x[k:k+10],np.full(10,.1),temperatures.get("banker_points",1)); k+=10
     out[k:k+3]=_temperature_norm(x[k:k+3],np.array([.4586,.4462,.0952]),temperatures.get("winner",1)); k+=3
     out[k:k+13]=np.clip(x[k:k+13],0,6); k+=13
-    out[k:k+4]=_temperature_norm(x[k:k+4],np.full(4,.25),temperatures.get("suit",1)); k+=4
+    out[k]=np.clip(x[k],-1.0,.95); out[k+1]=np.clip(x[k+1],-1.0,1.0)
+    out[k+2]=np.clip(x[k+2],-2.0,2.0); out[k+3]=np.clip(x[k+3],0.0,1.0); k+=4
     out[k]=np.clip(x[k],0,TOTAL_CARDS)
     out[k+1:k+3]=np.clip(x[k+1:k+3],0,1); k+=3
     out[k]=np.clip(x[k],-1,1); out[k+1]=np.clip(x[k+1],0,1)
@@ -474,8 +480,8 @@ class PhysicsFeatureExtractor:
                        "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
                        "feature_names":list(PHYSICS_FEATURE_NAMES),
                        "particle_filter":{"enabled":True,"input":"B/P/T only","rank_particles":64,"likelihood_draws":4,"forecast_draws":2,
-                                          "models_card_count_4_5_6":True,"exact_unseen_card_reconstruction":False},
-                       "semantic_note":"MLP conditional expectations fused with a B/P/T-only particle posterior; not exact unseen-card reconstruction"}
+                                          "models_card_count_4_5_6":True,"physical_ev_pre_core":True,"exact_unseen_card_reconstruction":False},
+                       "semantic_note":"Physics/particle card-state and physical EV are produced before Frozen Core pattern features; not exact unseen-card reconstruction"}
         return metrics
 
     def predict_features_with_diagnostics(
