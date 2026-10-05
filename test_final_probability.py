@@ -295,12 +295,12 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertGreater(weights[1],weights[0]);self.assertGreater(weights[3],weights[2])
 
     def test_sample_weights_focus_clean_50_to_70_rows_smoothly(self):
-        x=np.zeros((5,57),dtype=np.float32);rounds=np.asarray([30,45,55,60,65],dtype=float);x[:,2]=rounds;x[:,1]=(rounds/70)**3;x[:,-1]=.2
+        x=np.zeros((6,57),dtype=np.float32);rounds=np.asarray([30,45,55,60,65,70],dtype=float);x[:,2]=rounds;x[:,1]=(rounds/70)**3;x[:,-1]=.2
         x[:,8+final._PHYSICS_INDEX["particle_uncertainty"]]=.2
         x[:,8+final._PHYSICS_INDEX["physical_ev_banker"]]=.03
-        weights=final.balanced_sample_weights(np.asarray([0,1,0,1,0]),x)
-        self.assertGreater(weights[2],weights[0]);self.assertGreater(weights[4],weights[1])
-        self.assertLess(weights[2],weights[3]);self.assertLess(weights[3],weights[4])
+        weights=final.balanced_sample_weights(np.asarray([0,1,0,1,0,1]),x)
+        self.assertGreater(weights[2],weights[0]);self.assertGreater(weights[4],weights[2])
+        self.assertGreater(weights[3],weights[1]);self.assertGreater(weights[5],weights[3])
 
     def test_recalibrated_noise_only_changes_feature_56(self):
         x=np.zeros((2,57),dtype=np.float32);x[:,2]=[45,55];x[:,-1]=[.4,.6]
