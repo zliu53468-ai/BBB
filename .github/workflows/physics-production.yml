@@ -8,6 +8,7 @@ on:
       - "retrain-*"
     paths:
       - "physics_feature_extractor.py"
+      - "particle_shoe_filter.py"
       - "xgb_final_probability.py"
       - "build_synthetic_residual_rows.js"
       - "final_probability_runtime.js"
@@ -21,6 +22,7 @@ on:
       - main
     paths:
       - "physics_feature_extractor.py"
+      - "particle_shoe_filter.py"
       - "xgb_final_probability.py"
       - "build_synthetic_residual_rows.js"
       - "final_probability_runtime.js"
