@@ -34,7 +34,9 @@ class FinalProbabilityTests(unittest.TestCase):
         self.physics[:3] = [0.2, 0.5, 0.3]
         self.physics[23:26] = [0.4586, 0.4462, 0.0952]
         self.physics[26:39] = np.arange(1, 14, dtype=np.float32) / 10.0
-        self.physics[39:43] = [0.1, 0.2, 0.3, 0.4]
+        p_b,p_p=float(self.physics[23]),float(self.physics[24])
+        ev_b=p_b*.95-p_p;ev_p=p_p-p_b
+        self.physics[39:43] = [ev_b, ev_p, ev_b-ev_p, 0.30]
 
     def test_bridge_flattens_to_one_57d_matrix(self):
         matrix = final.build_56d_feature_matrix(self.core, self.original, self.physics)
@@ -169,22 +171,19 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertAlmostEqual(late["final_p_b"], 0.65, places=6)
         self.assertAlmostEqual(late_noisy["final_p_b"], 0.60, places=6)
 
-    def test_physics_forecast_is_unpacked_with_expected_suit_consumption(self):
+    def test_physics_forecast_exposes_pre_core_physical_ev(self):
         forecast = final.unpack_physics_forecast(self.physics)
-        self.assertAlmostEqual(
-            forecast["next_card_count_probabilities"]["4_cards"], 0.2, places=6
-        )
-        self.assertAlmostEqual(
-            forecast["next_card_count_probabilities"]["5_cards"], 0.5, places=6
-        )
-        self.assertAlmostEqual(
-            forecast["next_card_count_probabilities"]["6_cards"], 0.3, places=6
-        )
+        self.assertAlmostEqual(forecast["next_card_count_probabilities"]["4_cards"], 0.2, places=6)
+        self.assertAlmostEqual(forecast["next_card_count_probabilities"]["5_cards"], 0.5, places=6)
+        self.assertAlmostEqual(forecast["next_card_count_probabilities"]["6_cards"], 0.3, places=6)
         self.assertAlmostEqual(forecast["expected_next_card_count"], 5.1, places=6)
         self.assertAlmostEqual(forecast["next_rank_expected_consumption"]["A"], 0.1, places=6)
         self.assertAlmostEqual(forecast["next_rank_expected_consumption"]["K"], 1.3, places=6)
-        self.assertAlmostEqual(forecast["next_suit_consumption_ratios"]["spades"], 0.1, places=6)
-        self.assertAlmostEqual(forecast["next_suit_expected_consumption"]["clubs"], 2.04, places=6)
+        physical=forecast["physical_ev"]
+        self.assertAlmostEqual(physical["physical_ev_banker"],float(self.physics[39]),places=6)
+        self.assertAlmostEqual(physical["physical_ev_player"],float(self.physics[40]),places=6)
+        self.assertAlmostEqual(physical["physical_ev_gap"],float(self.physics[41]),places=6)
+        self.assertAlmostEqual(physical["particle_uncertainty"],.30,places=6)
 
     def test_physics_integrity_is_reported_without_changing_features(self):
         consistent = self.physics.copy()
@@ -192,8 +191,8 @@ class FinalProbabilityTests(unittest.TestCase):
         report = final.physics_integrity_report(consistent)
         self.assertTrue(report["valid"])
         self.assertTrue(report["checks"]["card_count_distribution"])
-        self.assertTrue(report["checks"]["suit_ratio_distribution"])
         self.assertTrue(report["checks"]["rank_consumption_total"])
+        self.assertTrue(report["checks"]["physical_ev_ranges"])
         self.assertAlmostEqual(report["expected_next_card_count"], 5.1, places=6)
 
         inconsistent = final.physics_integrity_report(self.physics)
