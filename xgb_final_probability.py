@@ -59,7 +59,7 @@ ISOTONIC_MIN_ROWS = 1000
 MAX_SMOOTHING_BRIER_INCREASE = 0.0005
 MAX_MODEL_BRIER_REGRESSION = 0.0015
 MIN_PRIMARY_GAIN = 1e-6
-STAGE_PROGRESS_VERSION = 2
+STAGE_PROGRESS_VERSION = 3
 EMA_ALPHA_RANGES = {"early": (0.35, 0.45), "middle": (0.50, 0.60), "late": (0.65, 0.75)}
 EMA_PROFILES: dict[str, dict[str, Any]] = {
     "off": {"method": "dynamic_post_clip_ema", "profile": "off", "enabled": False},
@@ -294,12 +294,31 @@ def effective_shoe_progress(round_index: float, physics_48d: Sequence[float]) ->
     return _clip(round_weight*round_progress+(1.0-round_weight)*card_progress)
 
 
-def dynamic_probability_bounds(round_index: float, noise_score: float) -> tuple[float, float]:
-    if round_index <= 40:
-        return EARLY_PROBABILITY_BOUNDS
-    if round_index > 50 and noise_score <= PHYSICS_NOISE_LOW_THRESHOLD:
-        return LATE_CLEAN_PROBABILITY_BOUNDS
-    return PROBABILITY_BOUNDS
+def _effective_progress_round(round_index: float, progress_weight: float | None = None) -> float:
+    if progress_weight is None or not math.isfinite(float(progress_weight)):
+        return float(np.clip(round_index,1.0,70.0))
+    return float(70.0*np.cbrt(np.clip(float(progress_weight),0.0,1.0)))
+
+
+def dynamic_probability_bounds(
+    round_index: float,
+    noise_score: float,
+    progress_weight: float | None = None,
+) -> tuple[float, float]:
+    """Smooth early→middle→late clip using effective shoe progress.
+
+    No decision threshold changes are made here; this only removes the 40/50
+    probability-bound discontinuities. Noisy late shoes keep the legacy
+    0.40–0.60 ceiling while clean late shoes expand gradually toward 0.35–0.65.
+    """
+    progress_round=_effective_progress_round(round_index,progress_weight)
+    lo=float(np.interp(progress_round,[1.0,40.0,50.0],[EARLY_PROBABILITY_BOUNDS[0],EARLY_PROBABILITY_BOUNDS[0],PROBABILITY_BOUNDS[0]]))
+    hi=float(np.interp(progress_round,[1.0,40.0,50.0],[EARLY_PROBABILITY_BOUNDS[1],EARLY_PROBABILITY_BOUNDS[1],PROBABILITY_BOUNDS[1]]))
+    if progress_round>50.0 and noise_score<=PHYSICS_NOISE_LOW_THRESHOLD:
+        t=float(np.clip((progress_round-50.0)/20.0,0.0,1.0))
+        lo=(1.0-t)*PROBABILITY_BOUNDS[0]+t*LATE_CLEAN_PROBABILITY_BOUNDS[0]
+        hi=(1.0-t)*PROBABILITY_BOUNDS[1]+t*LATE_CLEAN_PROBABILITY_BOUNDS[1]
+    return lo,hi
 
 
 def build_56d_feature_matrix(
@@ -386,7 +405,7 @@ def _direct_prediction_payload(
     raw_pb = _positive_class_probability(xgboost_model, features)
     round_index = float(np.asarray(original_7d, dtype=np.float32).reshape(-1)[1])
     noise_score = float(features[0, -1])
-    lo, hi = dynamic_probability_bounds(round_index, noise_score)
+    lo, hi = dynamic_probability_bounds(round_index, noise_score, float(features[0,1]))
     final_pb = _clip(raw_pb, lo, hi)
     p_tie = _clip(float(physics[_PHYSICS_INDEX["winner_p_t"]]))
     p_player = 1.0 - final_pb
@@ -912,27 +931,45 @@ def fit_probability_calibration(
         platt_probe = fit_platt(probability[probe_fit], labels[probe_fit], fit_weight)
         probe_logits = np.log(probability[probe_test] / (1.0 - probability[probe_test])).reshape(-1, 1)
         platt_probability = platt_probe.predict_proba(probe_logits)[:, 1]
+        probe_probability=probability[probe_test]; probe_labels=labels[probe_test]
+        effective_rounds=70.0*np.cbrt(np.clip(np.asarray(x,dtype=np.float64)[probe_test,1],0.0,1.0))
+        late_mask=(effective_rounds>=50.0)&(effective_rounds<=70.0)
+        late_rows=int(np.sum(late_mask))
+        def calibration_score(values: np.ndarray) -> tuple[float,float,float]:
+            overall=_brier(values,probe_labels)
+            late=_brier(values[late_mask],probe_labels[late_mask]) if late_rows>=25 else overall
+            return overall,late,.70*overall+.30*late
+
+        identity_overall,identity_late,identity_score=calibration_score(probe_probability)
+        platt_overall,platt_late,platt_score=calibration_score(platt_probability)
         selection = {
-            "identity_brier": _brier(probability[probe_test], labels[probe_test]),
-            "platt_brier": _brier(platt_probability, labels[probe_test]),
+            "identity_brier": identity_overall,
+            "identity_late_50_70_brier": identity_late,
+            "identity_selection_score": identity_score,
+            "platt_brier": platt_overall,
+            "platt_late_50_70_brier": platt_late,
+            "platt_selection_score": platt_score,
+            "late_50_70_rows": late_rows,
+            "late_50_70_weight": .30,
         }
+        candidates=[("platt",platt_score)]
         isotonic_allowed = len(labels) >= ISOTONIC_MIN_ROWS and len(np.unique(probability[probe_fit])) >= 32
         if isotonic_allowed:
             isotonic_probe = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
             isotonic_probe.fit(probability[probe_fit], labels[probe_fit], sample_weight=fit_weight)
             isotonic_probability = isotonic_probe.predict(probability[probe_test])
-            selection["isotonic_brier"] = _brier(isotonic_probability, labels[probe_test])
-        calibrated_scores = [
-            (name.removesuffix("_brier"), score)
-            for name, score in selection.items()
-            if name != "identity_brier" and name.endswith("_brier")
-        ]
-        best_calibrated = min(calibrated_scores, key=lambda item: item[1])
-        method = best_calibrated[0] if selection["identity_brier"] - best_calibrated[1] >= CALIBRATION_MIN_BRIER_IMPROVEMENT else "identity"
+            iso_overall,iso_late,iso_score=calibration_score(isotonic_probability)
+            selection["isotonic_brier"]=iso_overall
+            selection["isotonic_late_50_70_brier"]=iso_late
+            selection["isotonic_selection_score"]=iso_score
+            candidates.append(("isotonic",iso_score))
+        best_calibrated=min(candidates,key=lambda item:item[1])
+        method = best_calibrated[0] if identity_score-best_calibrated[1]>=CALIBRATION_MIN_BRIER_IMPROVEMENT else "identity"
         selection.update({
             "selected_method": method,
             "minimum_brier_improvement": CALIBRATION_MIN_BRIER_IMPROVEMENT,
             "isotonic_allowed": isotonic_allowed,
+            "selection_objective": "0.70*overall_brier+0.30*effective_progress_50_70_brier",
         })
     if method == "identity":
         return {"method": "identity", "slope": 1.0, "intercept": 0.0, "selection": selection}
@@ -1345,12 +1382,18 @@ def _brier(probability_b: np.ndarray, actual_b: np.ndarray) -> float:
     return float(np.mean((probability_b.astype(float) - actual_b.astype(float)) ** 2))
 
 
-def dynamic_ema_alpha(round_index: float, noise_score: float, config: Mapping[str, Any]) -> float:
+def dynamic_ema_alpha(
+    round_index: float,
+    noise_score: float,
+    config: Mapping[str, Any],
+    progress_weight: float | None = None,
+) -> float:
     early=float(config.get("early_alpha",sum(EMA_ALPHA_RANGES["early"])/2.0))
     middle=float(config.get("middle_alpha",sum(EMA_ALPHA_RANGES["middle"])/2.0))
     late=float(config.get("late_alpha",sum(EMA_ALPHA_RANGES["late"])/2.0))
+    progress_round=_effective_progress_round(round_index,progress_weight)
     base=float(np.interp(
-        float(round_index),
+        progress_round,
         [1.0,20.0,40.0,50.0,60.0,70.0],
         [early,early,(early+middle)/2.0,middle,(middle+late)/2.0,late],
     ))
@@ -1371,8 +1414,8 @@ def dynamic_ema_by_shoe(
     if not smoothing.get("enabled",False): return values.copy()
     output=np.empty_like(values);previous:dict[str,float]={}
     for index,(current,row,shoe_id) in enumerate(zip(values,features,shoes)):
-        lo,hi=dynamic_probability_bounds(float(row[2]),float(row[-1]));current=_clip(float(current),lo,hi)
-        alpha=dynamic_ema_alpha(float(row[2]),float(row[-1]),smoothing)
+        lo,hi=dynamic_probability_bounds(float(row[2]),float(row[-1]),float(row[1]));current=_clip(float(current),lo,hi)
+        alpha=dynamic_ema_alpha(float(row[2]),float(row[-1]),smoothing,float(row[1]))
         smoothed=current if shoe_id not in previous else alpha*current+(1.0-alpha)*previous[shoe_id]
         output[index]=previous[shoe_id]=_clip(smoothed,lo,hi)
     return output
@@ -1383,7 +1426,7 @@ def bounded_from_calibrated(
     x: np.ndarray,
 ) -> np.ndarray:
     return np.asarray([
-        _clip(pb, *dynamic_probability_bounds(float(row[2]), float(row[-1])))
+        _clip(pb, *dynamic_probability_bounds(float(row[2]), float(row[-1]), float(row[1])))
         for pb, row in zip(np.asarray(probability_b,dtype=np.float64),np.asarray(x))
     ], dtype=np.float64)
 
@@ -1665,7 +1708,9 @@ def export_browser_bundle(
             "noise_score_version": 5,
             "particle_physics_version": 2,
             "stage_progress_version": STAGE_PROGRESS_VERSION,
-            "stage_progress_policy": "continuous_round_plus_particle_consumption",
+            "stage_progress_policy": "continuous_round_plus_particle_consumption_v3",
+            "probability_bounds_policy": "smooth_effective_progress",
+            "calibration_selection_policy": "overall_plus_50_70_weighted_brier",
             "particle_physics_input": "B/P/T only",
             "execution_order": ["particle_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"],
             "physics_noise_calibration": dict(physics_noise_calibration or {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]}),
