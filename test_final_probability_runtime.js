@@ -69,7 +69,8 @@ require("./final_probability_runtime.js");
   if(useGeneratedBundle){
     const expectedOrder=["particle_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"];
     if(JSON.stringify(r.execution_order)!==JSON.stringify(expectedOrder))throw new Error("Physical EV first execution order mismatch");
-    if(!r.particleDiagnostics||!(r.particleDiagnostics.fusion_weight>=.1&&r.particleDiagnostics.fusion_weight<=.46))throw new Error("particle fusion diagnostics missing");
+    if(!r.particleDiagnostics||!(r.particleDiagnostics.fusion_weight>=.1&&r.particleDiagnostics.fusion_weight<=.58))throw new Error("particle fusion diagnostics missing");
+    if(!(r.particleDiagnostics.physical_ev_reliability>=.2&&r.particleDiagnostics.physical_ev_reliability<=.9)||!Number.isFinite(r.particleDiagnostics.effective_progress_round))throw new Error("adaptive stage diagnostics missing");
     if(!Number.isFinite(r.physical_ev_banker)||!Number.isFinite(r.physical_ev_player)||!Number.isFinite(r.physical_ev_gap)||!Number.isFinite(r.particle_uncertainty))throw new Error("Physical EV audit fields missing");
   }else if(r.particleDiagnostics?.enabled!==false)throw new Error("legacy model should not consume remapped Physical EV features");
   if(r.dataQuality?.stage!=="warm"||r.dataQuality?.directionalRounds!==15)throw new Error("incorrect prediction data stage");
@@ -87,6 +88,7 @@ require("./final_probability_runtime.js");
   if(out.direction!==expectedDirection)throw new Error("dynamic EV decision mismatch");
   if(useGeneratedBundle){
     if(!Number.isFinite(out.min_ev)||!Number.isFinite(activationThreshold)||out.min_ev<0||activationThreshold<0)throw new Error("generated EV thresholds invalid");
+    if((+JSON.parse(fs.readFileSync("final_probability_model.json","utf8")).training?.stage_progress_version||0)<2)throw new Error("generated adaptive stage model metadata missing");
     if(out.decision_policy_profile!=="strict_selective_entry_v1"||out.soft_band!==0)throw new Error("generated strict policy was not auditable in runtime");
     if(!Number.isFinite(out.confidence_band)||!Number.isFinite(out.effective_confidence_band)||!["strong","weak","skip"].includes(out.entry_tier))throw new Error("confidence-band metadata missing");
     if(out.direction==="Skip"&&Math.abs(out.confidence)>1e-12)throw new Error("generated Skip confidence mismatch");
