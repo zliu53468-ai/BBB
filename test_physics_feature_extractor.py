@@ -117,8 +117,9 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
         self.assertGreater(late_diag["fusion_weight"],early_diag["fusion_weight"])
         self.assertAlmostEqual(float(np.sum(late[:3])),1.0,places=6)
         self.assertAlmostEqual(float(np.sum(late[23:26])),1.0,places=6)
-        self.assertAlmostEqual(float(late[39]),float(late[23]*.95-late[24]),places=5)
-        self.assertAlmostEqual(float(late[40]),float(late[24]-late[23]),places=5)
+        self.assertAlmostEqual(float(late[39]),late_diag["physical_ev_banker"],places=6)
+        self.assertAlmostEqual(float(late[40]),late_diag["physical_ev_player"],places=6)
+        self.assertAlmostEqual(float(late[41]),late_diag["physical_ev_gap"],places=6)
         self.assertGreaterEqual(float(late[42]),0.0)
         self.assertLessEqual(float(late[42]),1.0)
 
