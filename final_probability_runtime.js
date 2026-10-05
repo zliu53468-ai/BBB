@@ -4,7 +4,7 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V7_PARTICLE";
+const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V8_PHYSICAL_EV_FIRST";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -14,10 +14,15 @@ const PHYSICS_NAMES=[
 ...Array.from({length:10},(_,i)=>"banker_point_p"+i),
 "winner_p_b","winner_p_p","winner_p_t",
 ..."A,2,3,4,5,6,7,8,9,10,J,Q,K".split(",").map(x=>"next_rank_expected_"+x),
-"next_suit_ratio_spades","next_suit_ratio_hearts","next_suit_ratio_diamonds","next_suit_ratio_clubs",
+"physical_ev_banker","physical_ev_player","physical_ev_gap","particle_uncertainty",
 "shoe_consumed_cards","remaining_low_rank_density","remaining_high_rank_density",
 "expected_point_diff_norm","expected_abs_point_diff_norm"];
+const LEGACY_PHYSICS_NAMES=[
+...PHYSICS_NAMES.slice(0,39),
+"next_suit_ratio_spades","next_suit_ratio_hearts","next_suit_ratio_diamonds","next_suit_ratio_clubs",
+...PHYSICS_NAMES.slice(43)];
 const PHYSICS_INDEX=Object.fromEntries(PHYSICS_NAMES.map((name,index)=>[name,index]));
+const LEGACY_PHYSICS_INDEX=Object.fromEntries(LEGACY_PHYSICS_NAMES.map((name,index)=>[name,index]));
 const EXTENDED_NAMES=["core_p_b_external","shoe_progress_weight",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...PHYSICS_NAMES,"physics_noise_score"];
 const HISTORY_WINDOW=64,HISTORY_INPUT_DIM=213,PHYSICS_DIM=48,FEATURE_DIM=57;
 const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.78;
@@ -75,13 +80,17 @@ function dense(input,w,b,relu){
 }
 function normalise(block,fallback){const a=block.map(v=>Math.max(0,Number.isFinite(+v)?+v:0)),s=a.reduce((x,y)=>x+y,0);return s>1e-12?a.map(v=>v/s):fallback.slice();}
 function temperatureNorm(block,fallback,t=1){const p=normalise(block,fallback).map(v=>Math.max(1e-8,v)),z=p.map(v=>Math.log(v)/Math.max(.25,+t||1)),m=Math.max(...z),e=z.map(v=>Math.exp(v-m)),s=e.reduce((a,b)=>a+b,0);return e.map(v=>v/s);}
-function sanitizePhysics(raw,temperatures={}){
+function physicsBundleUsesPhysicalEv(){return Array.isArray(physicsBundle?.feature_names)&&physicsBundle.feature_names.includes("physical_ev_banker");}
+function finalModelUsesPhysicalEv(){return (+final56Bundle?.training?.particle_physics_version||0)>=2;}
+function sanitizePhysics(raw,temperatures={},physicalEvSemantics=physicsBundleUsesPhysicalEv()){
   if(raw.length!==PHYSICS_DIM)throw new Error("physics dim mismatch");
   const out=Array(PHYSICS_DIM).fill(0);let src=0,dst=0;
   const copyNorm=(n,fb,key)=>{const a=temperatureNorm(raw.slice(src,src+n),fb,temperatures[key]);src+=n;for(const v of a)out[dst++]=v;};
   copyNorm(3,[.58,.34,.08],"card_count");copyNorm(10,Array(10).fill(.1),"player_points");copyNorm(10,Array(10).fill(.1),"banker_points");copyNorm(3,[.4586,.4462,.0952],"winner");
   for(let i=0;i<13;i++)out[dst++]=clip(raw[src++],0,6);
-  copyNorm(4,Array(4).fill(.25),"suit");
+  if(physicalEvSemantics){
+    out[dst++]=clip(raw[src++],-1,.95);out[dst++]=clip(raw[src++],-1,1);out[dst++]=clip(raw[src++],-2,2);out[dst++]=clip(raw[src++],0,1);
+  }else copyNorm(4,Array(4).fill(.25),"suit");
   out[dst++]=clip(raw[src++],0,416);out[dst++]=clip(raw[src++],0,1);out[dst++]=clip(raw[src++],0,1);
   out[dst++]=clip(raw[src++],-1,1);out[dst++]=clip(raw[src++],0,1);
   return out;
