@@ -82,6 +82,7 @@ function normalise(block,fallback){const a=block.map(v=>Math.max(0,Number.isFini
 function temperatureNorm(block,fallback,t=1){const p=normalise(block,fallback).map(v=>Math.max(1e-8,v)),z=p.map(v=>Math.log(v)/Math.max(.25,+t||1)),m=Math.max(...z),e=z.map(v=>Math.exp(v-m)),s=e.reduce((a,b)=>a+b,0);return e.map(v=>v/s);}
 function physicsBundleUsesPhysicalEv(){return Array.isArray(physicsBundle?.feature_names)&&physicsBundle.feature_names.includes("physical_ev_banker");}
 function finalModelUsesPhysicalEv(){return (+final56Bundle?.training?.particle_physics_version||0)>=2;}
+function modelSemanticsCompatible(){return finalModelUsesPhysicalEv()===physicsBundleUsesPhysicalEv();}
 function sanitizePhysics(raw,temperatures={},physicalEvSemantics=physicsBundleUsesPhysicalEv()){
   if(raw.length!==PHYSICS_DIM)throw new Error("physics dim mismatch");
   const out=Array(PHYSICS_DIM).fill(0);let src=0,dst=0;
@@ -225,8 +226,8 @@ function physicsNoiseScore(physics,roundIndex=70){
   const densityGap=Math.abs(clip(physics[44])-clip(physics[45])),densityAmbiguity=1-Math.min(1,densityGap/.25);
   const uncertaintyTerm=version>=5?clip(physics[42]):normalisedEntropy(physics.slice(39,43));
   const raw=clip(.10*normalisedEntropy(physics.slice(0,3))+.075*normalisedEntropy(physics.slice(3,13))+.075*normalisedEntropy(physics.slice(13,23))+.15*normalisedEntropy(physics.slice(23,26))+.25*normalisedEntropy(physics.slice(26,39))+.15*uncertaintyTerm+.075*(1-gap)+.125*densityAmbiguity);
-  const compressed=.50+.35*Math.tanh((raw-.75)/.20),influence=roundIndex<=40?.35:roundIndex<=50?.65:1;
-  const proxy=clip(.50+(compressed-.50)*influence);
+  const compressed=.50+.35*Math.tanh((raw-.75)/.20),baseProxy=version>=5?clip(.75*compressed+.25*clip(physics[42])):compressed,influence=roundIndex<=40?.35:roundIndex<=50?.65:1;
+  const proxy=clip(.50+(baseProxy-.50)*influence);
   if(version<4)return proxy;
   const calibration=final56Bundle?.training?.physics_noise_calibration||physicsBundle?.uncertainty_calibration||{};
   return calibrateNoise(proxy,calibration);
@@ -362,7 +363,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     corePB=original7.core_p_b;
     rawPB=corePB;clippedPB=corePB;smoothedPB=corePB;finalPB=corePB;
 
-    if(physics&&final56Bundle?.trained){
+    if(physics&&final56Bundle?.trained&&modelSemanticsCompatible()){
       executionOrder.push("final_xgboost");
       extended=buildExtended(corePB,original7,physics);
       rawPB=predictFinalProbability(final56Bundle,extended,final56Bundle.feature_names||EXTENDED_NAMES);
@@ -385,6 +386,8 @@ function applyFinalPrediction(seq,corePrediction=null){
       evDecision={pTie,pPlayer,evBanker,evPlayer,minEv:policy.minEv,activationEv:policy.activationEv,effectiveActivationEv,softBand:policy.softBand,confidenceBand:policy.confidenceBand,effectiveConfidenceBand:effectiveBand,volumeGuardActive:guard.active,entryTier,stakeMultiplier:entryTier==="weak"?.5:entryTier==="strong"?1:0,policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
         finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="Skip"?0:softConfidence(edge,{...policy,activationEv:effectiveActivationEv})};
       mode="final56";
+    }else if(physics&&final56Bundle?.trained&&!modelSemanticsCompatible()){
+      error=error?error+";feature_semantics_mismatch":"feature_semantics_mismatch";
     }
   }catch(e){
     const message=String(e?.message||e||"runtime_error");error=error?error+";"+message:message;
@@ -454,6 +457,7 @@ async function loadModels(){
   const rs=await Promise.allSettled([fetchBundle(PHYSICS_URL),fetchBundle(FINAL56_URL)]);
   if(rs[0].status==="fulfilled"&&rs[0].value?.model_type==="baccarat_physics_multitask_mlp"){physicsBundle=rs[0].value;status.physics=!!physicsBundle.trained;}else status.errors.push("physics_model");
   if(rs[1].status==="fulfilled"&&rs[1].value?.model_type==="xgb_final_probability_classifier"&&rs[1].value?.feature_names?.length===FEATURE_DIM){final56Bundle=rs[1].value;status.final56=!!final56Bundle.trained;}else{final56Bundle=null;status.errors.push("final57_model");}
+  if(status.physics&&status.final56&&!modelSemanticsCompatible()){status.final56=false;status.errors.push("feature_semantics_mismatch");}
   return status;
 }
 function saveSelection(direction){try{const old=JSON.parse(localStorage.getItem(STORAGE_KEY)||"null")||{},streak=old.last_selected===direction?Math.max(1,(+old.selection_streak||0)+1):1;localStorage.setItem(STORAGE_KEY,JSON.stringify({last_selected:direction,selection_streak:streak}));}catch(_){}}
