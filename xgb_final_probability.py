@@ -1201,6 +1201,7 @@ def optimize_smoothing_and_thresholds(
     *,
     profiles: Sequence[str] = tuple(EMA_PROFILES),
     decision_policies: Mapping[str, Mapping[str, Any]] | None = None,
+    require_strict_deployment: bool = False,
 ) -> dict[str, Any]:
     """Select EMA + entry policy using chronological tuning shoes and hard quality gates."""
     features=np.asarray(x,dtype=np.float64);rounds=features[:,2];noise=features[:,-1]
@@ -1209,9 +1210,11 @@ def optimize_smoothing_and_thresholds(
     candidates=list(dict.fromkeys(candidates))
     unknown=[name for name in candidates if name not in EMA_PROFILES]
     if unknown: raise ValueError(f"unknown EMA profiles: {unknown}")
-    policies = dict(decision_policies or DECISION_POLICY_PROFILES)
-    if "hard_ev" not in policies:
-        raise ValueError("decision_policies must retain hard_ev as the baseline")
+    requested_policies = dict(decision_policies or DECISION_POLICY_PROFILES)
+    # hard_ev is an internal chronological comparison baseline.  It must be
+    # evaluated even when production is intentionally strict-only.
+    policies = {"hard_ev": dict(requested_policies.get("hard_ev", DECISION_POLICY_PROFILES["hard_ev"]))}
+    policies.update({name: dict(config) for name, config in requested_policies.items() if name != "hard_ev"})
     reports: list[dict[str, Any]] = []; baseline: dict[str, float] | None = None
     best: tuple[float, dict[str, Any], dict[str, Any], dict[str, Any]] | None = None
     for name in candidates:
@@ -1237,8 +1240,14 @@ def optimize_smoothing_and_thresholds(
                     "skip_rate_delta":skip_delta,"ev_per_bet_delta":ev_delta,"hit_rate_delta":hit_delta,"absolute_correct_bets_delta":absolute_delta,"absolute_correct_bets_constraint_passed":absolute_passed,"minimum_skip_increase":min_skip_increase,"brier_delta":brier_delta,
                     "guardrail_passed":eligible,"ev_thresholds":tuning["thresholds"]}
             reports.append(report)
-            if eligible and (best is None or score<best[0]): best=(score,smoothing,policy,tuning)
-    assert baseline is not None and best is not None
+            deployable=policy_name!="hard_ev" if require_strict_deployment else True
+            if deployable and eligible and (best is None or score<best[0]): best=(score,smoothing,policy,tuning)
+    if baseline is None:
+        raise RuntimeError("hard_ev baseline evaluation did not produce metrics")
+    if best is None and require_strict_deployment:
+        raise RuntimeError("no strict decision policy passed the chronological deployment gates")
+    if best is None:
+        raise RuntimeError("no decision policy passed the chronological deployment gates")
     return {"method":"dynamic_post_clip_ema","smoothing":best[1],"decision_policy":best[2],"ev_tuning":best[3],
             "baseline": baseline, "candidates": reports,
             "guardrail": {"max_skip_increase": MAX_SKIP_RATE_INCREASE,
@@ -1662,6 +1671,7 @@ def train_command(args: argparse.Namespace) -> int:
         calibration_probability,y[ev_tuning_rows],x[ev_tuning_rows],ev_tuning_shoe_ids,
         profiles=args.smoothing_profiles,
         decision_policies={name: DECISION_POLICY_PROFILES[name] for name in args.decision_policy_profiles},
+        require_strict_deployment=True,
     )
     ev_tuning=smoothing_tuning["ev_tuning"]
     smoothing_config=dict(smoothing_tuning["smoothing"])

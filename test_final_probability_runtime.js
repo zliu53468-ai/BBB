@@ -21,7 +21,7 @@ const finalBundle={
 };
 const useGeneratedBundle=process.env.BGS_USE_GENERATED_MODEL==="1";
 global.fetch=async function(url){
-  const name=String(url).replace(/^\.\//,"");
+  const name=String(url).replace(/^\.\//,"").replace(/[?#].*$/,"");
   try{
     const payload=JSON.parse(fs.readFileSync(name,"utf8"));
     return {ok:true,status:200,json:async()=>name==="final_probability_model.json"&& !useGeneratedBundle?finalBundle:payload};
@@ -37,6 +37,15 @@ require("./final_probability_runtime.js");
   if(!api)throw new Error("final probability runtime not installed");
   await api.loadModels();
   if(api.getModelStatus().mode!=="final56")throw new Error("direct model was not selected");
+
+  const fetchReady=global.fetch;
+  global.fetch=async()=>({ok:false,status:503,json:async()=>({})});
+  await api.loadModels();
+  const unavailable=api.applyFinalPrediction("BPBPBPBPBPBP".split(""),global.__BGS256_CONTINUATION_TEST__.hazardChoose("BPBPBPBPBPBP".split("")));
+  if(unavailable.direction!=="Skip"||unavailable.finalProbability?.mode!=="unavailable"||unavailable.final_direction!=="觀望 Skip")throw new Error("model-load failure must fail closed to Skip");
+  global.fetch=fetchReady;
+  await api.loadModels();
+  if(api.getModelStatus().mode!=="final56")throw new Error("model reload after failure did not recover");
 
   const history="BPPBTBBPPTBBPPBTBP".split("");
   const core=global.__BGS256_CONTINUATION_TEST__.hazardChoose(history);
