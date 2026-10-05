@@ -276,8 +276,9 @@ def physics_noise_score(
         + 0.125 * density_ambiguity
     )
     compressed = 0.50 + 0.35 * math.tanh((raw - 0.75) / 0.20)
+    base_proxy = _clip(0.75 * compressed + 0.25 * _clip(physics[42]))
     influence = 0.35 if round_index <= 40 else 0.65 if round_index <= 50 else 1.0
-    proxy = _clip(0.50 + (compressed - 0.50) * influence)
+    proxy = _clip(0.50 + (base_proxy - 0.50) * influence)
     return float(apply_uncertainty_calibration([proxy], calibration)[0])
 
 
