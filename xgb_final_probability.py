@@ -46,7 +46,7 @@ FEATURE_DIM = 57
 PROBABILITY_BOUNDS = (0.40, 0.60)
 EARLY_PROBABILITY_BOUNDS = (0.45, 0.55)
 LATE_CLEAN_PROBABILITY_BOUNDS = (0.35, 0.65)
-SNAPSHOT_SCHEMA_VERSION = 6
+SNAPSHOT_SCHEMA_VERSION = 7
 PHYSICS_PROBABILITY_TOLERANCE = 1e-4
 PHYSICS_NOISE_LOW_THRESHOLD = 0.78
 PHYSICS_RANK_CONSUMPTION_TOLERANCE = 0.50
@@ -97,7 +97,18 @@ DECISION_POLICY_PROFILES: dict[str, dict[str, Any]] = {
             "enabled": True, "window": 16, "min_history": 8,
             "target_action_rate": {"early": 0.30, "middle": 0.36, "late": 0.42},
             "expected_correct_floor": 0.95, "band_relief": 0.006, "ev_relief": 0.004,
+            "action_deficit_full_scale": 0.10, "correct_deficit_full_scale": 0.05,
+            "integral_gain": 0.10, "derivative_gain": 0.05,
         },
+        "conditional_calibration": {
+            "enabled": True, "noise_shrink": 0.08, "remaining_uncertainty_gain": 0.04,
+            "stages": {
+                "early": {"temperature": 1.06, "bias": 0.0},
+                "middle": {"temperature": 1.03, "bias": 0.0},
+                "late": {"temperature": 1.00, "bias": 0.0},
+            },
+        },
+        "sanity_cross_check": {"enabled": True, "model_extreme_distance": 0.035, "opposite_physics_advantage": 0.08},
     },
 }
 LEGACY_XGB_PARAMETERS = {"n_estimators": 320, "max_depth": 3, "learning_rate": 0.025, "min_child_weight": 12, "subsample": 0.85, "colsample_bytree": 0.82, "reg_alpha": 0.35, "reg_lambda": 12.0}
@@ -134,6 +145,11 @@ _NEXT_RANK_CONSUMPTION_NAMES = tuple(f"next_rank_expected_{label}" for label in 
 _NEXT_SUIT_RATIO_NAMES = tuple(f"next_suit_ratio_{suit}" for suit in SUITS)
 _PHYSICS_INDEX = {name: index for index, name in enumerate(PHYSICS_FEATURE_NAMES)}
 assert all(name in _PHYSICS_INDEX for name in _NEXT_CARD_COUNT_NAMES + _NEXT_RANK_CONSUMPTION_NAMES + _NEXT_SUIT_RATIO_NAMES)
+_PHYSICS_FEATURE_OFFSET = 2 + len(ORIGINAL_7D_FEATURE_NAMES[1:])
+_REMAINING_RATIO_FEATURE_INDEX = FEATURE_NAMES.index("original7_remaining_ratio")
+_WINNER_B_FEATURE_INDEX = _PHYSICS_FEATURE_OFFSET + _PHYSICS_INDEX["winner_p_b"]
+_WINNER_P_FEATURE_INDEX = _PHYSICS_FEATURE_OFFSET + _PHYSICS_INDEX["winner_p_p"]
+_WINNER_T_FEATURE_INDEX = _PHYSICS_FEATURE_OFFSET + _PHYSICS_INDEX["winner_p_t"]
 
 
 def load_training_records(path: Path) -> list[dict[str, Any]]:
@@ -375,20 +391,22 @@ def _direct_prediction_payload(
     noise_score = float(features[0, -1])
     lo, hi = dynamic_probability_bounds(round_index, noise_score)
     final_pb = _clip(raw_pb, lo, hi)
-    p_tie = _clip(float(physics[_PHYSICS_INDEX["winner_p_t"]]))
-    p_player = 1.0 - final_pb
-    ev_banker = final_pb * 0.95 - p_player
-    ev_player = p_player - final_pb
     ev_thresholds = dict(DEFAULT_MIN_EV)
     ev_thresholds.update(getattr(xgboost_model, "bbb_ev_thresholds_", {}) or {})
     policy_config = dict(getattr(xgboost_model, "bbb_decision_policy_", {}) or {})
     policy_enabled = bool(policy_config.get("enabled", False))
+    physics_b,physics_p,p_tie,remaining=physics_winner_arrays(features,1)
+    conditional_pb,temperature,shrinkage=conditional_probability_arrays(np.asarray([final_pb]),np.asarray([round_index]),remaining,np.asarray([noise_score]),policy_config if policy_enabled else None)
+    p_b_cond=float(conditional_pb[0]); p_player=1.0-p_b_cond; p_non_tie=max(.001,1.0-float(p_tie[0]))
+    ev_banker = p_non_tie * (p_b_cond * .95 - p_player)
+    ev_player = p_non_tie * (p_player - p_b_cond)
     min_ev, activation_ev, soft_band = decision_policy_value(
         round_index, noise_score, ev_thresholds, enabled=policy_enabled, policy_config=policy_config
     )
     confidence_band, strong_margin = confidence_band_arrays(np.asarray([round_index]), np.asarray([noise_score]), policy_config if policy_enabled else None)
-    probability_distance=abs(final_pb-.5)
-    direction = "B" if probability_distance >= confidence_band[0] and ev_banker > activation_ev and ev_banker > ev_player else "P" if probability_distance >= confidence_band[0] and ev_player > activation_ev and ev_player > ev_banker else "Skip"
+    probability_distance=abs(p_b_cond-.5)
+    conflict=bool(sanity_conflict_arrays(np.asarray([p_b_cond]),physics_b,physics_p,policy_config if policy_enabled else None)[0])
+    direction = "B" if not conflict and probability_distance >= confidence_band[0] and ev_banker > activation_ev and ev_banker > ev_player else "P" if not conflict and probability_distance >= confidence_band[0] and ev_player > activation_ev and ev_player > ev_banker else "Skip"
     final_direction = {"B": "莊 B", "P": "閒 P", "Skip": "觀望 Skip"}[direction]
     entry_tier = "skip" if direction == "Skip" else "strong" if probability_distance >= confidence_band[0] + strong_margin[0] else "weak"
     confidence = soft_confidence(
@@ -402,13 +420,21 @@ def _direct_prediction_payload(
         "core_p_b": float(core_pb),
         "raw_p_b": raw_pb,
         "final_p_b": final_pb,
-        "p_tie": p_tie,
+        "conditional_p_b": p_b_cond,
+        "conditional_p_p": p_player,
+        "p_tie": float(p_tie[0]),
+        "p_non_tie": p_non_tie,
+        "physics_p_b": float(physics_b[0]),
+        "physics_p_p": float(physics_p[0]),
         "p_player": p_player,
         "ev_banker": ev_banker,
         "ev_player": ev_player,
         "min_ev": min_ev,
         "activation_ev": activation_ev,
         "soft_band": soft_band,
+        "conditional_temperature": float(temperature[0]),
+        "conditional_shrinkage": float(shrinkage[0]),
+        "sanity_conflict": conflict,
         "confidence_band": float(confidence_band[0]),
         "effective_confidence_band": float(confidence_band[0]),
         "volume_guard_active": False,
@@ -1039,6 +1065,54 @@ def _stage_value(round_index: float, mapping: Mapping[str, Any], fallback: float
     return float(mapping.get(key, fallback))
 
 
+def conditional_probability_arrays(
+    probability_b: np.ndarray,
+    rounds: np.ndarray,
+    remaining_ratio: np.ndarray | None,
+    noise_scores: np.ndarray | None,
+    policy_config: Mapping[str, Any] | None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Stage/noise calibrated non-Tie P(B); returns probability, temperature, shrinkage."""
+    values=np.clip(np.nan_to_num(np.asarray(probability_b,dtype=np.float64),nan=.5,posinf=1.0,neginf=0.0),1e-7,1-1e-7)
+    rounds=np.asarray(rounds,dtype=np.float64); config=dict(policy_config or {}); calibration=dict(config.get("conditional_calibration") or {})
+    if not bool(calibration.get("enabled",False)):
+        return values,np.ones(len(values),dtype=np.float64),np.zeros(len(values),dtype=np.float64)
+    if len(rounds)!=len(values): raise ValueError("rounds and probability_b must be aligned")
+    noise=np.full(len(values),.5) if noise_scores is None else np.clip(np.nan_to_num(np.asarray(noise_scores,dtype=np.float64),nan=.5),0,1)
+    remaining=np.full(len(values),.5) if remaining_ratio is None else np.clip(np.nan_to_num(np.asarray(remaining_ratio,dtype=np.float64),nan=.5),0,1)
+    if len(noise)!=len(values) or len(remaining)!=len(values): raise ValueError("conditional calibration inputs must be aligned")
+    stage=np.where(rounds<=40,"early",np.where(rounds<=50,"middle","late")); stages=dict(calibration.get("stages") or {})
+    temperature=np.asarray([max(1e-6,float(dict(stages.get(str(name)) or {}).get("temperature",1.0))) for name in stage],dtype=np.float64)
+    bias=np.asarray([float(dict(stages.get(str(name)) or {}).get("bias",0.0)) for name in stage],dtype=np.float64)
+    noise_shrink=max(0.0,float(calibration.get("noise_shrink",0.0)))
+    remaining_gain=max(0.0,float(calibration.get("remaining_uncertainty_gain",0.0)))
+    shrink=np.clip(noise_shrink*noise+remaining_gain*(2.0*np.abs(remaining-.5)),0.0,.95)
+    logits=np.log(values/(1-values)); mapped=1/(1+np.exp(-np.clip((logits+bias)/temperature,-40,40)))
+    return np.clip(.5+(mapped-.5)*(1-shrink),1e-7,1-1e-7),temperature,shrink
+
+
+def physics_winner_arrays(feature_matrix: np.ndarray | None, rows: int) -> tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
+    """Read Physics [winner_p_b, winner_p_p, winner_p_t] defensively and normalize it."""
+    fallback_b=np.full(rows,.4586,dtype=np.float64); fallback_p=np.full(rows,.4462,dtype=np.float64); fallback_t=np.full(rows,.0952,dtype=np.float64)
+    if feature_matrix is None: return fallback_b,fallback_p,fallback_t,np.full(rows,.5,dtype=np.float64)
+    features=np.asarray(feature_matrix,dtype=np.float64)
+    if features.ndim!=2 or features.shape[0]!=rows or features.shape[1]<FEATURE_DIM:
+        raise ValueError("feature_matrix must be aligned [rows, 57]")
+    raw=np.nan_to_num(features[:,[_WINNER_B_FEATURE_INDEX,_WINNER_P_FEATURE_INDEX,_WINNER_T_FEATURE_INDEX]],nan=0.0,posinf=0.0,neginf=0.0)
+    raw=np.maximum(raw,0.0); total=np.sum(raw,axis=1); valid=total>1e-12
+    winner=np.column_stack((fallback_b,fallback_p,fallback_t)); winner[valid]=raw[valid]/total[valid,None]
+    remaining=np.clip(np.nan_to_num(features[:,_REMAINING_RATIO_FEATURE_INDEX],nan=.5),0,1)
+    return winner[:,0],winner[:,1],winner[:,2],remaining
+
+
+def sanity_conflict_arrays(probability_b: np.ndarray, physics_b: np.ndarray, physics_p: np.ndarray, policy_config: Mapping[str, Any] | None) -> np.ndarray:
+    config=dict((policy_config or {}).get("sanity_cross_check") or {})
+    if not bool(config.get("enabled",False)): return np.zeros(len(probability_b),dtype=bool)
+    extreme=max(0.0,float(config.get("model_extreme_distance",.035))); advantage=max(0.0,float(config.get("opposite_physics_advantage",.08)))
+    distance=np.abs(np.asarray(probability_b,dtype=np.float64)-.5)
+    return (distance>=extreme)&(((probability_b>.5)&((physics_p-physics_b)>advantage))|((probability_b<.5)&((physics_b-physics_p)>advantage)))
+
+
 def decision_returns(
     probability_b: np.ndarray,
     actual_b: np.ndarray,
@@ -1049,13 +1123,17 @@ def decision_returns(
     policy_enabled: bool = False,
     policy_config: Mapping[str, Any] | None = None,
     shoe_ids: Sequence[str] | None = None,
+    feature_matrix: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     probability_b = np.asarray(probability_b, dtype=np.float64)
     actual_b = np.asarray(actual_b, dtype=np.int8)
     rounds = np.asarray(rounds, dtype=np.float64)
-    probability_p = 1.0 - probability_b
-    ev_banker = probability_b * 0.95 - probability_p
-    ev_player = probability_p - probability_b
+    if len(probability_b)!=len(actual_b) or len(probability_b)!=len(rounds): raise ValueError("decision inputs must be aligned")
+    physics_b,physics_p,p_tie,remaining=physics_winner_arrays(feature_matrix,len(probability_b))
+    probability_b,_,_=conditional_probability_arrays(probability_b,rounds,remaining,noise_scores,policy_config if policy_enabled else None)
+    probability_p = 1.0 - probability_b; p_non_tie=np.maximum(.001,1.0-p_tie)
+    ev_banker = p_non_tie * (probability_b * 0.95 - probability_p)
+    ev_player = p_non_tie * (probability_p - probability_b)
     _, activation_ev, _ = decision_policy_arrays(
         rounds, noise_scores, thresholds, enabled=policy_enabled, policy_config=policy_config
     )
@@ -1063,6 +1141,8 @@ def decision_returns(
     distance = np.abs(probability_b - 0.5)
     banker = (ev_banker > activation_ev) & (ev_banker > ev_player) & (distance >= band)
     player = (ev_player > activation_ev) & (ev_player > ev_banker) & (distance >= band)
+    conflict=sanity_conflict_arrays(probability_b,physics_b,physics_p,policy_config if policy_enabled else None)
+    banker[conflict]=False; player[conflict]=False
     config = dict(policy_config or {}); volume = dict(config.get("volume_guard") or {})
     if policy_enabled and bool(volume.get("enabled", False)) and shoe_ids is not None:
         shoes = [str(value) for value in shoe_ids]
@@ -1071,22 +1151,29 @@ def decision_returns(
         window=max(1,int(volume.get("window",16))); minimum=max(0,int(volume.get("min_history",8)))
         floor=_clip(float(volume.get("expected_correct_floor",.95)))
         band_relief=max(0.0,float(volume.get("band_relief",0.0))); ev_relief=max(0.0,float(volume.get("ev_relief",0.0)))
+        action_scale=max(1e-9,float(volume.get("action_deficit_full_scale",.10))); correct_scale=max(1e-9,float(volume.get("correct_deficit_full_scale",.05)))
+        integral_gain=max(0.0,float(volume.get("integral_gain",.10))); derivative_gain=max(0.0,float(volume.get("derivative_gain",.05)))
         rates=dict(volume.get("target_action_rate") or {}); band_floor=max(0.0,float((config.get("confidence_band") or {}).get("minimum",0.0)))
-        state: dict[str,list[tuple[float,float,float]]] = {}
+        state: dict[str,list[tuple[float,float,float,float]]] = {}
         for index, shoe in enumerate(shoes):
             prior=state.setdefault(shoe,[])
+            relaxation=0.0
             if len(prior)>=minimum:
                 actions=sum(item[0] for item in prior)/len(prior)
                 expected=sum(item[1] for item in prior); baseline=sum(item[2] for item in prior)
                 target=_stage_value(rounds[index],rates,0.0)
-                if actions < target or (baseline>0.0 and expected+1e-12 < floor*baseline):
-                    relaxed_band=max(band_floor,band[index]-band_relief); relaxed_ev=max(0.0,activation_ev[index]-ev_relief)
-                    banker[index]=(ev_banker[index]>relaxed_ev and ev_banker[index]>ev_player[index] and distance[index]>=relaxed_band)
-                    player[index]=(ev_player[index]>relaxed_ev and ev_player[index]>ev_banker[index] and distance[index]>=relaxed_band)
-            base_action=(ev_banker[index]>activation_ev[index] and ev_banker[index]>ev_player[index]) or (ev_player[index]>activation_ev[index] and ev_player[index]>ev_banker[index])
-            action=float(banker[index] or player[index]); expected=max(probability_b[index],probability_p[index]) if action else 0.0
-            baseline=max(probability_b[index],probability_p[index]) if base_action else 0.0
-            prior.append((action,expected,baseline))
+                action_deficit=max(0.0,target-actions); correct_deficit=max(0.0,floor*baseline-expected)
+                proportional=max(action_deficit/action_scale,correct_deficit/max(1e-9,correct_scale*baseline)) if baseline>0.0 else action_deficit/action_scale
+                integral=float(np.mean([item[3] for item in prior])) if prior else 0.0
+                derivative=proportional-(prior[-1][3] if prior else 0.0)
+                relaxation=_clip(proportional+integral_gain*integral+derivative_gain*derivative)
+                relaxed_band=max(band_floor,band[index]-band_relief*relaxation); relaxed_ev=max(0.0,activation_ev[index]-ev_relief*relaxation)
+                banker[index]=not conflict[index] and ev_banker[index]>relaxed_ev and ev_banker[index]>ev_player[index] and distance[index]>=relaxed_band
+                player[index]=not conflict[index] and ev_player[index]>relaxed_ev and ev_player[index]>ev_banker[index] and distance[index]>=relaxed_band
+            base_action=(not conflict[index]) and ((ev_banker[index]>activation_ev[index] and ev_banker[index]>ev_player[index]) or (ev_player[index]>activation_ev[index] and ev_player[index]>ev_banker[index]))
+            action=float(banker[index] or player[index]); expected=p_non_tie[index]*max(probability_b[index],probability_p[index]) if action else 0.0
+            baseline=p_non_tie[index]*max(probability_b[index],probability_p[index]) if base_action else 0.0
+            prior.append((action,expected,baseline,relaxation))
             if len(prior)>window: del prior[0]
     wagered = banker | player
     realised = np.zeros(len(probability_b), dtype=np.float64)
@@ -1118,12 +1205,15 @@ def optimize_ev_thresholds(
     policy_enabled: bool = False,
     policy_config: Mapping[str, Any] | None = None,
     shoe_ids: Sequence[str] | None = None,
+    feature_matrix: np.ndarray | None = None,
 ) -> dict[str, Any]:
     """Tune the existing three numbers under accuracy/EV and +5% Skip guardrails."""
     thresholds = dict(DEFAULT_MIN_EV); noise=np.full(len(rounds),.5) if noise_scores is None else np.asarray(noise_scores,dtype=np.float64)
     shoes = None if shoe_ids is None else np.asarray([str(value) for value in shoe_ids])
     if shoes is not None and len(shoes) != len(rounds):
         raise ValueError("shoe_ids and rounds must be aligned")
+    features=None if feature_matrix is None else np.asarray(feature_matrix,dtype=np.float64)
+    if features is not None and features.shape[0]!=len(rounds): raise ValueError("feature_matrix and rounds must be aligned")
     grids = {
         "early": np.arange(0.010, 0.0451, 0.0025),
         "middle": np.arange(0.005, 0.0301, 0.0025),
@@ -1140,7 +1230,8 @@ def optimize_ev_thresholds(
         if not count:
             stages[stage] = {"rows": 0, "min_ev": thresholds[stage]}
             continue
-        baseline_realised,baseline_wagered=decision_returns(probability_b[mask],actual_b[mask],np.asarray(rounds)[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=policy_enabled,policy_config=policy_config,shoe_ids=None if shoes is None else shoes[mask])
+        stage_features=None if features is None else features[mask]
+        baseline_realised,baseline_wagered=decision_returns(probability_b[mask],actual_b[mask],np.asarray(rounds)[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=policy_enabled,policy_config=policy_config,shoe_ids=None if shoes is None else shoes[mask],feature_matrix=stage_features)
         baseline=decision_metrics(baseline_realised,baseline_wagered)
         minimum_wagers=max(1,int(math.ceil(max(0.0,baseline["action_rate"]-MAX_SKIP_RATE_INCREASE)*count)))
         best: tuple[float, float, float, float] | None = None
@@ -1148,7 +1239,7 @@ def optimize_ev_thresholds(
         for candidate in candidates:
             trial = dict(thresholds)
             trial[stage] = candidate
-            realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], trial, noise[mask], policy_enabled=policy_enabled, policy_config=policy_config, shoe_ids=None if shoes is None else shoes[mask])
+            realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], trial, noise[mask], policy_enabled=policy_enabled, policy_config=policy_config, shoe_ids=None if shoes is None else shoes[mask],feature_matrix=stage_features)
             wagers = int(np.sum(wagered))
             if wagers < minimum_wagers:
                 continue
@@ -1161,7 +1252,7 @@ def optimize_ev_thresholds(
                 best = result
         if best is not None:
             thresholds[stage] = float(-best[3])
-        realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], thresholds, noise[mask], policy_enabled=policy_enabled, policy_config=policy_config, shoe_ids=None if shoes is None else shoes[mask])
+        realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], thresholds, noise[mask], policy_enabled=policy_enabled, policy_config=policy_config, shoe_ids=None if shoes is None else shoes[mask],feature_matrix=stage_features)
         tuned=decision_metrics(realised,wagered)
         stages[stage] = {
             "rows": count,
@@ -1178,8 +1269,8 @@ def optimize_ev_thresholds(
             "quality_constraint_passed": bool(tuned["hit_rate"]+1e-12>=baseline["hit_rate"] and tuned["realized_ev_per_bet"]+1e-12>=baseline["realized_ev_per_bet"] and tuned["absolute_correct_bets"]+1e-12>=.95*baseline["absolute_correct_bets"]),
             "min_ev": thresholds[stage],
         }
-    baseline_realised,baseline_wagered=decision_returns(probability_b,actual_b,rounds,DEFAULT_MIN_EV,noise,policy_enabled=policy_enabled,policy_config=policy_config,shoe_ids=shoes)
-    tuned_realised,tuned_wagered=decision_returns(probability_b,actual_b,rounds,thresholds,noise,policy_enabled=policy_enabled,policy_config=policy_config,shoe_ids=shoes)
+    baseline_realised,baseline_wagered=decision_returns(probability_b,actual_b,rounds,DEFAULT_MIN_EV,noise,policy_enabled=policy_enabled,policy_config=policy_config,shoe_ids=shoes,feature_matrix=features)
+    tuned_realised,tuned_wagered=decision_returns(probability_b,actual_b,rounds,thresholds,noise,policy_enabled=policy_enabled,policy_config=policy_config,shoe_ids=shoes,feature_matrix=features)
     baseline=decision_metrics(baseline_realised,baseline_wagered); tuned=decision_metrics(tuned_realised,tuned_wagered)
     skip_delta=tuned["skip_rate"]-baseline["skip_rate"]
     quality_passed=tuned["hit_rate"]+1e-12>=baseline["hit_rate"] and tuned["realized_ev_per_bet"]+1e-12>=baseline["realized_ev_per_bet"] and tuned["absolute_correct_bets"]+1e-12>=.95*baseline["absolute_correct_bets"]
@@ -1217,8 +1308,8 @@ def optimize_smoothing_and_thresholds(
         final=dynamic_ema_by_shoe(clipped,features,shoe_ids,smoothing)
         for policy_name, policy_config in policies.items():
             policy=dict(policy_config); policy_enabled=bool(policy.get("enabled",False))
-            tuning = optimize_ev_thresholds(final,actual_b,rounds,noise,policy_enabled=policy_enabled,policy_config=policy,shoe_ids=shoe_ids)
-            realised,wagered=decision_returns(final,actual_b,rounds,tuning["thresholds"],noise,policy_enabled=policy_enabled,policy_config=policy,shoe_ids=shoe_ids)
+            tuning = optimize_ev_thresholds(final,actual_b,rounds,noise,policy_enabled=policy_enabled,policy_config=policy,shoe_ids=shoe_ids,feature_matrix=features)
+            realised,wagered=decision_returns(final,actual_b,rounds,tuning["thresholds"],noise,policy_enabled=policy_enabled,policy_config=policy,shoe_ids=shoe_ids,feature_matrix=features)
             metrics=decision_metrics(realised,wagered);brier=_brier(final,actual_b)
             if baseline is None: baseline={**metrics,"brier":brier}
             skip_delta=metrics["skip_rate"]-baseline["skip_rate"]
@@ -1370,11 +1461,11 @@ def evaluate(
     noise = np.asarray(x[:, -1], dtype=np.float64)
     thresholds = dict(DEFAULT_MIN_EV)
     thresholds.update(ev_thresholds or {})
-    realised,wagered=decision_returns(final,y,rounds,thresholds,noise,policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=shoe_ids)
-    pre_realised,pre_wagered=decision_returns(unsmoothed,y,rounds,thresholds,noise,policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=shoe_ids)
-    baseline_realised,baseline_wagered=decision_returns(final,y,rounds,DEFAULT_MIN_EV,noise,policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=shoe_ids)
-    hard_realised,hard_wagered=decision_returns(final,y,rounds,thresholds,noise,policy_enabled=False)
-    current_realised,current_wagered=decision_returns(unsmoothed,y,rounds,thresholds,noise,policy_enabled=False)
+    realised,wagered=decision_returns(final,y,rounds,thresholds,noise,policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=shoe_ids,feature_matrix=x)
+    pre_realised,pre_wagered=decision_returns(unsmoothed,y,rounds,thresholds,noise,policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=shoe_ids,feature_matrix=x)
+    baseline_realised,baseline_wagered=decision_returns(final,y,rounds,DEFAULT_MIN_EV,noise,policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=shoe_ids,feature_matrix=x)
+    hard_realised,hard_wagered=decision_returns(final,y,rounds,thresholds,noise,policy_enabled=False,feature_matrix=x)
+    current_realised,current_wagered=decision_returns(unsmoothed,y,rounds,thresholds,noise,policy_enabled=False,feature_matrix=x)
     decision=decision_metrics(realised,wagered); pre=decision_metrics(pre_realised,pre_wagered); baseline=decision_metrics(baseline_realised,baseline_wagered)
     hard=decision_metrics(hard_realised,hard_wagered);current=decision_metrics(current_realised,current_wagered)
     skip_delta=decision["skip_rate"]-baseline["skip_rate"]
@@ -1401,10 +1492,10 @@ def evaluate(
     stage_masks={"early":rounds<=40,"middle":(rounds>40)&(rounds<=50),"late":rounds>50,"late_50_70":(rounds>50)&(rounds<=70)}; stage_report={}
     for stage,mask in stage_masks.items():
         stage_shoes=np.asarray(shoe_ids)[mask]
-        stage_realised,stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=stage_shoes)
-        pre_stage_realised,pre_stage_wagered=decision_returns(unsmoothed[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=stage_shoes)
-        base_realised,base_wagered=decision_returns(final[mask],y[mask],rounds[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=stage_shoes)
-        hard_stage_realised,hard_stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=False)
+        stage_realised,stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=stage_shoes,feature_matrix=x[mask])
+        pre_stage_realised,pre_stage_wagered=decision_returns(unsmoothed[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=stage_shoes,feature_matrix=x[mask])
+        base_realised,base_wagered=decision_returns(final[mask],y[mask],rounds[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=decision_policy_enabled,policy_config=decision_policy_config,shoe_ids=stage_shoes,feature_matrix=x[mask])
+        hard_stage_realised,hard_stage_wagered=decision_returns(final[mask],y[mask],rounds[mask],thresholds,noise[mask],policy_enabled=False,feature_matrix=x[mask])
         tuned_stage=decision_metrics(stage_realised,stage_wagered); pre_stage=decision_metrics(pre_stage_realised,pre_stage_wagered); base_stage=decision_metrics(base_realised,base_wagered)
         hard_stage=decision_metrics(hard_stage_realised,hard_stage_wagered)
         stage_rows=int(np.sum(mask))
@@ -1494,7 +1585,7 @@ def select_xgboost_model(
         model = build_xgboost_classifier(random_state=random_state + index, overrides=parameters)
         model.fit(x[train], y[train], sample_weight=weights)
         _, _, probability = bounded_probabilities(model, x[validation])
-        realised, wagered = decision_returns(probability, y[validation], rounds, DEFAULT_MIN_EV)
+        realised, wagered = decision_returns(probability, y[validation], rounds, DEFAULT_MIN_EV, feature_matrix=x[validation])
         brier = _brier(probability, y[validation])
         metrics=decision_metrics(realised,wagered)
         accuracy=_accuracy(probability,y[validation])
