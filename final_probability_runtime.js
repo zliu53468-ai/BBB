@@ -219,11 +219,12 @@ function calibrateNoise(value,calibration){
 }
 function physicsNoiseScore(physics,roundIndex=70){
   const version=final56Bundle?.training?.noise_score_version||1;
-  if(version<2){const r=physicsIntegrity(physics);return r?Math.abs(r.cardCountProbabilitySum-1)+Math.abs(r.suitRatioSum-1):1;}
+  if(version<2){const r=physicsIntegrity(physics);return r?Math.abs(r.cardCountProbabilitySum-1):1;}
   const winner=physics.slice(23,26).sort((a,b)=>b-a),gap=(winner[0]||0)-(winner[1]||0);
   if(version<3)return clip(.20*normalisedEntropy(physics.slice(0,3))+.15*normalisedEntropy(physics.slice(3,13))+.15*normalisedEntropy(physics.slice(13,23))+.35*normalisedEntropy(physics.slice(23,26))+.15*(1-gap));
   const densityGap=Math.abs(clip(physics[44])-clip(physics[45])),densityAmbiguity=1-Math.min(1,densityGap/.25);
-  const raw=clip(.10*normalisedEntropy(physics.slice(0,3))+.075*normalisedEntropy(physics.slice(3,13))+.075*normalisedEntropy(physics.slice(13,23))+.15*normalisedEntropy(physics.slice(23,26))+.25*normalisedEntropy(physics.slice(26,39))+.15*normalisedEntropy(physics.slice(39,43))+.075*(1-gap)+.125*densityAmbiguity);
+  const uncertaintyTerm=version>=5?clip(physics[42]):normalisedEntropy(physics.slice(39,43));
+  const raw=clip(.10*normalisedEntropy(physics.slice(0,3))+.075*normalisedEntropy(physics.slice(3,13))+.075*normalisedEntropy(physics.slice(13,23))+.15*normalisedEntropy(physics.slice(23,26))+.25*normalisedEntropy(physics.slice(26,39))+.15*uncertaintyTerm+.075*(1-gap)+.125*densityAmbiguity);
   const compressed=.50+.35*Math.tanh((raw-.75)/.20),influence=roundIndex<=40?.35:roundIndex<=50?.65:1;
   const proxy=clip(.50+(compressed-.50)*influence);
   if(version<4)return proxy;
@@ -236,24 +237,28 @@ function buildExtended(corePB,o7,physics){
 }
 function unpackPhysicsForecast(physics){
   if(!Array.isArray(physics)||physics.length!==PHYSICS_DIM)throw new Error("physics forecast dim mismatch");
-  const value=name=>{const v=+physics[PHYSICS_INDEX[name]];return Number.isFinite(v)?v:0;};
+  const physicalSemantics=finalModelUsesPhysicalEv()&&physicsBundleUsesPhysicalEv(),index=physicalSemantics?PHYSICS_INDEX:LEGACY_PHYSICS_INDEX;
+  const value=name=>{const v=+physics[index[name]];return Number.isFinite(v)?v:0;};
   const cardCountProbabilities={"4_cards":value("cards_p4"),"5_cards":value("cards_p5"),"6_cards":value("cards_p6")};
   const expectedNextCardCount=4*cardCountProbabilities["4_cards"]+5*cardCountProbabilities["5_cards"]+6*cardCountProbabilities["6_cards"];
   const rankExpectedConsumption=Object.fromEntries("A,2,3,4,5,6,7,8,9,10,J,Q,K".split(",").map(rank=>[rank,value("next_rank_expected_"+rank)]));
-  const suitConsumptionRatios=Object.fromEntries(["spades","hearts","diamonds","clubs"].map(suit=>[suit,value("next_suit_ratio_"+suit)]));
-  const suitExpectedConsumption=Object.fromEntries(Object.entries(suitConsumptionRatios).map(([suit,ratio])=>[suit,expectedNextCardCount*ratio]));
-  return {nextCardCountProbabilities:cardCountProbabilities,expectedNextCardCount,rankExpectedConsumption,suitConsumptionRatios,suitExpectedConsumption};
+  if(!physicalSemantics){
+    const suitConsumptionRatios=Object.fromEntries(["spades","hearts","diamonds","clubs"].map(suit=>[suit,value("next_suit_ratio_"+suit)]));
+    return {nextCardCountProbabilities:cardCountProbabilities,expectedNextCardCount,rankExpectedConsumption,suitConsumptionRatios,physicalEv:null};
+  }
+  const physicalEv={banker:value("physical_ev_banker"),player:value("physical_ev_player"),gap:value("physical_ev_gap"),uncertainty:value("particle_uncertainty")};
+  return {nextCardCountProbabilities:cardCountProbabilities,expectedNextCardCount,rankExpectedConsumption,physicalEv};
 }
 function physicsIntegrity(physics){
   if(!Array.isArray(physics)||physics.length!==PHYSICS_DIM)return null;
   const forecast=unpackPhysicsForecast(physics),sum=values=>values.reduce((total,value)=>total+(+value||0),0);
   const cardCountProbabilitySum=sum(Object.values(forecast.nextCardCountProbabilities));
-  const suitRatioSum=sum(Object.values(forecast.suitConsumptionRatios));
   const rankExpectedConsumptionTotal=sum(Object.values(forecast.rankExpectedConsumption));
   const rankExpectedTotalGap=Math.abs(rankExpectedConsumptionTotal-forecast.expectedNextCardCount);
   const rankExpectedTotalTolerance=Math.max(.50,forecast.expectedNextCardCount*.10);
-  const checks={cardCountDistribution:Math.abs(cardCountProbabilitySum-1)<=1e-4,suitRatioDistribution:Math.abs(suitRatioSum-1)<=1e-4,rankConsumptionTotal:rankExpectedTotalGap<=rankExpectedTotalTolerance};
-  return {valid:Object.values(checks).every(Boolean),checks,cardCountProbabilitySum,expectedNextCardCount:forecast.expectedNextCardCount,rankExpectedConsumptionTotal,rankExpectedTotalGap,rankExpectedTotalTolerance,suitRatioSum};
+  const physicalOk=!forecast.physicalEv||(forecast.physicalEv.banker>=-1&&forecast.physicalEv.banker<=.95&&forecast.physicalEv.player>=-1&&forecast.physicalEv.player<=1&&forecast.physicalEv.gap>=-2&&forecast.physicalEv.gap<=2&&forecast.physicalEv.uncertainty>=0&&forecast.physicalEv.uncertainty<=1);
+  const checks={cardCountDistribution:Math.abs(cardCountProbabilitySum-1)<=1e-4,rankConsumptionTotal:rankExpectedTotalGap<=rankExpectedTotalTolerance,physicalEvRanges:physicalOk};
+  return {valid:Object.values(checks).every(Boolean),checks,cardCountProbabilitySum,expectedNextCardCount:forecast.expectedNextCardCount,rankExpectedConsumptionTotal,rankExpectedTotalGap,rankExpectedTotalTolerance,physicalEv:forecast.physicalEv||null};
 }
 function dataQuality(seq){const directionalRounds=directionalRoundCount(seq);return {directionalRounds,stage:directionalRounds<12?"cold":directionalRounds<20?"warm":"ready",entryEligible:directionalRounds>=12,preferredEntry:directionalRounds>=20};}
 function applyProbabilityBounds(rawPB,roundIndex,noiseScore){
