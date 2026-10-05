@@ -169,11 +169,15 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertTrue(wagered[8])
         self.assertEqual(final.decision_metrics(realised,wagered)["absolute_correct_bets"],1.0)
 
-    def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
+    def test_dynamic_bounds_expand_smoothly_with_effective_progress(self):
         early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))
         late_original = self.original.copy(); late_original[1] = 55
-        late = final.predict_final_probability(self.core, late_original, self.physics, xgboost_model=FakeClassifier(0.90))
-        noisy = self.physics.copy()
+        late_physics=self.physics.copy(); late_physics[43]=356.0
+        late = final.predict_final_probability(self.core, late_original, late_physics, xgboost_model=FakeClassifier(0.90))
+        late_matrix=final.build_56d_feature_matrix(self.core,late_original,late_physics)
+        expected_late=final.dynamic_probability_bounds(55,float(late_matrix[0,-1]),float(late_matrix[0,1]))[1]
+
+        noisy = late_physics.copy()
         noisy[:3] = 1.0 / 3.0
         noisy[3:13] = 0.1
         noisy[13:23] = 0.1
@@ -181,8 +185,13 @@ class FinalProbabilityTests(unittest.TestCase):
         noisy[42] = 1.0
         late_noisy = final.predict_final_probability(self.core, late_original, noisy, xgboost_model=FakeClassifier(0.90))
         self.assertAlmostEqual(early["final_p_b"], 0.55, places=6)
-        self.assertAlmostEqual(late["final_p_b"], 0.65, places=6)
+        self.assertAlmostEqual(late["final_p_b"], expected_late, places=6)
+        self.assertGreater(late["final_p_b"],.60);self.assertLess(late["final_p_b"],.65)
         self.assertAlmostEqual(late_noisy["final_p_b"], 0.60, places=6)
+
+        before=final.dynamic_probability_bounds(49,.5,(49/70)**3)
+        after=final.dynamic_probability_bounds(51,.5,(51/70)**3)
+        self.assertLess(abs(before[1]-after[1]),.02)
 
     def test_physics_forecast_exposes_pre_core_physical_ev(self):
         forecast = final.unpack_physics_forecast(self.physics)
@@ -317,12 +326,15 @@ class FinalProbabilityTests(unittest.TestCase):
 
     def test_dynamic_ema_alpha_is_continuous_and_more_noise_smoothing(self):
         config=final.EMA_PROFILES["balanced"]
-        values=[final.dynamic_ema_alpha(r,.5,config) for r in (40,49,50,51,60,70)]
+        values=[final.dynamic_ema_alpha(r,.5,config,(r/70)**3) for r in (40,49,50,51,60,70)]
         self.assertTrue(all(a<=b+1e-12 for a,b in zip(values,values[1:])))
         self.assertLess(abs(values[1]-values[2]),.03);self.assertLess(abs(values[2]-values[3]),.03)
         for round_index in (30,45,55,65):
-            high=final.dynamic_ema_alpha(round_index,1.0,config);low=final.dynamic_ema_alpha(round_index,0.0,config)
+            high=final.dynamic_ema_alpha(round_index,1.0,config,(round_index/70)**3);low=final.dynamic_ema_alpha(round_index,0.0,config,(round_index/70)**3)
             self.assertLess(high,low);self.assertGreaterEqual(high,.35);self.assertLessEqual(low,.75)
+        same_round_early=final.dynamic_ema_alpha(55,.5,config,(45/70)**3)
+        same_round_late=final.dynamic_ema_alpha(55,.5,config,(65/70)**3)
+        self.assertGreater(same_round_late,same_round_early)
 
     def test_smoothing_selection_can_safely_disable_itself(self):
         probability=np.asarray([.9,.1]*20);actual=np.asarray([1,0]*20,dtype=np.int8)
@@ -376,9 +388,12 @@ class FinalProbabilityTests(unittest.TestCase):
     def test_calibration_selects_supported_method(self):
         probability=np.tile(np.linspace(.1,.9,20),30)
         features=np.zeros((len(probability),57),dtype=np.float32);features[:,0]=probability
+        effective_rounds=np.tile(np.linspace(10,70,20),30);features[:,1]=(effective_rounds/70)**3
         labels=(probability>.5).astype(np.int8)
         calibration=final.fit_probability_calibration(VectorClassifier(),features,labels,shoe_ids=[f"shoe-{index//20}" for index in range(len(labels))])
         self.assertIn(calibration["method"],{"platt","isotonic"})
+        self.assertEqual(calibration["selection"]["selection_objective"],"0.70*overall_brier+0.30*effective_progress_50_70_brier")
+        self.assertGreater(calibration["selection"]["late_50_70_rows"],0)
         output=final.apply_probability_calibration(probability,calibration)
         self.assertTrue(np.all(np.isfinite(output)))
         self.assertTrue(np.all((output>0)&(output<1)))
