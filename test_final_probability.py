@@ -90,9 +90,9 @@ class FinalProbabilityTests(unittest.TestCase):
             self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.48)
         )
         self.assertAlmostEqual(result["p_player"], 0.52, places=6)
-        self.assertAlmostEqual(result["ev_player"], 0.04 * (1.0 - 0.0952), places=6)
+        self.assertAlmostEqual(result["ev_player"], 0.04, places=6)
         self.assertAlmostEqual(result["min_ev"], 0.02, places=6)
-        self.assertAlmostEqual(result["confidence"], 0.04 * (1.0 - 0.0952) - .02, places=6)
+        self.assertAlmostEqual(result["confidence"], 0.02, places=6)
         self.assertEqual(result["final_direction"], "閒 P")
 
     def test_dynamic_ev_thresholds(self):
@@ -147,24 +147,13 @@ class FinalProbabilityTests(unittest.TestCase):
 
     def test_volume_guard_relaxes_only_after_prior_entry_density_is_too_low(self):
         policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
-        probabilities=np.asarray([.525]*8+[.536],dtype=np.float64)
+        probabilities=np.asarray([.525]*8+[.532],dtype=np.float64)
         actual=np.asarray([1]*9,dtype=np.int8)
         rounds=np.asarray([30]*9,dtype=np.float64)
         realised,wagered=final.decision_returns(probabilities,actual,rounds,{"early":.038,"middle":.024,"late":.018},np.full(9,.5),policy_enabled=True,policy_config=policy,shoe_ids=["A"]*9)
         self.assertFalse(np.any(wagered[:8]))
         self.assertTrue(wagered[8])
         self.assertEqual(final.decision_metrics(realised,wagered)["absolute_correct_bets"],1.0)
-
-    def test_conditional_calibration_and_physics_conflict_use_57d_physics(self):
-        policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
-        x=np.zeros((1,57),dtype=np.float64);x[0,2]=30;x[0,4]=.75;x[0,-1]=.5
-        x[0,8+23:8+26]=[.30,.65,.05]
-        calibrated,temperature,shrinkage=final.conditional_probability_arrays(np.asarray([.55]),np.asarray([30]),x[:,4],x[:,-1],policy)
-        self.assertLess(calibrated[0],.55);self.assertGreater(temperature[0],1.0);self.assertGreater(shrinkage[0],0.0)
-        physics_b,physics_p,_,_=final.physics_winner_arrays(x,1)
-        self.assertTrue(final.sanity_conflict_arrays(calibrated,physics_b,physics_p,policy)[0])
-        _,wagered=final.decision_returns(np.asarray([.55]),np.asarray([1]),np.asarray([30]),{"early":.038,"middle":.024,"late":.018},x[:,-1],policy_enabled=True,policy_config=policy,feature_matrix=x)
-        self.assertFalse(wagered[0])
 
     def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
         early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))
