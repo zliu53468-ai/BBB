@@ -48,19 +48,29 @@ require("./final_probability_runtime.js");
   const particleRanks=particleA.physics.slice(26,39).reduce((a,b)=>a+b,0);
   if(Math.abs(particleCards-particleRanks)>1e-6)throw new Error("particle card-count/rank-consumption mismatch");
   if(!(particleA.diagnostics.expected_consumed_cards>4*history.length&&particleA.diagnostics.expected_consumed_cards<6*history.length))throw new Error("particle consumed-card posterior invalid");
+  const physicalEvB=particleA.physics[23]*.95-particleA.physics[24],physicalEvP=particleA.physics[24]-particleA.physics[23];
+  if(Math.abs(particleA.physics[39]-physicalEvB)>1e-9||Math.abs(particleA.physics[40]-physicalEvP)>1e-9||Math.abs(particleA.physics[41]-(physicalEvB-physicalEvP))>1e-9)throw new Error("particle Physical EV mismatch");
+  if(!(particleA.physics[42]>=0&&particleA.physics[42]<=1))throw new Error("particle uncertainty feature invalid");
 
-  const out=api.applyFinalPrediction(history,core);
+  // No Core is supplied here: production must compute Physics/Physical EV first.
+  const out=api.applyFinalPrediction(history);
   const r=out.finalProbability;
   if(r?.mode!=="final56")throw new Error("final56 inference path was not used");
   if(r.physics?.length!==48||r.extended?.length!==57)throw new Error("incorrect direct-model feature shape");
   const forecast=r.physicsForecast;
   if(!forecast||Object.keys(forecast.nextCardCountProbabilities||{}).length!==3)throw new Error("missing next-hand card-count forecast");
   if(Object.keys(forecast.rankExpectedConsumption||{}).length!==13)throw new Error("missing A-K consumption forecast");
-  if(Object.keys(forecast.suitExpectedConsumption||{}).length!==4)throw new Error("missing suit consumption forecast");
+  if(useGeneratedBundle&&(!forecast.physicalEv||!Number.isFinite(forecast.physicalEv.banker)||!Number.isFinite(forecast.physicalEv.player)))throw new Error("missing pre-Core Physical EV forecast");
   const cardExpectation=4*forecast.nextCardCountProbabilities["4_cards"]+5*forecast.nextCardCountProbabilities["5_cards"]+6*forecast.nextCardCountProbabilities["6_cards"];
   if(Math.abs(cardExpectation-forecast.expectedNextCardCount)>1e-9)throw new Error("incorrect next-hand card expectation");
   if(!r.physicsIntegrity||typeof r.physicsIntegrity.valid!=="boolean")throw new Error("missing physics integrity report");
-  if(!r.particleDiagnostics||!(r.particleDiagnostics.fusion_weight>=.1&&r.particleDiagnostics.fusion_weight<=.46))throw new Error("particle fusion diagnostics missing");
+  if(!Array.isArray(r.execution_order)||r.execution_order[0]!=="particle_physics"||r.execution_order.indexOf("frozen_core")<1)throw new Error("Physics was not executed before Frozen Core");
+  if(useGeneratedBundle){
+    const expectedOrder=["particle_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"];
+    if(JSON.stringify(r.execution_order)!==JSON.stringify(expectedOrder))throw new Error("Physical EV first execution order mismatch");
+    if(!r.particleDiagnostics||!(r.particleDiagnostics.fusion_weight>=.1&&r.particleDiagnostics.fusion_weight<=.46))throw new Error("particle fusion diagnostics missing");
+    if(!Number.isFinite(r.physical_ev_banker)||!Number.isFinite(r.physical_ev_player)||!Number.isFinite(r.physical_ev_gap)||!Number.isFinite(r.particle_uncertainty))throw new Error("Physical EV audit fields missing");
+  }else if(r.particleDiagnostics?.enabled!==false)throw new Error("legacy model should not consume remapped Physical EV features");
   if(r.dataQuality?.stage!=="warm"||r.dataQuality?.directionalRounds!==15)throw new Error("incorrect prediction data stage");
   if(useGeneratedBundle){
     if(!(r.rawPB>=0&&r.rawPB<=1))throw new Error("generated model did not return a probability");
@@ -121,7 +131,11 @@ require("./final_probability_runtime.js");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57)throw new Error("prediction snapshot is missing exact model features");
   if(!Number.isFinite(snapshot.clipped_p_b)||!Number.isFinite(snapshot.smoothed_p_b)||snapshot.smoothing_alpha!==1||snapshot.smoothing_strength!==0)throw new Error("smoothing snapshot metadata is missing");
   if(!Number.isFinite(snapshot.confidence_band)||!Number.isFinite(snapshot.effective_confidence_band)||!["strong","weak","skip","core"].includes(snapshot.entry_tier))throw new Error("entry policy snapshot metadata is missing");
-  if(!snapshot.particle_physics||!Number.isFinite(snapshot.particle_physics.expected_consumed_cards))throw new Error("particle physics snapshot metadata is missing");
+  if(!snapshot.particle_physics)throw new Error("particle physics snapshot metadata is missing");
+  if(useGeneratedBundle){
+    if(!Number.isFinite(snapshot.particle_physics.expected_consumed_cards)||!Number.isFinite(snapshot.physical_ev_banker)||!Number.isFinite(snapshot.physical_ev_player))throw new Error("Physical EV snapshot metadata is missing");
+    if(JSON.stringify(snapshot.execution_order)!==JSON.stringify(["particle_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"]))throw new Error("snapshot execution order mismatch");
+  }
   const expectedFinalSchema=useGeneratedBundle?JSON.parse(fs.readFileSync("final_probability_model.json","utf8")).schema_version:1;
   if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==expectedFinalSchema)throw new Error("snapshot model metadata is missing");
 
