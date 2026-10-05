@@ -278,7 +278,7 @@ def physics_noise_score(
     )
     compressed = 0.50 + 0.35 * math.tanh((raw - 0.75) / 0.20)
     uncertainty = _clip(physics[42])
-    base_proxy = _clip(max(0.70 * compressed + 0.30 * uncertainty, 0.50 + 0.40 * uncertainty))
+    base_proxy = _clip(max(0.70 * compressed + 0.30 * uncertainty, 0.50 + 0.40 * uncertainty * uncertainty))
     influence = float(np.interp(float(round_index), [1.0,40.0,50.0,70.0], [.35,.35,.65,1.0]))
     proxy = _clip(0.50 + (base_proxy - 0.50) * influence)
     return float(apply_uncertainty_calibration([proxy], calibration)[0])
