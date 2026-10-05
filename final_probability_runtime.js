@@ -347,7 +347,7 @@ function applyFinalPrediction(seq,corePrediction=null){
 
   try{
     if(physicsBundle?.trained){
-      executionOrder.push("particle_physics");
+      executionOrder.push(finalModelUsesPhysicalEv()&&physicsBundleUsesPhysicalEv()?"particle_physics":"legacy_physics");
       physics=predictPhysics(seq);
       physicsForecast=unpackPhysicsForecast(physics);
       physicsIntegrityReport=physicsIntegrity(physics);
