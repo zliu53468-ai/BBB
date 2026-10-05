@@ -338,7 +338,7 @@ def physics_uncertainty_proxy(physics_48d: Sequence[float], round_index: float =
     # Particle posterior uncertainty is explicit information, not merely another
     # entropy proxy. Give it direct weight before applying the stage influence.
     uncertainty=_clip(physics[42])
-    base_proxy=_clip(max(.70*compressed+.30*uncertainty,.50+.40*uncertainty))
+    base_proxy=_clip(max(.70*compressed+.30*uncertainty,.50+.40*uncertainty*uncertainty))
     influence=float(np.interp(float(round_index),[1.0,40.0,50.0,70.0],[.35,.35,.65,1.0]))
     return _clip(.50+(base_proxy-.50)*influence)
 
