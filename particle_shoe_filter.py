@@ -239,7 +239,13 @@ def _forecast_particles(
     out[13:23] /= samples
     out[23:26] /= samples
     out[26:39] /= samples
-    out[39:43] = 0.25
+    p_b,p_p=float(out[23]),float(out[24])
+    physical_ev_b=p_b*.95-p_p
+    physical_ev_p=p_p-p_b
+    out[39]=physical_ev_b
+    out[40]=physical_ev_p
+    out[41]=physical_ev_b-physical_ev_p
+    out[42]=0.0  # filled from posterior uncertainty after ESS/composition diagnostics
     out[43] = float(np.mean(consumed)) if len(consumed) else 0.0
 
     mean_counts = np.mean(np.vstack(particles).astype(np.float64), axis=0)
@@ -330,6 +336,7 @@ class ParticleShoeTracker:
         recent_ess = float(np.mean(self.ess_history[-8:])) if self.ess_history else 1.0
         consumed_std = float(np.std(self.consumed)) if len(self.consumed) else 0.0
         uncertainty = _clip(0.60 * min(1.0, spread * 4.0) + 0.40 * (1.0 - recent_ess))
+        physics[42]=np.float32(uncertainty)
         diagnostics = {
             "particle_count": float(self.particle_count),
             "history_rounds": float(len(self.history)),
@@ -338,6 +345,9 @@ class ParticleShoeTracker:
             "recent_ess_ratio": recent_ess,
             "composition_spread": spread,
             "posterior_uncertainty": uncertainty,
+            "physical_ev_banker": float(physics[39]),
+            "physical_ev_player": float(physics[40]),
+            "physical_ev_gap": float(physics[41]),
         }
         return ParticlePhysicsEstimate(physics, diagnostics)
 
@@ -401,7 +411,9 @@ def fuse_particle_physics(
         fused[start:end] = _normalise((1.0 - weight) * _normalise(mlp[start:end]) + weight * _normalise(particle[start:end]))
 
     fused[26:39] = (1.0 - weight) * np.clip(mlp[26:39], 0.0, None) + weight * particle[26:39]
-    fused[39:43] = _normalise(mlp[39:43])  # B/P/T contains no suit information.
+    # Physical EV is deliberately particle-first and is computed before Core.
+    # Do not dilute these four slots with pattern-derived MLP output.
+    fused[39:43] = particle[39:43]
     fused[43:48] = (1.0 - weight) * mlp[43:48] + weight * particle[43:48]
 
     expected_cards = float(4.0 * fused[0] + 5.0 * fused[1] + 6.0 * fused[2])
@@ -409,6 +421,10 @@ def fuse_particle_physics(
     if rank_total > 1e-12:
         fused[26:39] *= expected_cards / rank_total
 
+    fused[39] = np.clip(fused[39], -1.0, .95)
+    fused[40] = np.clip(fused[40], -1.0, 1.0)
+    fused[41] = np.clip(fused[41], -2.0, 2.0)
+    fused[42] = np.clip(fused[42], 0.0, 1.0)
     fused[43] = np.clip(fused[43], 0.0, TOTAL_CARDS)
     fused[44:46] = np.clip(fused[44:46], 0.0, 1.0)
     fused[46] = np.clip(fused[46], -1.0, 1.0)
