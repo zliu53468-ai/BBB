@@ -246,7 +246,7 @@ function physicsNoiseScore(physics,roundIndex=70){
   const densityGap=Math.abs(clip(physics[44])-clip(physics[45])),densityAmbiguity=1-Math.min(1,densityGap/.25);
   const uncertaintyTerm=version>=5?clip(physics[42]):normalisedEntropy(physics.slice(39,43));
   const raw=clip(.10*normalisedEntropy(physics.slice(0,3))+.075*normalisedEntropy(physics.slice(3,13))+.075*normalisedEntropy(physics.slice(13,23))+.15*normalisedEntropy(physics.slice(23,26))+.25*normalisedEntropy(physics.slice(26,39))+.15*uncertaintyTerm+.075*(1-gap)+.125*densityAmbiguity);
-  const compressed=.50+.35*Math.tanh((raw-.75)/.20),baseProxy=version>=5?clip(.75*compressed+.25*clip(physics[42])):compressed;
+  const compressed=.50+.35*Math.tanh((raw-.75)/.20),uncertainty=clip(physics[42]),baseProxy=version>=5?clip(Math.max(.70*compressed+.30*uncertainty,.50+.40*uncertainty)):compressed;
   const influence=adaptiveStageEnabled()?interpAnchors(roundIndex,[[1,.35],[40,.35],[50,.65],[70,1]]):(roundIndex<=40?.35:roundIndex<=50?.65:1);
   const proxy=clip(.50+(baseProxy-.50)*influence);
   if(version<4)return proxy;
