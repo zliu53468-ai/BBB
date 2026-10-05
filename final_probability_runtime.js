@@ -20,7 +20,7 @@ const PHYSICS_NAMES=[
 const PHYSICS_INDEX=Object.fromEntries(PHYSICS_NAMES.map((name,index)=>[name,index]));
 const EXTENDED_NAMES=["core_p_b_external","shoe_progress_weight",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...PHYSICS_NAMES,"physics_noise_score"];
 const HISTORY_WINDOW=64,HISTORY_INPUT_DIM=213,PHYSICS_DIM=48,FEATURE_DIM=57;
-const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.78,PHYSICS_NOISE_HIGH_CLIP_THRESHOLD=.84;
+const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.78;
 const SNAPSHOT_SCHEMA_VERSION=7;
 const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
 const SHOE_KEY="bgs_xgb_final_shoe_id_v5",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
@@ -174,7 +174,6 @@ function physicsIntegrity(physics){
 }
 function dataQuality(seq){const directionalRounds=directionalRoundCount(seq);return {directionalRounds,stage:directionalRounds<12?"cold":directionalRounds<20?"warm":"ready",entryEligible:directionalRounds>=12,preferredEntry:directionalRounds>=20};}
 function applyProbabilityBounds(rawPB,roundIndex,noiseScore){
-  if(+noiseScore>=PHYSICS_NOISE_HIGH_CLIP_THRESHOLD){const pair=roundIndex<=40?[.46,.54]:[.43,.57];return {value:clip(rawPB,pair[0],pair[1]),low:pair[0],high:pair[1]};}
   const pair=roundIndex<=40?EARLY_BOUNDS:(roundIndex>50&&noiseScore<=PHYSICS_NOISE_LOW_THRESHOLD?LATE_CLEAN_BOUNDS:DEFAULT_BOUNDS);
   return {value:clip(rawPB,pair[0],pair[1]),low:pair[0],high:pair[1]};
 }
@@ -200,7 +199,7 @@ function decisionPolicy(roundIndex,noiseScore){
   const base=roundIndex<=40?pick("early",.020):roundIndex>50?pick("late",.005):pick("middle",.010);
   const config=final56Bundle?.decision_policy||{};
   const profile=String(config.profile||final56Bundle?.decision_policy_profile||(config.enabled===true?"custom":"hard_ev"));
-  if(config.enabled!==true)return {enabled:false,profile,minEv:base,activationEv:base,softBand:0,minConfidence:0,confidenceBand:0,strongMargin:0,bandMinimum:0,entryEvMargin:0,entryDistanceMargin:0,volumeGuard:{}};
+  if(config.enabled!==true)return {enabled:false,profile,minEv:base,activationEv:base,softBand:0,minConfidence:0,confidenceBand:0,strongMargin:0,bandMinimum:0,volumeGuard:{}};
   const value=(key,fallback)=>Number.isFinite(+config[key])?+config[key]:fallback;
   const noiseThreshold=value("noise_threshold",.78),noise=clip(+noiseScore||0),lowNoise=noise<=noiseThreshold;
   const middle=roundIndex>40&&roundIndex<=50,late=roundIndex>50;
@@ -221,11 +220,7 @@ function decisionPolicy(roundIndex,noiseScore){
   const confidenceBand=clip(bandBase+bandGain*Math.max(0,noise-bandReference)-cleanLateRelief,bandMinimum,bandMaximum);
   const strong=bandConfig.strong_margin&&typeof bandConfig.strong_margin==="object"?bandConfig.strong_margin:{};
   const strongMargin=Math.max(0,Number.isFinite(+strong[stage])?+strong[stage]:0);
-  const quality=config.entry_quality&&typeof config.entry_quality==="object"?config.entry_quality:{},evMargins=quality.ev_margin&&typeof quality.ev_margin==="object"?quality.ev_margin:{},distanceMargins=quality.distance_margin&&typeof quality.distance_margin==="object"?quality.distance_margin:{};
-  const cleanLateEntry=stage==="late"&&noise<=PHYSICS_NOISE_LOW_THRESHOLD;
-  const entryEvMargin=Math.max(0,(Number.isFinite(+evMargins[stage])?+evMargins[stage]:0)-(cleanLateEntry?Math.max(0,+quality.clean_late_ev_relief||0):0));
-  const entryDistanceMargin=Math.max(0,(Number.isFinite(+distanceMargins[stage])?+distanceMargins[stage]:0)-(cleanLateEntry?Math.max(0,+quality.clean_late_distance_relief||0):0));
-  return {enabled:true,profile,minEv,activationEv:Math.max(0,minEv-softBand),softBand,minConfidence:Math.max(0,value("min_confidence",.0005)),confidenceBand,strongMargin,bandMinimum,entryEvMargin,entryDistanceMargin,volumeGuard:config.volume_guard||{}};
+  return {enabled:true,profile,minEv,activationEv:Math.max(0,minEv-softBand),softBand,minConfidence:Math.max(0,value("min_confidence",.0005)),confidenceBand,strongMargin,bandMinimum,volumeGuard:config.volume_guard||{}};
 }
 function softConfidence(edge,policy){
   if(edge<=policy.activationEv)return 0;
@@ -243,8 +238,7 @@ function volumeGuardState(roundIndex,probabilityB,policy){
   for(const row of rows){
     const priorP=clip(+row.final_p_b),priorPlayer=1-priorP;
     const priorActivation=Math.max(0,Number.isFinite(+row.activation_ev)?+row.activation_ev:policy.activationEv);
-    const priorEntryEv=Math.max(0,Number.isFinite(+row.entry_ev_margin)?+row.entry_ev_margin:policy.entryEvMargin||0),priorEntryDistance=Math.max(0,Number.isFinite(+row.entry_distance_margin)?+row.entry_distance_margin:policy.entryDistanceMargin||0),priorBand=Math.max(0,Number.isFinite(+row.confidence_band)?+row.confidence_band:policy.confidenceBand||0);
-    const baseAction=Math.abs(priorP-.5)>=priorBand+priorEntryDistance&&((priorP*.95-priorPlayer)>priorActivation+priorEntryEv||(priorPlayer-priorP)>priorActivation+priorEntryEv);
+    const baseAction=(priorP*.95-priorPlayer)>priorActivation||(priorPlayer-priorP)>priorActivation;
     const action=String(row.predicted_direction||"").includes("莊 B")||String(row.predicted_direction||"").includes("閒 P");
     if(action){actions++;expected+=expectedProbability(priorP);}
     if(baseAction)baseline+=expectedProbability(priorP);
@@ -274,12 +268,12 @@ function applyFinalPrediction(seq,corePrediction){
       const evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
       const policy=decisionPolicy(original7.round_index,extended.at(-1));
       const guard=volumeGuardState(original7.round_index,finalPB,policy);
-      const effectiveBand=Math.max(policy.bandMinimum,policy.confidenceBand-guard.bandRelief)+policy.entryDistanceMargin,effectiveActivationEv=Math.max(0,policy.activationEv-guard.evRelief)+policy.entryEvMargin;
+      const effectiveBand=Math.max(policy.bandMinimum,policy.confidenceBand-guard.bandRelief),effectiveActivationEv=Math.max(0,policy.activationEv-guard.evRelief);
       const distance=Math.abs(finalPB-.5);
       const direction=distance>=effectiveBand&&evBanker>effectiveActivationEv&&evBanker>evPlayer?"B":distance>=effectiveBand&&evPlayer>effectiveActivationEv&&evPlayer>evBanker?"P":"Skip";
       const edge=direction==="B"?evBanker:direction==="P"?evPlayer:0;
       const entryTier=direction==="Skip"?"skip":distance>=effectiveBand+policy.strongMargin?"strong":"weak";
-      evDecision={pTie,pPlayer,evBanker,evPlayer,minEv:policy.minEv,activationEv:policy.activationEv,effectiveActivationEv,softBand:policy.softBand,confidenceBand:policy.confidenceBand,effectiveConfidenceBand:effectiveBand,entryEvMargin:policy.entryEvMargin,entryDistanceMargin:policy.entryDistanceMargin,volumeGuardActive:guard.active,entryTier,stakeMultiplier:entryTier==="weak"?.5:entryTier==="strong"?1:0,policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
+      evDecision={pTie,pPlayer,evBanker,evPlayer,minEv:policy.minEv,activationEv:policy.activationEv,effectiveActivationEv,softBand:policy.softBand,confidenceBand:policy.confidenceBand,effectiveConfidenceBand:effectiveBand,volumeGuardActive:guard.active,entryTier,stakeMultiplier:entryTier==="weak"?.5:entryTier==="strong"?1:0,policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
         finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="Skip"?0:softConfidence(edge,{...policy,activationEv:effectiveActivationEv})};
       mode="final56";
     }
@@ -287,11 +281,11 @@ function applyFinalPrediction(seq,corePrediction){
   const direction=evDecision?.direction||corePrediction.direction,finalPP=1-finalPB;
   const confidence=evDecision?.confidence??corePrediction.confidence??0;
   return {...corePrediction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),confidence,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
-    activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,entry_ev_margin:evDecision?.entryEvMargin??0,entry_distance_margin:evDecision?.entryDistanceMargin??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
+    activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
     regime:mode==="final56"?(direction==="Skip"?"EV 觀望":direction!==corePrediction.direction?"Final XGB換邊":"Final XGB裁決"):corePrediction.regime,
     finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,clippedPB,smoothedPB,smoothingAlpha,smoothingStrength,smoothingProfile,finalPB,bounds,
       p_tie:evDecision?.pTie??null,p_player:evDecision?.pPlayer??null,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
-      activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,entry_ev_margin:evDecision?.entryEvMargin??0,entry_distance_margin:evDecision?.entryDistanceMargin??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",
+      activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",
       coreDirection:corePrediction.direction,finalDirection:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),flipped:direction!==corePrediction.direction,
       original7,physics,physicsForecast,physicsIntegrity:physicsIntegrityReport,dataQuality:dataQuality(seq),extended,error}};
 }
@@ -319,7 +313,7 @@ function registerPrediction(seq,prediction){
     raw_p_b:Number.isFinite(+r.rawPB)?+r.rawPB:null,clipped_p_b:Number.isFinite(+r.clippedPB)?+r.clippedPB:null,smoothed_p_b:Number.isFinite(+r.smoothedPB)?+r.smoothedPB:null,
     smoothing_alpha:Number.isFinite(+r.smoothingAlpha)?+r.smoothingAlpha:1,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,smoothing_profile:r.smoothingProfile||"off",final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
     probability_bounds:r.bounds?[r.bounds.low,r.bounds.high]:null,min_ev:Number.isFinite(+r.min_ev)?+r.min_ev:null,
-    activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,effective_activation_ev:Number.isFinite(+r.effective_activation_ev)?+r.effective_activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,confidence_band:Number.isFinite(+r.confidence_band)?+r.confidence_band:0,effective_confidence_band:Number.isFinite(+r.effective_confidence_band)?+r.effective_confidence_band:0,entry_ev_margin:Number.isFinite(+r.entry_ev_margin)?+r.entry_ev_margin:0,entry_distance_margin:Number.isFinite(+r.entry_distance_margin)?+r.entry_distance_margin:0,volume_guard_active:r.volume_guard_active===true,entry_tier:r.entry_tier||"core",stake_multiplier:Number.isFinite(+r.stake_multiplier)?+r.stake_multiplier:1,decision_policy_enabled:r.decision_policy_enabled===true,decision_policy_profile:r.decision_policy_profile||"hard_ev",
+    activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,effective_activation_ev:Number.isFinite(+r.effective_activation_ev)?+r.effective_activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,confidence_band:Number.isFinite(+r.confidence_band)?+r.confidence_band:0,effective_confidence_band:Number.isFinite(+r.effective_confidence_band)?+r.effective_confidence_band:0,volume_guard_active:r.volume_guard_active===true,entry_tier:r.entry_tier||"core",stake_multiplier:Number.isFinite(+r.stake_multiplier)?+r.stake_multiplier:1,decision_policy_enabled:r.decision_policy_enabled===true,decision_policy_profile:r.decision_policy_profile||"hard_ev",
     predicted_direction:r.finalDirection||prediction.direction||"",physics_integrity:r.physicsIntegrity||null};
   try{localStorage.setItem(PENDING_KEY,JSON.stringify(pending));}catch(_){}
 }
