@@ -64,7 +64,8 @@ require("./final_probability_runtime.js");
   const cardExpectation=4*forecast.nextCardCountProbabilities["4_cards"]+5*forecast.nextCardCountProbabilities["5_cards"]+6*forecast.nextCardCountProbabilities["6_cards"];
   if(Math.abs(cardExpectation-forecast.expectedNextCardCount)>1e-9)throw new Error("incorrect next-hand card expectation");
   if(!r.physicsIntegrity||typeof r.physicsIntegrity.valid!=="boolean")throw new Error("missing physics integrity report");
-  if(!Array.isArray(r.execution_order)||r.execution_order[0]!=="particle_physics"||r.execution_order.indexOf("frozen_core")<1)throw new Error("Physics was not executed before Frozen Core");
+  const firstPhysicsStep=useGeneratedBundle?"particle_physics":"legacy_physics";
+  if(!Array.isArray(r.execution_order)||r.execution_order[0]!==firstPhysicsStep||r.execution_order.indexOf("frozen_core")<1)throw new Error("Physics was not executed before Frozen Core");
   if(useGeneratedBundle){
     const expectedOrder=["particle_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"];
     if(JSON.stringify(r.execution_order)!==JSON.stringify(expectedOrder))throw new Error("Physical EV first execution order mismatch");
