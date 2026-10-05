@@ -145,6 +145,19 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertTrue(np.allclose(band,[.028,.020,.011,.0212]))
         self.assertTrue(np.allclose(strong,[.007,.005,.003,.003]))
 
+    def test_entry_quality_buffers_create_a_hard_no_trade_zone(self):
+        policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
+        ev,distance=final.entry_quality_arrays(np.asarray([30,45,55]),np.asarray([.5,.5,.5]),policy)
+        self.assertTrue(np.allclose(ev,[.002,.0015,.0005]))
+        self.assertTrue(np.allclose(distance,[.003,.002,.0005]))
+        rounds=np.asarray([30,30]); probabilities=np.asarray([.533,.536]); actual=np.asarray([1,1])
+        _,wagered=final.decision_returns(probabilities,actual,rounds,{"early":.038,"middle":.024,"late":.018},np.asarray([.5,.5]),policy_enabled=True,policy_config=policy)
+        self.assertFalse(wagered[0]);self.assertTrue(wagered[1])
+
+    def test_high_physics_noise_narrows_probability_clip(self):
+        self.assertEqual(final.dynamic_probability_bounds(45,.90),(.43,.57))
+        self.assertEqual(final.dynamic_probability_bounds(30,.90),(.46,.54))
+
     def test_volume_guard_relaxes_only_after_prior_entry_density_is_too_low(self):
         policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
         probabilities=np.asarray([.525]*8+[.532],dtype=np.float64)
