@@ -835,7 +835,10 @@ def recalibrate_noise_feature(
 def legacy_feature_matrix(x: np.ndarray) -> np.ndarray:
     """Recreate the pre-upgrade integrity-only noise feature for release comparison."""
     legacy=np.asarray(x,dtype=np.float32).copy(); physics=legacy[:,8:56]
-    legacy[:,-1]=np.abs(np.sum(physics[:,0:3],axis=1)-1.0)+np.abs(np.sum(physics[:,39:43],axis=1)-1.0)
+    # The former second term measured suit-ratio normalisation. Slots 39:43
+    # now carry Physical EV, so only retain the original card-count integrity
+    # component instead of treating EV values as probabilities.
+    legacy[:,-1]=np.abs(np.sum(physics[:,0:3],axis=1)-1.0)
     return legacy
 
 
