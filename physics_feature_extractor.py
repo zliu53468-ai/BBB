@@ -27,6 +27,8 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 
+from particle_shoe_filter import fuse_particle_physics
+
 DECKS = 8
 TOTAL_CARDS = 52 * DECKS
 RANKS = tuple(range(1, 14))
@@ -471,15 +473,23 @@ class PhysicsFeatureExtractor:
                        "output_calibration":{"slope":self.output_slope.tolist(),"intercept":self.output_intercept.tolist()},
                        "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
                        "feature_names":list(PHYSICS_FEATURE_NAMES),
-                       "semantic_note":"conditional expectations; not unseen-card reconstruction"}
+                       "particle_filter":{"enabled":True,"input":"B/P/T only","rank_particles":64,"likelihood_draws":4,"forecast_draws":2,
+                                          "models_card_count_4_5_6":True,"exact_unseen_card_reconstruction":False},
+                       "semantic_note":"MLP conditional expectations fused with a B/P/T-only particle posterior; not exact unseen-card reconstruction"}
         return metrics
 
-    def predict_features(self,history_path: str | Sequence[str]) -> np.ndarray:
+    def predict_features_with_diagnostics(self,history_path: str | Sequence[str]) -> tuple[np.ndarray,dict[str,float]]:
+        """MLP 48D + B/P/T-only particle shoe posterior, with dimensions unchanged."""
         if not self.is_fitted: raise RuntimeError("physics model not fitted")
         x=history_to_vector(history_path).reshape(1,-1)
         raw_scaled=self.model.predict(self.scaler.transform(x))
         raw=apply_output_affine(self._decode_scaled(raw_scaled)[0],self.output_slope,self.output_intercept)
-        return sanitize_physics_prediction(raw,self.calibration_temperatures)
+        mlp=sanitize_physics_prediction(raw,self.calibration_temperatures)
+        fused,diagnostics=fuse_particle_physics(mlp,history_path)
+        return sanitize_physics_prediction(fused,self.calibration_temperatures),diagnostics
+
+    def predict_features(self,history_path: str | Sequence[str]) -> np.ndarray:
+        return self.predict_features_with_diagnostics(history_path)[0]
 
     def save(self,path: str | Path) -> None:
         if not self.is_fitted: raise RuntimeError("cannot save unfitted model")
