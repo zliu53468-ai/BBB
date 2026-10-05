@@ -36,7 +36,7 @@ from physics_feature_extractor import (
     PHYSICS_DIM,
     PHYSICS_FEATURE_NAMES,
     RANK_LABELS,
-    SUITS,
+    PHYSICAL_EV_NAMES,
     PhysicsFeatureExtractor,
     apply_uncertainty_calibration,
 )
@@ -132,9 +132,9 @@ assert len(FEATURE_NAMES) == FEATURE_DIM
 NEXT_CARD_COUNT_LABELS = ("4", "5", "6")
 _NEXT_CARD_COUNT_NAMES = tuple(f"cards_p{label}" for label in NEXT_CARD_COUNT_LABELS)
 _NEXT_RANK_CONSUMPTION_NAMES = tuple(f"next_rank_expected_{label}" for label in RANK_LABELS)
-_NEXT_SUIT_RATIO_NAMES = tuple(f"next_suit_ratio_{suit}" for suit in SUITS)
+_PHYSICAL_EV_NAMES = tuple(PHYSICAL_EV_NAMES)
 _PHYSICS_INDEX = {name: index for index, name in enumerate(PHYSICS_FEATURE_NAMES)}
-assert all(name in _PHYSICS_INDEX for name in _NEXT_CARD_COUNT_NAMES + _NEXT_RANK_CONSUMPTION_NAMES + _NEXT_SUIT_RATIO_NAMES)
+assert all(name in _PHYSICS_INDEX for name in _NEXT_CARD_COUNT_NAMES + _NEXT_RANK_CONSUMPTION_NAMES + _PHYSICAL_EV_NAMES)
 
 
 def load_training_records(path: Path) -> list[dict[str, Any]]:
@@ -180,8 +180,8 @@ def unpack_physics_forecast(physics_48d: Sequence[float]) -> dict[str, Any]:
     """Decode next-hand physical estimates embedded in the existing 48D vector.
 
     This is a pure view of the supplied feature block: it does not invoke, train,
-    or alter any simulation/MCMC component.  Suit ratios are also converted to
-    expected cards by multiplying them by the decoded next-hand card expectation.
+    or alter any simulation/MCMC component. Physical EV fields are generated
+    by the pre-Core particle/physics layer and remain explicit in the 48D block.
     """
     physics = _physics_vector(physics_48d)
     value = lambda name: float(physics[_PHYSICS_INDEX[name]])
@@ -198,20 +198,12 @@ def unpack_physics_forecast(physics_48d: Sequence[float]) -> dict[str, Any]:
         label: value(f"next_rank_expected_{label}")
         for label in RANK_LABELS
     }
-    suit_consumption_ratios = {
-        suit: value(f"next_suit_ratio_{suit}")
-        for suit in SUITS
-    }
-    suit_expected_consumption = {
-        suit: expected_next_card_count * ratio
-        for suit, ratio in suit_consumption_ratios.items()
-    }
+    physical_ev = {name: value(name) for name in _PHYSICAL_EV_NAMES}
     return {
         "next_card_count_probabilities": card_count_probabilities,
         "expected_next_card_count": float(expected_next_card_count),
         "next_rank_expected_consumption": rank_expected_consumption,
-        "next_suit_consumption_ratios": suit_consumption_ratios,
-        "next_suit_expected_consumption": suit_expected_consumption,
+        "physical_ev": physical_ev,
     }
 
 
@@ -220,12 +212,13 @@ def physics_integrity_report(physics_48d: Sequence[float]) -> dict[str, Any]:
 
     The bridge deliberately does not alter or simulate the physics block.  This
     report is diagnostic metadata for snapshots and model validation: card-count
-    and suit distributions should normalise to one, while the A-K consumption
-    total should be close to the decoded expected next-hand card count.
+    distribution should normalise to one, while the A-K consumption total
+    should be close to the decoded expected next-hand card count and Physical EV
+    fields must remain inside their defined ranges.
     """
     forecast = unpack_physics_forecast(physics_48d)
     card_probability_sum = float(sum(forecast["next_card_count_probabilities"].values()))
-    suit_ratio_sum = float(sum(forecast["next_suit_consumption_ratios"].values()))
+    physical_ev = forecast["physical_ev"]
     expected_card_count = float(forecast["expected_next_card_count"])
     rank_expected_total = float(sum(forecast["next_rank_expected_consumption"].values()))
     rank_total_gap = abs(rank_expected_total - expected_card_count)
@@ -235,8 +228,13 @@ def physics_integrity_report(physics_48d: Sequence[float]) -> dict[str, Any]:
     )
     checks = {
         "card_count_distribution": abs(card_probability_sum - 1.0) <= PHYSICS_PROBABILITY_TOLERANCE,
-        "suit_ratio_distribution": abs(suit_ratio_sum - 1.0) <= PHYSICS_PROBABILITY_TOLERANCE,
         "rank_consumption_total": rank_total_gap <= rank_tolerance,
+        "physical_ev_ranges": (
+            -1.0 <= physical_ev["physical_ev_banker"] <= .95
+            and -1.0 <= physical_ev["physical_ev_player"] <= 1.0
+            and -2.0 <= physical_ev["physical_ev_gap"] <= 2.0
+            and 0.0 <= physical_ev["particle_uncertainty"] <= 1.0
+        ),
     }
     return {
         "valid": bool(all(checks.values())),
@@ -246,7 +244,7 @@ def physics_integrity_report(physics_48d: Sequence[float]) -> dict[str, Any]:
         "rank_expected_consumption_total": rank_expected_total,
         "rank_expected_total_gap": rank_total_gap,
         "rank_expected_total_tolerance": rank_tolerance,
-        "suit_ratio_sum": suit_ratio_sum,
+        "physical_ev": physical_ev,
     }
 
 
@@ -273,7 +271,7 @@ def physics_noise_score(
         + 0.075 * entropy(physics[13:23])
         + 0.15 * entropy(physics[23:26])
         + 0.25 * entropy(physics[26:39])
-        + 0.15 * entropy(physics[39:43])
+        + 0.15 * _clip(physics[42])
         + 0.075 * (1.0 - winner_gap)
         + 0.125 * density_ambiguity
     )
@@ -1617,9 +1615,10 @@ def export_browser_bundle(
             "target": "actual_b_binary",
             "label_mapping": {"P": 0, "B": 1},
             "residual": False,
-            "noise_score_version": 4,
-            "particle_physics_version": 1,
+            "noise_score_version": 5,
+            "particle_physics_version": 2,
             "particle_physics_input": "B/P/T only",
+            "execution_order": ["particle_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"],
             "physics_noise_calibration": dict(physics_noise_calibration or {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]}),
             "skip_guardrail": {"preferred_max_increase": PREFERRED_SKIP_RATE_INCREASE, "hard_max_increase": MAX_SKIP_RATE_INCREASE},
             "feature_snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
