@@ -17,6 +17,7 @@ const finalBundle={
   base_margin:Math.log(.90/.10),
   feature_names:Array.from({length:57},(_,i)=>"f"+i),
   probability_bounds:[.40,.60],
+  training:{particle_physics_version:1},
   trees:[],
 };
 const useGeneratedBundle=process.env.BGS_USE_GENERATED_MODEL==="1";
