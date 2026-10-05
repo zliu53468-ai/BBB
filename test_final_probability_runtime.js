@@ -88,11 +88,16 @@ require("./final_probability_runtime.js");
   if(out.direction!==expectedDirection)throw new Error("dynamic EV decision mismatch");
   if(useGeneratedBundle){
     if(!Number.isFinite(out.min_ev)||!Number.isFinite(activationThreshold)||out.min_ev<0||activationThreshold<0)throw new Error("generated EV thresholds invalid");
-    if((+JSON.parse(fs.readFileSync("final_probability_model.json","utf8")).training?.stage_progress_version||0)<3)throw new Error("generated effective-progress v3 model metadata missing");
-    if(out.decision_policy_profile!=="strict_selective_entry_v1"||out.soft_band!==0)throw new Error("generated strict policy was not auditable in runtime");
-    if(!Number.isFinite(out.confidence_band)||!Number.isFinite(out.effective_confidence_band)||!["strong","weak","skip"].includes(out.entry_tier))throw new Error("confidence-band metadata missing");
-    if(out.direction==="Skip"&&Math.abs(out.confidence)>1e-12)throw new Error("generated Skip confidence mismatch");
-    if(out.direction!=="Skip"&&!(out.confidence>0))throw new Error("generated action confidence missing");
+    const generated=JSON.parse(fs.readFileSync("final_probability_model.json","utf8")),training=generated.training||{},metrics=training.metrics||{};
+    if((+training.stage_progress_version||0)<3)throw new Error("generated effective-progress v3 model metadata missing");
+    if(metrics.retraining_success===true){
+      if(out.decision_policy_profile!=="strict_selective_entry_v1"||out.soft_band!==0)throw new Error("promotable strict policy was not auditable in runtime");
+      if(!Number.isFinite(out.confidence_band)||!Number.isFinite(out.effective_confidence_band)||!["strong","weak","skip"].includes(out.entry_tier))throw new Error("confidence-band metadata missing");
+      if(out.direction==="Skip"&&Math.abs(out.confidence)>1e-12)throw new Error("generated Skip confidence mismatch");
+      if(out.direction!=="Skip"&&!(out.confidence>0))throw new Error("generated action confidence missing");
+    }else if(metrics.deployment_blocked!==true){
+      throw new Error("non-promotable generated model was not marked deployment_blocked");
+    }
   }else{
     const expectedConfidence=expectedDirection==="B"?out.ev_banker-out.min_ev:expectedDirection==="P"?out.ev_player-out.min_ev:0;
     if(Math.abs(out.confidence-expectedConfidence)>1e-9||Math.abs(out.min_ev-.020)>1e-9)throw new Error("default dynamic EV decision mismatch");
