@@ -335,8 +335,11 @@ def physics_uncertainty_proxy(physics_48d: Sequence[float], round_index: float =
               .15*entropy(physics[23:26])+.25*entropy(physics[26:39])+.15*_clip(physics[42])+
               .075*(1.0-winner_gap)+.125*density_ambiguity)
     compressed=.50+.35*math.tanh((raw-.75)/.20)
+    # Particle posterior uncertainty is explicit information, not merely another
+    # entropy proxy. Give it direct weight before applying the stage influence.
+    base_proxy=_clip(.75*compressed+.25*_clip(physics[42]))
     influence=.35 if round_index<=40 else .65 if round_index<=50 else 1.0
-    return _clip(.50+(compressed-.50)*influence)
+    return _clip(.50+(base_proxy-.50)*influence)
 
 
 def fit_uncertainty_calibration(pred: np.ndarray, truth: np.ndarray, rounds: Sequence[float]) -> dict[str,Any]:
