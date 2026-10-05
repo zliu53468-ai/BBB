@@ -4,7 +4,7 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V8_PHYSICAL_EV_FIRST";
+const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V9_RELATIVE_PROGRESS";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -25,6 +25,7 @@ const PHYSICS_INDEX=Object.fromEntries(PHYSICS_NAMES.map((name,index)=>[name,ind
 const LEGACY_PHYSICS_INDEX=Object.fromEntries(LEGACY_PHYSICS_NAMES.map((name,index)=>[name,index]));
 const EXTENDED_NAMES=["core_p_b_external","shoe_progress_weight",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...PHYSICS_NAMES,"physics_noise_score"];
 const HISTORY_WINDOW=64,HISTORY_INPUT_DIM=213,PHYSICS_DIM=48,FEATURE_DIM=57;
+const ESTIMATED_TOTAL_HANDS_MIN=50,ESTIMATED_TOTAL_HANDS_MAX=70,ESTIMATED_PLAYABLE_CARDS=416-60;
 const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.78;
 const SNAPSHOT_SCHEMA_VERSION=7;
 const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
@@ -48,10 +49,10 @@ function sxMarkovPSame(seq,window=24,prior=1){
 function currentStage(seq){const a=bp(seq);if(!a.length)return 0;const side=a.at(-1);let n=1;for(let i=a.length-2;i>=0&&a[i]===side;i--)n++;return n;}
 function currentDepth(seq){const t=transitionSequence(seq);if(!t.length)return 0;const token=t.at(-1);let n=1;for(let i=t.length-2;i>=0&&t[i]===token;i--)n++;return n;}
 function getEstimatedTotalHands(){
-  try{const c=+(window.__BGS_FINAL_CONFIG__?.estimatedTotalHands||0);if(c>=40&&c<=90)return c;const s=+localStorage.getItem(CUT_KEY);if(s>=40&&s<=90)return s;}catch(_){}
+  try{const c=+(window.__BGS_FINAL_CONFIG__?.estimatedTotalHands||0);if(c>=ESTIMATED_TOTAL_HANDS_MIN&&c<=ESTIMATED_TOTAL_HANDS_MAX)return c;const s=+localStorage.getItem(CUT_KEY);if(s>=ESTIMATED_TOTAL_HANDS_MIN&&s<=ESTIMATED_TOTAL_HANDS_MAX)return s;}catch(_){}
   return 60;
 }
-function setEstimatedTotalHands(v){const n=Math.round(+v||0);if(n<40||n>90)throw new Error("estimatedTotalHands must be 40..90");try{localStorage.setItem(CUT_KEY,String(n));}catch(_){}return n;}
+function setEstimatedTotalHands(v){const n=Math.round(+v||0);if(n<ESTIMATED_TOTAL_HANDS_MIN||n>ESTIMATED_TOTAL_HANDS_MAX)throw new Error("estimatedTotalHands must be 50..70");try{localStorage.setItem(CUT_KEY,String(n));}catch(_){}return n;}
 function buildOriginal7(seq,corePrediction){
   const corePB=clip(+corePrediction?.probabilities?.B||.5),roundIndex=Math.max(1,Math.min(70,seq.length+1));
   const estimatedTotalHands=getEstimatedTotalHands(),remainingRatio=clip((estimatedTotalHands-(roundIndex-1))/Math.max(1,estimatedTotalHands));
@@ -84,6 +85,7 @@ function physicsBundleUsesPhysicalEv(){return Array.isArray(physicsBundle?.featu
 function finalModelUsesPhysicalEv(){return (+final56Bundle?.training?.particle_physics_version||0)>=2;}
 function adaptiveStageEnabled(){return (+final56Bundle?.training?.stage_progress_version||0)>=2;}
 function stageProgressV3Enabled(){return (+final56Bundle?.training?.stage_progress_version||0)>=3;}
+function stageProgressV4Enabled(){return (+final56Bundle?.training?.stage_progress_version||0)>=4;}
 function modelSemanticsCompatible(){return finalModelUsesPhysicalEv()===physicsBundleUsesPhysicalEv();}
 function sanitizePhysics(raw,temperatures={},physicalEvSemantics=physicsBundleUsesPhysicalEv()){
   if(raw.length!==PHYSICS_DIM)throw new Error("physics dim mismatch");
@@ -151,32 +153,36 @@ function estimateParticlePhysics(seq){
   return {physics:out,diagnostics:{particle_count:n,history_rounds:history.length,expected_consumed_cards:consumedMean,consumed_cards_std:consumedStd,recent_ess_ratio:recent,composition_spread:spread,posterior_uncertainty:uncertainty,physical_ev_banker:physicalEvB,physical_ev_player:physicalEvP,physical_ev_gap:physicalEvB-physicalEvP}};
 }
 function interpAnchors(value,anchors){if(value<=anchors[0][0])return anchors[0][1];for(let i=1;i<anchors.length;i++){if(value<=anchors[i][0]){const [x0,y0]=anchors[i-1],[x1,y1]=anchors[i],t=(value-x0)/Math.max(1e-12,x1-x0);return y0+t*(y1-y0);}}return anchors.at(-1)[1];}
-function effectiveParticleProgress(rounds,d){
-  const roundProgress=clip(rounds/70),cardProgress=clip((+d?.expected_consumed_cards||0)/(416-60)),uncertainty=clip(+d?.posterior_uncertainty||1);
-  const roundWeight=.55+.25*uncertainty;return clip(roundWeight*roundProgress+(1-roundWeight)*cardProgress);
+function effectiveParticleProgress(rounds,d,estimatedTotalHands=60){
+  const uncertainty=clip(+d?.posterior_uncertainty||1);
+  if(!stageProgressV4Enabled()){
+    const roundProgress=clip(rounds/70),cardProgress=clip((+d?.expected_consumed_cards||0)/ESTIMATED_PLAYABLE_CARDS),roundWeight=.55+.25*uncertainty;
+    return clip(roundWeight*roundProgress+(1-roundWeight)*cardProgress);
+  }
+  const totalHands=clip(estimatedTotalHands,ESTIMATED_TOTAL_HANDS_MIN,ESTIMATED_TOTAL_HANDS_MAX),roundProgress=clip(rounds/totalHands),cardProgress=clip((+d?.expected_consumed_cards||0)/ESTIMATED_PLAYABLE_CARDS),roundWeight=.45+.30*uncertainty;
+  return clip(roundWeight*roundProgress+(1-roundWeight)*cardProgress);
 }
-function particleFusionWeight(rounds,d){
+function particleFusionWeight(rounds,d,estimatedTotalHands=60){
   if(!adaptiveStageEnabled()){const base=rounds<12?.18:rounds<20?.25:rounds<=40?.34:rounds<=50?.40:.46,reliability=.75+.25*clip(d?.recent_ess_ratio??1);return clip(base*reliability,.10,.46);}
-  const progressRound=70*effectiveParticleProgress(rounds,d);
-  const base=interpAnchors(progressRound,[[0,.18],[10,.20],[20,.27],[30,.33],[40,.39],[50,.45],[55,.48],[60,.52],[65,.55],[70,.57]]);
+  const progress=effectiveParticleProgress(rounds,d,estimatedTotalHands),base=stageProgressV4Enabled()?interpAnchors(progress,[[0,.18],[.15,.22],[.30,.29],[.45,.36],[.60,.43],[.70,.48],[.80,.52],[.90,.55],[1,.58]]):interpAnchors(70*progress,[[0,.18],[10,.20],[20,.27],[30,.33],[40,.39],[50,.45],[55,.48],[60,.52],[65,.55],[70,.57]]);
   const ess=clip(d?.recent_ess_ratio??1),uncertainty=clip(d?.posterior_uncertainty??1),reliability=(.70+.30*ess)*(1-.20*uncertainty);
   return clip(base*reliability,.10,.58);
 }
-function physicalEvReliability(rounds,d){
+function physicalEvReliability(rounds,d,estimatedTotalHands=60){
   if(!adaptiveStageEnabled())return 1;
-  const progressRound=70*effectiveParticleProgress(rounds,d),stage=interpAnchors(progressRound,[[0,.32],[10,.36],[20,.45],[30,.53],[40,.61],[50,.70],[55,.75],[60,.80],[65,.84],[70,.87]]);
+  const progress=effectiveParticleProgress(rounds,d,estimatedTotalHands),stage=stageProgressV4Enabled()?interpAnchors(progress,[[0,.30],[.15,.36],[.30,.45],[.45,.56],[.60,.68],[.70,.75],[.80,.81],[.90,.85],[1,.88]]):interpAnchors(70*progress,[[0,.32],[10,.36],[20,.45],[30,.53],[40,.61],[50,.70],[55,.75],[60,.80],[65,.84],[70,.87]]);
   const ess=clip(d?.recent_ess_ratio??1),uncertainty=clip(d?.posterior_uncertainty??1);
   return clip(stage*(.72+.28*ess)*(1-.30*uncertainty),.20,.90);
 }
 function fuseParticlePhysics(mlp,seq){
-  const estimate=estimateParticlePhysics(seq),p=estimate.physics.slice(),w=particleFusionWeight(seq.length,estimate.diagnostics),evReliability=physicalEvReliability(seq.length,estimate.diagnostics),out=mlp.slice();
+  const estimate=estimateParticlePhysics(seq),p=estimate.physics.slice(),estimatedTotalHands=getEstimatedTotalHands(),w=particleFusionWeight(seq.length,estimate.diagnostics,estimatedTotalHands),evReliability=physicalEvReliability(seq.length,estimate.diagnostics,estimatedTotalHands),out=mlp.slice();
   const rawEv=p.slice(39,42);if(adaptiveStageEnabled())for(let i=39;i<42;i++)p[i]*=evReliability;
   for(const [a,b] of [[0,3],[3,13],[13,23],[23,26]]){const mixed=mlp.slice(a,b).map((v,i)=>(1-w)*v+w*p[a+i]),norm=normalise(mixed,Array(b-a).fill(1/(b-a)));for(let i=a;i<b;i++)out[i]=norm[i-a];}
   for(let i=26;i<39;i++)out[i]=(1-w)*mlp[i]+w*p[i];
   for(let i=39;i<43;i++)out[i]=p[i];
   for(let i=43;i<48;i++)out[i]=(1-w)*mlp[i]+w*p[i];
   const expected=4*out[0]+5*out[1]+6*out[2],rankTotal=out.slice(26,39).reduce((a,b)=>a+b,0);if(rankTotal>1e-12)for(let i=26;i<39;i++)out[i]*=expected/rankTotal;
-  estimate.diagnostics.effective_progress=effectiveParticleProgress(seq.length,estimate.diagnostics);estimate.diagnostics.effective_progress_round=70*estimate.diagnostics.effective_progress;
+  const effectiveProgress=effectiveParticleProgress(seq.length,estimate.diagnostics,estimatedTotalHands);estimate.diagnostics.estimated_total_hands=estimatedTotalHands;estimate.diagnostics.round_progress=clip(seq.length/estimatedTotalHands);estimate.diagnostics.card_progress=clip((+estimate.diagnostics.expected_consumed_cards||0)/ESTIMATED_PLAYABLE_CARDS);estimate.diagnostics.effective_progress=effectiveProgress;estimate.diagnostics.effective_progress_round=70*effectiveProgress;
   estimate.diagnostics.fusion_weight=w;estimate.diagnostics.physical_ev_reliability=evReliability;estimate.diagnostics.raw_physical_ev_banker=rawEv[0];estimate.diagnostics.raw_physical_ev_player=rawEv[1];
   estimate.diagnostics.physical_ev_banker=out[39];estimate.diagnostics.physical_ev_player=out[40];estimate.diagnostics.physical_ev_gap=out[41];estimate.diagnostics.expected_next_card_count=expected;lastParticleDiagnostics=estimate.diagnostics;
   return sanitizePhysics(out,{},true);
@@ -239,7 +245,7 @@ function calibrateNoise(value,calibration){
   let lo=0,hi=xs.length-1;while(hi-lo>1){const mid=(lo+hi)>>1;if(v<xs[mid])hi=mid;else lo=mid;}
   const t=(v-xs[lo])/Math.max(1e-12,xs[hi]-xs[lo]);return clip(ys[lo]+t*(ys[hi]-ys[lo]));
 }
-function physicsNoiseScore(physics,roundIndex=70){
+function physicsNoiseScore(physics,roundIndex=70,effectiveProgress=null){
   const version=final56Bundle?.training?.noise_score_version||1;
   if(version<2){const r=physicsIntegrity(physics);return r?Math.abs(r.cardCountProbabilitySum-1):1;}
   const winner=physics.slice(23,26).sort((a,b)=>b-a),gap=(winner[0]||0)-(winner[1]||0);
@@ -248,16 +254,17 @@ function physicsNoiseScore(physics,roundIndex=70){
   const uncertaintyTerm=version>=5?clip(physics[42]):normalisedEntropy(physics.slice(39,43));
   const raw=clip(.10*normalisedEntropy(physics.slice(0,3))+.075*normalisedEntropy(physics.slice(3,13))+.075*normalisedEntropy(physics.slice(13,23))+.15*normalisedEntropy(physics.slice(23,26))+.25*normalisedEntropy(physics.slice(26,39))+.15*uncertaintyTerm+.075*(1-gap)+.125*densityAmbiguity);
   const compressed=.50+.35*Math.tanh((raw-.75)/.20),uncertainty=clip(physics[42]),baseProxy=version>=5?clip(Math.max(.70*compressed+.30*uncertainty,.50+.40*uncertainty*uncertainty)):compressed;
-  const influence=adaptiveStageEnabled()?interpAnchors(roundIndex,[[1,.35],[40,.35],[50,.65],[70,1]]):(roundIndex<=40?.35:roundIndex<=50?.65:1);
+  const influence=stageProgressV4Enabled()&&Number.isFinite(+effectiveProgress)?interpAnchors(clip(+effectiveProgress),[[0,.35],[.35,.35],[.70,.65],[1,1]]):adaptiveStageEnabled()?interpAnchors(roundIndex,[[1,.35],[40,.35],[50,.65],[70,1]]):(roundIndex<=40?.35:roundIndex<=50?.65:1);
   const proxy=clip(.50+(baseProxy-.50)*influence);
   if(version<4)return proxy;
   const calibration=final56Bundle?.training?.physics_noise_calibration||physicsBundle?.uncertainty_calibration||{};
   return calibrateNoise(proxy,calibration);
 }
 function buildExtended(corePB,o7,physics){
-  const original=original7Vector(o7),roundProgress=clip(Number(original[1])/70),uncertainty=clip(physics[42]),cardProgress=clip((+physics[43]||0)/(416-60));
-  const effectiveProgress=adaptiveStageEnabled()?clip((.55+.25*uncertainty)*roundProgress+(.45-.25*uncertainty)*cardProgress):roundProgress;
-  const progress=effectiveProgress**3,noise=physicsNoiseScore(physics,original[1]);
+  const original=original7Vector(o7),roundProgress=clip(Number(original[1])/70),uncertainty=clip(physics[42]),cardProgress=clip((+physics[43]||0)/ESTIMATED_PLAYABLE_CARDS);
+  const v4Diagnostics=lastParticleDiagnostics?.enabled===true?lastParticleDiagnostics:null;
+  const effectiveProgress=stageProgressV4Enabled()&&v4Diagnostics?effectiveParticleProgress(original[1],v4Diagnostics,original[2]):adaptiveStageEnabled()?clip((.55+.25*uncertainty)*roundProgress+(.45-.25*uncertainty)*cardProgress):roundProgress;
+  const progress=effectiveProgress**3,noise=physicsNoiseScore(physics,original[1],effectiveProgress);
   const out=[corePB,progress,...original.slice(1),...physics,noise];if(out.length!==FEATURE_DIM)throw new Error("extended dim "+out.length);return out;
 }
 function unpackPhysicsForecast(physics){
@@ -295,6 +302,11 @@ function applyProbabilityBounds(rawPB,roundIndex,noiseScore,progressWeight=null)
     const pair=roundIndex<=40?EARLY_BOUNDS:(roundIndex>50&&noiseScore<=PHYSICS_NOISE_LOW_THRESHOLD?LATE_CLEAN_BOUNDS:DEFAULT_BOUNDS);
     return {value:clip(rawPB,pair[0],pair[1]),low:pair[0],high:pair[1]};
   }
+  if(stageProgressV4Enabled()){
+    const progress=Math.cbrt(clip(+progressWeight||0)),middle=clip((progress-.35)/.35),late=clip((progress-.70)/.30),clean=clip((PHYSICS_NOISE_LOW_THRESHOLD-clip(noiseScore))/PHYSICS_NOISE_LOW_THRESHOLD);
+    const low=EARLY_BOUNDS[0]-.05*middle-.05*late*clean,high=EARLY_BOUNDS[1]+.05*middle+.05*late*clean;
+    return {value:clip(rawPB,low,high),low,high};
+  }
   const progressRound=effectiveProgressRound(roundIndex,progressWeight);
   let low=interpAnchors(progressRound,[[1,EARLY_BOUNDS[0]],[40,EARLY_BOUNDS[0]],[50,DEFAULT_BOUNDS[0]]]);
   let high=interpAnchors(progressRound,[[1,EARLY_BOUNDS[1]],[40,EARLY_BOUNDS[1]],[50,DEFAULT_BOUNDS[1]]]);
@@ -309,6 +321,10 @@ function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null){
     const stage=roundIndex<=40?"early":roundIndex>50?"late":"middle",range=stage==="early"?[.35,.45]:stage==="middle"?[.50,.60]:[.65,.75];
     const base=Number.isFinite(+config[stage+"_alpha"])?+config[stage+"_alpha"]:(range[0]+range[1])/2,gain=Math.max(0,Number.isFinite(+config.noise_gain)?+config.noise_gain:.05);
     return clip(base+gain*(.5-clip(+noiseScore||0)),range[0],range[1]);
+  }
+  if(stageProgressV4Enabled()){
+    const progress=Math.cbrt(clip(+progressWeight||0)),base=interpAnchors(progress,[[0,.38],[.20,.41],[.35,.46],[.50,.53],[.65,.59],[.75,.63],[.85,.67],[.95,.70],[1,.72]]),noise=clip(noiseScore),adjustment=.03*Math.max(0,.5-noise)/.5-.05*Math.max(0,noise-.5)/.5;
+    return clip(base+adjustment,.35,.75);
   }
   const early=Number.isFinite(+config.early_alpha)?+config.early_alpha:.40,middle=Number.isFinite(+config.middle_alpha)?+config.middle_alpha:.55,late=Number.isFinite(+config.late_alpha)?+config.late_alpha:.70;
   const progressRound=stageProgressV3Enabled()?effectiveProgressRound(roundIndex,progressWeight):roundIndex;
@@ -525,7 +541,7 @@ function installUI(){
   if(b)b.addEventListener("click",()=>settlePending("B"));if(p)p.addEventListener("click",()=>settlePending("P"));if(t)t.addEventListener("click",()=>settlePending("T"));
   const end=document.getElementById("btnEnd");if(end)end.addEventListener("click",rotateShoeId);
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,applyFinalPrediction,predictPhysics,estimateParticlePhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,applyFinalPrediction,predictPhysics,estimateParticlePhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,effectiveParticleProgress,particleFusionWeight,physicalEvReliability,applyProbabilityBounds,dynamicEmaAlpha,
   registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 loadModels();installUI();
 })();

@@ -89,7 +89,7 @@ require("./final_probability_runtime.js");
   if(useGeneratedBundle){
     if(!Number.isFinite(out.min_ev)||!Number.isFinite(activationThreshold)||out.min_ev<0||activationThreshold<0)throw new Error("generated EV thresholds invalid");
     const generated=JSON.parse(fs.readFileSync("final_probability_model.json","utf8")),training=generated.training||{},metrics=training.metrics||{};
-    if((+training.stage_progress_version||0)<3)throw new Error("generated effective-progress v3 model metadata missing");
+    if((+training.stage_progress_version||0)<4)throw new Error("generated effective-progress v4 model metadata missing");
     if(metrics.retraining_success===true){
       if(out.decision_policy_profile!=="strict_selective_entry_v1"||out.soft_band!==0)throw new Error("promotable strict policy was not auditable in runtime");
       if(!Number.isFinite(out.confidence_band)||!Number.isFinite(out.effective_confidence_band)||!["strong","weak","skip"].includes(out.entry_tier))throw new Error("confidence-band metadata missing");
@@ -153,6 +153,23 @@ require("./final_probability_runtime.js");
     if(Math.abs(smoothOut.finalProbability.clippedPB-.45)>1e-9||Math.abs(smoothOut.finalProbability.smoothedPB-.51)>1e-9)throw new Error("post-Clip dynamic EMA failed");
     if(Math.abs(smoothOut.finalProbability.smoothingAlpha-.40)>1e-9||smoothOut.finalProbability.smoothingProfile!=="balanced")throw new Error("dynamic EMA alpha failed");
     delete finalBundle.smoothing;finalBundle.base_margin=Math.log(.90/.10);
+
+    // V4 uses relative hand progress plus actual Particle card consumption;
+    // these assertions are intentionally independent from Final EV/#43 policy.
+    finalBundle.training={particle_physics_version:1,stage_progress_version:4};
+    const lowCards={expected_consumed_cards:120,posterior_uncertainty:.30,recent_ess_ratio:1};
+    const highCards={...lowCards,expected_consumed_cards:260};
+    const p50=api.effectiveParticleProgress(40,highCards,50),p70=api.effectiveParticleProgress(40,highCards,70);
+    if(!(p50>=.70&&p70<.70))throw new Error("relative estimated-total-hands progress mismatch");
+    if(!(api.effectiveParticleProgress(50,highCards,60)>api.effectiveParticleProgress(50,lowCards,60)))throw new Error("card-consumption progress mismatch");
+    const uncertain={...lowCards,posterior_uncertainty:.95},certain={...lowCards,posterior_uncertainty:.05};
+    const round=50/60,card=120/(416-60);
+    const highU=api.effectiveParticleProgress(50,uncertain,60),lowU=api.effectiveParticleProgress(50,certain,60);
+    if(!(Math.abs(highU-round)<Math.abs(highU-card)&&Math.abs(lowU-card)<Math.abs(lowU-round)))throw new Error("uncertainty progress weighting mismatch");
+    const alpha49=api.dynamicEmaAlpha(50,.5,{},.49**3),alpha51=api.dynamicEmaAlpha(50,.5,{},.51**3);
+    if(Math.abs(alpha49-alpha51)>=.03)throw new Error("V4 EMA discontinuity");
+    const clip69=api.applyProbabilityBounds(.9,50,.1,.69**3),clip71=api.applyProbabilityBounds(.9,50,.1,.71**3);
+    if(Math.abs(clip69.high-clip71.high)>=.02)throw new Error("V4 clip discontinuity");
   }
 
   const tieHistory=[...history,"T"],tieCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(tieHistory),tiePrediction=api.applyFinalPrediction(tieHistory,tieCore);

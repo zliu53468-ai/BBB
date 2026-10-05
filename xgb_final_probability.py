@@ -59,7 +59,10 @@ ISOTONIC_MIN_ROWS = 1000
 MAX_SMOOTHING_BRIER_INCREASE = 0.0005
 MAX_MODEL_BRIER_REGRESSION = 0.0015
 MIN_PRIMARY_GAIN = 1e-6
-STAGE_PROGRESS_VERSION = 3
+STAGE_PROGRESS_VERSION = 4
+ESTIMATED_TOTAL_HANDS_MIN = 50.0
+ESTIMATED_TOTAL_HANDS_MAX = 70.0
+ESTIMATED_PLAYABLE_CARDS = 416.0 - 60.0  # Existing 8-deck / cut-card setting.
 EMA_ALPHA_RANGES = {"early": (0.35, 0.45), "middle": (0.50, 0.60), "late": (0.65, 0.75)}
 EMA_PROFILES: dict[str, dict[str, Any]] = {
     "off": {"method": "dynamic_post_clip_ema", "profile": "off", "enabled": False},
@@ -253,6 +256,7 @@ def physics_noise_score(
     physics_48d: Sequence[float],
     round_index: float = 70.0,
     calibration: Mapping[str, Any] | None = None,
+    effective_progress: float | None = None,
 ) -> float:
     """Compressed physics uncertainty, optionally calibrated to empirical 48D residuals."""
     physics = _physics_vector(physics_48d).astype(np.float64)
@@ -279,25 +283,39 @@ def physics_noise_score(
     compressed = 0.50 + 0.35 * math.tanh((raw - 0.75) / 0.20)
     uncertainty = _clip(physics[42])
     base_proxy = _clip(max(0.70 * compressed + 0.30 * uncertainty, 0.50 + 0.40 * uncertainty * uncertainty))
-    influence = float(np.interp(float(round_index), [1.0,40.0,50.0,70.0], [.35,.35,.65,1.0]))
+    if effective_progress is None:
+        influence = float(np.interp(float(round_index), [1.0,40.0,50.0,70.0], [.35,.35,.65,1.0]))
+    else:
+        influence = float(np.interp(_clip(float(effective_progress)), [0.0,.35,.70,1.0], [.35,.35,.65,1.0]))
     proxy = _clip(0.50 + (base_proxy - 0.50) * influence)
     return float(apply_uncertainty_calibration([proxy], calibration)[0])
 
 
-def effective_shoe_progress(round_index: float, physics_48d: Sequence[float]) -> float:
-    """Blend hand-count progress with inferred card consumption without adding dimensions."""
+def estimated_total_hands(value: float | None = None) -> float:
+    """Clamp the existing estimate to the supported 50–70 hand table range."""
+    return float(np.clip(60.0 if value is None or not math.isfinite(float(value)) else float(value),
+                         ESTIMATED_TOTAL_HANDS_MIN, ESTIMATED_TOTAL_HANDS_MAX))
+
+
+def effective_shoe_progress(
+    round_index: float,
+    physics_48d: Sequence[float],
+    estimated_total_hands_value: float | None = None,
+) -> float:
+    """V4 relative-progress blend; exactly mirrors the browser runtime formula."""
     physics=_physics_vector(physics_48d).astype(np.float64)
-    round_progress=_clip(float(round_index)/70.0)
-    card_progress=_clip(float(physics[_PHYSICS_INDEX["shoe_consumed_cards"]])/(416.0-60.0))
+    total_hands=estimated_total_hands(estimated_total_hands_value)
+    round_progress=_clip(float(round_index)/total_hands)
+    card_progress=_clip(float(physics[_PHYSICS_INDEX["shoe_consumed_cards"]])/ESTIMATED_PLAYABLE_CARDS)
     uncertainty=_clip(float(physics[_PHYSICS_INDEX["particle_uncertainty"]]))
-    round_weight=.55+.25*uncertainty
+    round_weight=.45+.30*uncertainty
     return _clip(round_weight*round_progress+(1.0-round_weight)*card_progress)
 
 
-def _effective_progress_round(round_index: float, progress_weight: float | None = None) -> float:
+def _effective_progress(round_index: float, progress_weight: float | None = None) -> float:
     if progress_weight is None or not math.isfinite(float(progress_weight)):
-        return float(np.clip(round_index,1.0,70.0))
-    return float(70.0*np.cbrt(np.clip(float(progress_weight),0.0,1.0)))
+        return _clip(float(round_index) / 60.0)
+    return float(np.cbrt(np.clip(float(progress_weight),0.0,1.0)))
 
 
 def dynamic_probability_bounds(
@@ -311,13 +329,14 @@ def dynamic_probability_bounds(
     probability-bound discontinuities. Noisy late shoes keep the legacy
     0.40–0.60 ceiling while clean late shoes expand gradually toward 0.35–0.65.
     """
-    progress_round=_effective_progress_round(round_index,progress_weight)
-    lo=float(np.interp(progress_round,[1.0,40.0,50.0],[EARLY_PROBABILITY_BOUNDS[0],EARLY_PROBABILITY_BOUNDS[0],PROBABILITY_BOUNDS[0]]))
-    hi=float(np.interp(progress_round,[1.0,40.0,50.0],[EARLY_PROBABILITY_BOUNDS[1],EARLY_PROBABILITY_BOUNDS[1],PROBABILITY_BOUNDS[1]]))
-    if progress_round>50.0 and noise_score<=PHYSICS_NOISE_LOW_THRESHOLD:
-        t=float(np.clip((progress_round-50.0)/20.0,0.0,1.0))
-        lo=(1.0-t)*PROBABILITY_BOUNDS[0]+t*LATE_CLEAN_PROBABILITY_BOUNDS[0]
-        hi=(1.0-t)*PROBABILITY_BOUNDS[1]+t*LATE_CLEAN_PROBABILITY_BOUNDS[1]
+    progress=_effective_progress(round_index,progress_weight)
+    middle=float(np.clip((progress-.35)/.35,0.0,1.0))
+    lo=EARLY_PROBABILITY_BOUNDS[0]-.05*middle
+    hi=EARLY_PROBABILITY_BOUNDS[1]+.05*middle
+    late=float(np.clip((progress-.70)/.30,0.0,1.0))
+    clean=float(np.clip((PHYSICS_NOISE_LOW_THRESHOLD-_clip(noise_score))/PHYSICS_NOISE_LOW_THRESHOLD,0.0,1.0))
+    lo-=.05*late*clean
+    hi+=.05*late*clean
     return lo,hi
 
 
@@ -347,9 +366,9 @@ def build_56d_feature_matrix(
     if not np.all(np.isfinite(original)):
         raise ValueError("feature blocks must contain only finite values")
 
-    progress = effective_shoe_progress(float(original[1]), physics)
+    progress = effective_shoe_progress(float(original[1]), physics, float(original[2]))
     progress_w = np.float32(progress ** 3)
-    noise = np.float32(physics_noise_score(physics, float(original[1]), noise_calibration))
+    noise = np.float32(physics_noise_score(physics, float(original[1]), noise_calibration, progress))
     merged = np.hstack((core, [progress_w], original[1:], physics, [noise])).astype(np.float32, copy=False)
     if merged.size != FEATURE_DIM:
         raise RuntimeError(f"expected {FEATURE_DIM} features, got {merged.size}")
@@ -576,7 +595,7 @@ def _sx_markov_p_same(history: Sequence[str]) -> float:
 
 def _rebuild_original_7d(record: Mapping[str, Any], core_pb: float) -> np.ndarray:
     history = _history_tokens(_history(record))
-    total_hands = _clip(float(record.get("estimated_total_hands", 60) or 60), 40.0, 90.0)
+    total_hands = estimated_total_hands(record.get("estimated_total_hands", 60))
     round_index = float(max(1, min(70, len(history) + 1)))
     stage = float(record["stage"]) if record.get("stage") is not None else float(_current_stage(history))
     depth = float(record["depth"]) if record.get("depth") is not None else float(_current_depth(history))
@@ -623,7 +642,10 @@ def _snapshot_56d(record: Mapping[str, Any]) -> np.ndarray | None:
             raise ValueError("features_57d must contain exactly 57 finite values")
         supplied_physics = record.get("physics_48d")
         if supplied_physics is not None:
-            vector[-1] = physics_noise_score(supplied_physics, float(vector[2]))
+            physics=_physics_vector(supplied_physics)
+            progress=effective_shoe_progress(float(vector[2]),physics,float(vector[3]))
+            vector[1]=np.float32(progress**3)
+            vector[-1] = physics_noise_score(physics, float(vector[2]), effective_progress=progress)
         return vector.reshape(1, FEATURE_DIM)
 
     legacy = record.get("features_56d", record.get("feature_snapshot_56d"))
@@ -635,10 +657,10 @@ def _snapshot_56d(record: Mapping[str, Any]) -> np.ndarray | None:
     physics = vector[8:]
     migrated = np.hstack((
         vector[0],
-        effective_shoe_progress(float(vector[2]),physics) ** 3,
+        effective_shoe_progress(float(vector[2]),physics,float(vector[3])) ** 3,
         vector[2:8],
         physics,
-        physics_noise_score(physics, float(vector[2])),
+        physics_noise_score(physics, float(vector[2]), effective_progress=effective_shoe_progress(float(vector[2]),physics,float(vector[3]))),
     )).astype(np.float32, copy=False)
     return migrated.reshape(1, FEATURE_DIM)
 
@@ -828,34 +850,31 @@ def nested_tuning_masks(
 
 
 def balanced_sample_weights(y: np.ndarray, x: np.ndarray) -> np.ndarray:
-    """Class-balanced weights with smooth 50-70 emphasis driven by Physical EV."""
+    """Class weights plus V4 relative-progress/physical-actionability weighting."""
     labels=np.asarray(y,dtype=np.int8).reshape(-1);features=np.asarray(x,dtype=np.float64)
     rounds=features[:,2];weights=np.ones(len(labels),dtype=np.float64)
     for label in (0,1):
         mask=labels==label
         if np.any(mask): weights[mask]*=len(labels)/(2.0*float(np.sum(mask)))
 
-    effective_rounds=70.0*np.cbrt(np.clip(features[:,1],0.0,1.0))
+    progress=np.cbrt(np.clip(features[:,1],0.0,1.0))
     stage_factor=np.interp(
-        effective_rounds,
-        [1,20,40,49,55,60,65,70],
-        [.95,.95,1.00,1.08,1.18,1.28,1.38,1.45],
+        progress,
+        [0.00,.25,.40,.55,.70,.80,.90,1.00],
+        [.95,1.00,1.05,1.12,1.22,1.30,1.38,1.42],
     )
-    final_noise=np.clip(features[:,-1],0.0,1.0)
     particle_uncertainty=np.clip(features[:,8+_PHYSICS_INDEX["particle_uncertainty"]],0.0,1.0)
     reliability=.75+.25*(1.0-particle_uncertainty)
-    low_noise_factor=1.0+.12*(1.0-final_noise)
 
     physical_b=features[:,8+_PHYSICS_INDEX["physical_ev_banker"]]
     physical_p=features[:,8+_PHYSICS_INDEX["physical_ev_player"]]
-    physical_edge=np.maximum(physical_b,physical_p)
-    actionable_edge=physical_edge*reliability
-    action_proxy=np.clip((actionable_edge-_stage_min_ev(rounds,DEFAULT_MIN_EV)+.01)/.03,0.0,1.0)
-    action_factor=1.0+.12*action_proxy
+    physical_edge=np.maximum(np.maximum(physical_b,physical_p),0.0)
+    physical_actionability=physical_edge*(1.0-particle_uncertainty)
+    normalized_actionability=np.clip(physical_actionability/.05,0.0,1.0)
+    action_factor=1.0+.08*normalized_actionability
 
-    weights*=stage_factor*reliability*low_noise_factor*action_factor
-    weights=np.clip(weights,0.35,2.75)
-    return (weights/np.mean(weights)).astype(np.float32)
+    weights*=stage_factor*reliability*action_factor
+    return np.clip(weights/np.mean(weights),0.35,1.50).astype(np.float32)
 
 
 def recalibrate_noise_feature(
@@ -871,7 +890,9 @@ def recalibrate_noise_feature(
         if isinstance(physics,Sequence) and not isinstance(physics,(str,bytes)):
             values=np.asarray(physics,dtype=np.float64).reshape(-1)
             if values.size==PHYSICS_DIM and np.all(np.isfinite(values)):
-                out[index,-1]=np.float32(physics_noise_score(values,float(out[index,2]),calibration))
+                progress=effective_shoe_progress(float(out[index,2]),values,float(out[index,3]))
+                out[index,1]=np.float32(progress**3)
+                out[index,-1]=np.float32(physics_noise_score(values,float(out[index,2]),calibration,progress))
                 continue
         out[index,-1]=np.float32(apply_uncertainty_calibration([float(out[index,-1])],calibration)[0])
     return out
@@ -932,8 +953,8 @@ def fit_probability_calibration(
         probe_logits = np.log(probability[probe_test] / (1.0 - probability[probe_test])).reshape(-1, 1)
         platt_probability = platt_probe.predict_proba(probe_logits)[:, 1]
         probe_probability=probability[probe_test]; probe_labels=labels[probe_test]
-        effective_rounds=70.0*np.cbrt(np.clip(np.asarray(x,dtype=np.float64)[probe_test,1],0.0,1.0))
-        late_mask=(effective_rounds>=50.0)&(effective_rounds<=70.0)
+        effective_progress=np.cbrt(np.clip(np.asarray(x,dtype=np.float64)[probe_test,1],0.0,1.0))
+        late_mask=effective_progress>=.70
         late_rows=int(np.sum(late_mask))
         def calibration_score(values: np.ndarray) -> tuple[float,float,float]:
             overall=_brier(values,probe_labels)
@@ -944,13 +965,13 @@ def fit_probability_calibration(
         platt_overall,platt_late,platt_score=calibration_score(platt_probability)
         selection = {
             "identity_brier": identity_overall,
-            "identity_late_50_70_brier": identity_late,
+            "identity_effective_progress_ge_70_brier": identity_late,
             "identity_selection_score": identity_score,
             "platt_brier": platt_overall,
-            "platt_late_50_70_brier": platt_late,
+            "platt_effective_progress_ge_70_brier": platt_late,
             "platt_selection_score": platt_score,
-            "late_50_70_rows": late_rows,
-            "late_50_70_weight": .30,
+            "effective_progress_ge_70_rows": late_rows,
+            "effective_progress_ge_70_weight": .30,
         }
         candidates=[("platt",platt_score)]
         isotonic_allowed = len(labels) >= ISOTONIC_MIN_ROWS and len(np.unique(probability[probe_fit])) >= 32
@@ -960,7 +981,7 @@ def fit_probability_calibration(
             isotonic_probability = isotonic_probe.predict(probability[probe_test])
             iso_overall,iso_late,iso_score=calibration_score(isotonic_probability)
             selection["isotonic_brier"]=iso_overall
-            selection["isotonic_late_50_70_brier"]=iso_late
+            selection["isotonic_effective_progress_ge_70_brier"]=iso_late
             selection["isotonic_selection_score"]=iso_score
             candidates.append(("isotonic",iso_score))
         best_calibrated=min(candidates,key=lambda item:item[1])
@@ -969,7 +990,7 @@ def fit_probability_calibration(
             "selected_method": method,
             "minimum_brier_improvement": CALIBRATION_MIN_BRIER_IMPROVEMENT,
             "isotonic_allowed": isotonic_allowed,
-            "selection_objective": "0.70*overall_brier+0.30*effective_progress_50_70_brier",
+            "selection_objective": "0.70*overall_brier+0.30*effective_progress_ge_70_brier",
         })
     if method == "identity":
         return {"method": "identity", "slope": 1.0, "intercept": 0.0, "selection": selection}
@@ -1388,17 +1409,14 @@ def dynamic_ema_alpha(
     config: Mapping[str, Any],
     progress_weight: float | None = None,
 ) -> float:
-    early=float(config.get("early_alpha",sum(EMA_ALPHA_RANGES["early"])/2.0))
-    middle=float(config.get("middle_alpha",sum(EMA_ALPHA_RANGES["middle"])/2.0))
-    late=float(config.get("late_alpha",sum(EMA_ALPHA_RANGES["late"])/2.0))
-    progress_round=_effective_progress_round(round_index,progress_weight)
-    base=float(np.interp(
-        progress_round,
-        [1.0,20.0,40.0,50.0,60.0,70.0],
-        [early,early,(early+middle)/2.0,middle,(middle+late)/2.0,late],
+    progress=_effective_progress(round_index,progress_weight)
+    base=float(np.interp(progress,
+        [0.00,.20,.35,.50,.65,.75,.85,.95,1.00],
+        [.38,.41,.46,.53,.59,.63,.67,.70,.72],
     ))
-    gain=max(0.0,float(config.get("noise_gain",0.05)))
-    return _clip(base+gain*(0.5-_clip(noise_score,0.0,1.0)),.35,.75)
+    noise=_clip(noise_score,0.0,1.0)
+    adjustment=.03*max(0.0,.50-noise)/.50-.05*max(0.0,noise-.50)/.50
+    return _clip(base+adjustment,.35,.75)
 
 
 def dynamic_ema_by_shoe(
@@ -1492,6 +1510,7 @@ def evaluate(
                    "absolute_correct_bets":decision["absolute_correct_bets"]-current["absolute_correct_bets"]}
     upgrade_guard=(upgrade_delta["realized_ev_per_bet"]>=-1e-12 and upgrade_delta["hit_rate"]>=-1e-12 and
                    upgrade_delta["skip_rate"]<=MAX_SKIP_RATE_INCREASE+1e-12 and decision["absolute_correct_bets"]+1e-12>=.95*current["absolute_correct_bets"])
+    effective_progress=np.cbrt(np.clip(x[:,1],0.0,1.0))
     stage_masks={
         "early":rounds<=40,
         "middle":(rounds>40)&(rounds<=50),
@@ -1501,6 +1520,11 @@ def evaluate(
         "late_56_60":(rounds>=56)&(rounds<=60),
         "late_61_65":(rounds>=61)&(rounds<=65),
         "late_66_70":(rounds>=66)&(rounds<=70),
+        "relative_0_20":effective_progress<.20,
+        "relative_20_40":(effective_progress>=.20)&(effective_progress<.40),
+        "relative_40_60":(effective_progress>=.40)&(effective_progress<.60),
+        "relative_60_80":(effective_progress>=.60)&(effective_progress<.80),
+        "relative_80_100":effective_progress>=.80,
     }; stage_report={}
     for stage,mask in stage_masks.items():
         stage_shoes=np.asarray(shoe_ids)[mask]
@@ -1525,7 +1549,8 @@ def evaluate(
                              "smoothing_ev_per_bet_delta":tuned_stage["realized_ev_per_bet"]-pre_stage["realized_ev_per_bet"],
                              "smoothing_hit_rate_delta":tuned_stage["hit_rate"]-pre_stage["hit_rate"],
                              "smoothing_skip_rate_delta":tuned_stage["skip_rate"]-pre_stage["skip_rate"],
-                             "mean_effective_progress_round":float(np.mean(70.0*np.cbrt(np.clip(x[mask,1],0.0,1.0)))) if stage_rows else None,
+                             "mean_effective_progress":float(np.mean(effective_progress[mask])) if stage_rows else None,
+                             "mean_effective_progress_round":float(np.mean(70.0*effective_progress[mask])) if stage_rows else None,
                              "mean_particle_uncertainty":float(np.mean(x[mask,8+_PHYSICS_INDEX["particle_uncertainty"]])) if stage_rows else None,
                              "mean_physical_ev_edge":float(np.mean(np.maximum(x[mask,8+_PHYSICS_INDEX["physical_ev_banker"]],x[mask,8+_PHYSICS_INDEX["physical_ev_player"]]))) if stage_rows else None}
     return {
@@ -1708,9 +1733,9 @@ def export_browser_bundle(
             "noise_score_version": 5,
             "particle_physics_version": 2,
             "stage_progress_version": STAGE_PROGRESS_VERSION,
-            "stage_progress_policy": "continuous_round_plus_particle_consumption_v3",
+            "stage_progress_policy": "relative_estimated_total_hands_plus_particle_consumption_v4",
             "probability_bounds_policy": "smooth_effective_progress",
-            "calibration_selection_policy": "overall_plus_50_70_weighted_brier",
+            "calibration_selection_policy": "overall_plus_effective_progress_ge_70_weighted_brier",
             "particle_physics_input": "B/P/T only",
             "execution_order": ["particle_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"],
             "physics_noise_calibration": dict(physics_noise_calibration or {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]}),

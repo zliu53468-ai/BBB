@@ -62,6 +62,24 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertEqual(low_matrix.shape,(1,57));self.assertEqual(high_matrix.shape,(1,57))
         self.assertGreater(high_matrix[0,1],low_matrix[0,1])
 
+    def test_v4_relative_progress_uses_estimated_total_hands(self):
+        physics=self.physics.copy();physics[43]=200.0;physics[42]=.30
+        at_50=final.effective_shoe_progress(40,physics,50)
+        at_70=final.effective_shoe_progress(40,physics,70)
+        self.assertGreaterEqual(at_50,.68)
+        self.assertLess(at_70,.70)
+
+    def test_v4_uncertainty_selects_round_or_card_evidence(self):
+        low_cards=self.physics.copy();high_cards=self.physics.copy()
+        low_cards[43]=120.0;high_cards[43]=260.0
+        low_uncertain=low_cards.copy();high_uncertain=high_cards.copy();low_uncertain[42]=high_uncertain[42]=.05
+        low_uncertainty_gap=final.effective_shoe_progress(50,high_uncertain,60)-final.effective_shoe_progress(50,low_uncertain,60)
+        low_cards[42]=high_cards[42]=.95
+        high_uncertainty_gap=final.effective_shoe_progress(50,high_cards,60)-final.effective_shoe_progress(50,low_cards,60)
+        high_uncertainty_progress=final.effective_shoe_progress(50,low_cards,60)
+        self.assertGreater(low_uncertainty_gap,high_uncertainty_gap)
+        self.assertLess(abs(high_uncertainty_progress-50/60),abs(high_uncertainty_progress-(120/356)))
+
     def test_physics_noise_score_tracks_predictive_uncertainty(self):
         uncertain = self.physics.copy()
         uncertain[:3] = 1.0 / 3.0
@@ -311,18 +329,19 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertGreater(weights[2],weights[0]);self.assertGreater(weights[4],weights[2])
         self.assertGreater(weights[3],weights[1]);self.assertGreater(weights[5],weights[3])
 
-    def test_recalibrated_noise_only_changes_feature_56(self):
-        x=np.zeros((2,57),dtype=np.float32);x[:,2]=[45,55];x[:,-1]=[.4,.6]
+    def test_recalibrated_snapshot_updates_only_progress_and_noise(self):
+        x=np.zeros((2,57),dtype=np.float32);x[:,2]=[45,55];x[:,3]=60;x[:,-1]=[.4,.6]
         records=[{"physics_48d":self.physics.tolist()},{"physics_48d":self.physics.tolist()}]
         calibration={"method":"isotonic","x_thresholds":[0,1],"y_thresholds":[0.1,0.9]}
         out=final.recalibrate_noise_feature(x,records,calibration)
-        self.assertTrue(np.array_equal(out[:,:-1],x[:,:-1]))
+        self.assertTrue(np.array_equal(out[:,2:56],x[:,2:56]))
+        self.assertFalse(np.array_equal(out[:,1],x[:,1]))
         self.assertFalse(np.array_equal(out[:,-1],x[:,-1]))
 
     def test_dynamic_post_clip_ema_never_crosses_shoes(self):
         x=np.zeros((4,57),dtype=np.float32);x[:,2]=20;x[:,-1]=.5
         values=final.dynamic_ema_by_shoe(np.asarray([.55,.45,.48,.52]),x,["A","A","B","A"],final.EMA_PROFILES["balanced"])
-        self.assertTrue(np.allclose(values,[.55,.51,.48,.514]))
+        self.assertTrue(np.allclose(values,[.55,.512,.48,.51504]))
 
     def test_dynamic_ema_alpha_is_continuous_and_more_noise_smoothing(self):
         config=final.EMA_PROFILES["balanced"]
@@ -358,10 +377,11 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertIn("guardrail_passed",report["decision_policy"])
         self.assertEqual(set(report["upgrade_comparison"]),{"guardrail_passed","before","after","delta","absolute_correct_bets_constraint_passed"})
         self.assertIn("absolute_correct_bets",report)
-        for stage in ("early","middle","late","late_50_70","late_50_55","late_56_60","late_61_65","late_66_70"):
+        for stage in ("early","middle","late","late_50_70","late_50_55","late_56_60","late_61_65","late_66_70","relative_0_20","relative_20_40","relative_40_60","relative_60_80","relative_80_100"):
             self.assertIn("overall_accuracy",report["stage_decision_metrics"][stage])
             self.assertIn("brier",report["stage_decision_metrics"][stage])
             self.assertIn("mean_effective_progress_round",report["stage_decision_metrics"][stage])
+            self.assertIn("mean_effective_progress",report["stage_decision_metrics"][stage])
 
     def test_ev_threshold_tuning_keeps_three_stages(self):
         probability = np.asarray([0.45, 0.55, 0.46, 0.54, 0.44, 0.56] * 4)
@@ -392,8 +412,8 @@ class FinalProbabilityTests(unittest.TestCase):
         labels=(probability>.5).astype(np.int8)
         calibration=final.fit_probability_calibration(VectorClassifier(),features,labels,shoe_ids=[f"shoe-{index//20}" for index in range(len(labels))])
         self.assertIn(calibration["method"],{"platt","isotonic"})
-        self.assertEqual(calibration["selection"]["selection_objective"],"0.70*overall_brier+0.30*effective_progress_50_70_brier")
-        self.assertGreater(calibration["selection"]["late_50_70_rows"],0)
+        self.assertEqual(calibration["selection"]["selection_objective"],"0.70*overall_brier+0.30*effective_progress_ge_70_brier")
+        self.assertGreater(calibration["selection"]["effective_progress_ge_70_rows"],0)
         output=final.apply_probability_calibration(probability,calibration)
         self.assertTrue(np.all(np.isfinite(output)))
         self.assertTrue(np.all((output>0)&(output<1)))
