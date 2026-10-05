@@ -1618,6 +1618,8 @@ def export_browser_bundle(
             "label_mapping": {"P": 0, "B": 1},
             "residual": False,
             "noise_score_version": 4,
+            "particle_physics_version": 1,
+            "particle_physics_input": "B/P/T only",
             "physics_noise_calibration": dict(physics_noise_calibration or {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]}),
             "skip_guardrail": {"preferred_max_increase": PREFERRED_SKIP_RATE_INCREASE, "hard_max_increase": MAX_SKIP_RATE_INCREASE},
             "feature_snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
