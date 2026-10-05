@@ -123,6 +123,12 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
         self.assertGreaterEqual(float(late[42]),0.0)
         self.assertLessEqual(float(late[42]),1.0)
 
+        self.assertGreater(late_diag["effective_progress_round"],early_diag["effective_progress_round"])
+        self.assertGreater(late_diag["physical_ev_reliability"],early_diag["physical_ev_reliability"])
+        self.assertGreater(late_diag["fusion_weight"],early_diag["fusion_weight"])
+        self.assertLessEqual(late_diag["fusion_weight"],.58)
+        self.assertLessEqual(abs(float(early[39])),abs(float(early_diag["raw_physical_ev_banker"]))+1e-9)
+
     def test_uncertainty_calibration_is_bounded_and_monotone(self):
         base=np.zeros((64,PHYSICS_DIM),dtype=np.float32)
         base[:,0]=1.0;base[:,3]=1.0;base[:,13]=1.0;base[:,23]=1.0;base[:,42]=.5
