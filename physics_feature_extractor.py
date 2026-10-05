@@ -27,7 +27,7 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 
-from particle_shoe_filter import fuse_particle_physics
+from particle_shoe_filter import ParticleShoeTracker, fuse_particle_physics
 
 DECKS = 8
 TOTAL_CARDS = 52 * DECKS
@@ -478,14 +478,19 @@ class PhysicsFeatureExtractor:
                        "semantic_note":"MLP conditional expectations fused with a B/P/T-only particle posterior; not exact unseen-card reconstruction"}
         return metrics
 
-    def predict_features_with_diagnostics(self,history_path: str | Sequence[str]) -> tuple[np.ndarray,dict[str,float]]:
+    def predict_features_with_diagnostics(
+        self,
+        history_path: str | Sequence[str],
+        *,
+        particle_tracker: ParticleShoeTracker | None = None,
+    ) -> tuple[np.ndarray,dict[str,float]]:
         """MLP 48D + B/P/T-only particle shoe posterior, with dimensions unchanged."""
         if not self.is_fitted: raise RuntimeError("physics model not fitted")
         x=history_to_vector(history_path).reshape(1,-1)
         raw_scaled=self.model.predict(self.scaler.transform(x))
         raw=apply_output_affine(self._decode_scaled(raw_scaled)[0],self.output_slope,self.output_intercept)
         mlp=sanitize_physics_prediction(raw,self.calibration_temperatures)
-        fused,diagnostics=fuse_particle_physics(mlp,history_path)
+        fused,diagnostics=fuse_particle_physics(mlp,history_path,tracker=particle_tracker)
         # Particle fusion already operates on calibrated probability blocks.
         # Re-sanitize with neutral temperature only, avoiding double calibration.
         return sanitize_physics_prediction(fused,{}),diagnostics
