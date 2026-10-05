@@ -40,6 +40,14 @@ require("./final_probability_runtime.js");
 
   const history="BPPBTBBPPTBBPPBTBP".split("");
   const core=global.__BGS256_CONTINUATION_TEST__.hazardChoose(history);
+  const particleA=api.estimateParticlePhysics(history),particleB=api.estimateParticlePhysics(history);
+  if(JSON.stringify(particleA.physics)!==JSON.stringify(particleB.physics))throw new Error("particle physics is not deterministic");
+  if(particleA.physics?.length!==48)throw new Error("particle physics dimension mismatch");
+  const particleCards=4*particleA.physics[0]+5*particleA.physics[1]+6*particleA.physics[2];
+  const particleRanks=particleA.physics.slice(26,39).reduce((a,b)=>a+b,0);
+  if(Math.abs(particleCards-particleRanks)>1e-6)throw new Error("particle card-count/rank-consumption mismatch");
+  if(!(particleA.diagnostics.expected_consumed_cards>4*history.length&&particleA.diagnostics.expected_consumed_cards<6*history.length))throw new Error("particle consumed-card posterior invalid");
+
   const out=api.applyFinalPrediction(history,core);
   const r=out.finalProbability;
   if(r?.mode!=="final56")throw new Error("final56 inference path was not used");
@@ -51,6 +59,7 @@ require("./final_probability_runtime.js");
   const cardExpectation=4*forecast.nextCardCountProbabilities["4_cards"]+5*forecast.nextCardCountProbabilities["5_cards"]+6*forecast.nextCardCountProbabilities["6_cards"];
   if(Math.abs(cardExpectation-forecast.expectedNextCardCount)>1e-9)throw new Error("incorrect next-hand card expectation");
   if(!r.physicsIntegrity||typeof r.physicsIntegrity.valid!=="boolean")throw new Error("missing physics integrity report");
+  if(!r.particleDiagnostics||!(r.particleDiagnostics.fusion_weight>=.1&&r.particleDiagnostics.fusion_weight<=.46))throw new Error("particle fusion diagnostics missing");
   if(r.dataQuality?.stage!=="warm"||r.dataQuality?.directionalRounds!==15)throw new Error("incorrect prediction data stage");
   if(useGeneratedBundle){
     if(!(r.rawPB>=0&&r.rawPB<=1))throw new Error("generated model did not return a probability");
@@ -111,6 +120,7 @@ require("./final_probability_runtime.js");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57)throw new Error("prediction snapshot is missing exact model features");
   if(!Number.isFinite(snapshot.clipped_p_b)||!Number.isFinite(snapshot.smoothed_p_b)||snapshot.smoothing_alpha!==1||snapshot.smoothing_strength!==0)throw new Error("smoothing snapshot metadata is missing");
   if(!Number.isFinite(snapshot.confidence_band)||!Number.isFinite(snapshot.effective_confidence_band)||!["strong","weak","skip","core"].includes(snapshot.entry_tier))throw new Error("entry policy snapshot metadata is missing");
+  if(!snapshot.particle_physics||!Number.isFinite(snapshot.particle_physics.expected_consumed_cards))throw new Error("particle physics snapshot metadata is missing");
   const expectedFinalSchema=useGeneratedBundle?JSON.parse(fs.readFileSync("final_probability_model.json","utf8")).schema_version:1;
   if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==expectedFinalSchema)throw new Error("snapshot model metadata is missing");
 
