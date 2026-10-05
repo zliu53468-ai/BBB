@@ -486,7 +486,9 @@ class PhysicsFeatureExtractor:
         raw=apply_output_affine(self._decode_scaled(raw_scaled)[0],self.output_slope,self.output_intercept)
         mlp=sanitize_physics_prediction(raw,self.calibration_temperatures)
         fused,diagnostics=fuse_particle_physics(mlp,history_path)
-        return sanitize_physics_prediction(fused,self.calibration_temperatures),diagnostics
+        # Particle fusion already operates on calibrated probability blocks.
+        # Re-sanitize with neutral temperature only, avoiding double calibration.
+        return sanitize_physics_prediction(fused,{}),diagnostics
 
     def predict_features(self,history_path: str | Sequence[str]) -> np.ndarray:
         return self.predict_features_with_diagnostics(history_path)[0]
