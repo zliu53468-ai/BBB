@@ -137,22 +137,27 @@ function estimateParticlePhysics(seq){
     for(const rank of hand.ranks)out[26+rank]++;const diff=hand.bankerPoint-hand.playerPoint;out[46]+=diff/9;out[47]+=Math.abs(diff)/9;
   }
   for(const [a,b] of [[0,3],[3,13],[13,23],[23,26],[26,39]])for(let i=a;i<b;i++)out[i]/=samples;
-  out[39]=out[40]=out[41]=out[42]=.25;out[43]=consumed.reduce((a,b)=>a+b,0)/n;
+  const pB=out[23],pP=out[24],physicalEvB=pB*.95-pP,physicalEvP=pP-pB;
+  out[39]=physicalEvB;out[40]=physicalEvP;out[41]=physicalEvB-physicalEvP;out[43]=consumed.reduce((a,b)=>a+b,0)/n;
   const means=Array(13).fill(0);for(const counts of particles)for(let j=0;j<13;j++)means[j]+=counts[j]/n;
   const remaining=Math.max(1,means.reduce((a,b)=>a+b,0));out[44]=means.slice(0,5).reduce((a,b)=>a+b,0)/remaining;out[45]=means.slice(8).reduce((a,b)=>a+b,0)/remaining;out[46]/=samples;out[47]/=samples;
   let spread=0;for(let j=0;j<13;j++){let v=0;for(const counts of particles)v+=(counts[j]-means[j])**2/n;spread+=Math.sqrt(v)/32;}spread/=13;
   const recent=essHistory.length?essHistory.slice(-8).reduce((a,b)=>a+b,0)/Math.min(8,essHistory.length):1;
   const consumedMean=out[43],consumedStd=Math.sqrt(consumed.reduce((a,v)=>a+(v-consumedMean)**2,0)/n),uncertainty=clip(.60*Math.min(1,spread*4)+.40*(1-recent));
-  return {physics:out,diagnostics:{particle_count:n,history_rounds:history.length,expected_consumed_cards:consumedMean,consumed_cards_std:consumedStd,recent_ess_ratio:recent,composition_spread:spread,posterior_uncertainty:uncertainty}};
+  out[42]=uncertainty;
+  return {physics:out,diagnostics:{particle_count:n,history_rounds:history.length,expected_consumed_cards:consumedMean,consumed_cards_std:consumedStd,recent_ess_ratio:recent,composition_spread:spread,posterior_uncertainty:uncertainty,physical_ev_banker:physicalEvB,physical_ev_player:physicalEvP,physical_ev_gap:physicalEvB-physicalEvP}};
 }
 function particleFusionWeight(rounds,d){const base=rounds<12?.18:rounds<20?.25:rounds<=40?.34:rounds<=50?.40:.46,reliability=.75+.25*clip(d?.recent_ess_ratio??1);return clip(base*reliability,.10,.46);}
 function fuseParticlePhysics(mlp,seq){
   const estimate=estimateParticlePhysics(seq),p=estimate.physics,w=particleFusionWeight(seq.length,estimate.diagnostics),out=mlp.slice();
   for(const [a,b] of [[0,3],[3,13],[13,23],[23,26]]){const mixed=mlp.slice(a,b).map((v,i)=>(1-w)*v+w*p[a+i]),norm=normalise(mixed,Array(b-a).fill(1/(b-a)));for(let i=a;i<b;i++)out[i]=norm[i-a];}
-  for(let i=26;i<39;i++)out[i]=(1-w)*mlp[i]+w*p[i];for(let i=39;i<43;i++)out[i]=mlp[i];for(let i=43;i<48;i++)out[i]=(1-w)*mlp[i]+w*p[i];
+  for(let i=26;i<39;i++)out[i]=(1-w)*mlp[i]+w*p[i];
+  // Pre-Core Physical EV stays particle-first instead of being diluted by pattern features.
+  for(let i=39;i<43;i++)out[i]=p[i];
+  for(let i=43;i<48;i++)out[i]=(1-w)*mlp[i]+w*p[i];
   const expected=4*out[0]+5*out[1]+6*out[2],rankTotal=out.slice(26,39).reduce((a,b)=>a+b,0);if(rankTotal>1e-12)for(let i=26;i<39;i++)out[i]*=expected/rankTotal;
   estimate.diagnostics.fusion_weight=w;estimate.diagnostics.expected_next_card_count=expected;lastParticleDiagnostics=estimate.diagnostics;
-  return sanitizePhysics(out,{});
+  return sanitizePhysics(out,{},true);
 }
 
 function predictPhysics(seq){
@@ -167,14 +172,15 @@ function predictPhysics(seq){
   h=h.map((v,i)=>(+v||0)*Math.max(1e-12,+tScale[i]||1)+(+tMean[i]||0));
   const outputSlope=physicsBundle.output_calibration?.slope||[],outputIntercept=physicsBundle.output_calibration?.intercept||[];
   h=h.map((v,i)=>v*(Number.isFinite(+outputSlope[i])?+outputSlope[i]:1)+(Number.isFinite(+outputIntercept[i])?+outputIntercept[i]:0));
-  const mlp=sanitizePhysics(h,physicsBundle.calibration_temperatures||{});
-  const particleCompatible=(+final56Bundle?.training?.particle_physics_version||0)>=1;
+  const physicalSemantics=physicsBundleUsesPhysicalEv();
+  const mlp=sanitizePhysics(h,physicsBundle.calibration_temperatures||{},physicalSemantics);
+  const particleCompatible=finalModelUsesPhysicalEv()&&physicalSemantics;
   if(!particleCompatible){
-    lastParticleDiagnostics={enabled:false,reason:"legacy_final_model",particle_physics_version:0};
+    lastParticleDiagnostics={enabled:false,reason:"legacy_model_semantics",particle_physics_version:+final56Bundle?.training?.particle_physics_version||0};
     return mlp;
   }
   const fused=fuseParticlePhysics(mlp,seq);
-  lastParticleDiagnostics={enabled:true,particle_physics_version:1,...lastParticleDiagnostics};
+  lastParticleDiagnostics={enabled:true,particle_physics_version:2,...lastParticleDiagnostics};
   return fused;
 }
 
