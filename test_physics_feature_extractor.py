@@ -1,6 +1,7 @@
 import unittest
 import numpy as np
 
+from particle_shoe_filter import estimate_particle_physics, fuse_particle_physics
 from physics_feature_extractor import (
     HISTORY_INPUT_DIM,
     PHYSICS_DIM,
@@ -65,6 +66,33 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
         output=sanitize_physics_prediction(raw,{"card_count":.8,"winner":1.2})
         for block in (output[:3],output[3:13],output[13:23],output[23:26],output[39:43]):
             self.assertAlmostEqual(float(np.sum(block)),1.0,places=6)
+
+    def test_particle_shoe_estimator_is_deterministic_and_rule_consistent(self):
+        history="BPPBTBBPPTBBPPBTBP"
+        a=estimate_particle_physics(history)
+        b=estimate_particle_physics(history)
+        self.assertTrue(np.array_equal(a.physics_48d,b.physics_48d))
+        self.assertEqual(a.physics_48d.shape,(PHYSICS_DIM,))
+        for block in (a.physics_48d[:3],a.physics_48d[3:13],a.physics_48d[13:23],a.physics_48d[23:26],a.physics_48d[39:43]):
+            self.assertAlmostEqual(float(np.sum(block)),1.0,places=6)
+        expected_cards=float(4*a.physics_48d[0]+5*a.physics_48d[1]+6*a.physics_48d[2])
+        self.assertAlmostEqual(float(np.sum(a.physics_48d[26:39])),expected_cards,places=5)
+        self.assertGreater(a.diagnostics["expected_consumed_cards"],4*len(history))
+        self.assertLess(a.diagnostics["expected_consumed_cards"],6*len(history))
+        self.assertGreaterEqual(a.diagnostics["posterior_uncertainty"],0.0)
+        self.assertLessEqual(a.diagnostics["posterior_uncertainty"],1.0)
+
+    def test_particle_fusion_preserves_48d_contract_and_uses_more_physics_late(self):
+        mlp=np.zeros(PHYSICS_DIM,dtype=np.float32)
+        mlp[:3]=[.58,.34,.08];mlp[3:13]=.1;mlp[13:23]=.1;mlp[23:26]=[.4586,.4462,.0952]
+        mlp[26:39]=5/13;mlp[39:43]=.25;mlp[43]=0;mlp[44:46]=.5
+        early,early_diag=fuse_particle_physics(mlp,"BPPB")
+        late,late_diag=fuse_particle_physics(mlp,"BPPBTBBPPTBBPPBTBPBPPBTBBPPTBBPPBTBPBPPBTBBPPTBBPPBTBP")
+        self.assertEqual(early.shape,(PHYSICS_DIM,))
+        self.assertEqual(late.shape,(PHYSICS_DIM,))
+        self.assertGreater(late_diag["fusion_weight"],early_diag["fusion_weight"])
+        self.assertAlmostEqual(float(np.sum(late[:3])),1.0,places=6)
+        self.assertAlmostEqual(float(np.sum(late[23:26])),1.0,places=6)
 
     def test_uncertainty_calibration_is_bounded_and_monotone(self):
         base=np.zeros((64,PHYSICS_DIM),dtype=np.float32)
