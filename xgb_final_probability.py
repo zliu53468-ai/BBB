@@ -49,6 +49,7 @@ LATE_CLEAN_PROBABILITY_BOUNDS = (0.35, 0.65)
 SNAPSHOT_SCHEMA_VERSION = 6
 PHYSICS_PROBABILITY_TOLERANCE = 1e-4
 PHYSICS_NOISE_LOW_THRESHOLD = 0.78
+PHYSICS_NOISE_HIGH_CLIP_THRESHOLD = 0.84
 PHYSICS_RANK_CONSUMPTION_TOLERANCE = 0.50
 DEFAULT_MIN_EV = {"early": 0.020, "middle": 0.010, "late": 0.005}
 PREFERRED_SKIP_RATE_INCREASE = 0.05
@@ -64,6 +65,7 @@ EMA_PROFILES: dict[str, dict[str, Any]] = {
     "stable": {"method": "dynamic_post_clip_ema", "profile": "stable", "enabled": True, "early_alpha": 0.375, "middle_alpha": 0.525, "late_alpha": 0.675, "noise_gain": 0.05},
     "balanced": {"method": "dynamic_post_clip_ema", "profile": "balanced", "enabled": True, "early_alpha": 0.40, "middle_alpha": 0.55, "late_alpha": 0.70, "noise_gain": 0.05},
     "responsive": {"method": "dynamic_post_clip_ema", "profile": "responsive", "enabled": True, "early_alpha": 0.425, "middle_alpha": 0.575, "late_alpha": 0.725, "noise_gain": 0.05},
+    "entry_quality": {"method": "dynamic_post_clip_ema", "profile": "entry_quality", "enabled": True, "early_alpha": 0.375, "middle_alpha": 0.575, "late_alpha": 0.75, "noise_gain": 0.05},
 }
 MAX_NOISE_EV_PENALTY = 0.001
 MIDDLE_EV_RELIEF = 0.001
@@ -92,6 +94,11 @@ DECISION_POLICY_PROFILES: dict[str, dict[str, Any]] = {
             "noise_reference": 0.50, "noise_gain": 0.018,
             "clean_late_relief": 0.003, "minimum": 0.010, "maximum": 0.050,
             "strong_margin": {"early": 0.007, "middle": 0.005, "late": 0.003},
+        },
+        "entry_quality": {
+            "ev_margin": {"early": 0.0020, "middle": 0.0015, "late": 0.0010},
+            "distance_margin": {"early": 0.0030, "middle": 0.0020, "late": 0.0010},
+            "clean_late_ev_relief": 0.0005, "clean_late_distance_relief": 0.0005,
         },
         "volume_guard": {
             "enabled": True, "window": 16, "min_history": 8,
@@ -283,6 +290,8 @@ def physics_noise_score(
 
 
 def dynamic_probability_bounds(round_index: float, noise_score: float) -> tuple[float, float]:
+    if noise_score >= PHYSICS_NOISE_HIGH_CLIP_THRESHOLD:
+        return (0.46, 0.54) if round_index <= 40 else (0.43, 0.57)
     if round_index <= 40:
         return EARLY_PROBABILITY_BOUNDS
     if round_index > 50 and noise_score <= PHYSICS_NOISE_LOW_THRESHOLD:
@@ -387,8 +396,9 @@ def _direct_prediction_payload(
         round_index, noise_score, ev_thresholds, enabled=policy_enabled, policy_config=policy_config
     )
     confidence_band, strong_margin = confidence_band_arrays(np.asarray([round_index]), np.asarray([noise_score]), policy_config if policy_enabled else None)
+    entry_ev_margin,entry_distance_margin=entry_quality_arrays(np.asarray([round_index]),np.asarray([noise_score]),policy_config if policy_enabled else None)
     probability_distance=abs(final_pb-.5)
-    direction = "B" if probability_distance >= confidence_band[0] and ev_banker > activation_ev and ev_banker > ev_player else "P" if probability_distance >= confidence_band[0] and ev_player > activation_ev and ev_player > ev_banker else "Skip"
+    direction = "B" if probability_distance >= confidence_band[0]+entry_distance_margin[0] and ev_banker > activation_ev+entry_ev_margin[0] and ev_banker > ev_player else "P" if probability_distance >= confidence_band[0]+entry_distance_margin[0] and ev_player > activation_ev+entry_ev_margin[0] and ev_player > ev_banker else "Skip"
     final_direction = {"B": "莊 B", "P": "閒 P", "Skip": "觀望 Skip"}[direction]
     entry_tier = "skip" if direction == "Skip" else "strong" if probability_distance >= confidence_band[0] + strong_margin[0] else "weak"
     confidence = soft_confidence(
@@ -411,6 +421,8 @@ def _direct_prediction_payload(
         "soft_band": soft_band,
         "confidence_band": float(confidence_band[0]),
         "effective_confidence_band": float(confidence_band[0]),
+        "entry_ev_margin": float(entry_ev_margin[0]),
+        "entry_distance_margin": float(entry_distance_margin[0]),
         "volume_guard_active": False,
         "entry_tier": entry_tier,
         "stake_multiplier": 0.0 if entry_tier == "skip" else 1.0 if entry_tier == "strong" else 0.5,
@@ -783,15 +795,15 @@ def balanced_sample_weights(y: np.ndarray, x: np.ndarray) -> np.ndarray:
         if np.any(mask): weights[mask]*=len(labels)/(2.0*float(np.sum(mask)))
     # Keep every stage represented without letting the small late slice dominate.
     stage_factor=np.ones(len(labels),dtype=np.float64)
-    stage_factor[(rounds>40)&(rounds<=50)]=1.05
-    stage_factor[(rounds>50)&(rounds<=70)]=1.20
+    stage_factor[(rounds>40)&(rounds<=50)]=1.10
+    stage_factor[(rounds>50)&(rounds<=70)]=1.25
     stage_factor[rounds>70]=1.05
     uncertainty=np.clip(features[:,-1],0.0,1.0)
-    low_noise_factor=1.0+0.15*(1.0-uncertainty)
+    low_noise_factor=1.0+0.22*(1.0-uncertainty)
     core_probability=np.clip(features[:,0],0.0,1.0)
     core_edge=np.maximum(core_probability*.95-(1.0-core_probability),(1.0-core_probability)-core_probability)
     action_proxy=np.clip((core_edge-_stage_min_ev(rounds,DEFAULT_MIN_EV)+.01)/.02,0.0,1.0)
-    action_factor=1.0+0.10*action_proxy
+    action_factor=1.0+0.15*action_proxy
     weights*=stage_factor*low_noise_factor*action_factor
     weights=np.clip(weights,0.35,2.75)
     return (weights/np.mean(weights)).astype(np.float32)
@@ -1034,6 +1046,26 @@ def confidence_band_arrays(
     return np.clip(band, minimum, maximum), np.maximum(0.0, strong)
 
 
+def entry_quality_arrays(
+    rounds: np.ndarray,
+    noise_scores: np.ndarray | None,
+    policy_config: Mapping[str, Any] | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Hard entry buffers create a no-trade zone above the EV/band thresholds."""
+    rounds=np.asarray(rounds,dtype=np.float64); config=dict(policy_config or {}); quality=dict(config.get("entry_quality") or {})
+    if not quality or not bool(config.get("enabled",False)):
+        return np.zeros(len(rounds),dtype=np.float64),np.zeros(len(rounds),dtype=np.float64)
+    noise=np.full(len(rounds),.5) if noise_scores is None else np.clip(np.asarray(noise_scores,dtype=np.float64),0,1)
+    stage=np.where(rounds<=40,"early",np.where(rounds<=50,"middle","late"))
+    ev_config=dict(quality.get("ev_margin") or {}); distance_config=dict(quality.get("distance_margin") or {})
+    ev=np.asarray([max(0.0,float(ev_config.get(str(name),0.0))) for name in stage],dtype=np.float64)
+    distance=np.asarray([max(0.0,float(distance_config.get(str(name),0.0))) for name in stage],dtype=np.float64)
+    clean_late=(rounds>50)&(noise<=PHYSICS_NOISE_LOW_THRESHOLD)
+    ev[clean_late]=np.maximum(0.0,ev[clean_late]-max(0.0,float(quality.get("clean_late_ev_relief",0.0))))
+    distance[clean_late]=np.maximum(0.0,distance[clean_late]-max(0.0,float(quality.get("clean_late_distance_relief",0.0))))
+    return ev,distance
+
+
 def _stage_value(round_index: float, mapping: Mapping[str, Any], fallback: float) -> float:
     key = "early" if round_index <= 40 else "middle" if round_index <= 50 else "late"
     return float(mapping.get(key, fallback))
@@ -1060,9 +1092,10 @@ def decision_returns(
         rounds, noise_scores, thresholds, enabled=policy_enabled, policy_config=policy_config
     )
     band, _ = confidence_band_arrays(rounds, noise_scores, policy_config if policy_enabled else None)
+    entry_ev_margin,entry_distance_margin=entry_quality_arrays(rounds,noise_scores,policy_config if policy_enabled else None)
     distance = np.abs(probability_b - 0.5)
-    banker = (ev_banker > activation_ev) & (ev_banker > ev_player) & (distance >= band)
-    player = (ev_player > activation_ev) & (ev_player > ev_banker) & (distance >= band)
+    banker = (ev_banker > activation_ev+entry_ev_margin) & (ev_banker > ev_player) & (distance >= band+entry_distance_margin)
+    player = (ev_player > activation_ev+entry_ev_margin) & (ev_player > ev_banker) & (distance >= band+entry_distance_margin)
     config = dict(policy_config or {}); volume = dict(config.get("volume_guard") or {})
     if policy_enabled and bool(volume.get("enabled", False)) and shoe_ids is not None:
         shoes = [str(value) for value in shoe_ids]
@@ -1080,10 +1113,10 @@ def decision_returns(
                 expected=sum(item[1] for item in prior); baseline=sum(item[2] for item in prior)
                 target=_stage_value(rounds[index],rates,0.0)
                 if actions < target or (baseline>0.0 and expected+1e-12 < floor*baseline):
-                    relaxed_band=max(band_floor,band[index]-band_relief); relaxed_ev=max(0.0,activation_ev[index]-ev_relief)
+                    relaxed_band=max(band_floor,band[index]-band_relief)+entry_distance_margin[index]; relaxed_ev=max(0.0,activation_ev[index]-ev_relief)+entry_ev_margin[index]
                     banker[index]=(ev_banker[index]>relaxed_ev and ev_banker[index]>ev_player[index] and distance[index]>=relaxed_band)
                     player[index]=(ev_player[index]>relaxed_ev and ev_player[index]>ev_banker[index] and distance[index]>=relaxed_band)
-            base_action=(ev_banker[index]>activation_ev[index] and ev_banker[index]>ev_player[index]) or (ev_player[index]>activation_ev[index] and ev_player[index]>ev_banker[index])
+            base_action=(ev_banker[index]>activation_ev[index]+entry_ev_margin[index] and ev_banker[index]>ev_player[index] and distance[index]>=band[index]+entry_distance_margin[index]) or (ev_player[index]>activation_ev[index]+entry_ev_margin[index] and ev_player[index]>ev_banker[index] and distance[index]>=band[index]+entry_distance_margin[index])
             action=float(banker[index] or player[index]); expected=max(probability_b[index],probability_p[index]) if action else 0.0
             baseline=max(probability_b[index],probability_p[index]) if base_action else 0.0
             prior.append((action,expected,baseline))
@@ -1107,6 +1140,31 @@ def decision_metrics(realised: np.ndarray, wagered: np.ndarray) -> dict[str, flo
         "realized_ev_per_row": float(np.mean(realised)) if rows else 0.0,
         "realized_ev_per_bet": float(np.sum(realised) / wagers) if wagers else 0.0,
     }
+
+
+def decision_stability_metrics(
+    probability_b: np.ndarray,
+    wagered: np.ndarray,
+    rounds: np.ndarray,
+    noise_scores: np.ndarray | None,
+    policy_config: Mapping[str, Any] | None,
+    shoe_ids: Sequence[str],
+) -> dict[str, float]:
+    """Count adjacent low-margin B/P flips; skips intentionally break a decision run."""
+    probability=np.asarray(probability_b,dtype=np.float64); bets=np.asarray(wagered,dtype=bool); rounds=np.asarray(rounds,dtype=np.float64)
+    band,_=confidence_band_arrays(rounds,noise_scores,policy_config); _,margin=entry_quality_arrays(rounds,noise_scores,policy_config)
+    signs=np.where(probability>.5,1,-1); near=np.abs(probability-.5)<=band+margin+.004
+    flips=0; comparisons=0; previous: dict[str,tuple[int,bool]]={}
+    for sign,bet,is_near,shoe in zip(signs,bets,near,[str(value) for value in shoe_ids]):
+        old=previous.get(shoe)
+        if bet and old is not None:
+            comparisons+=1
+            if old[0]!=int(sign) and old[1] and bool(is_near): flips+=1
+        if bet:
+            previous[shoe]=(int(sign),bool(is_near))
+        else:
+            previous.pop(shoe,None)
+    return {"adjacent_edge_flip_count":float(flips),"adjacent_entry_transitions":float(comparisons),"adjacent_edge_flip_rate":float(flips/comparisons) if comparisons else 0.0}
 
 
 def optimize_ev_thresholds(
@@ -1230,7 +1288,7 @@ def optimize_smoothing_and_thresholds(
             absolute_passed=metrics["absolute_correct_bets"]+1e-12>=.95*baseline["absolute_correct_bets"]
             eligible=(skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and skip_delta+1e-12>=min_skip_increase and
                       ev_delta>=-1e-12 and hit_delta>=-1e-12 and absolute_passed and brier_delta<=MAX_SMOOTHING_BRIER_INCREASE)
-            score=brier-.02*metrics["realized_ev_per_bet"]-.01*metrics["hit_rate"]-.05*metrics["realized_ev_per_row"]+.05*metrics["skip_rate"]
+            score=.20*brier-.10*metrics["realized_ev_per_bet"]-.06*metrics["hit_rate"]-.03*metrics["realized_ev_per_row"]+.01*metrics["skip_rate"]
             report={"profile":name,"smoothing":smoothing,"decision_policy_profile":policy_name,"decision_policy":policy,"decision_policy_enabled":policy_enabled,"score":score,"brier":brier,**metrics,
                     "skip_rate_delta":skip_delta,"ev_per_bet_delta":ev_delta,"hit_rate_delta":hit_delta,"absolute_correct_bets_delta":absolute_delta,"absolute_correct_bets_constraint_passed":absolute_passed,"minimum_skip_increase":min_skip_increase,"brier_delta":brier_delta,
                     "guardrail_passed":eligible,"ev_thresholds":tuning["thresholds"]}
@@ -1377,6 +1435,7 @@ def evaluate(
     current_realised,current_wagered=decision_returns(unsmoothed,y,rounds,thresholds,noise,policy_enabled=False)
     decision=decision_metrics(realised,wagered); pre=decision_metrics(pre_realised,pre_wagered); baseline=decision_metrics(baseline_realised,baseline_wagered)
     hard=decision_metrics(hard_realised,hard_wagered);current=decision_metrics(current_realised,current_wagered)
+    stability=decision_stability_metrics(final,wagered,rounds,noise,decision_policy_config if decision_policy_enabled else None,shoe_ids)
     skip_delta=decision["skip_rate"]-baseline["skip_rate"]
     policy_skip_delta=decision["skip_rate"]-hard["skip_rate"]
     policy_ev_delta=decision["realized_ev_per_bet"]-hard["realized_ev_per_bet"]
@@ -1442,6 +1501,7 @@ def evaluate(
         "realized_ev_per_row_ci95": shoe_bootstrap_ci(realised, shoe_ids, samples=bootstrap_samples),
         "action_rate": decision["action_rate"],
         "skip_rate": decision["skip_rate"],
+        "decision_stability": stability,
         "skip_rate_ci95": shoe_bootstrap_ci((~wagered).astype(float),shoe_ids,samples=bootstrap_samples),
         "baseline_skip_rate": baseline["skip_rate"],
         "skip_rate_delta_vs_default": skip_delta,
@@ -1505,7 +1565,7 @@ def select_xgboost_model(
                         metrics["realized_ev_per_bet"]+1e-12>=baseline_metrics["realized_ev_per_bet"] and brier_passed)
         skip_passed=skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12
         eligible=skip_passed and quality_passed
-        score=brier-.04*metrics["realized_ev_per_bet"]-.02*metrics["hit_rate"]-.05*metrics["realized_ev_per_row"]+.02*max(0.0,skip_delta)
+        score=.20*brier-.12*metrics["realized_ev_per_bet"]-.08*metrics["hit_rate"]-.03*metrics["realized_ev_per_row"]+.01*max(0.0,skip_delta)
         report = {
             "candidate": index,
             "score": score,
