@@ -306,9 +306,10 @@ class FinalProbabilityTests(unittest.TestCase):
     def test_smoothing_selection_can_safely_disable_itself(self):
         probability=np.asarray([.9,.1]*20);actual=np.asarray([1,0]*20,dtype=np.int8)
         x=np.zeros((40,57),dtype=np.float32);x[:,2]=np.arange(20,60);x[:,-1]=.5
-        tuning=final.optimize_smoothing_and_thresholds(probability,actual,x,["shoe-A"]*40,profiles=["off","balanced"])
+        tuning=final.optimize_smoothing_and_thresholds(probability,actual,x,["shoe-A"]*40,profiles=["off","balanced"],decision_policies={"strict_selective_entry":final.DECISION_POLICY_PROFILES["strict_selective_entry"]})
         self.assertEqual(tuning["method"],"dynamic_post_clip_ema")
         self.assertEqual(tuning["smoothing"]["profile"],"off")
+        self.assertIn("hard_ev",{row["decision_policy_profile"] for row in tuning["candidates"]})
         self.assertTrue(all("guardrail_passed" in row for row in tuning["candidates"]))
         self.assertIn("strict_selective_entry",{row["decision_policy_profile"] for row in tuning["candidates"]})
 
