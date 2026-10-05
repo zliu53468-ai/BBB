@@ -62,6 +62,11 @@ jobs:
       - name: Python unit tests
         run: python -m unittest -v test_physics_feature_extractor.py test_final_probability.py
 
+      - name: Browser runtime preflight
+        run: |
+          node --check final_probability_runtime.js
+          node test_final_probability_runtime.js
+
       - name: Train browser physics multi-task model
         run: |
           python physics_feature_extractor.py train \
