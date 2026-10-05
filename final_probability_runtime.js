@@ -83,6 +83,7 @@ function temperatureNorm(block,fallback,t=1){const p=normalise(block,fallback).m
 function physicsBundleUsesPhysicalEv(){return Array.isArray(physicsBundle?.feature_names)&&physicsBundle.feature_names.includes("physical_ev_banker");}
 function finalModelUsesPhysicalEv(){return (+final56Bundle?.training?.particle_physics_version||0)>=2;}
 function adaptiveStageEnabled(){return (+final56Bundle?.training?.stage_progress_version||0)>=2;}
+function stageProgressV3Enabled(){return (+final56Bundle?.training?.stage_progress_version||0)>=3;}
 function modelSemanticsCompatible(){return finalModelUsesPhysicalEv()===physicsBundleUsesPhysicalEv();}
 function sanitizePhysics(raw,temperatures={},physicalEvSemantics=physicsBundleUsesPhysicalEv()){
   if(raw.length!==PHYSICS_DIM)throw new Error("physics dim mismatch");
@@ -285,22 +286,37 @@ function physicsIntegrity(physics){
   return {valid:Object.values(checks).every(Boolean),checks,cardCountProbabilitySum,expectedNextCardCount:forecast.expectedNextCardCount,rankExpectedConsumptionTotal,rankExpectedTotalGap,rankExpectedTotalTolerance,physicalEv:forecast.physicalEv||null};
 }
 function dataQuality(seq){const directionalRounds=directionalRoundCount(seq);return {directionalRounds,stage:directionalRounds<12?"cold":directionalRounds<20?"warm":"ready",entryEligible:directionalRounds>=12,preferredEntry:directionalRounds>=20};}
-function applyProbabilityBounds(rawPB,roundIndex,noiseScore){
-  const pair=roundIndex<=40?EARLY_BOUNDS:(roundIndex>50&&noiseScore<=PHYSICS_NOISE_LOW_THRESHOLD?LATE_CLEAN_BOUNDS:DEFAULT_BOUNDS);
-  return {value:clip(rawPB,pair[0],pair[1]),low:pair[0],high:pair[1]};
+function effectiveProgressRound(roundIndex,progressWeight){
+  if(!stageProgressV3Enabled()||!Number.isFinite(+progressWeight))return clip(+roundIndex||1,1,70);
+  return 70*Math.cbrt(clip(+progressWeight||0));
 }
-function dynamicEmaAlpha(roundIndex,noiseScore,config){
+function applyProbabilityBounds(rawPB,roundIndex,noiseScore,progressWeight=null){
+  if(!stageProgressV3Enabled()){
+    const pair=roundIndex<=40?EARLY_BOUNDS:(roundIndex>50&&noiseScore<=PHYSICS_NOISE_LOW_THRESHOLD?LATE_CLEAN_BOUNDS:DEFAULT_BOUNDS);
+    return {value:clip(rawPB,pair[0],pair[1]),low:pair[0],high:pair[1]};
+  }
+  const progressRound=effectiveProgressRound(roundIndex,progressWeight);
+  let low=interpAnchors(progressRound,[[1,EARLY_BOUNDS[0]],[40,EARLY_BOUNDS[0]],[50,DEFAULT_BOUNDS[0]]]);
+  let high=interpAnchors(progressRound,[[1,EARLY_BOUNDS[1]],[40,EARLY_BOUNDS[1]],[50,DEFAULT_BOUNDS[1]]]);
+  if(progressRound>50&&noiseScore<=PHYSICS_NOISE_LOW_THRESHOLD){
+    low=interpAnchors(progressRound,[[50,DEFAULT_BOUNDS[0]],[70,LATE_CLEAN_BOUNDS[0]]]);
+    high=interpAnchors(progressRound,[[50,DEFAULT_BOUNDS[1]],[70,LATE_CLEAN_BOUNDS[1]]]);
+  }
+  return {value:clip(rawPB,low,high),low,high};
+}
+function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null){
   if(!adaptiveStageEnabled()){
     const stage=roundIndex<=40?"early":roundIndex>50?"late":"middle",range=stage==="early"?[.35,.45]:stage==="middle"?[.50,.60]:[.65,.75];
     const base=Number.isFinite(+config[stage+"_alpha"])?+config[stage+"_alpha"]:(range[0]+range[1])/2,gain=Math.max(0,Number.isFinite(+config.noise_gain)?+config.noise_gain:.05);
     return clip(base+gain*(.5-clip(+noiseScore||0)),range[0],range[1]);
   }
   const early=Number.isFinite(+config.early_alpha)?+config.early_alpha:.40,middle=Number.isFinite(+config.middle_alpha)?+config.middle_alpha:.55,late=Number.isFinite(+config.late_alpha)?+config.late_alpha:.70;
-  const base=interpAnchors(roundIndex,[[1,early],[20,early],[40,(early+middle)/2],[50,middle],[60,(middle+late)/2],[70,late]]);
+  const progressRound=stageProgressV3Enabled()?effectiveProgressRound(roundIndex,progressWeight):roundIndex;
+  const base=interpAnchors(progressRound,[[1,early],[20,early],[40,(early+middle)/2],[50,middle],[60,(middle+late)/2],[70,late]]);
   const gain=Math.max(0,Number.isFinite(+config.noise_gain)?+config.noise_gain:.05);
   return clip(base+gain*(.5-clip(+noiseScore||0)),.35,.75);
 }
-function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds){
+function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWeight=null){
   const config=final56Bundle?.smoothing||{},dynamic=config.method==="dynamic_post_clip_ema"&&config.enabled===true;
   const legacy=config.method==="causal_ema"&&(+config.strength||0)>0;
   if(!dynamic&&!legacy)return {value:clippedPB,alpha:1,strength:0,profile:"off",applied:false};
@@ -308,7 +324,7 @@ function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds){
   for(let i=rows.length-1;i>=0;i--){const row=rows[i];if(row?.shoe_id!==shoeId||+row.round_index>=roundIndex)continue;
     const value=Number.isFinite(+row.final_p_b)?+row.final_p_b:+row.smoothed_p_b;if(Number.isFinite(value)){previous=value;break;}}
   if(previous===null)return {value:clippedPB,alpha:1,strength:0,profile:config.profile||"first_round",applied:false};
-  const alpha=dynamic?dynamicEmaAlpha(roundIndex,noiseScore,config):1-clip(+config.strength||0,0,.15);
+  const alpha=dynamic?dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight):1-clip(+config.strength||0,0,.15);
   const value=clip(alpha*clippedPB+(1-alpha)*previous,bounds.low,bounds.high);
   return {value,alpha,strength:1-alpha,profile:config.profile||(legacy?"legacy":"custom"),applied:true};
 }
@@ -396,8 +412,8 @@ function applyFinalPrediction(seq,corePrediction=null){
       executionOrder.push("final_xgboost");
       extended=buildExtended(corePB,original7,physics);
       rawPB=predictFinalProbability(final56Bundle,extended,final56Bundle.feature_names||EXTENDED_NAMES);
-      bounds=applyProbabilityBounds(rawPB,original7.round_index,extended.at(-1));clippedPB=bounds.value;
-      const smoothing=applyDynamicSmoothing(clippedPB,original7.round_index,extended.at(-1),bounds);
+      bounds=applyProbabilityBounds(rawPB,original7.round_index,extended.at(-1),extended[1]);clippedPB=bounds.value;
+      const smoothing=applyDynamicSmoothing(clippedPB,original7.round_index,extended.at(-1),bounds,extended[1]);
       smoothedPB=smoothing.value;smoothingAlpha=smoothing.alpha;smoothingStrength=smoothing.strength;smoothingProfile=smoothing.profile;finalPB=smoothedPB;
 
       executionOrder.push("final_ev");
