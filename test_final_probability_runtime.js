@@ -47,6 +47,15 @@ require("./final_probability_runtime.js");
   await api.loadModels();
   if(api.getModelStatus().mode!=="final56")throw new Error("model reload after failure did not recover");
 
+  const bundledFetch=global.fetch;
+  global.__BGS_PHYSICS_BUNDLE__=JSON.parse(fs.readFileSync("physics_multitask_model.json","utf8"));
+  global.__BGS_FINAL56_BUNDLE__=useGeneratedBundle?JSON.parse(fs.readFileSync("final_probability_model.json","utf8")):finalBundle;
+  global.fetch=async()=>({ok:false,status:503,json:async()=>({})});
+  await api.loadModels();
+  if(api.getModelStatus().mode!=="final56")throw new Error("preloaded model bundles were not selected");
+  delete global.__BGS_PHYSICS_BUNDLE__;delete global.__BGS_FINAL56_BUNDLE__;global.fetch=bundledFetch;
+  await api.loadModels();
+
   const history="BPPBTBBPPTBBPPBTBP".split("");
   const core=global.__BGS256_CONTINUATION_TEST__.hazardChoose(history);
   const out=api.applyFinalPrediction(history,core);
