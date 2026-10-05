@@ -238,7 +238,7 @@ function buildExtended(corePB,o7,physics){
 }
 function unpackPhysicsForecast(physics){
   if(!Array.isArray(physics)||physics.length!==PHYSICS_DIM)throw new Error("physics forecast dim mismatch");
-  const physicalSemantics=finalModelUsesPhysicalEv()&&physicsBundleUsesPhysicalEv(),index=physicalSemantics?PHYSICS_INDEX:LEGACY_PHYSICS_INDEX;
+  const physicalSemantics=physicsBundleUsesPhysicalEv(),index=physicalSemantics?PHYSICS_INDEX:LEGACY_PHYSICS_INDEX;
   const value=name=>{const v=+physics[index[name]];return Number.isFinite(v)?v:0;};
   const cardCountProbabilities={"4_cards":value("cards_p4"),"5_cards":value("cards_p5"),"6_cards":value("cards_p6")};
   const expectedNextCardCount=4*cardCountProbabilities["4_cards"]+5*cardCountProbabilities["5_cards"]+6*cardCountProbabilities["6_cards"];
@@ -448,7 +448,11 @@ function settlePending(actualOutcome){
   if(!rows.length||rows.at(-1)?.shoe_id!==row.shoe_id||rows.at(-1)?.history_fingerprint!==row.history_fingerprint)rows.push(row);
   writeRows(rows);try{localStorage.removeItem(PENDING_KEY);}catch(_){}
 }
-function exportTrainingData(){return JSON.stringify({schema_version:SNAPSHOT_SCHEMA_VERSION,target:"actual_b_binary",feature_names:EXTENDED_NAMES,original_7d_feature_names:ORIGINAL7_NAMES,physics_48d_feature_names:PHYSICS_NAMES,rows:readRows()},null,2);}
+function exportTrainingData(){
+  const physicsNames=physicsBundleUsesPhysicalEv()?PHYSICS_NAMES:LEGACY_PHYSICS_NAMES;
+  const featureNames=Array.isArray(final56Bundle?.feature_names)&&final56Bundle.feature_names.length===FEATURE_DIM?final56Bundle.feature_names:["core_p_b_external","shoe_progress_weight",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...physicsNames,"physics_noise_score"];
+  return JSON.stringify({schema_version:SNAPSHOT_SCHEMA_VERSION,target:"actual_b_binary",feature_names:featureNames,original_7d_feature_names:ORIGINAL7_NAMES,physics_48d_feature_names:physicsNames,physics_semantics:physicsBundleUsesPhysicalEv()?"physical_ev_v2":"legacy_suit_v1",rows:readRows()},null,2);
+}
 function downloadTrainingData(){const blob=new Blob([exportTrainingData()],{type:"application/json;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="bgs_final57_training_"+Date.now()+".json";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);}
 
 async function fetchBundle(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(url+":HTTP"+r.status);return await r.json();}
