@@ -4,9 +4,9 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V6";
-const PHYSICS_URL="physics_multitask_model.json";
-const FINAL56_URL="final_probability_model.json";
+const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V7";
+const PHYSICS_URL="physics_multitask_model.json?v=7";
+const FINAL56_URL="final_probability_model.json?v=7";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
 const PHYSICS_NAMES=[
 "cards_p4","cards_p5","cards_p6",
@@ -251,14 +251,12 @@ function volumeGuardState(roundIndex,probabilityB,policy){
 
 function applyFinalPrediction(seq,corePrediction){
   const original7=buildOriginal7(seq,corePrediction),corePB=original7.core_p_b;
-  let physics=null,physicsForecast=null,physicsIntegrityReport=null,extended=null,rawPB=corePB,clippedPB=corePB,smoothedPB=corePB,smoothingAlpha=1,smoothingStrength=0,smoothingProfile="off",finalPB=corePB,bounds=null,error="",mode="core",evDecision=null;
+  let physics=null,physicsForecast=null,physicsIntegrityReport=null,extended=null,rawPB=corePB,clippedPB=corePB,smoothedPB=corePB,smoothingAlpha=1,smoothingStrength=0,smoothingProfile="off",finalPB=corePB,bounds=null,error="",mode="unavailable",evDecision=null;
   try{
-    if(physicsBundle?.trained){
+    if(status.physics&&status.final56&&physicsBundle?.trained&&final56Bundle?.trained){
       physics=predictPhysics(seq);
       physicsForecast=unpackPhysicsForecast(physics);
       physicsIntegrityReport=physicsIntegrity(physics);
-    }
-    if(physics&&final56Bundle?.trained){
       extended=buildExtended(corePB,original7,physics);
       rawPB=predictFinalProbability(final56Bundle,extended,EXTENDED_NAMES);
       bounds=applyProbabilityBounds(rawPB,original7.round_index,extended.at(-1));clippedPB=bounds.value;
@@ -276,17 +274,17 @@ function applyFinalPrediction(seq,corePrediction){
       evDecision={pTie,pPlayer,evBanker,evPlayer,minEv:policy.minEv,activationEv:policy.activationEv,effectiveActivationEv,softBand:policy.softBand,confidenceBand:policy.confidenceBand,effectiveConfidenceBand:effectiveBand,volumeGuardActive:guard.active,entryTier,stakeMultiplier:entryTier==="weak"?.5:entryTier==="strong"?1:0,policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
         finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="Skip"?0:softConfidence(edge,{...policy,activationEv:effectiveActivationEv})};
       mode="final56";
-    }
-  }catch(e){error=String(e?.message||e||"runtime_error");rawPB=corePB;clippedPB=corePB;smoothedPB=corePB;finalPB=corePB;mode="core";}
-  const direction=evDecision?.direction||corePrediction.direction,finalPP=1-finalPB;
-  const confidence=evDecision?.confidence??corePrediction.confidence??0;
-  return {...corePrediction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),confidence,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
+    }else error=status.errors.join(",")||"final57_models_loading";
+  }catch(e){error=String(e?.message||e||"runtime_error");rawPB=corePB;clippedPB=corePB;smoothedPB=corePB;finalPB=corePB;mode="unavailable";}
+  const unavailable=mode!=="final56",direction=unavailable?"Skip":evDecision.direction,finalPP=1-finalPB;
+  const confidence=unavailable?0:evDecision.confidence;
+  return {...corePrediction,direction,final_direction:evDecision?.finalDirection||(direction==="Skip"?"觀望 Skip":direction==="B"?"莊 B":"閒 P"),confidence,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
     activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
-    regime:mode==="final56"?(direction==="Skip"?"EV 觀望":direction!==corePrediction.direction?"Final XGB換邊":"Final XGB裁決"):corePrediction.regime,
+    regime:mode==="final56"?(direction==="Skip"?"EV 觀望":direction!==corePrediction.direction?"Final XGB換邊":"Final XGB裁決"):"Final 57D 未就緒・觀望",
     finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,clippedPB,smoothedPB,smoothingAlpha,smoothingStrength,smoothingProfile,finalPB,bounds,
       p_tie:evDecision?.pTie??null,p_player:evDecision?.pPlayer??null,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
       activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",
-      coreDirection:corePrediction.direction,finalDirection:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),flipped:direction!==corePrediction.direction,
+      coreDirection:corePrediction.direction,finalDirection:evDecision?.finalDirection||(direction==="Skip"?"觀望 Skip":direction==="B"?"莊 B":"閒 P"),flipped:direction!==corePrediction.direction,
       original7,physics,physicsForecast,physicsIntegrity:physicsIntegrityReport,dataQuality:dataQuality(seq),extended,error}};
 }
 
@@ -341,7 +339,7 @@ function renderPrediction(p,n){
   const el=id=>document.getElementById(id),orb=el("directionOrb");if(!orb)return;const isSkip=p.direction==="Skip",isB=p.direction==="B";
   el("directionText").textContent=isSkip?"觀望":isB?"莊":"閒";el("directionCode").textContent=isSkip?"SKIP":isB?"BANKER":"PLAYER";el("confidence").textContent=(p.confidence*100).toFixed(1)+"%";
   el("regime").textContent=p.regime;el("strength").textContent=isSkip?"觀望":p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isSkip?"":isB?"banker":"player");
-  if(el("modePill"))el("modePill").textContent=p.finalProbability?.mode==="final56"?"Final 57D 完成":"Core 完成";
+  if(el("modePill"))el("modePill").textContent=p.finalProbability?.mode==="final56"?"Final 57D 完成":"Final 57D 未就緒・觀望";
   if(el("roundCount"))el("roundCount").textContent=n;if(el("message"))el("message").textContent="第 "+(n+1)+" 局分析完成";
 }
 function installUI(){
