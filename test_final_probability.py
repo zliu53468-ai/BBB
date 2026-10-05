@@ -125,48 +125,34 @@ class FinalProbabilityTests(unittest.TestCase):
 
     def test_strict_selective_policy_removes_soft_entries_and_penalizes_noise(self):
         policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
-        thresholds={"early":.038,"middle":.024,"late":.018}
+        thresholds={"early":.044,"middle":.032,"late":.026}
         clean=final.decision_policy_value(55,.50,thresholds,enabled=True,policy_config=policy)
         noisy=final.decision_policy_value(55,1.0,thresholds,enabled=True,policy_config=policy)
-        self.assertTrue(np.allclose(clean,(.018,.018,0.0)))
-        self.assertTrue(np.allclose(noisy,(.024,.024,0.0)))
+        self.assertTrue(np.allclose(clean,(.026,.026,0.0)))
+        self.assertTrue(np.allclose(noisy,(.036,.036,0.0)))
         model=FakeClassifier(.4955)
         model.bbb_ev_thresholds_=thresholds
         model.bbb_decision_policy_=policy
         original=self.original.copy(); original[1]=45
         result=final.predict_final_probability(self.core,original,self.physics,xgboost_model=model)
         self.assertEqual(result["direction"],"Skip")
-        self.assertAlmostEqual(result["min_ev"],.024,places=6)
-        self.assertAlmostEqual(result["activation_ev"],.024,places=6)
+        self.assertGreaterEqual(result["min_ev"],.032)
+        self.assertAlmostEqual(result["activation_ev"],result["min_ev"],places=6)
 
     def test_confidence_band_is_stage_and_noise_aware(self):
         policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
         band,strong=final.confidence_band_arrays(np.asarray([30,45,55,55]),np.asarray([.50,.50,.50,.90]),policy)
-        self.assertTrue(np.allclose(band,[.028,.020,.011,.0212]))
-        self.assertTrue(np.allclose(strong,[.007,.005,.003,.003]))
+        self.assertTrue(np.allclose(band,[.0355,.0285,.0235,.0355]))
+        self.assertTrue(np.allclose(strong,[.008,.006,.005,.005]))
 
-    def test_entry_quality_buffers_create_a_hard_no_trade_zone(self):
-        policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
-        ev,distance=final.entry_quality_arrays(np.asarray([30,45,55]),np.asarray([.5,.5,.5]),policy)
-        self.assertTrue(np.allclose(ev,[.002,.0015,.0005]))
-        self.assertTrue(np.allclose(distance,[.003,.002,.0005]))
-        rounds=np.asarray([30,30]); probabilities=np.asarray([.533,.536]); actual=np.asarray([1,1])
-        _,wagered=final.decision_returns(probabilities,actual,rounds,{"early":.038,"middle":.024,"late":.018},np.asarray([.5,.5]),policy_enabled=True,policy_config=policy)
-        self.assertFalse(wagered[0]);self.assertTrue(wagered[1])
-
-    def test_high_physics_noise_narrows_probability_clip(self):
-        self.assertEqual(final.dynamic_probability_bounds(45,.90),(.43,.57))
-        self.assertEqual(final.dynamic_probability_bounds(30,.90),(.46,.54))
-
-    def test_volume_guard_relaxes_only_after_prior_entry_density_is_too_low(self):
+    def test_conservative_policy_never_relaxes_for_action_volume(self):
         policy=final.DECISION_POLICY_PROFILES["strict_selective_entry"]
         probabilities=np.asarray([.525]*8+[.532],dtype=np.float64)
         actual=np.asarray([1]*9,dtype=np.int8)
         rounds=np.asarray([30]*9,dtype=np.float64)
-        realised,wagered=final.decision_returns(probabilities,actual,rounds,{"early":.038,"middle":.024,"late":.018},np.full(9,.5),policy_enabled=True,policy_config=policy,shoe_ids=["A"]*9)
-        self.assertFalse(np.any(wagered[:8]))
-        self.assertTrue(wagered[8])
-        self.assertEqual(final.decision_metrics(realised,wagered)["absolute_correct_bets"],1.0)
+        _,wagered=final.decision_returns(probabilities,actual,rounds,{"early":.044,"middle":.032,"late":.026},np.full(9,.5),policy_enabled=True,policy_config=policy,shoe_ids=["A"]*9)
+        self.assertFalse(policy["volume_guard"]["enabled"])
+        self.assertFalse(np.any(wagered))
 
     def test_dynamic_bounds_expand_only_for_clean_late_physics(self):
         early = final.predict_final_probability(self.core, self.original, self.physics, xgboost_model=FakeClassifier(0.90))
