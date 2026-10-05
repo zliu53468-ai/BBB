@@ -631,7 +631,6 @@ def make_training_dataset(
         try:
             x = _snapshot_56d(record)
             if x is None:
-                pb = _core_pb(record)
                 shoe_id = str(record.get("shoe_id") or "").strip()
                 if physics_extractor is not None and shoe_id:
                     if shoe_id != active_shoe:
@@ -639,10 +638,15 @@ def make_training_dataset(
                         particle_tracker = ParticleShoeTracker()
                 else:
                     particle_tracker = None
+                # Keep training feature construction aligned with production:
+                # Physics/Particle + Physical EV are materialized before Core is
+                # read into the final 57D bridge.
+                physics = _physics_48d(record, physics_extractor, particle_tracker)
+                pb = _core_pb(record)
                 x = build_56d_feature_matrix(
                     pb,
                     _original_7d(record, pb),
-                    _physics_48d(record, physics_extractor, particle_tracker),
+                    physics,
                 )
             y = _actual_b(record)
         except (KeyError, TypeError, ValueError):
