@@ -180,28 +180,6 @@ require("./final_probability_runtime.js");
     if(Math.abs(alpha49-alpha51)>=.03)throw new Error("V4 EMA discontinuity");
     const clip69=api.applyProbabilityBounds(.9,50,.1,.69**3),clip71=api.applyProbabilityBounds(.9,50,.1,.71**3);
     if(Math.abs(clip69.high-clip71.high)>=.02)throw new Error("V4 clip discontinuity");
-
-    const aligned=Array(48).fill(0);aligned[23]=.70;aligned[24]=.20;aligned[39]=.20;aligned[40]=-.20;aligned[41]=.40;aligned[42]=.10;
-    const agreement=api.computeStructureStrengthV2({corePB:.60,finalPB:.61,physics:aligned,physicsNoise:.10,particleDiagnostics:{recent_ess_ratio:.95,draw_state_uncertainty:.10}});
-    if(!(agreement.structure_agreement_score>.90&&agreement.structure_uncertainty_quality>.85&&agreement.structure_reliability_score>=0&&agreement.structure_reliability_score<=1&&agreement.structure_strength_label==="穩定"))throw new Error("Structure Strength V2 agreement/quality mismatch");
-    const conflict=aligned.slice();conflict[23]=.20;conflict[24]=.70;conflict[39]=-.005;conflict[40]=.005;conflict[41]=-.01;conflict[42]=.95;
-    const fragile=api.computeStructureStrengthV2({corePB:.60,finalPB:.58,physics:conflict,physicsNoise:.95,particleDiagnostics:{recent_ess_ratio:.05,draw_state_uncertainty:.95}});
-    if(!(fragile.structure_agreement_score<agreement.structure_agreement_score&&fragile.structure_uncertainty_quality<agreement.structure_uncertainty_quality&&fragile.structure_strength_label!=="穩定"))throw new Error("Structure Strength V2 false-stable guard mismatch");
-    const weakEv=aligned.slice();weakEv[39]=.005;weakEv[40]=-.005;weakEv[41]=.01;
-    const weakMargin=api.computeStructureStrengthV2({corePB:.60,finalPB:.61,physics:weakEv,physicsNoise:.10,particleDiagnostics:{recent_ess_ratio:.95,draw_state_uncertainty:.10}});
-    if(!(weakMargin.structure_margin_quality<1))throw new Error("Structure Strength V2 margin-quality mismatch");
-    const medium=aligned.slice();medium[23]=.57;medium[24]=.43;medium[39]=.01;medium[40]=-.01;medium[41]=.02;medium[42]=.40;
-    const mediumHigh=api.computeStructureStrengthV2({corePB:.56,finalPB:.56,physics:medium,physicsNoise:.40,particleDiagnostics:{recent_ess_ratio:.70,draw_state_uncertainty:.40}});
-    const mediumLow=api.computeStructureStrengthV2({corePB:.56,finalPB:.56,physics:medium,physicsNoise:.90,particleDiagnostics:{recent_ess_ratio:.10,draw_state_uncertainty:.85}});
-    if(!(mediumHigh.structure_subclass==="medium_high"&&mediumLow.structure_subclass==="medium_low"&&mediumHigh.structure_uncertainty_quality>mediumLow.structure_uncertainty_quality))throw new Error("Structure Strength V2 medium subclasses mismatch");
-
-    const beforeStructure=api.applyFinalPrediction(history,core);
-    if(beforeStructure.structure_strength_version!==2||!beforeStructure.structure_strength_label)throw new Error("Structure Strength V2 audit missing");
-    finalBundle.training={...finalBundle.training,structure_strength_version:2};
-    const afterStructure=api.applyFinalPrediction(history,core);
-    if(afterStructure.structure_strength_version!==2||!afterStructure.structure_strength_label)throw new Error("Structure Strength V2 audit changed unexpectedly");
-    if(Math.abs(afterStructure.finalPB-beforeStructure.finalPB)>1e-12||Math.abs(afterStructure.ev_banker-beforeStructure.ev_banker)>1e-12||Math.abs(afterStructure.ev_player-beforeStructure.ev_player)>1e-12)throw new Error("Structure Strength V2 changed probability or Final EV");
-    if(afterStructure.finalProbability.physics?.length!==48||afterStructure.finalProbability.extended?.length!==57)throw new Error("Structure Strength V2 changed model dimensions");
   }
 
   const tieHistory=[...history,"T"],tieCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(tieHistory),tiePrediction=api.applyFinalPrediction(tieHistory,tieCore);
