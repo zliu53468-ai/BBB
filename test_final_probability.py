@@ -94,6 +94,69 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertGreater(final.physics_noise_score(uncertain), final.physics_noise_score(confident))
         self.assertLess(abs(final.physics_noise_score(uncertain, 20) - 0.5), abs(final.physics_noise_score(uncertain, 55) - 0.5))
 
+    def test_structure_strength_v2_scores_agreement_margin_uncertainty_and_false_stable(self):
+        aligned=self.physics.copy()
+        aligned[23:26]=[.70,.20,.10]
+        aligned[39:43]=[.20,-.20,.40,.10]
+        stable=final.structure_strength_v2_diagnostics(
+            .60,.61,aligned,physics_noise=.10,
+            particle_diagnostics={"recent_ess_ratio":.95,"draw_state_uncertainty":.10},
+        )
+        self.assertGreater(stable["structure_agreement_score"],.90)
+        self.assertGreater(stable["structure_uncertainty_quality"],.85)
+        self.assertEqual(stable["structure_strength_label"],"穩定")
+        self.assertEqual(stable["structure_subclass"],"stable")
+
+        conflict=aligned.copy()
+        conflict[23:26]=[.20,.70,.10]
+        conflict[39:43]=[-.005,.005,-.01,.95]
+        fragile=final.structure_strength_v2_diagnostics(
+            .60,.58,conflict,physics_noise=.95,
+            particle_diagnostics={"recent_ess_ratio":.05,"draw_state_uncertainty":.95},
+        )
+        self.assertLess(fragile["structure_agreement_score"],stable["structure_agreement_score"])
+        self.assertLess(fragile["structure_uncertainty_quality"],stable["structure_uncertainty_quality"])
+        self.assertGreaterEqual(fragile["false_stable_risk"],.70)
+        self.assertNotEqual(fragile["structure_strength_label"],"穩定")
+        self.assertTrue(all(0.0<=fragile[key]<=1.0 for key in (
+            "structure_reliability_score","structure_agreement_score","structure_margin_quality","structure_uncertainty_quality","false_stable_risk",
+        )))
+        weak_ev=aligned.copy()
+        weak_ev[39:43]=[.005,-.005,.01,.10]
+        weak_margin=final.structure_strength_v2_diagnostics(.60,.61,weak_ev,physics_noise=.10,particle_diagnostics={"recent_ess_ratio":.95,"draw_state_uncertainty":.10})
+        self.assertLess(weak_margin["structure_margin_quality"],.90)
+
+        disagreement=final.structure_strength_v2_diagnostics(.40,.39,aligned,physics_noise=.10,particle_diagnostics={"recent_ess_ratio":.95,"draw_state_uncertainty":.10})
+        self.assertLess(disagreement["structure_agreement_score"],.45)
+        self.assertNotEqual(disagreement["structure_strength_label"],"穩定")
+        uncertain=aligned.copy();uncertain[42]=.95
+        low_quality=final.structure_strength_v2_diagnostics(.60,.61,uncertain,physics_noise=.95,particle_diagnostics={"recent_ess_ratio":.05,"draw_state_uncertainty":.95})
+        self.assertLess(low_quality["structure_uncertainty_quality"],.45)
+        self.assertNotEqual(low_quality["structure_strength_label"],"穩定")
+
+    def test_structure_strength_v2_separates_medium_quality_without_changing_probability_or_ev(self):
+        physics=self.physics.copy()
+        physics[23:26]=[.57,.43,.10]
+        physics[39:43]=[.01,-.01,.02,.40]
+        high=final.structure_strength_v2_diagnostics(.56,.56,physics,physics_noise=.40,particle_diagnostics={"recent_ess_ratio":.70,"draw_state_uncertainty":.40})
+        low=final.structure_strength_v2_diagnostics(.56,.56,physics,physics_noise=.90,particle_diagnostics={"recent_ess_ratio":.10,"draw_state_uncertainty":.85})
+        self.assertGreater(high["structure_uncertainty_quality"],low["structure_uncertainty_quality"])
+        self.assertEqual(high["structure_strength_label"],"中等")
+        self.assertEqual(high["structure_subclass"],"medium_high")
+        self.assertEqual(low["structure_strength_label"],"中等")
+        self.assertEqual(low["structure_subclass"],"medium_low")
+
+        legacy=FakeClassifier(.87)
+        upgraded=FakeClassifier(.87)
+        before=final.predict_final_probability(self.core,self.original,physics,xgboost_model=legacy)
+        after=final.predict_final_probability(self.core,self.original,physics,xgboost_model=upgraded)
+        self.assertEqual(after["structure_strength_version"],2)
+        self.assertEqual(after["features"].shape,(1,57))
+        self.assertEqual(physics.shape,(PHYSICS_DIM,))
+        self.assertAlmostEqual(after["final_p_b"],before["final_p_b"],places=7)
+        self.assertAlmostEqual(after["ev_banker"],before["ev_banker"],places=7)
+        self.assertAlmostEqual(after["ev_player"],before["ev_player"],places=7)
+
     def test_xgboost_probability_is_direct_and_bounded(self):
         model = FakeClassifier(0.87)
         prediction = final.predict_final_probability(
