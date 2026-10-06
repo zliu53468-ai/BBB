@@ -60,6 +60,7 @@ MAX_SMOOTHING_BRIER_INCREASE = 0.0005
 MAX_MODEL_BRIER_REGRESSION = 0.0015
 MIN_PRIMARY_GAIN = 1e-6
 STAGE_PROGRESS_VERSION = 4
+EARLY35_VERSION = 1
 ESTIMATED_TOTAL_HANDS_MIN = 50.0
 ESTIMATED_TOTAL_HANDS_MAX = 70.0
 ESTIMATED_PLAYABLE_CARDS = 416.0 - 60.0  # Existing 8-deck / cut-card setting.
@@ -850,7 +851,7 @@ def nested_tuning_masks(
 
 
 def balanced_sample_weights(y: np.ndarray, x: np.ndarray) -> np.ndarray:
-    """Class weights plus V4 relative-progress/physical-actionability weighting."""
+    """Class weights plus V4 weighting, with bounded early-35 sample emphasis."""
     labels=np.asarray(y,dtype=np.int8).reshape(-1);features=np.asarray(x,dtype=np.float64)
     rounds=features[:,2];weights=np.ones(len(labels),dtype=np.float64)
     for label in (0,1):
@@ -865,6 +866,15 @@ def balanced_sample_weights(y: np.ndarray, x: np.ndarray) -> np.ndarray:
     )
     particle_uncertainty=np.clip(features[:,8+_PHYSICS_INDEX["particle_uncertainty"]],0.0,1.0)
     reliability=.75+.25*(1.0-particle_uncertainty)
+    early35=(rounds>=1.0)&(rounds<=35.0)
+    early35_stage=np.select(
+        [rounds<=5.0,rounds<=10.0,rounds<=15.0,rounds<=20.0,rounds<=25.0,rounds<=30.0],
+        [1.25,1.35,1.35,1.30,1.28,1.22],
+        default=1.15,
+    )
+    early35_reliability=.80+.20*(1.0-particle_uncertainty)
+    stage_factor=np.where(early35,early35_stage,stage_factor)
+    reliability=np.where(early35,early35_reliability,reliability)
 
     physical_b=features[:,8+_PHYSICS_INDEX["physical_ev_banker"]]
     physical_p=features[:,8+_PHYSICS_INDEX["physical_ev_player"]]
@@ -873,7 +883,9 @@ def balanced_sample_weights(y: np.ndarray, x: np.ndarray) -> np.ndarray:
     normalized_actionability=np.clip(physical_actionability/.05,0.0,1.0)
     action_factor=1.0+.08*normalized_actionability
 
-    weights*=stage_factor*reliability*action_factor
+    multiplier=stage_factor*reliability*action_factor
+    multiplier=np.where(early35,np.minimum(multiplier,1.50),multiplier)
+    weights*=multiplier
     return np.clip(weights/np.mean(weights),0.35,1.50).astype(np.float32)
 
 
@@ -1715,6 +1727,7 @@ def export_browser_bundle(
 
     bundle = {
         "schema_version": 2,
+        "early35_version": EARLY35_VERSION,
         "model_type": MODEL_TYPE,
         "trained": True,
         "feature_names": list(FEATURE_NAMES),
@@ -1733,6 +1746,7 @@ def export_browser_bundle(
             "noise_score_version": 5,
             "particle_physics_version": 2,
             "stage_progress_version": STAGE_PROGRESS_VERSION,
+            "early35_version": EARLY35_VERSION,
             "stage_progress_policy": "relative_estimated_total_hands_plus_particle_consumption_v4",
             "probability_bounds_policy": "smooth_effective_progress",
             "calibration_selection_policy": "overall_plus_effective_progress_ge_70_weighted_brier",

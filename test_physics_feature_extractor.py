@@ -1,7 +1,13 @@
 import unittest
 import numpy as np
 
-from particle_shoe_filter import ParticleShoeTracker, estimate_particle_physics, fuse_particle_physics
+from particle_shoe_filter import (
+    ParticleShoeTracker,
+    early35_evidence_weight,
+    early35_physical_ev_reliability,
+    estimate_particle_physics,
+    fuse_particle_physics,
+)
 from physics_feature_extractor import (
     HISTORY_INPUT_DIM,
     PHYSICS_DIM,
@@ -128,6 +134,23 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
         self.assertGreater(late_diag["fusion_weight"],early_diag["fusion_weight"])
         self.assertLessEqual(late_diag["fusion_weight"],.58)
         self.assertLessEqual(abs(float(early[39])),abs(float(early_diag["raw_physical_ev_banker"]))+1e-9)
+
+    def test_early35_evidence_is_reliability_aware_and_continuous(self):
+        reliable={"recent_ess_ratio":.90,"posterior_uncertainty":.20,"expected_consumed_cards":180.0}
+        uncertain={**reliable,"posterior_uncertainty":.80}
+        low_ess={**reliable,"recent_ess_ratio":.20}
+        weights=[early35_evidence_weight(rounds,reliable) for rounds in (5,15,25,35)]
+        self.assertLess(weights[0],weights[1])
+        self.assertLess(weights[1],weights[2])
+        self.assertLess(weights[2],weights[3])
+        self.assertLess(early35_evidence_weight(10,uncertain),early35_evidence_weight(10,reliable))
+        self.assertGreater(early35_evidence_weight(10,reliable),early35_evidence_weight(10,low_ess))
+        self.assertLess(abs(early35_evidence_weight(21,reliable)-early35_evidence_weight(20,reliable)),.10)
+        self.assertLess(abs(early35_evidence_weight(36,reliable)-early35_evidence_weight(35,reliable)),.10)
+        self.assertLess(abs(early35_physical_ev_reliability(36,reliable)-early35_physical_ev_reliability(35,reliable)),.10)
+        mlp=np.zeros(PHYSICS_DIM,dtype=np.float32);mlp[:3]=[.58,.34,.08];mlp[3:13]=.1;mlp[13:23]=.1;mlp[23:26]=[.4586,.4462,.0952];mlp[26:39]=5/13;mlp[39:43]=[0,0,0,.5];mlp[44:46]=.5
+        fused,_=fuse_particle_physics(mlp,"BPPBTBBPPT",early35_version=1)
+        self.assertEqual(fused.shape,(PHYSICS_DIM,))
 
     def test_uncertainty_calibration_is_bounded_and_monotone(self):
         base=np.zeros((64,PHYSICS_DIM),dtype=np.float32)

@@ -38,6 +38,7 @@ require("./final_probability_runtime.js");
   if(!api)throw new Error("final probability runtime not installed");
   await api.loadModels();
   if(api.getModelStatus().mode!=="final56")throw new Error("direct model was not selected");
+  if(api.early35Enabled())throw new Error("legacy model unexpectedly enabled Early-35 behavior");
 
   const history="BPPBTBBPPTBBPPBTBP".split("");
   const core=global.__BGS256_CONTINUATION_TEST__.hazardChoose(history);
@@ -156,7 +157,7 @@ require("./final_probability_runtime.js");
 
     // V4 uses relative hand progress plus actual Particle card consumption;
     // these assertions are intentionally independent from Final EV/#43 policy.
-    finalBundle.training={particle_physics_version:1,stage_progress_version:4};
+    finalBundle.training={particle_physics_version:1,stage_progress_version:4,early35_version:1};
     const lowCards={expected_consumed_cards:120,posterior_uncertainty:.30,recent_ess_ratio:1};
     const highCards={...lowCards,expected_consumed_cards:260};
     const p50=api.effectiveParticleProgress(40,highCards,50),p70=api.effectiveParticleProgress(40,highCards,70);
@@ -166,6 +167,15 @@ require("./final_probability_runtime.js");
     const round=50/60,card=120/(416-60);
     const highU=api.effectiveParticleProgress(50,uncertain,60),lowU=api.effectiveParticleProgress(50,certain,60);
     if(!(Math.abs(highU-round)<Math.abs(highU-card)&&Math.abs(lowU-card)<Math.abs(lowU-round)))throw new Error("uncertainty progress weighting mismatch");
+    const early35Diag={expected_consumed_cards:180,posterior_uncertainty:.20,recent_ess_ratio:.90};
+    const e5=api.early35EvidenceWeight(5,early35Diag,60),e15=api.early35EvidenceWeight(15,early35Diag,60),e25=api.early35EvidenceWeight(25,early35Diag,60),e35=api.early35EvidenceWeight(35,early35Diag,60);
+    if(!(e5<e15&&e15<e25&&e25<e35))throw new Error("Early-35 evidence anchors are not ordered");
+    if(!(api.early35EvidenceWeight(10,{...early35Diag,posterior_uncertainty:.80},60)<api.early35EvidenceWeight(10,early35Diag,60)))throw new Error("Early-35 uncertainty evidence shrinkage failed");
+    if(!(api.early35EvidenceWeight(10,early35Diag,60)>api.early35EvidenceWeight(10,{...early35Diag,recent_ess_ratio:.20},60)))throw new Error("Early-35 ESS evidence scaling failed");
+    if(Math.abs(api.early35EvidenceWeight(21,early35Diag,60)-api.early35EvidenceWeight(20,early35Diag,60))>=.10)throw new Error("Early-35 20/21 evidence transition jumped");
+    if(Math.abs(api.early35EvidenceWeight(36,early35Diag,60)-e35)>=.10)throw new Error("Early-35 35/36 evidence transition jumped");
+    if(Math.abs(api.early35PhysicalEvReliability(36,early35Diag,60)-api.early35PhysicalEvReliability(35,early35Diag,60))>=.10)throw new Error("Early-35 35/36 EV reliability transition jumped");
+    if(!api.early35Enabled())throw new Error("Early-35 model version gate failed");
     const alpha49=api.dynamicEmaAlpha(50,.5,{},.49**3),alpha51=api.dynamicEmaAlpha(50,.5,{},.51**3);
     if(Math.abs(alpha49-alpha51)>=.03)throw new Error("V4 EMA discontinuity");
     const clip69=api.applyProbabilityBounds(.9,50,.1,.69**3),clip71=api.applyProbabilityBounds(.9,50,.1,.71**3);

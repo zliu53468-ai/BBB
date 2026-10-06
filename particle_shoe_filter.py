@@ -27,6 +27,17 @@ LIKELIHOOD_DRAWS = 4
 FALLBACK_DRAWS = 12
 FORECAST_DRAWS = 2
 RANDOM_STATE = 20261005
+EARLY35_VERSION = 1
+EARLY35_BRIDGE_START = 35.0
+EARLY35_BRIDGE_END = 40.0
+EARLY35_EVIDENCE_ANCHORS = (
+    (1.0, .15), (5.0, .22), (10.0, .32), (15.0, .45),
+    (20.0, .55), (25.0, .64), (30.0, .72), (35.0, .78),
+)
+EARLY35_EV_RELIABILITY_ANCHORS = (
+    (1.0, .20), (5.0, .28), (10.0, .38), (15.0, .48),
+    (20.0, .58), (25.0, .66), (30.0, .73), (35.0, .79),
+)
 
 _OUTCOMES = ("B", "P", "T")
 
@@ -47,6 +58,10 @@ def _interp(value: float, anchors: Sequence[tuple[float, float]]) -> float:
     xs=np.asarray([item[0] for item in anchors],dtype=np.float64)
     ys=np.asarray([item[1] for item in anchors],dtype=np.float64)
     return float(np.interp(float(value),xs,ys))
+
+
+def _blend(start: float, end: float, value: float) -> float:
+    return float(start + (end - start) * _clip(value))
 
 
 def _tokens(history: str | Iterable[Any] | None) -> list[str]:
@@ -402,6 +417,40 @@ def _physical_ev_reliability(rounds: int, diagnostics: dict[str, float]) -> floa
     return _clip(stage*(.72+.28*ess)*(1.0-.30*uncertainty),.20,.90)
 
 
+def particle_reliability(diagnostics: dict[str, float]) -> float:
+    """Reliability of the B/P/T-only particle posterior, not a card reconstruction claim."""
+    ess=_clip(diagnostics.get("recent_ess_ratio",1.0))
+    uncertainty=_clip(diagnostics.get("posterior_uncertainty",1.0))
+    return _clip(ess*(1.0-uncertainty))
+
+
+def early35_evidence_weight(rounds: float, diagnostics: dict[str, float]) -> float:
+    """Bayesian Particle evidence weight with a continuous 35→40 hand hand-off."""
+    stage=_interp(rounds,EARLY35_EVIDENCE_ANCHORS)
+    adjustment=.65+.35*particle_reliability(diagnostics)
+    early=_clip(stage*adjustment,.10,.80)
+    if rounds <= EARLY35_BRIDGE_START:
+        return early
+    baseline=_fusion_weight(rounds,diagnostics)
+    if rounds >= EARLY35_BRIDGE_END:
+        return baseline
+    return _blend(early,baseline,(rounds-EARLY35_BRIDGE_START)/(EARLY35_BRIDGE_END-EARLY35_BRIDGE_START))
+
+
+def early35_physical_ev_reliability(rounds: float, diagnostics: dict[str, float]) -> float:
+    """Shrink raw Particle Physical EV until the posterior has enough evidence."""
+    stage=_interp(rounds,EARLY35_EV_RELIABILITY_ANCHORS)
+    ess=_clip(diagnostics.get("recent_ess_ratio",1.0))
+    uncertainty=_clip(diagnostics.get("posterior_uncertainty",1.0))
+    early=_clip(stage*(.70+.30*ess)*(1.0-.35*uncertainty),0.0,.85)
+    if rounds <= EARLY35_BRIDGE_START:
+        return early
+    baseline=_physical_ev_reliability(rounds,diagnostics)
+    if rounds >= EARLY35_BRIDGE_END:
+        return baseline
+    return _blend(early,baseline,(rounds-EARLY35_BRIDGE_START)/(EARLY35_BRIDGE_END-EARLY35_BRIDGE_START))
+
+
 def fuse_particle_physics(
     mlp_48d: Sequence[float],
     history: str | Sequence[str],
@@ -410,6 +459,7 @@ def fuse_particle_physics(
     forecast_draws: int = FORECAST_DRAWS,
     random_state: int = RANDOM_STATE,
     tracker: ParticleShoeTracker | None = None,
+    early35_version: int = EARLY35_VERSION,
 ) -> tuple[np.ndarray, dict[str, float]]:
     """Fuse rule-consistent particle estimates into the existing 48D semantics."""
     mlp = np.asarray(mlp_48d, dtype=np.float64).reshape(-1)
@@ -428,14 +478,19 @@ def fuse_particle_physics(
         )
     )
     particle = estimate.physics_48d.astype(np.float64)
-    weight = _fusion_weight(len(seq), estimate.diagnostics)
-    ev_reliability=_physical_ev_reliability(len(seq),estimate.diagnostics)
+    early35_enabled=int(early35_version)>=EARLY35_VERSION
+    weight=_fusion_weight(len(seq),estimate.diagnostics)
+    evidence_weight=(early35_evidence_weight(len(seq),estimate.diagnostics)
+                     if early35_enabled else weight)
+    ev_reliability=(early35_physical_ev_reliability(len(seq),estimate.diagnostics)
+                    if early35_enabled else _physical_ev_reliability(len(seq),estimate.diagnostics))
     raw_ev=particle[39:42].copy()
     particle[39:42]*=ev_reliability
     fused = mlp.copy()
 
     for start, end in ((0, 3), (3, 13), (13, 23), (23, 26)):
-        fused[start:end] = _normalise((1.0 - weight) * _normalise(mlp[start:end]) + weight * _normalise(particle[start:end]))
+        block_weight=evidence_weight if early35_enabled else weight
+        fused[start:end] = _normalise((1.0 - block_weight) * _normalise(mlp[start:end]) + block_weight * _normalise(particle[start:end]))
 
     fused[26:39] = (1.0 - weight) * np.clip(mlp[26:39], 0.0, None) + weight * particle[26:39]
     # Physical EV is deliberately particle-first and is computed before Core.
@@ -461,7 +516,9 @@ def fuse_particle_physics(
     diagnostics["effective_progress"] = _effective_progress(len(seq),estimate.diagnostics)
     diagnostics["effective_progress_round"] = 70.0*diagnostics["effective_progress"]
     diagnostics["fusion_weight"] = float(weight)
+    diagnostics["particle_evidence_weight"] = float(evidence_weight)
     diagnostics["physical_ev_reliability"] = float(ev_reliability)
+    diagnostics["early35_version"] = float(EARLY35_VERSION if early35_enabled else 0)
     diagnostics["raw_physical_ev_banker"] = float(raw_ev[0])
     diagnostics["raw_physical_ev_player"] = float(raw_ev[1])
     diagnostics["physical_ev_banker"] = float(fused[39])
