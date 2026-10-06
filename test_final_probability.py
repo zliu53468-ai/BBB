@@ -94,6 +94,52 @@ class FinalProbabilityTests(unittest.TestCase):
         self.assertGreater(final.physics_noise_score(uncertain), final.physics_noise_score(confident))
         self.assertLess(abs(final.physics_noise_score(uncertain, 20) - 0.5), abs(final.physics_noise_score(uncertain, 55) - 0.5))
 
+    def test_stability_v2_agreement_quality_and_false_stable_guard(self):
+        aligned=self.physics.copy()
+        aligned[23:26]=[.70,.20,.10]
+        aligned[39:43]=[.20,-.20,.40,.10]
+        stable=final.stability_v2_diagnostics(
+            .60,.61,aligned,raw_pb=.61,clipped_pb=.61,physics_noise=.10,
+            particle_diagnostics={"recent_ess_ratio":.95,"draw_state_uncertainty":.10},
+        )
+        self.assertGreater(stable["model_agreement_score"],.90)
+        self.assertGreater(stable["physics_quality"],.85)
+        self.assertEqual(stable["stability_v2_label"],"Very Stable / 高穩定")
+
+        conflict=aligned.copy()
+        conflict[23:26]=[.20,.70,.10]
+        conflict[39:43]=[-.005,.005,-.01,.95]
+        fragile=final.stability_v2_diagnostics(
+            .60,.58,conflict,raw_pb=.70,clipped_pb=.58,physics_noise=.95,
+            particle_diagnostics={"recent_ess_ratio":.05,"draw_state_uncertainty":.95},
+        )
+        self.assertLess(fragile["model_agreement_score"],stable["model_agreement_score"])
+        self.assertLess(fragile["physics_quality"],stable["physics_quality"])
+        self.assertGreaterEqual(fragile["false_stable_risk"],.70)
+        self.assertEqual(fragile["stability_v2_label"],"Unstable / 不穩定")
+        self.assertTrue(all(0.0<=fragile[key]<=1.0 for key in (
+            "stability_v2_score","physics_quality","model_agreement_score","prediction_fragility","false_stable_risk",
+        )))
+
+    def test_stability_v2_uses_ess_without_changing_probability_or_ev(self):
+        physics=self.physics.copy()
+        physics[23:26]=[.66,.24,.10]
+        physics[39:43]=[.16,-.16,.32,.20]
+        low=final.stability_v2_diagnostics(.58,.58,physics,physics_noise=.20,particle_diagnostics={"recent_ess_ratio":.10,"draw_state_uncertainty":.20})
+        high=final.stability_v2_diagnostics(.58,.58,physics,physics_noise=.20,particle_diagnostics={"recent_ess_ratio":.95,"draw_state_uncertainty":.20})
+        self.assertGreater(high["physics_quality"],low["physics_quality"])
+
+        legacy=FakeClassifier(.87)
+        upgraded=FakeClassifier(.87);upgraded.bbb_stability_version_=final.STABILITY_VERSION
+        before=final.predict_final_probability(self.core,self.original,physics,xgboost_model=legacy)
+        after=final.predict_final_probability(self.core,self.original,physics,xgboost_model=upgraded)
+        self.assertEqual(after["stability_version"],2)
+        self.assertEqual(after["features"].shape,(1,57))
+        self.assertEqual(physics.shape,(PHYSICS_DIM,))
+        self.assertAlmostEqual(after["final_p_b"],before["final_p_b"],places=7)
+        self.assertAlmostEqual(after["ev_banker"],before["ev_banker"],places=7)
+        self.assertAlmostEqual(after["ev_player"],before["ev_player"],places=7)
+
     def test_xgboost_probability_is_direct_and_bounded(self):
         model = FakeClassifier(0.87)
         prediction = final.predict_final_probability(

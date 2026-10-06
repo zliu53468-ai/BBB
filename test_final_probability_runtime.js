@@ -180,6 +180,21 @@ require("./final_probability_runtime.js");
     if(Math.abs(alpha49-alpha51)>=.03)throw new Error("V4 EMA discontinuity");
     const clip69=api.applyProbabilityBounds(.9,50,.1,.69**3),clip71=api.applyProbabilityBounds(.9,50,.1,.71**3);
     if(Math.abs(clip69.high-clip71.high)>=.02)throw new Error("V4 clip discontinuity");
+
+    const aligned=Array(48).fill(0);aligned[23]=.70;aligned[24]=.20;aligned[39]=.20;aligned[40]=-.20;aligned[41]=.40;aligned[42]=.10;
+    const agreement=api.computeStabilityV2({corePB:.60,finalPB:.61,rawPB:.61,clippedPB:.61,physics:aligned,physicsNoise:.10,particleDiagnostics:{recent_ess_ratio:.95,draw_state_uncertainty:.10}});
+    if(!(agreement.model_agreement_score>.90&&agreement.physics_quality>.85&&agreement.stability_v2_score>=0&&agreement.stability_v2_score<=1))throw new Error("Stability V2 agreement/quality mismatch");
+    const conflict=aligned.slice();conflict[23]=.20;conflict[24]=.70;conflict[39]=-.005;conflict[40]=.005;conflict[41]=-.01;conflict[42]=.95;
+    const fragile=api.computeStabilityV2({corePB:.60,finalPB:.58,rawPB:.70,clippedPB:.58,physics:conflict,physicsNoise:.95,particleDiagnostics:{recent_ess_ratio:.05,draw_state_uncertainty:.95}});
+    if(!(fragile.model_agreement_score<agreement.model_agreement_score&&fragile.physics_quality<agreement.physics_quality&&fragile.stability_v2_label!=="Very Stable / 高穩定"))throw new Error("Stability V2 false-stable guard mismatch");
+
+    const beforeStability=api.applyFinalPrediction(history,core);
+    if(beforeStability.stability_version!==undefined)throw new Error("legacy model unexpectedly enabled Stability V2");
+    finalBundle.training={...finalBundle.training,stability_version:2};
+    const afterStability=api.applyFinalPrediction(history,core);
+    if(!api.stabilityV2Enabled()||afterStability.stability_version!==2||!afterStability.stability_v2_label||!Number.isFinite(afterStability.recent_prediction_health))throw new Error("Stability V2 model-version gate failed");
+    if(Math.abs(afterStability.finalPB-beforeStability.finalPB)>1e-12||Math.abs(afterStability.ev_banker-beforeStability.ev_banker)>1e-12||Math.abs(afterStability.ev_player-beforeStability.ev_player)>1e-12)throw new Error("Stability V2 changed probability or Final EV");
+    if(afterStability.finalProbability.physics?.length!==48||afterStability.finalProbability.extended?.length!==57)throw new Error("Stability V2 changed model dimensions");
   }
 
   const tieHistory=[...history,"T"],tieCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(tieHistory),tiePrediction=api.applyFinalPrediction(tieHistory,tieCore);
