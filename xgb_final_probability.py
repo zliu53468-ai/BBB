@@ -61,8 +61,6 @@ MAX_MODEL_BRIER_REGRESSION = 0.0015
 MIN_PRIMARY_GAIN = 1e-6
 STAGE_PROGRESS_VERSION = 4
 EARLY35_VERSION = 1
-STABILITY_VERSION = 2
-STABILITY_POLICY = "agreement_physics_quality_fragility_v2"
 ESTIMATED_TOTAL_HANDS_MIN = 50.0
 ESTIMATED_TOTAL_HANDS_MAX = 70.0
 ESTIMATED_PLAYABLE_CARDS = 416.0 - 60.0  # Existing 8-deck / cut-card setting.
@@ -255,110 +253,6 @@ def physics_integrity_report(physics_48d: Sequence[float]) -> dict[str, Any]:
     }
 
 
-def _stability_signal(value: float, scale: float) -> float:
-    """Continuous B/P direction: zero is neutral, signed magnitude is evidence."""
-    return _clip(float(value) / max(1e-9, float(scale)), -1.0, 1.0)
-
-
-def _model_agreement(signals: Sequence[float]) -> float:
-    evidence = np.clip(np.abs(np.asarray(signals, dtype=np.float64)), 0.0, 1.0)
-    total = float(evidence.sum())
-    if total <= 1e-12:
-        return 0.5
-    values = np.asarray(signals, dtype=np.float64)
-    consensus = float(np.sum(values * evidence) / total)
-    disagreement = float(np.sum(evidence * np.abs(values - consensus)) / (2.0 * total))
-    coherence = _clip(1.0 - disagreement)
-    evidence_strength = _clip(total / len(evidence))
-    return _clip(.55 * coherence + .30 * abs(consensus) + .15 * evidence_strength)
-
-
-def _stability_label(score: float, false_stable_risk: float) -> str:
-    if false_stable_risk >= .70:
-        return "Unstable / 不穩定"
-    if score >= .82:
-        label = "Very Stable / 高穩定"
-    elif score >= .68:
-        label = "Stable / 穩定"
-    elif score >= .52:
-        label = "Normal / 一般"
-    else:
-        label = "Unstable / 不穩定"
-    return "Normal / 一般" if false_stable_risk >= .55 and label != "Unstable / 不穩定" else label
-
-
-def stability_v2_diagnostics(
-    core_pb: float,
-    final_pb: float,
-    physics_48d: Sequence[float],
-    *,
-    raw_pb: float | None = None,
-    clipped_pb: float | None = None,
-    physics_noise: float | None = None,
-    particle_diagnostics: Mapping[str, Any] | None = None,
-    recent_prediction_health: float | None = None,
-) -> dict[str, Any]:
-    """O(1) Stability 2.0 audit; it never changes probability, EV or action."""
-    physics = _physics_vector(physics_48d)
-    diagnostics = dict(particle_diagnostics or {})
-    particle_uncertainty = _clip(float(physics[_PHYSICS_INDEX["particle_uncertainty"]]))
-    ess = _clip(float(diagnostics.get("recent_ess_ratio", .5)))
-    draw_uncertainty = _clip(float(diagnostics.get("draw_state_uncertainty", particle_uncertainty)))
-    noise = _clip(float(physics_noise if physics_noise is not None else physics_noise_score(physics, 70.0)))
-
-    physics_signal = _stability_signal(
-        float(physics[_PHYSICS_INDEX["winner_p_b"]] - physics[_PHYSICS_INDEX["winner_p_p"]]), .10
-    )
-    physical_ev_signal = _stability_signal(float(physics[_PHYSICS_INDEX["physical_ev_gap"]]), .08)
-    core_signal = _stability_signal(_clip(core_pb) - .5, .10)
-    final_signal = _stability_signal(_clip(final_pb) - .5, .10)
-    model_agreement_score = _model_agreement((physics_signal, physical_ev_signal, core_signal, final_signal))
-
-    physics_quality = _clip(
-        .30 * (1.0 - particle_uncertainty)
-        + .25 * ess
-        + .25 * (1.0 - noise)
-        + .20 * (1.0 - draw_uncertainty)
-    )
-    probability_margin = abs(_clip(final_pb) - .5)
-    physical_ev_strength = _clip(abs(float(physics[_PHYSICS_INDEX["physical_ev_gap"]])) / .08)
-    physics_core_conflict = _clip(max(0.0, -physics_signal * core_signal))
-    raw_probability = _clip(final_pb if raw_pb is None else raw_pb)
-    clipped_probability = _clip(final_pb if clipped_pb is None else clipped_pb)
-    clipping_distance = _clip(abs(raw_probability - clipped_probability) / .10)
-    prediction_fragility = _clip(
-        .30 * (1.0 - _clip(probability_margin / .10))
-        + .20 * (1.0 - physical_ev_strength)
-        + .25 * physics_core_conflict
-        + .15 * particle_uncertainty
-        + .10 * clipping_distance
-    )
-    stability_v2_score = _clip(
-        .35 * physics_quality + .35 * model_agreement_score + .30 * (1.0 - prediction_fragility)
-    )
-    false_stable_risk = _clip(
-        .35 * (1.0 - physics_quality) + .35 * (1.0 - model_agreement_score) + .30 * prediction_fragility
-    )
-    if recent_prediction_health is not None and math.isfinite(float(recent_prediction_health)):
-        health = _clip(float(recent_prediction_health))
-        false_stable_risk = _clip(.85 * false_stable_risk + .15 * (1.0 - health))
-    else:
-        health = None
-    audit = {
-        "stability_version": STABILITY_VERSION,
-        "stability_v2_score": stability_v2_score,
-        "stability_v2_label": _stability_label(stability_v2_score, false_stable_risk),
-        "physics_quality": physics_quality,
-        "model_agreement_score": model_agreement_score,
-        "prediction_fragility": prediction_fragility,
-        "false_stable_risk": false_stable_risk,
-        "probability_clipping_distance": clipping_distance,
-    }
-    if health is not None:
-        audit["recent_prediction_health"] = health
-    return audit
-
-
 def physics_noise_score(
     physics_48d: Sequence[float],
     round_index: float = 70.0,
@@ -523,7 +417,6 @@ def _direct_prediction_payload(
     *,
     xgboost_model: Any,
     probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
-    particle_diagnostics: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create the direct XGBoost result and decode its 48D physical forecast."""
     physics = _physics_vector(physics_48d)
@@ -557,20 +450,7 @@ def _direct_prediction_payload(
         soft_band,
         min_confidence=float(policy_config.get("min_confidence", MIN_SOFT_CONFIDENCE)),
     ) if direction != "Skip" else 0.0
-    stability = (
-        stability_v2_diagnostics(
-            core_pb,
-            final_pb,
-            physics,
-            raw_pb=raw_pb,
-            clipped_pb=final_pb,
-            physics_noise=noise_score,
-            particle_diagnostics=particle_diagnostics,
-        )
-        if int(getattr(xgboost_model, "bbb_stability_version_", 0)) >= STABILITY_VERSION
-        else None
-    )
-    payload = {
+    return {
         "core_p_b": float(core_pb),
         "raw_p_b": raw_pb,
         "final_p_b": final_pb,
@@ -597,9 +477,6 @@ def _direct_prediction_payload(
         "physics_forecast": unpack_physics_forecast(physics),
         "physics_integrity": physics_integrity_report(physics),
     }
-    if stability is not None:
-        payload.update(stability)
-    return payload
 
 
 def predict_final_probability(
@@ -609,7 +486,6 @@ def predict_final_probability(
     *,
     xgboost_model: Any,
     probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
-    particle_diagnostics: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return final P(B) and unpacked next-hand physical estimates.
 
@@ -624,7 +500,6 @@ def predict_final_probability(
         physics_48d,
         xgboost_model=xgboost_model,
         probability_bounds=probability_bounds,
-        particle_diagnostics=particle_diagnostics,
     )
 
 
@@ -635,7 +510,6 @@ def predict_final_result(
     *,
     xgboost_model: Any,
     probability_bounds: Sequence[float] = PROBABILITY_BOUNDS,
-    particle_diagnostics: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compatibility name for the complete direct probability result payload."""
     return predict_final_probability(
@@ -644,7 +518,6 @@ def predict_final_result(
         physics_48d,
         xgboost_model=xgboost_model,
         probability_bounds=probability_bounds,
-        particle_diagnostics=particle_diagnostics,
     )
 
 
@@ -1874,8 +1747,6 @@ def export_browser_bundle(
             "particle_physics_version": 2,
             "stage_progress_version": STAGE_PROGRESS_VERSION,
             "early35_version": EARLY35_VERSION,
-            "stability_version": STABILITY_VERSION,
-            "stability_policy": STABILITY_POLICY,
             "stage_progress_policy": "relative_estimated_total_hands_plus_particle_consumption_v4",
             "probability_bounds_policy": "smooth_effective_progress",
             "calibration_selection_policy": "overall_plus_effective_progress_ge_70_weighted_brier",
@@ -2058,7 +1929,6 @@ def train_command(args: argparse.Namespace) -> int:
     final_model.bbb_smoothing_ = smoothing_config
     final_model.bbb_decision_policy_ = decision_policy
     final_model.bbb_physics_noise_calibration_ = physics_noise_calibration
-    final_model.bbb_stability_version_ = STABILITY_VERSION
     if args.joblib_output:
         joblib.dump(final_model, args.joblib_output)
     export_browser_bundle(
