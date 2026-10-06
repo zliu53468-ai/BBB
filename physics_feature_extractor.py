@@ -27,7 +27,7 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 
-from particle_shoe_filter import ParticleShoeTracker, fuse_particle_physics
+from particle_shoe_filter import ParticleShoeTracker, _banker_draws, fuse_particle_physics
 
 DECKS = 8
 TOTAL_CARDS = 52 * DECKS
@@ -63,6 +63,37 @@ PHYSICS_LOSS_WEIGHTS = np.asarray([1.25]*3+[1.10]*20+[2.50]*3+[.80]*13+[1.50,1.5
 PROBABILITY_BLOCKS = {"card_count":slice(0,3),"player_points":slice(3,13),"banker_points":slice(13,23),"winner":slice(23,26)}
 AFFINE_OUTPUT_INDICES = tuple(range(26,48))
 assert PHYSICS_LOSS_WEIGHTS.size == PHYSICS_DIM
+
+# Training-only heads.  The browser and the 57D bridge continue to receive
+# exactly the same 48D Physics block.
+THIRD_CARD_NONE = 10
+THIRD_CARD_TARGET_DIM = 11
+AUXILIARY_HEADS = (
+    ("player_draw", 1, .25),
+    ("banker_draw", 1, .30),
+    ("natural_8_9", 1, .15),
+    ("player_third_card_value", THIRD_CARD_TARGET_DIM, .10),
+    ("banker_third_card_value", THIRD_CARD_TARGET_DIM, .10),
+    ("draw_consistency", 4, .20),
+    # A small contextual head makes the Banker-draw label explicitly depend
+    # on initial Banker total and Player third-card/no-draw state.
+    ("banker_draw_context", 10 * THIRD_CARD_TARGET_DIM, .05),
+)
+AUXILIARY_TARGET_SLICES: dict[str,slice] = {}
+_auxiliary_offset = 0
+for _name, _width, _weight in AUXILIARY_HEADS:
+    AUXILIARY_TARGET_SLICES[_name] = slice(_auxiliary_offset, _auxiliary_offset + _width)
+    _auxiliary_offset += _width
+AUXILIARY_TARGET_DIM = _auxiliary_offset
+AUXILIARY_LOSS_WEIGHTS = {
+    "main_48d": 1.00, "player_draw": .25, "banker_draw": .35,
+    "third_card_value": .20, "natural": .15, "consistency": .20,
+}
+AUXILIARY_LOSS_SCALE = np.ones(AUXILIARY_TARGET_DIM,dtype=np.float32)
+for _name, _width, _weight in AUXILIARY_HEADS:
+    # MLPRegressor averages every output dimension.  This keeps each head's
+    # mean loss at its declared fraction of the 48D main loss.
+    AUXILIARY_LOSS_SCALE[AUXILIARY_TARGET_SLICES[_name]] = math.sqrt(_weight * PHYSICS_DIM / _width)
 
 
 def _clip(v: float, lo: float = 0.0, hi: float = 1.0) -> float:
@@ -140,11 +171,14 @@ def history_to_vector(history: str | Sequence[str], *, window: int = HISTORY_WIN
     return out
 
 
-def augment_213d(x: np.ndarray,y: np.ndarray,*,ratio: float=.20,random_state: int=DEFAULT_RANDOM_STATE) -> tuple[np.ndarray,np.ndarray]:
+def augment_213d(x: np.ndarray,y: np.ndarray,*,ratio: float=.20,random_state: int=DEFAULT_RANDOM_STATE,
+                 auxiliary_targets: np.ndarray | None=None) -> tuple[np.ndarray,...]:
     """Class-balanced history dropout plus tiny summary jitter; dimensions stay 213D."""
     xx=np.asarray(x,dtype=np.float32); yy=np.asarray(y,dtype=np.float32)
+    aux=None if auxiliary_targets is None else np.asarray(auxiliary_targets,dtype=np.float32)
+    if aux is not None and len(aux)!=len(xx): raise ValueError("auxiliary target row mismatch")
     count=int(round(len(xx)*max(0.0,min(.5,float(ratio)))))
-    if count<=0: return xx,yy
+    if count<=0: return (xx,yy) if aux is None else (xx,yy,aux)
     rng=np.random.default_rng(random_state); labels=np.argmax(yy[:,23:26],axis=1)
     pools=[np.flatnonzero(labels==k) for k in range(3)]; picks=[]
     for i in range(count):
@@ -152,7 +186,8 @@ def augment_213d(x: np.ndarray,y: np.ndarray,*,ratio: float=.20,random_state: in
     aug=xx[np.asarray(picks)].copy(); one=aug[:,:HISTORY_WINDOW*3].reshape(-1,HISTORY_WINDOW,3)
     one[rng.random(one.shape[:2])<.03]=0.0
     aug[:,HISTORY_WINDOW*3:]=np.clip(aug[:,HISTORY_WINDOW*3:]+rng.normal(0,.01,(count,HISTORY_SUMMARY_DIM)),0,1)
-    return np.vstack((xx,aug)).astype(np.float32),np.vstack((yy,yy[picks])).astype(np.float32)
+    out_x=np.vstack((xx,aug)).astype(np.float32); out_y=np.vstack((yy,yy[picks])).astype(np.float32)
+    return (out_x,out_y) if aux is None else (out_x,out_y,np.vstack((aux,aux[picks])).astype(np.float32))
 
 
 @dataclass(frozen=True)
@@ -171,6 +206,11 @@ class HandResult:
     player_point: int
     banker_point: int
     cards: tuple[Card,...]
+    player_initial_total: int
+    banker_initial_total: int
+    natural_8_9: bool
+    player_third_card_value: int | None
+    banker_third_card_value: int | None
 
     @property
     def card_count(self) -> int:
@@ -187,17 +227,6 @@ def _total(cards: Sequence[Card]) -> int:
     return sum(c.baccarat_value for c in cards) % 10
 
 
-def _banker_draws(total: int, player_third: int | None) -> bool:
-    if player_third is None:
-        return total <= 5
-    if total <= 2: return True
-    if total == 3: return player_third != 8
-    if total == 4: return 2 <= player_third <= 7
-    if total == 5: return 4 <= player_third <= 7
-    if total == 6: return 6 <= player_third <= 7
-    return False
-
-
 def deal_baccarat_hand(shoe: list[Card], cursor: int) -> tuple[HandResult,int]:
     """標準百家樂補牌規則；只做物理模擬，不參與 Core 方向決策。"""
     if cursor + 6 > len(shoe):
@@ -207,15 +236,20 @@ def deal_baccarat_hand(shoe: list[Card], cursor: int) -> tuple[HandResult,int]:
     consumed = [shoe[cursor],shoe[cursor+1],shoe[cursor+2],shoe[cursor+3]]
     cursor += 4
     pt,bt = _total(player),_total(banker)
-    if pt not in {8,9} and bt not in {8,9}:
+    player_initial_total,banker_initial_total=pt,bt
+    natural_8_9=pt in {8,9} or bt in {8,9}
+    player_third: int | None=None
+    banker_third: int | None=None
+    if not natural_8_9:
         third = None
         if pt <= 5:
             c=shoe[cursor]; cursor+=1; player.append(c); consumed.append(c)
-            third=c.baccarat_value; pt=_total(player)
+            third=player_third=c.baccarat_value; pt=_total(player)
         if _banker_draws(bt, third):
-            c=shoe[cursor]; cursor+=1; banker.append(c); consumed.append(c); bt=_total(banker)
+            c=shoe[cursor]; cursor+=1; banker.append(c); consumed.append(c); banker_third=c.baccarat_value; bt=_total(banker)
     outcome = "B" if bt>pt else "P" if pt>bt else "T"
-    return HandResult(outcome,pt,bt,tuple(consumed)),cursor
+    return HandResult(outcome,pt,bt,tuple(consumed),player_initial_total,banker_initial_total,
+                      natural_8_9,player_third,banker_third),cursor
 
 
 def _remaining_rank_density(shoe: Sequence[Card], cursor: int) -> tuple[float,float]:
@@ -247,10 +281,34 @@ def build_physics_target(hand: HandResult, shoe: Sequence[Card], cursor_before: 
     return y
 
 
+def build_auxiliary_draw_target(hand: HandResult) -> np.ndarray:
+    """Training-only labels for the standard third-card decision sequence."""
+    target=np.zeros(AUXILIARY_TARGET_DIM,dtype=np.float32)
+    player_draw=hand.player_third_card_value is not None
+    banker_draw=hand.banker_third_card_value is not None
+    expected_banker_draw=(not hand.natural_8_9) and _banker_draws(hand.banker_initial_total,hand.player_third_card_value)
+    if banker_draw!=expected_banker_draw or (hand.natural_8_9 and (player_draw or banker_draw)):
+        raise RuntimeError("auxiliary draw target violates baccarat third-card rules")
+    target[AUXILIARY_TARGET_SLICES["player_draw"]]=float(player_draw)
+    target[AUXILIARY_TARGET_SLICES["banker_draw"]]=float(banker_draw)
+    target[AUXILIARY_TARGET_SLICES["natural_8_9"]]=float(hand.natural_8_9)
+    for name,value in (("player_third_card_value",hand.player_third_card_value),("banker_third_card_value",hand.banker_third_card_value)):
+        index=THIRD_CARD_NONE if value is None else int(value)
+        target[AUXILIARY_TARGET_SLICES[name].start+index]=1.0
+    draw_class=(1 if player_draw else 0)+(2 if banker_draw else 0)
+    target[AUXILIARY_TARGET_SLICES["draw_consistency"].start+draw_class]=1.0
+    context=hand.banker_initial_total*THIRD_CARD_TARGET_DIM+(THIRD_CARD_NONE if hand.player_third_card_value is None else int(hand.player_third_card_value))
+    # Signed contextual supervision learns the rule outcome for this exact
+    # (Banker initial total, Player third/no-draw) condition.
+    target[AUXILIARY_TARGET_SLICES["banker_draw_context"].start+context]=1.0 if banker_draw else -1.0
+    return target
+
+
 @dataclass
 class SimulationDataset:
     x: np.ndarray
     y: np.ndarray
+    auxiliary_targets: np.ndarray
     shoe_ids: np.ndarray
     histories: list[str]
     actual_outcomes: list[str]
@@ -265,7 +323,7 @@ class OfflineBaccaratSimulator:
 
     def generate(self, n_shoes: int) -> SimulationDataset:
         rng=np.random.default_rng(self.random_state)
-        xs=[]; ys=[]; ids=[]; histories=[]; actual=[]
+        xs=[]; ys=[]; aux=[]; ids=[]; histories=[]; actual=[]
         for shoe_id in range(int(n_shoes)):
             shoe=new_eight_deck_shoe(rng); cursor=0; history=[]
             for _ in range(self.max_hands_per_shoe):
@@ -274,12 +332,13 @@ class OfflineBaccaratSimulator:
                 hand,cursor=deal_baccarat_hand(shoe,cursor)
                 xs.append(history_to_vector(history))
                 ys.append(build_physics_target(hand,shoe,before))
+                aux.append(build_auxiliary_draw_target(hand))
                 ids.append(shoe_id)
                 histories.append("".join(history))
                 actual.append(hand.outcome)
                 history.append(hand.outcome)
         if not xs: raise ValueError("simulation produced no rows")
-        return SimulationDataset(np.vstack(xs).astype(np.float32),np.vstack(ys).astype(np.float32),
+        return SimulationDataset(np.vstack(xs).astype(np.float32),np.vstack(ys).astype(np.float32),np.vstack(aux).astype(np.float32),
                                  np.asarray(ids,dtype=np.int32),histories,actual)
 
 
@@ -320,6 +379,36 @@ def fit_output_affine(raw: np.ndarray,truth: np.ndarray) -> tuple[np.ndarray,np.
 
 def apply_output_affine(raw: np.ndarray,slope: np.ndarray,intercept: np.ndarray) -> np.ndarray:
     return np.asarray(raw,dtype=float)*np.asarray(slope,dtype=float)+np.asarray(intercept,dtype=float)
+
+
+def _normalised_entropy(values: Sequence[float]) -> float:
+    p=np.clip(np.asarray(values,dtype=np.float64),1e-8,None); p/=p.sum()
+    return float(-np.sum(p*np.log(p))/math.log(len(p))) if len(p)>1 else 0.0
+
+
+def decode_auxiliary_draw_prediction(values: Sequence[float]) -> dict[str,Any]:
+    """Decode training-only heads without changing the public 48D output."""
+    raw=np.asarray(values,dtype=np.float64).reshape(-1)
+    if raw.size!=AUXILIARY_TARGET_DIM: raise ValueError("auxiliary draw target dimension mismatch")
+    none=np.eye(THIRD_CARD_TARGET_DIM,dtype=np.float32)[THIRD_CARD_NONE]
+    return {
+        "player_draw_probability":_clip(raw[AUXILIARY_TARGET_SLICES["player_draw"]][0]),
+        "banker_draw_probability":_clip(raw[AUXILIARY_TARGET_SLICES["banker_draw"]][0]),
+        "natural_8_9_probability":_clip(raw[AUXILIARY_TARGET_SLICES["natural_8_9"]][0]),
+        "player_third_card_distribution":_norm(raw[AUXILIARY_TARGET_SLICES["player_third_card_value"]],none),
+        "banker_third_card_distribution":_norm(raw[AUXILIARY_TARGET_SLICES["banker_third_card_value"]],none),
+        "draw_consistency_distribution":_norm(raw[AUXILIARY_TARGET_SLICES["draw_consistency"]],np.full(4,.25)),
+    }
+
+
+def draw_uncertainty(card_count_probabilities: Sequence[float], auxiliary_prediction: Mapping[str,Any]) -> float:
+    """Training/diagnostic uncertainty for the 4/5/6 and third-card sequence."""
+    player=_clip(float(auxiliary_prediction["player_draw_probability"]))
+    banker=_clip(float(auxiliary_prediction["banker_draw_probability"]))
+    binary=lambda p: _normalised_entropy((p,1.0-p))
+    third=.5*(_normalised_entropy(auxiliary_prediction["player_third_card_distribution"])+
+               _normalised_entropy(auxiliary_prediction["banker_third_card_distribution"]))
+    return _clip(.35*_normalised_entropy(card_count_probabilities)+.20*binary(player)+.25*binary(banker)+.20*third)
 
 
 def physics_uncertainty_proxy(physics_48d: Sequence[float], round_index: float = 70.0) -> float:
@@ -408,6 +497,9 @@ class PhysicsFeatureExtractor:
         # 否則 MLP loss 會被 consumed-card 維度支配。
         self.target_scaler=StandardScaler()
         self.loss_scale=np.sqrt(PHYSICS_LOSS_WEIGHTS).astype(np.float32)
+        self.auxiliary_target_scaler=StandardScaler()
+        self.auxiliary_loss_scale=AUXILIARY_LOSS_SCALE.copy()
+        self.auxiliary_enabled=False
         self.calibration_temperatures: dict[str,float]={}
         self.output_slope=np.ones(PHYSICS_DIM,dtype=np.float32)
         self.output_intercept=np.zeros(PHYSICS_DIM,dtype=np.float32)
@@ -429,16 +521,34 @@ class PhysicsFeatureExtractor:
         self.is_fitted=False
         self.metadata: dict[str,Any]={}
 
-    def fit(self,x: np.ndarray,y: np.ndarray) -> "PhysicsFeatureExtractor":
+    def fit(self,x: np.ndarray,y: np.ndarray,*,auxiliary_targets: np.ndarray | None=None) -> "PhysicsFeatureExtractor":
         xx=np.asarray(x,dtype=np.float32); yy=np.asarray(y,dtype=np.float32)
+        if xx.ndim!=2 or xx.shape[1]!=HISTORY_INPUT_DIM: raise ValueError("Physics input must remain 213D")
+        if yy.ndim!=2 or yy.shape[1]!=PHYSICS_DIM: raise ValueError("Physics target must remain 48D")
         scaled=self.scaler.fit_transform(xx)
         target_scaled=self.target_scaler.fit_transform(yy)*self.loss_scale
-        self.model.fit(scaled,target_scaled)
+        if auxiliary_targets is None:
+            self.auxiliary_enabled=False
+            model_targets=target_scaled
+        else:
+            aux=np.asarray(auxiliary_targets,dtype=np.float32)
+            if aux.shape!=(len(xx),AUXILIARY_TARGET_DIM): raise ValueError("auxiliary draw target shape mismatch")
+            aux_scaled=self.auxiliary_target_scaler.fit_transform(aux)*self.auxiliary_loss_scale
+            model_targets=np.hstack((target_scaled,aux_scaled))
+            self.auxiliary_enabled=True
+        self.model.fit(scaled,model_targets)
         self.is_fitted=True
         return self
 
     def _decode_scaled(self,raw_scaled: np.ndarray) -> np.ndarray:
-        return self.target_scaler.inverse_transform(np.asarray(raw_scaled,dtype=float)/self.loss_scale)
+        raw=np.asarray(raw_scaled,dtype=float)
+        return self.target_scaler.inverse_transform(raw[:,:PHYSICS_DIM]/self.loss_scale)
+
+    def _decode_auxiliary_scaled(self,raw_scaled: np.ndarray) -> np.ndarray | None:
+        raw=np.asarray(raw_scaled,dtype=float)
+        if not self.auxiliary_enabled or raw.ndim!=2 or raw.shape[1]<PHYSICS_DIM+AUXILIARY_TARGET_DIM:
+            return None
+        return self.auxiliary_target_scaler.inverse_transform(raw[:,PHYSICS_DIM:PHYSICS_DIM+AUXILIARY_TARGET_DIM]/self.auxiliary_loss_scale)
 
     def train_from_simulation(self, *, n_shoes: int=DEFAULT_PHYSICS_SHOES, cut_cards: int=60, validation_fraction: float=.2,
                               calibration_fraction: float=.1, augment_ratio: float=.25, bootstrap_samples: int=1000) -> dict[str,Any]:
@@ -449,9 +559,11 @@ class PhysicsFeatureExtractor:
         calibration_at=max(1,len(unique)-holdout_count-calibration_count); holdout_at=len(unique)-holdout_count
         train_ids=set(int(x) for x in unique[:calibration_at]); calibration_ids=set(int(x) for x in unique[calibration_at:holdout_at])
         train=np.asarray([int(s) in train_ids for s in data.shoe_ids]); calibration=np.asarray([int(s) in calibration_ids for s in data.shoe_ids]); valid=~(train|calibration)
-        train_x,train_y=augment_213d(data.x[train],data.y[train],ratio=augment_ratio,random_state=self.random_state)
-        self.fit(train_x,train_y)
-        calibration_raw=self._decode_scaled(self.model.predict(self.scaler.transform(data.x[calibration])))
+        train_x,train_y,train_aux=augment_213d(data.x[train],data.y[train],ratio=augment_ratio,random_state=self.random_state,
+                                                auxiliary_targets=data.auxiliary_targets[train])
+        self.fit(train_x,train_y,auxiliary_targets=train_aux)
+        calibration_scaled=self.model.predict(self.scaler.transform(data.x[calibration]))
+        calibration_raw=self._decode_scaled(calibration_scaled)
         self.output_slope,self.output_intercept=fit_output_affine(calibration_raw,data.y[calibration])
         calibration_raw=apply_output_affine(calibration_raw,self.output_slope,self.output_intercept)
         self.calibration_temperatures=fit_probability_temperatures(calibration_raw,data.y[calibration])
@@ -459,7 +571,8 @@ class PhysicsFeatureExtractor:
         calibration_rows=np.flatnonzero(calibration)
         calibration_rounds=np.asarray([len(data.histories[int(i)])+1 for i in calibration_rows],dtype=np.float64)
         self.uncertainty_calibration=fit_uncertainty_calibration(calibration_pred,data.y[calibration],calibration_rounds)
-        raw=self._decode_scaled(self.model.predict(self.scaler.transform(data.x[valid])))
+        valid_scaled=self.model.predict(self.scaler.transform(data.x[valid]))
+        raw=self._decode_scaled(valid_scaled)
         raw=apply_output_affine(raw,self.output_slope,self.output_intercept)
         pred=np.vstack([sanitize_physics_prediction(v,self.calibration_temperatures) for v in raw])
         truth=data.y[valid]
@@ -469,12 +582,41 @@ class PhysicsFeatureExtractor:
         raw_noise=np.asarray([physics_uncertainty_proxy(row,rnd) for row,rnd in zip(pred,valid_rounds)],dtype=np.float64)
         calibrated_noise=apply_uncertainty_calibration(raw_noise,self.uncertainty_calibration)
         noise_error_corr=float(np.corrcoef(calibrated_noise,row_mse)[0,1]) if np.std(calibrated_noise)>1e-10 and np.std(row_mse)>1e-10 else 0.0
+        auxiliary_metrics: dict[str,float]={}
+        valid_auxiliary=self._decode_auxiliary_scaled(valid_scaled)
+        if valid_auxiliary is not None:
+            decoded=[decode_auxiliary_draw_prediction(row) for row in valid_auxiliary]
+            auxiliary_truth=data.auxiliary_targets[valid]
+            player_prob=np.asarray([item["player_draw_probability"] for item in decoded])
+            banker_prob=np.asarray([item["banker_draw_probability"] for item in decoded])
+            natural_prob=np.asarray([item["natural_8_9_probability"] for item in decoded])
+            player_third=np.vstack([item["player_third_card_distribution"] for item in decoded])
+            banker_third=np.vstack([item["banker_third_card_distribution"] for item in decoded])
+            consistency=np.vstack([item["draw_consistency_distribution"] for item in decoded])
+            draw_uncertainties=np.asarray([draw_uncertainty(row[:3],item) for row,item in zip(pred,decoded)])
+            draw_error_corr=float(np.corrcoef(draw_uncertainties,row_mse)[0,1]) if np.std(draw_uncertainties)>1e-10 and np.std(row_mse)>1e-10 else 0.0
+            context=np.argmax(auxiliary_truth[:,AUXILIARY_TARGET_SLICES["banker_draw_context"]],axis=1)
+            banker_total=context//THIRD_CARD_TARGET_DIM; player_third_value=context%THIRD_CARD_TARGET_DIM
+            expected_banker=np.asarray([not bool(natural) and _banker_draws(int(total),None if int(third)==THIRD_CARD_NONE else int(third))
+                                        for total,third,natural in zip(banker_total,player_third_value,auxiliary_truth[:,AUXILIARY_TARGET_SLICES["natural_8_9"]].ravel())])
+            auxiliary_metrics={
+                "player_draw_accuracy":float(np.mean((player_prob>=.5)==(auxiliary_truth[:,AUXILIARY_TARGET_SLICES["player_draw"]].ravel()>=.5))),
+                "banker_draw_accuracy":float(np.mean((banker_prob>=.5)==(auxiliary_truth[:,AUXILIARY_TARGET_SLICES["banker_draw"]].ravel()>=.5))),
+                "natural_8_9_accuracy":float(np.mean((natural_prob>=.5)==(auxiliary_truth[:,AUXILIARY_TARGET_SLICES["natural_8_9"]].ravel()>=.5))),
+                "player_third_card_accuracy":float(np.mean(np.argmax(player_third,axis=1)==np.argmax(auxiliary_truth[:,AUXILIARY_TARGET_SLICES["player_third_card_value"]],axis=1))),
+                "banker_third_card_accuracy":float(np.mean(np.argmax(banker_third,axis=1)==np.argmax(auxiliary_truth[:,AUXILIARY_TARGET_SLICES["banker_third_card_value"]],axis=1))),
+                "draw_consistency_accuracy":float(np.mean(np.argmax(consistency,axis=1)==np.argmax(auxiliary_truth[:,AUXILIARY_TARGET_SLICES["draw_consistency"]],axis=1))),
+                "banker_draw_rule_label_agreement":float(np.mean(expected_banker==(auxiliary_truth[:,AUXILIARY_TARGET_SLICES["banker_draw"]].ravel()>=.5))),
+                "draw_uncertainty_mean":float(np.mean(draw_uncertainties)),
+                "draw_uncertainty_error_correlation":draw_error_corr,
+            }
         metrics={
             "validation_rmse":float(np.sqrt(np.mean(row_mse))),"validation_mse_ci95":shoe_bootstrap_ci(row_mse,valid_shoes,samples=bootstrap_samples),
             "uncertainty_error_correlation":noise_error_corr,"uncertainty_mean":float(np.mean(calibrated_noise)),
             "card_count_accuracy":float(card_ok.mean()),"card_count_accuracy_ci95":shoe_bootstrap_ci(card_ok,valid_shoes,samples=bootstrap_samples),
             "winner_accuracy":float(winner_ok.mean()),"winner_accuracy_ci95":shoe_bootstrap_ci(winner_ok,valid_shoes,samples=bootstrap_samples),
-            "training_rows":float(train.sum()),"augmented_training_rows":float(len(train_x)),"calibration_rows":float(calibration.sum()),"validation_rows":float(valid.sum())
+            "training_rows":float(train.sum()),"augmented_training_rows":float(len(train_x)),"calibration_rows":float(calibration.sum()),"validation_rows":float(valid.sum()),
+            **auxiliary_metrics,
         }
         self.metadata={**metrics,"n_shoes":int(n_shoes),"cut_cards":int(cut_cards),
                        "split":{"train_shoes":len(train_ids),"calibration_shoes":len(calibration_ids),"holdout_shoes":int(len(unique)-holdout_at)},
@@ -483,6 +625,10 @@ class PhysicsFeatureExtractor:
                        "output_calibration":{"slope":self.output_slope.tolist(),"intercept":self.output_intercept.tolist()},
                        "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
                        "feature_names":list(PHYSICS_FEATURE_NAMES),
+                       "auxiliary_draw_targets":{"enabled":True,"target_dim":AUXILIARY_TARGET_DIM,
+                                                  "heads":[name for name,_,_ in AUXILIARY_HEADS],
+                                                  "loss_weights":AUXILIARY_LOSS_WEIGHTS,
+                                                  "production_output_dim":PHYSICS_DIM},
                        "particle_filter":{"enabled":True,"input":"B/P/T only","rank_particles":64,"likelihood_draws":4,"forecast_draws":2,
                                           "models_card_count_4_5_6":True,"physical_ev_pre_core":True,"exact_unseen_card_reconstruction":False},
                        "semantic_note":"Physics/particle card-state and physical EV are produced before Frozen Core pattern features; not exact unseen-card reconstruction"}
@@ -501,6 +647,15 @@ class PhysicsFeatureExtractor:
         raw=apply_output_affine(self._decode_scaled(raw_scaled)[0],self.output_slope,self.output_intercept)
         mlp=sanitize_physics_prediction(raw,self.calibration_temperatures)
         fused,diagnostics=fuse_particle_physics(mlp,history_path,tracker=particle_tracker)
+        auxiliary=self._decode_auxiliary_scaled(raw_scaled)
+        if auxiliary is not None:
+            draw=decode_auxiliary_draw_prediction(auxiliary[0])
+            diagnostics.update({
+                "draw_uncertainty":draw_uncertainty(mlp[:3],draw),
+                "player_draw_probability":float(draw["player_draw_probability"]),
+                "banker_draw_probability":float(draw["banker_draw_probability"]),
+                "natural_8_9_probability":float(draw["natural_8_9_probability"]),
+            })
         # Particle fusion already operates on calibrated probability blocks.
         # Re-sanitize with neutral temperature only, avoiding double calibration.
         return sanitize_physics_prediction(fused,{}),diagnostics
@@ -510,19 +665,29 @@ class PhysicsFeatureExtractor:
 
     def save(self,path: str | Path) -> None:
         if not self.is_fitted: raise RuntimeError("cannot save unfitted model")
-        joblib.dump({"schema_version":6,"scaler":self.scaler,"target_scaler":self.target_scaler,"loss_scale":self.loss_scale,"calibration_temperatures":self.calibration_temperatures,"uncertainty_calibration":self.uncertainty_calibration,"output_slope":self.output_slope,"output_intercept":self.output_intercept,"model":self.model,"metadata":self.metadata},path)
+        joblib.dump({"schema_version":6,"scaler":self.scaler,"target_scaler":self.target_scaler,"loss_scale":self.loss_scale,"auxiliary_target_scaler":self.auxiliary_target_scaler,"auxiliary_loss_scale":self.auxiliary_loss_scale,"auxiliary_enabled":self.auxiliary_enabled,"calibration_temperatures":self.calibration_temperatures,"uncertainty_calibration":self.uncertainty_calibration,"output_slope":self.output_slope,"output_intercept":self.output_intercept,"model":self.model,"metadata":self.metadata},path)
 
     @classmethod
     def load(cls,path: str | Path) -> "PhysicsFeatureExtractor":
         payload=joblib.load(path); obj=cls()
         obj.scaler=payload["scaler"]; obj.target_scaler=payload["target_scaler"]; obj.model=payload["model"]; obj.metadata=dict(payload.get("metadata") or {})
         obj.loss_scale=np.asarray(payload.get("loss_scale",np.ones(PHYSICS_DIM)),dtype=np.float32); obj.calibration_temperatures=dict(payload.get("calibration_temperatures") or {})
+        obj.auxiliary_target_scaler=payload.get("auxiliary_target_scaler") or StandardScaler()
+        obj.auxiliary_loss_scale=np.asarray(payload.get("auxiliary_loss_scale",AUXILIARY_LOSS_SCALE),dtype=np.float32)
+        obj.auxiliary_enabled=bool(payload.get("auxiliary_enabled",getattr(obj.model,"n_outputs_",PHYSICS_DIM)>PHYSICS_DIM))
         obj.uncertainty_calibration=dict(payload.get("uncertainty_calibration") or obj.metadata.get("uncertainty_calibration") or {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]})
         obj.output_slope=np.asarray(payload.get("output_slope",np.ones(PHYSICS_DIM)),dtype=np.float32); obj.output_intercept=np.asarray(payload.get("output_intercept",np.zeros(PHYSICS_DIM)),dtype=np.float32)
         obj.is_fitted=True; return obj
 
     def export_browser_bundle(self,path: str | Path) -> dict[str,Any]:
         if not self.is_fitted: raise RuntimeError("physics model not fitted")
+        coefs=[np.asarray(w) for w in self.model.coefs_]
+        intercepts=[np.asarray(b) for b in self.model.intercepts_]
+        # Auxiliary heads are deliberately training-only.  The browser receives
+        # the unchanged 48D main head from the shared hidden representation.
+        if self.auxiliary_enabled:
+            coefs[-1]=coefs[-1][:,:PHYSICS_DIM]
+            intercepts[-1]=intercepts[-1][:PHYSICS_DIM]
         bundle={
             "schema_version":6,"model_type":"baccarat_physics_multitask_mlp","trained":True,
             "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
@@ -533,8 +698,8 @@ class PhysicsFeatureExtractor:
             "uncertainty_calibration":self.uncertainty_calibration,
             "output_calibration":{"slope":self.output_slope.tolist(),"intercept":self.output_intercept.tolist()},
             "activation":"relu",
-            "coefs":[w.tolist() for w in self.model.coefs_],
-            "intercepts":[b.tolist() for b in self.model.intercepts_],
+            "coefs":[w.tolist() for w in coefs],
+            "intercepts":[b.tolist() for b in intercepts],
             "metadata":self.metadata,
         }
         Path(path).write_text(json.dumps(bundle,ensure_ascii=False,separators=(",",":")),encoding="utf-8")

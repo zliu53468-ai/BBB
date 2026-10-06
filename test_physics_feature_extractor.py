@@ -1,19 +1,32 @@
 import unittest
+import tempfile
+import warnings
+from pathlib import Path
 import numpy as np
 
 from particle_shoe_filter import (
     ParticleShoeTracker,
+    _banker_draws as particle_banker_draws,
     early35_evidence_weight,
     early35_physical_ev_reliability,
     estimate_particle_physics,
     fuse_particle_physics,
 )
 from physics_feature_extractor import (
+    AUXILIARY_TARGET_DIM,
+    AUXILIARY_TARGET_SLICES,
     HISTORY_INPUT_DIM,
     PHYSICS_DIM,
+    THIRD_CARD_NONE,
+    Card,
+    HandResult,
     OfflineBaccaratSimulator,
+    PhysicsFeatureExtractor,
+    _banker_draws as physics_banker_draws,
     apply_uncertainty_calibration,
     augment_213d,
+    build_auxiliary_draw_target,
+    deal_baccarat_hand,
     fit_uncertainty_calibration,
     history_to_vector,
     physics_uncertainty_proxy,
@@ -37,6 +50,8 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
     def test_simulator_targets_are_physically_consistent(self):
         data=OfflineBaccaratSimulator(random_state=1234,max_hands_per_shoe=6).generate(3)
         self.assertEqual(data.y.shape[1],PHYSICS_DIM)
+        self.assertEqual(data.x.shape[1],HISTORY_INPUT_DIM)
+        self.assertEqual(data.auxiliary_targets.shape[1],AUXILIARY_TARGET_DIM)
         for row in data.y:
             self.assertAlmostEqual(float(row[:3].sum()),1.0,places=6)
             self.assertAlmostEqual(float(row[3:13].sum()),1.0,places=6)
@@ -52,6 +67,61 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
             self.assertLessEqual(float(row[42]),1.0)
             self.assertGreaterEqual(float(row[43]),0.0)
             self.assertLessEqual(float(row[43]),416.0)
+
+    def test_draw_auxiliary_targets_follow_standard_baccarat_sequence(self):
+        def hand(player_initial,banker_initial,player_third=None,banker_third=None,natural=False):
+            cards=tuple(Card(1,0) for _ in range(4+int(player_third is not None)+int(banker_third is not None)))
+            return HandResult("B",0,0,cards,player_initial,banker_initial,natural,player_third,banker_third)
+        natural_shoe=[Card(8,0),Card(2,0),Card(10,0),Card(3,0),Card(1,0),Card(1,0)]
+        natural,_=deal_baccarat_hand(natural_shoe,0)
+        self.assertTrue(natural.natural_8_9)
+        self.assertEqual(natural.card_count,4)
+        self.assertIsNone(natural.player_third_card_value)
+        self.assertIsNone(natural.banker_third_card_value)
+        natural_target=build_auxiliary_draw_target(natural)
+        self.assertEqual(float(natural_target[AUXILIARY_TARGET_SLICES["player_draw"]][0]),0.0)
+        self.assertEqual(float(natural_target[AUXILIARY_TARGET_SLICES["banker_draw"]][0]),0.0)
+        player_draw_shoe=[Card(2,0),Card(7,0),Card(3,0),Card(10,0),Card(4,0),Card(1,0)]
+        player_draw,_=deal_baccarat_hand(player_draw_shoe,0)
+        self.assertEqual(player_draw.player_initial_total,5)
+        self.assertEqual(player_draw.player_third_card_value,4)
+        self.assertEqual(float(build_auxiliary_draw_target(player_draw)[AUXILIARY_TARGET_SLICES["player_draw"]][0]),1.0)
+        for total in range(10):
+            for third in (None,*range(10)):
+                self.assertEqual(particle_banker_draws(total,third),physics_banker_draws(total,third))
+        cases=(
+            (hand(6,7),0),
+            (hand(5,7,3),1),
+            (hand(6,5,None,4),2),
+            (hand(4,3,9,6),3),
+        )
+        for sample,draw_class in cases:
+            target=build_auxiliary_draw_target(sample)
+            self.assertEqual(int(np.argmax(target[AUXILIARY_TARGET_SLICES["draw_consistency"]])),draw_class)
+            self.assertEqual(sample.card_count,4+(draw_class in {1,2})+2*(draw_class==3))
+        third_target=build_auxiliary_draw_target(hand(5,6,9,None))
+        self.assertEqual(int(np.argmax(third_target[AUXILIARY_TARGET_SLICES["player_third_card_value"]])),9)
+        self.assertEqual(int(np.argmax(third_target[AUXILIARY_TARGET_SLICES["banker_third_card_value"]])),THIRD_CARD_NONE)
+        context=6*11+9
+        self.assertEqual(float(third_target[AUXILIARY_TARGET_SLICES["banker_draw_context"].start+context]),-1.0)
+
+    def test_auxiliary_heads_preserve_213d_to_48d_production_contract(self):
+        rng=np.random.default_rng(9)
+        x=rng.normal(size=(24,HISTORY_INPUT_DIM)).astype(np.float32)
+        y=rng.normal(size=(24,PHYSICS_DIM)).astype(np.float32)
+        aux=np.zeros((24,AUXILIARY_TARGET_DIM),dtype=np.float32)
+        aux[:,AUXILIARY_TARGET_SLICES["player_draw"]]=np.arange(24,dtype=np.float32).reshape(-1,1)%2
+        model=PhysicsFeatureExtractor(random_state=9)
+        model.model.set_params(max_iter=1,early_stopping=False,batch_size=24)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model.fit(x,y,auxiliary_targets=aux)
+        self.assertEqual(model._decode_scaled(model.model.predict(model.scaler.transform(x))).shape,(24,PHYSICS_DIM))
+        with tempfile.TemporaryDirectory() as directory:
+            bundle=model.export_browser_bundle(Path(directory)/"physics.json")
+        self.assertEqual(bundle["history_input_dim"],HISTORY_INPUT_DIM)
+        self.assertEqual(bundle["physics_dim"],PHYSICS_DIM)
+        self.assertEqual(len(bundle["intercepts"][-1]),PHYSICS_DIM)
 
     def test_prepare_xgboost_input_preserves_original_7d(self):
         original=np.asarray([0.51,12,60,0.8,0.5,2,1],dtype=np.float32)
@@ -170,3 +240,5 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+    build_auxiliary_draw_target,
+    deal_baccarat_hand,
