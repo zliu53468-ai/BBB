@@ -5,7 +5,7 @@ const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:nul
 const PARTICLE500=(typeof window!=="undefined")?window.__BGS_PARTICLE500__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_V14_PARTICLE500_STATELESS";
+const VERSION="PHYSICS_57D_V14_1_LOW_SKIP";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -30,6 +30,9 @@ const ESTIMATED_TOTAL_HANDS_MIN=50,ESTIMATED_TOTAL_HANDS_MAX=70,ESTIMATED_PLAYAB
 const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.78;
 const SHOE_ERROR_CORRECTION_VERSION=0,SHOE_ERROR_CORRECTION_MEMORY=10;
 const PHYSICS_DIRECT_VERSION=1;
+const LOW_SKIP_CONFIDENCE_SCALE=.92;
+const LOW_SKIP_EV_RELIEF=.0025;
+const LOW_SKIP_FINAL_BAND_RELIEF=.002;
 const SNAPSHOT_SCHEMA_VERSION=7;
 const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
 const SHOE_KEY="bgs_xgb_final_shoe_id_v5",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
@@ -379,8 +382,15 @@ function directPhysicsPrimary(physics,roundIndex){
   const evBanker=pB*.95-pP,evPlayer=pP-pB;
   const modelEvBanker=Number.isFinite(+physics?.[39])?+physics[39]:evBanker,modelEvPlayer=Number.isFinite(+physics?.[40])?+physics[40]:evPlayer;
   const precisionPenalty=physicsPrecisionPenalty(roundIndex,uncertainty,consistency);
-  const physicsActivationEv=policy.activationEv+precisionPenalty;
-  const physicsConfidenceBand=policy.confidenceBand+.006*(1-consistency)+.004*Math.max(0,uncertainty-.50);
+  // V14.1 Low-Skip: relax only the base Physics entry threshold.
+  // Consistency / uncertainty penalties remain fully intact.
+  const physicsActivationEv=Math.max(0,policy.activationEv-LOW_SKIP_EV_RELIEF)+precisionPenalty;
+  const physicsConfidenceBand=Math.max(
+    policy.bandMinimum,
+    policy.confidenceBand*LOW_SKIP_CONFIDENCE_SCALE+
+      .006*(1-consistency)+
+      .004*Math.max(0,uncertainty-.50)
+  );
   const candidate=distance>=physicsConfidenceBand&&evBanker>physicsActivationEv&&evBanker>evPlayer?"B":
     distance>=physicsConfidenceBand&&evPlayer>physicsActivationEv&&evPlayer>evBanker?"P":"Skip";
   return {pB,pP,pT,rawDirectionalPB,directionalPB,progressWeight,noise,policy,distance,uncertainty,consistency,precisionPenalty,
@@ -514,7 +524,9 @@ function applyFinalPrediction(seq,corePrediction=null){
 
     executionOrder.push("volume_guard");
     const guard=volumeGuardState(roundIndex,finalPB,policy);
-    const effectiveBand=Math.max(policy.bandMinimum,baseBand-guard.bandRelief),effectiveActivationEv=Math.max(0,baseActivation-guard.evRelief);
+    // Keep #43's own relief values unchanged; V14.1 adds a small Final-EV-only
+    // confidence relief so near-threshold Physics candidates can act more often.
+    const effectiveBand=Math.max(policy.bandMinimum,baseBand-guard.bandRelief-LOW_SKIP_FINAL_BAND_RELIEF),effectiveActivationEv=Math.max(0,baseActivation-guard.evRelief);
     const guardedPass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=effectiveBand&&candidateEdge>effectiveActivationEv;
     const direction=basePass||guardedPass?candidate:"Skip";
     const entryTier=direction==="Skip"?"skip":distance>=effectiveBand+policy.strongMargin?"strong":"weak";
@@ -554,6 +566,7 @@ function applyFinalPrediction(seq,corePrediction=null){
       primary_source:"direct_physics_particle500_physical_ev",primary_candidate:primary?.candidate??"Skip",
       physics_raw_p_b:primary?.rawDirectionalPB??null,physics_calibrated_p_b:primary?.directionalPB??null,physics_clipped_p_b:clippedPB,physics_smoothed_p_b:smoothedPB,
       physics_consistency:primary?.consistency??null,physics_precision_penalty:primary?.precisionPenalty??null,physics_activation_ev:primary?.physicsActivationEv??null,physics_confidence_band:primary?.physicsConfidenceBand??null,
+      low_skip_policy:{confidence_scale:LOW_SKIP_CONFIDENCE_SCALE,ev_relief:LOW_SKIP_EV_RELIEF,final_band_relief:LOW_SKIP_FINAL_BAND_RELIEF},
       rawPB,clippedPB,smoothedPB,filteredPB,finalPB,bounds,smoothingAlpha,smoothingStrength,smoothingProfile,
       xgb_role:"auxiliary_filter_no_flip",xgb_aux_p_b:xgbAuxPB,core_aux_p_b:corePB,aux_filter:auxFilter,
       particle_role:"bounded_posterior_uncertainty_correction_no_flip",particle_count:particleDiagnostics?.particle_count??0,
