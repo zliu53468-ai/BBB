@@ -56,9 +56,21 @@ DEFAULT_MODEL_PATH = "physics_multitask_model.joblib"
 DEFAULT_BROWSER_BUNDLE = "physics_multitask_model.json"
 DEFAULT_RANDOM_STATE = 20260922
 DEFAULT_PHYSICS_SHOES = 5000
-# Multi-task emphasis: winner / point-distribution fidelity first, then card-count and composition.
+# Physics Primary V13: put substantially more training pressure on the
+# quantities that actually drive the production candidate: card count,
+# final-point distributions, winner distribution and Physical EV.  Rank
+# consumption / residual composition stay useful, but are explicitly
+# secondary because production observes B/P/T only.
 # Architecture remains fixed at 213D input -> ReLU MLP -> 48D output.
-PHYSICS_LOSS_WEIGHTS = np.asarray([1.25]*3+[1.10]*20+[2.50]*3+[.80]*13+[1.50,1.50,1.25,.90]+[.55]*5,dtype=np.float32)
+PHYSICS_LOSS_WEIGHTS = np.asarray(
+    [1.55]*3 +          # 4/5/6-card distribution
+    [1.35]*20 +         # Player / Banker final-point distributions
+    [3.25]*3 +          # winner P(B/P/T): primary directional head
+    [.55]*13 +          # conditional A-K expected consumption
+    [2.10,2.10,1.80,1.10] +  # Physical EV B/P/gap + Physics uncertainty
+    [.45]*5,            # consumed / density / point-diff auxiliaries
+    dtype=np.float32,
+)
 PROBABILITY_BLOCKS = {"card_count":slice(0,3),"player_points":slice(3,13),"banker_points":slice(13,23),"winner":slice(23,26)}
 AFFINE_OUTPUT_INDICES = tuple(range(26,48))
 assert PHYSICS_LOSS_WEIGHTS.size == PHYSICS_DIM
@@ -68,12 +80,12 @@ assert PHYSICS_LOSS_WEIGHTS.size == PHYSICS_DIM
 THIRD_CARD_NONE = 10
 THIRD_CARD_TARGET_DIM = 11
 AUXILIARY_HEADS = (
-    ("player_draw", 1, .25),
-    ("banker_draw", 1, .30),
-    ("natural_8_9", 1, .15),
-    ("player_third_card_value", THIRD_CARD_TARGET_DIM, .10),
-    ("banker_third_card_value", THIRD_CARD_TARGET_DIM, .10),
-    ("draw_consistency", 4, .20),
+    ("player_draw", 1, .35),
+    ("banker_draw", 1, .45),
+    ("natural_8_9", 1, .18),
+    ("player_third_card_value", THIRD_CARD_TARGET_DIM, .08),
+    ("banker_third_card_value", THIRD_CARD_TARGET_DIM, .08),
+    ("draw_consistency", 4, .28),
     # A small contextual head makes the Banker-draw label explicitly depend
     # on initial Banker total and Player third-card/no-draw state.
     ("banker_draw_context", 10 * THIRD_CARD_TARGET_DIM, .05),
@@ -85,8 +97,8 @@ for _name, _width, _weight in AUXILIARY_HEADS:
     _auxiliary_offset += _width
 AUXILIARY_TARGET_DIM = _auxiliary_offset
 AUXILIARY_LOSS_WEIGHTS = {
-    "main_48d": 1.00, "player_draw": .25, "banker_draw": .35,
-    "third_card_value": .20, "natural": .15, "consistency": .20,
+    "main_48d": 1.00, "player_draw": .35, "banker_draw": .45,
+    "third_card_value": .16, "natural": .18, "consistency": .28,
 }
 AUXILIARY_LOSS_SCALE = np.ones(AUXILIARY_TARGET_DIM,dtype=np.float32)
 for _name, _width, _weight in AUXILIARY_HEADS:
@@ -647,6 +659,8 @@ class PhysicsFeatureExtractor:
                                                   "production_output_dim":PHYSICS_DIM},
                        "particle_filter":{"enabled":False},
                        "physics_direct_version":1,
+                       "physics_primary_version":13,
+                       "physics_training_priority":"winner_points_cardcount_physical_ev",
                        "physics_pipeline":"direct_multitask_mlp_then_physical_ev_then_frozen_core_then_xgboost",
                        "uncertainty_semantics":"direct_physics_uncertainty_in_legacy_slot_42",
                        "semantic_note":"Direct Physics 48D and Physical EV are produced before Frozen Core; B/P/T-only conditional expectations, not unseen-card reconstruction"}
