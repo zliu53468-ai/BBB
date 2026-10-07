@@ -63,6 +63,7 @@ EARLY35_VERSION = 1
 SHOE_ERROR_CORRECTION_VERSION = 0
 SHOE_ERROR_CORRECTION_POLICY = "disabled_without_particle_filter"
 PHYSICS_DIRECT_VERSION = 1
+PHYSICS_PRIMARY_VERSION = 13
 ESTIMATED_TOTAL_HANDS_MIN = 50.0
 ESTIMATED_TOTAL_HANDS_MAX = 70.0
 ESTIMATED_PLAYABLE_CARDS = 416.0 - 60.0  # Existing 8-deck / cut-card setting.
@@ -1717,6 +1718,7 @@ def export_browser_bundle(
         "early35_version": EARLY35_VERSION,
         "shoe_error_correction_version": SHOE_ERROR_CORRECTION_VERSION,
         "physics_direct_version": PHYSICS_DIRECT_VERSION,
+        "physics_primary_version": PHYSICS_PRIMARY_VERSION,
         "particle_filter_version": 0,
         "particle_filter_enabled": False,
         "model_type": MODEL_TYPE,
@@ -1736,6 +1738,9 @@ def export_browser_bundle(
             "residual": False,
             "runtime_role": "auxiliary_candidate_filter_no_flip",
             "primary_predictor": "direct_physics_physical_ev",
+            "physics_primary_version": PHYSICS_PRIMARY_VERSION,
+            "physics_precision_policy": "early35_smooth_calibration_plus_consistency_uncertainty_ev_gate",
+            "auxiliary_filter_policy": "light_downgrade_joint_severe_conflict_only",
             "direction_authority": "physics_only_xgb_may_keep_downgrade_or_skip",
             "noise_score_version": 5,
             "particle_physics_version": 0,
