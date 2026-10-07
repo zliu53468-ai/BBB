@@ -5,7 +5,7 @@ const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:nul
 const PARTICLE500=(typeof window!=="undefined")?window.__BGS_PARTICLE500__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_V14_1_LOW_SKIP";
+const VERSION="PHYSICS_57D_V14_2_LOW_SKIP_ACTIVE";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -30,9 +30,9 @@ const ESTIMATED_TOTAL_HANDS_MIN=50,ESTIMATED_TOTAL_HANDS_MAX=70,ESTIMATED_PLAYAB
 const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.78;
 const SHOE_ERROR_CORRECTION_VERSION=0,SHOE_ERROR_CORRECTION_MEMORY=10;
 const PHYSICS_DIRECT_VERSION=1;
-const LOW_SKIP_CONFIDENCE_SCALE=.92;
-const LOW_SKIP_EV_RELIEF=.0025;
-const LOW_SKIP_FINAL_BAND_RELIEF=.002;
+const LOW_SKIP_CONFIDENCE_SCALE=.90;
+const LOW_SKIP_EV_RELIEF=.0035;
+const LOW_SKIP_FINAL_BAND_RELIEF=.003;
 const SNAPSHOT_SCHEMA_VERSION=7;
 const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
 const SHOE_KEY="bgs_xgb_final_shoe_id_v5",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
