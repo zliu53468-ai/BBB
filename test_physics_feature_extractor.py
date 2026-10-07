@@ -4,14 +4,6 @@ import warnings
 from pathlib import Path
 import numpy as np
 
-from particle_shoe_filter import (
-    ParticleShoeTracker,
-    _banker_draws as particle_banker_draws,
-    early35_evidence_weight,
-    early35_physical_ev_reliability,
-    estimate_particle_physics,
-    fuse_particle_physics,
-)
 from physics_feature_extractor import (
     AUXILIARY_TARGET_DIM,
     AUXILIARY_TARGET_SLICES,
@@ -86,9 +78,11 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
         self.assertEqual(player_draw.player_initial_total,5)
         self.assertEqual(player_draw.player_third_card_value,4)
         self.assertEqual(float(build_auxiliary_draw_target(player_draw)[AUXILIARY_TARGET_SLICES["player_draw"]][0]),1.0)
-        for total in range(10):
-            for third in (None,*range(10)):
-                self.assertEqual(particle_banker_draws(total,third),physics_banker_draws(total,third))
+        self.assertTrue(physics_banker_draws(3,7))
+        self.assertFalse(physics_banker_draws(3,8))
+        self.assertTrue(physics_banker_draws(5,4))
+        self.assertFalse(physics_banker_draws(6,5))
+        self.assertTrue(physics_banker_draws(6,6))
         cases=(
             (hand(6,7),0),
             (hand(5,7,3),1),
@@ -152,75 +146,27 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
         self.assertGreaterEqual(float(output[42]),0.0)
         self.assertLessEqual(float(output[42]),1.0)
 
-    def test_particle_shoe_estimator_is_deterministic_and_rule_consistent(self):
-        history="BPPBTBBPPTBBPPBTBP"
-        a=estimate_particle_physics(history)
-        b=estimate_particle_physics(history)
-        self.assertTrue(np.array_equal(a.physics_48d,b.physics_48d))
-        self.assertEqual(a.physics_48d.shape,(PHYSICS_DIM,))
-        for block in (a.physics_48d[:3],a.physics_48d[3:13],a.physics_48d[13:23],a.physics_48d[23:26]):
-            self.assertAlmostEqual(float(np.sum(block)),1.0,places=6)
-        p_b,p_p=float(a.physics_48d[23]),float(a.physics_48d[24])
-        self.assertAlmostEqual(float(a.physics_48d[39]),p_b*.95-p_p,places=6)
-        self.assertAlmostEqual(float(a.physics_48d[40]),p_p-p_b,places=6)
-        self.assertAlmostEqual(float(a.physics_48d[41]),float(a.physics_48d[39]-a.physics_48d[40]),places=6)
-        self.assertAlmostEqual(float(a.physics_48d[42]),a.diagnostics["posterior_uncertainty"],places=6)
-        expected_cards=float(4*a.physics_48d[0]+5*a.physics_48d[1]+6*a.physics_48d[2])
-        self.assertAlmostEqual(float(np.sum(a.physics_48d[26:39])),expected_cards,places=5)
-        self.assertGreater(a.diagnostics["expected_consumed_cards"],4*len(history))
-        self.assertLess(a.diagnostics["expected_consumed_cards"],6*len(history))
-        self.assertGreaterEqual(a.diagnostics["posterior_uncertainty"],0.0)
-        self.assertLessEqual(a.diagnostics["posterior_uncertainty"],1.0)
-
-    def test_incremental_particle_tracker_matches_same_prefix_contract(self):
-        tracker=ParticleShoeTracker()
-        tracker.estimate("BPPB")
-        incremental=tracker.estimate("BPPBTBBP")
-        fresh=estimate_particle_physics("BPPBTBBP")
-        self.assertEqual(incremental.physics_48d.shape,fresh.physics_48d.shape)
-        self.assertAlmostEqual(incremental.diagnostics["history_rounds"],8.0,places=6)
-        self.assertGreater(incremental.diagnostics["expected_consumed_cards"],32.0)
-        self.assertLess(incremental.diagnostics["expected_consumed_cards"],48.0)
-
-    def test_particle_fusion_preserves_48d_contract_and_uses_more_physics_late(self):
-        mlp=np.zeros(PHYSICS_DIM,dtype=np.float32)
-        mlp[:3]=[.58,.34,.08];mlp[3:13]=.1;mlp[13:23]=.1;mlp[23:26]=[.4586,.4462,.0952]
-        mlp[26:39]=5/13;mlp[39:43]=[0.0,0.0,0.0,.5];mlp[43]=0;mlp[44:46]=.5
-        early,early_diag=fuse_particle_physics(mlp,"BPPB")
-        late,late_diag=fuse_particle_physics(mlp,"BPPBTBBPPTBBPPBTBPBPPBTBBPPTBBPPBTBPBPPBTBBPPTBBPPBTBP")
-        self.assertEqual(early.shape,(PHYSICS_DIM,))
-        self.assertEqual(late.shape,(PHYSICS_DIM,))
-        self.assertGreater(late_diag["fusion_weight"],early_diag["fusion_weight"])
-        self.assertAlmostEqual(float(np.sum(late[:3])),1.0,places=6)
-        self.assertAlmostEqual(float(np.sum(late[23:26])),1.0,places=6)
-        self.assertAlmostEqual(float(late[39]),late_diag["physical_ev_banker"],places=6)
-        self.assertAlmostEqual(float(late[40]),late_diag["physical_ev_player"],places=6)
-        self.assertAlmostEqual(float(late[41]),late_diag["physical_ev_gap"],places=6)
-        self.assertGreaterEqual(float(late[42]),0.0)
-        self.assertLessEqual(float(late[42]),1.0)
-
-        self.assertGreater(late_diag["effective_progress_round"],early_diag["effective_progress_round"])
-        self.assertGreater(late_diag["physical_ev_reliability"],early_diag["physical_ev_reliability"])
-        self.assertGreater(late_diag["fusion_weight"],early_diag["fusion_weight"])
-        self.assertLessEqual(late_diag["fusion_weight"],.58)
-        self.assertLessEqual(abs(float(early[39])),abs(float(early_diag["raw_physical_ev_banker"]))+1e-9)
-
-    def test_early35_evidence_is_reliability_aware_and_continuous(self):
-        reliable={"recent_ess_ratio":.90,"posterior_uncertainty":.20,"expected_consumed_cards":180.0}
-        uncertain={**reliable,"posterior_uncertainty":.80}
-        low_ess={**reliable,"recent_ess_ratio":.20}
-        weights=[early35_evidence_weight(rounds,reliable) for rounds in (5,15,25,35)]
-        self.assertLess(weights[0],weights[1])
-        self.assertLess(weights[1],weights[2])
-        self.assertLess(weights[2],weights[3])
-        self.assertLess(early35_evidence_weight(10,uncertain),early35_evidence_weight(10,reliable))
-        self.assertGreater(early35_evidence_weight(10,reliable),early35_evidence_weight(10,low_ess))
-        self.assertLess(abs(early35_evidence_weight(21,reliable)-early35_evidence_weight(20,reliable)),.10)
-        self.assertLess(abs(early35_evidence_weight(36,reliable)-early35_evidence_weight(35,reliable)),.10)
-        self.assertLess(abs(early35_physical_ev_reliability(36,reliable)-early35_physical_ev_reliability(35,reliable)),.10)
-        mlp=np.zeros(PHYSICS_DIM,dtype=np.float32);mlp[:3]=[.58,.34,.08];mlp[3:13]=.1;mlp[13:23]=.1;mlp[23:26]=[.4586,.4462,.0952];mlp[26:39]=5/13;mlp[39:43]=[0,0,0,.5];mlp[44:46]=.5
-        fused,_=fuse_particle_physics(mlp,"BPPBTBBPPT",early35_version=1)
-        self.assertEqual(fused.shape,(PHYSICS_DIM,))
+    def test_direct_physics_inference_preserves_48d_without_particle_filter(self):
+        rng=np.random.default_rng(13)
+        x=rng.normal(size=(32,HISTORY_INPUT_DIM)).astype(np.float32)
+        y=np.zeros((32,PHYSICS_DIM),dtype=np.float32)
+        y[:,0]=1.0;y[:,3]=1.0;y[:,13]=1.0;y[:,23]=1.0
+        y[:,26:39]=4.0/13.0
+        y[:,39]=.95;y[:,40]=-1.0;y[:,41]=1.95;y[:,42]=.5
+        y[:,43]=np.linspace(0,120,32);y[:,44:46]=.5
+        model=PhysicsFeatureExtractor(random_state=13)
+        model.model.set_params(max_iter=1,early_stopping=False,batch_size=32)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model.fit(x,y)
+        physics,diagnostics=model.predict_features_with_diagnostics("BPPBTBBP")
+        self.assertEqual(physics.shape,(PHYSICS_DIM,))
+        self.assertEqual(diagnostics["particle_filter_enabled"],0.0)
+        self.assertEqual(diagnostics["physics_direct_version"],1.0)
+        self.assertGreaterEqual(float(physics[42]),0.0)
+        self.assertLessEqual(float(physics[42]),1.0)
+        self.assertAlmostEqual(float(np.sum(physics[:3])),1.0,places=6)
+        self.assertAlmostEqual(float(np.sum(physics[23:26])),1.0,places=6)
 
     def test_uncertainty_calibration_is_bounded_and_monotone(self):
         base=np.zeros((64,PHYSICS_DIM),dtype=np.float32)
@@ -240,5 +186,3 @@ class PhysicsFeatureExtractorTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
-    build_auxiliary_draw_target,
-    deal_baccarat_hand,
