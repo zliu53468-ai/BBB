@@ -61,6 +61,9 @@ require("./final_probability_runtime.js");
   if(!r.particleDiagnostics||r.physicsDiagnostics?.particle_filter_enabled!==true)throw new Error("Particle500 was not active");
   if(r.particleDiagnostics.particle_count!==500||r.particleDiagnostics.persistent_state!==false||r.particleDiagnostics.rebuild_from_scratch!==true)throw new Error("Particle500 stateless policy mismatch");
   if(r.particleDiagnostics.history_fingerprint!==history.join(""))throw new Error("Particle500 did not rebuild from current history");
+  if(Math.abs((r.low_skip_policy?.confidence_scale??0)-.92)>1e-12||
+     Math.abs((r.low_skip_policy?.ev_relief??0)-.0025)>1e-12||
+     Math.abs((r.low_skip_policy?.final_band_relief??0)-.002)>1e-12)throw new Error("V14.1 Low-Skip policy mismatch");
 
   const expectedOrder=["direct_physics","particle_filter","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"];
   if(JSON.stringify(r.execution_order)!==JSON.stringify(expectedOrder))throw new Error("production execution order mismatch");
