@@ -5,7 +5,7 @@ const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:nul
 const PARTICLE500=(typeof window!=="undefined")?window.__BGS_PARTICLE500__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_V14_2_LOW_SKIP_ACTIVE";
+const VERSION="PHYSICS_57D_V14_3_LOW_SKIP_DEEPER";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -30,9 +30,12 @@ const ESTIMATED_TOTAL_HANDS_MIN=50,ESTIMATED_TOTAL_HANDS_MAX=70,ESTIMATED_PLAYAB
 const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.78;
 const SHOE_ERROR_CORRECTION_VERSION=0,SHOE_ERROR_CORRECTION_MEMORY=10;
 const PHYSICS_DIRECT_VERSION=1;
-const LOW_SKIP_CONFIDENCE_SCALE=.90;
-const LOW_SKIP_EV_RELIEF=.0035;
-const LOW_SKIP_FINAL_BAND_RELIEF=.003;
+const LOW_SKIP_CONFIDENCE_SCALE=.86;
+const LOW_SKIP_EV_RELIEF=.0050;
+const LOW_SKIP_FINAL_BAND_RELIEF=.0045;
+const LOW_SKIP_CONSISTENCY_BAND_GAIN=.0035;
+const LOW_SKIP_UNCERTAINTY_BAND_GAIN=.0025;
+const LOW_SKIP_PRECISION_SCALE=.65;
 const SNAPSHOT_SCHEMA_VERSION=7;
 const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
 const SHOE_KEY="bgs_xgb_final_shoe_id_v5",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
@@ -364,12 +367,14 @@ function calibratedPhysicsDirectionalPB(rawPB,roundIndex,uncertainty,consistency
   const p=clip(rawPB),u=clip(uncertainty),c=clip(consistency);
   if(roundIndex>40)return p;
   const stage=interpAnchors(roundIndex,[[1,.72],[5,.76],[10,.81],[15,.85],[20,.89],[25,.92],[30,.94],[35,.96],[40,1]]);
-  const reliability=clip(stage*(1-.12*u)*(.92+.08*c),.60,1);
+  const reliability=clip(stage*(1-.08*u)*(.94+.06*c),.68,1);
   return clip(.5+(p-.5)*reliability);
 }
 function physicsPrecisionPenalty(roundIndex,uncertainty,consistency){
   const u=clip(uncertainty),c=clip(consistency),early=roundIndex<=35?1:roundIndex<45?(45-roundIndex)/10:0;
-  return .0045*Math.max(0,u-.35)/.65 + .0035*(1-c) + .0015*early*(1-c);
+  return LOW_SKIP_PRECISION_SCALE * (
+    .0045*Math.max(0,u-.35)/.65 + .0035*(1-c) + .0015*early*(1-c)
+  );
 }
 function directPhysicsPrimary(physics,roundIndex){
   const pB=clip(+physics?.[23]||0),pP=clip(+physics?.[24]||0),pT=clip(+physics?.[25]||0);
@@ -382,14 +387,13 @@ function directPhysicsPrimary(physics,roundIndex){
   const evBanker=pB*.95-pP,evPlayer=pP-pB;
   const modelEvBanker=Number.isFinite(+physics?.[39])?+physics[39]:evBanker,modelEvPlayer=Number.isFinite(+physics?.[40])?+physics[40]:evPlayer;
   const precisionPenalty=physicsPrecisionPenalty(roundIndex,uncertainty,consistency);
-  // V14.1 Low-Skip: relax only the base Physics entry threshold.
-  // Consistency / uncertainty penalties remain fully intact.
+  // V14.3 Low-Skip: retain the safety terms but reduce their dominance.
   const physicsActivationEv=Math.max(0,policy.activationEv-LOW_SKIP_EV_RELIEF)+precisionPenalty;
   const physicsConfidenceBand=Math.max(
     policy.bandMinimum,
     policy.confidenceBand*LOW_SKIP_CONFIDENCE_SCALE+
-      .006*(1-consistency)+
-      .004*Math.max(0,uncertainty-.50)
+      LOW_SKIP_CONSISTENCY_BAND_GAIN*(1-consistency)+
+      LOW_SKIP_UNCERTAINTY_BAND_GAIN*Math.max(0,uncertainty-.50)
   );
   const candidate=distance>=physicsConfidenceBand&&evBanker>physicsActivationEv&&evBanker>evPlayer?"B":
     distance>=physicsConfidenceBand&&evPlayer>physicsActivationEv&&evPlayer>evBanker?"P":"Skip";
