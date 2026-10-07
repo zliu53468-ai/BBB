@@ -70,10 +70,15 @@ require("./final_probability_runtime.js");
 
   const hardB=api.auxiliaryCandidateFilter("B",.20,.10);
   const hardP=api.auxiliaryCandidateFilter("P",.80,.90);
-  const softB=api.auxiliaryCandidateFilter("B",.48,.48);
-  if(hardB.decision!=="skip"||hardP.decision!=="skip")throw new Error("strong Core/XGB conflict was not filtered");
-  if(softB.decision!=="downgrade")throw new Error("weak auxiliary support was not downgraded");
+  const softB=api.auxiliaryCandidateFilter("B",.44,.44);
+  const xgbOnlyWeak=api.auxiliaryCandidateFilter("B",.60,.34);
+  if(hardB.decision!=="skip"||hardP.decision!=="skip")throw new Error("severe joint Core/XGB conflict was not filtered");
+  if(softB.decision!=="downgrade"||Math.abs(softB.shrink-.94)>1e-9)throw new Error("light auxiliary downgrade mismatch");
+  if(xgbOnlyWeak.decision==="skip")throw new Error("XGB alone must not veto a Physics candidate");
   if(api.preserveCandidateDirection("B",.40)<.5||api.preserveCandidateDirection("P",.60)>.5)throw new Error("candidate-direction preservation failed");
+  const lowUncertainty=api.calibratedPhysicsDirectionalPB(.60,10,.10,1),highUncertainty=api.calibratedPhysicsDirectionalPB(.60,10,.90,.45);
+  if(!(lowUncertainty>highUncertainty&&lowUncertainty>.5&&highUncertainty>.5))throw new Error("Early-35 Physics calibration did not preserve direction/reduce overconfidence");
+  if(!(api.physicsPrecisionPenalty(10,.90,.45)>api.physicsPrecisionPenalty(10,.10,1)))throw new Error("uncertainty-aware Physics EV penalty failed");
 
   const forecast=r.physicsForecast;
   if(Object.keys(forecast.nextCardCountProbabilities||{}).length!==3)throw new Error("missing 4/5/6-card forecast");
@@ -86,6 +91,7 @@ require("./final_probability_runtime.js");
     const generated=JSON.parse(fs.readFileSync("final_probability_model.json","utf8")),training=generated.training||{};
     if(training.runtime_role!=="auxiliary_candidate_filter_no_flip")throw new Error("generated XGB runtime role metadata missing");
     if(training.primary_predictor!=="direct_physics_physical_ev")throw new Error("generated primary predictor metadata missing");
+    if((+training.physics_primary_version||0)<13)throw new Error("Physics Primary V13 metadata missing");
     if(JSON.stringify(training.execution_order)!==JSON.stringify(expectedOrder))throw new Error("generated execution-order metadata mismatch");
   }
 
@@ -107,7 +113,7 @@ require("./final_probability_runtime.js");
   finalBundle.base_margin=Math.log(.05/.95);
   const smoothHistory=[...history,"B"],smoothCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(smoothHistory),smoothOut=api.applyFinalPrediction(smoothHistory,smoothCore);
   const sr=smoothOut.finalProbability;
-  if(sr.mode!=="physics_primary"||!(sr.smoothingAlpha>=.35&&sr.smoothingAlpha<=.75))throw new Error("Physics EMA did not run");
+  if(sr.mode!=="physics_primary"||!(sr.smoothingAlpha>=.35&&sr.smoothingAlpha<=.75)||sr.smoothingProfile==="off")throw new Error("Physics-primary EMA fallback did not run");
   if(sr.primary_candidate==="B"&&!["B","Skip"].includes(smoothOut.direction))throw new Error("XGB flipped smoothed Banker candidate");
   if(sr.primary_candidate==="P"&&!["P","Skip"].includes(smoothOut.direction))throw new Error("XGB flipped smoothed Player candidate");
   delete finalBundle.smoothing;finalBundle.base_margin=Math.log(.90/.10);
