@@ -25,6 +25,14 @@ global.fetch=async function(url){
   const name=String(url).replace(/^\.\//,"");
   try{
     const payload=JSON.parse(fs.readFileSync(name,"utf8"));
+    if(name==="physics_multitask_model.json"&&!useGeneratedBundle){
+      // Preflight runs before retraining, so reinterpret the checked-in legacy
+      // 48D bundle as a direct-Physics ABI fixture only for runtime mechanics.
+      const mock={...payload,feature_names:[...(payload.feature_names||[])]};
+      const direct=["physical_ev_banker","physical_ev_player","physical_ev_gap","particle_uncertainty"];
+      for(let i=0;i<4;i++)mock.feature_names[39+i]=direct[i];
+      return {ok:true,status:200,json:async()=>mock};
+    }
     return {ok:true,status:200,json:async()=>name==="final_probability_model.json"&& !useGeneratedBundle?finalBundle:payload};
   }catch(_){return {ok:false,status:404,json:async()=>({})};}
 };
