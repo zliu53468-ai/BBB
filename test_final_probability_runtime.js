@@ -157,7 +157,7 @@ require("./final_probability_runtime.js");
 
     // V4 uses relative hand progress plus actual Particle card consumption;
     // these assertions are intentionally independent from Final EV/#43 policy.
-    finalBundle.training={particle_physics_version:1,stage_progress_version:4,early35_version:1,shoe_error_correction_version:1};
+    finalBundle.training={particle_physics_version:1,stage_progress_version:4,early35_version:1,shoe_error_correction_version:1,particle_filter_version:3};
     const lowCards={expected_consumed_cards:120,posterior_uncertainty:.30,recent_ess_ratio:1};
     const highCards={...lowCards,expected_consumed_cards:260};
     const p50=api.effectiveParticleProgress(40,highCards,50),p70=api.effectiveParticleProgress(40,highCards,70);
@@ -176,10 +176,24 @@ require("./final_probability_runtime.js");
     if(Math.abs(api.early35EvidenceWeight(36,early35Diag,60)-e35)>=.10)throw new Error("Early-35 35/36 evidence transition jumped");
     if(Math.abs(api.early35PhysicalEvReliability(36,early35Diag,60)-api.early35PhysicalEvReliability(35,early35Diag,60))>=.10)throw new Error("Early-35 35/36 EV reliability transition jumped");
     if(!api.early35Enabled())throw new Error("Early-35 model version gate failed");
+    if(!api.particleFilterV3Enabled())throw new Error("Adaptive Particle V3 model-version gate failed");
+    const lowParticle={posterior_uncertainty:.20,recent_ess_ratio:.85,composition_spread:.04},midParticle={posterior_uncertainty:.45,recent_ess_ratio:.60,composition_spread:.10},highParticle={posterior_uncertainty:.80,recent_ess_ratio:.20,composition_spread:.30};
+    if(api.selectParticleBudget(lowParticle)!==512||api.selectParticleBudget(midParticle)!==1024||api.selectParticleBudget(highParticle)!==2000)throw new Error("Adaptive Particle budget thresholds failed");
+    if(api.selectParticleBudget(highParticle,512)!==1024||api.selectParticleBudget(lowParticle,2000)!==1024)throw new Error("Adaptive Particle hysteresis failed");
+    const logWeights=api.normaliseLogWeights([-900,-901,-1200]);if(Math.abs(logWeights.reduce((a,b)=>a+b,0)-1)>1e-10||logWeights.some(value=>!Number.isFinite(value)||value<0))throw new Error("log-weight normalisation failed");
+    if(!api.particleShouldResample(.49)||api.particleShouldResample(.50))throw new Error("ESS-triggered resampling threshold failed");
+    const duplicate=Array.from({length:128},()=>[30,...Array(12).fill(32)]),rejuvenated=api.particleRejuvenate(duplicate,()=>.37);if(!rejuvenated.changed||rejuvenated.particles.some(counts=>counts.reduce((a,b)=>a+b,0)!==414||counts.some(value=>value<0||value>32)))throw new Error("legal rejuvenation failed");
+    if(!(api.particleQuality(lowParticle)>api.particleQuality(highParticle)))throw new Error("Particle quality should not use raw count");
+    if(!(api.physicalEvReliability(25,lowParticle,60)>api.physicalEvReliability(25,highParticle,60)))throw new Error("Physical EV reliability quality scaling failed");
+    const adaptiveEstimate=api.estimateParticlePhysics(["B"]);if(adaptiveEstimate.physics.length!==48||adaptiveEstimate.diagnostics.particle_count<512||adaptiveEstimate.diagnostics.particle_count>2000)throw new Error("Adaptive Particle runtime dimension/budget mismatch");
     const alpha49=api.dynamicEmaAlpha(50,.5,{},.49**3),alpha51=api.dynamicEmaAlpha(50,.5,{},.51**3);
     if(Math.abs(alpha49-alpha51)>=.03)throw new Error("V4 EMA discontinuity");
     const clip69=api.applyProbabilityBounds(.9,50,.1,.69**3),clip71=api.applyProbabilityBounds(.9,50,.1,.71**3);
     if(Math.abs(clip69.high-clip71.high)>=.02)throw new Error("V4 clip discontinuity");
+
+    // Existing correction coverage remains on the legacy gate; V3 was
+    // already exercised above without changing the 48D/57D contract.
+    finalBundle.training={...finalBundle.training,particle_filter_version:0};
 
     if(!api.shoeErrorCorrectionEnabled())throw new Error("shoe error-correction version gate failed");
     const makeSnapshot=(winner,gap=.08)=>({available:true,winner_distribution:winner,cards_distribution:[.25,.50,.25],player_final_point_distribution:Array(10).fill(.1),banker_final_point_distribution:Array(10).fill(.1),expected_consumed_cards:5,physical_ev_gap:gap,particle_uncertainty:.10,recent_ess_ratio:.90});

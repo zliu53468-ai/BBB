@@ -12,6 +12,7 @@ It is intentionally a post-MLP physics layer: the production 213D -> 48D MLP,
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any, Iterable, Sequence
 
 import numpy as np
@@ -22,7 +23,19 @@ INITIAL_PER_RANK = DECKS * 4
 TOTAL_CARDS = 52 * DECKS
 PLAYABLE_CARDS_ESTIMATE = TOTAL_CARDS - 60
 PHYSICS_DIM = 48
-PARTICLE_COUNT = 64
+LEGACY_PARTICLE_COUNT = 64
+PARTICLE_MIN = 512
+PARTICLE_MID = 1024
+PARTICLE_MAX = 2000
+PARTICLE_TEACHER = 2000
+# Kept as a public compatibility alias.  New callers should select a budget
+# through ``select_particle_budget`` instead of treating this as a fixed count.
+PARTICLE_COUNT = PARTICLE_MID
+PARTICLE_FILTER_VERSION = 3
+PARTICLE_POLICY = "adaptive_512_1024_2000"
+ESS_RESAMPLE_THRESHOLD = .50
+REJUVENATION_RATE = .03
+REJUVENATION_UNIQUE_RATIO = .55
 LIKELIHOOD_DRAWS = 4
 FALLBACK_DRAWS = 12
 FORECAST_DRAWS = 2
@@ -59,6 +72,78 @@ def _normalise(block: np.ndarray) -> np.ndarray:
     if total <= 1e-12:
         return np.full(len(x), 1.0 / max(1, len(x)), dtype=np.float64)
     return x / total
+
+
+def _normalise_log_weights(log_weights: Sequence[float]) -> np.ndarray:
+    """Stable log-sum-exp normalisation for sequential likelihood updates."""
+    values=np.asarray(log_weights,dtype=np.float64).reshape(-1)
+    finite=np.isfinite(values)
+    if values.size==0:
+        return values
+    if not np.any(finite):
+        return np.full(values.size,1.0/values.size,dtype=np.float64)
+    maximum=float(np.max(values[finite]))
+    shifted=np.zeros(values.size,dtype=np.float64)
+    shifted[finite]=np.exp(np.clip(values[finite]-maximum,-745.0,0.0))
+    total=float(shifted.sum())
+    return shifted/total if total>1e-300 else np.full(values.size,1.0/values.size,dtype=np.float64)
+
+
+def _log_weights_from_normalised(weights: Sequence[float]) -> np.ndarray:
+    normalised=_normalise_log_weights(np.log(np.clip(np.asarray(weights,dtype=np.float64),1e-300,None)))
+    return np.log(np.clip(normalised,1e-300,None))
+
+
+def _composition_instability(diagnostics: dict[str, Any] | None) -> float:
+    return _clip(float((diagnostics or {}).get("composition_spread", .12))/.20)
+
+
+def particle_quality(diagnostics: dict[str, Any] | None) -> float:
+    """Posterior quality, deliberately independent from the raw particle count."""
+    diagnostics=diagnostics or {}
+    ess=_clip(float(diagnostics.get("recent_ess_ratio", .5)))
+    uncertainty=_clip(float(diagnostics.get("posterior_uncertainty", .5)))
+    instability=_composition_instability(diagnostics)
+    return _clip(.45*ess+.35*(1.0-uncertainty)+.20*(1.0-instability))
+
+
+def _desired_particle_budget(diagnostics: dict[str, Any] | None) -> int:
+    diagnostics=diagnostics or {}
+    uncertainty=_clip(float(diagnostics.get("posterior_uncertainty", .5)))
+    ess=_clip(float(diagnostics.get("recent_ess_ratio", .5)))
+    instability=_composition_instability(diagnostics)
+    if uncertainty<=.30 and ess>=.70 and instability<=.60:
+        return PARTICLE_MIN
+    if uncertainty<=.55 and ess>=.45 and instability<=.85:
+        return PARTICLE_MID
+    return PARTICLE_MAX
+
+
+def select_particle_budget(
+    diagnostics: dict[str, Any] | None,
+    *,
+    mode: str = "runtime",
+    previous_budget: int | None = None,
+) -> int:
+    """Select a bounded runtime budget with one-tier hysteresis.
+
+    The previous-hand diagnostics choose this hand's budget.  A direct
+    low/high transition moves through 1024 first so one noisy hand cannot
+    oscillate 512 -> 2000 -> 512.
+    """
+    if str(mode).lower()=="teacher":
+        return PARTICLE_TEACHER
+    desired=_desired_particle_budget(diagnostics)
+    previous=int(previous_budget or 0)
+    if previous not in (PARTICLE_MIN,PARTICLE_MID,PARTICLE_MAX) or desired==previous:
+        return desired
+    if {previous,desired}=={PARTICLE_MIN,PARTICLE_MAX}:
+        return PARTICLE_MID
+    return desired
+
+
+def should_resample(ess_ratio: float) -> bool:
+    return _clip(ess_ratio) < ESS_RESAMPLE_THRESHOLD
 
 
 def _interp(value: float, anchors: Sequence[tuple[float, float]]) -> float:
@@ -610,6 +695,7 @@ def _rb_integrate_draw_branches(
 def _rb_next_hand_forecast(
     particles: Sequence[np.ndarray],
     *,
+    weights: Sequence[float] | None = None,
     random_state: int,
     initial_state_draws: int = RB_INITIAL_STATE_DRAWS,
 ) -> dict[str, Any]:
@@ -620,14 +706,15 @@ def _rb_next_hand_forecast(
     replacement.  Rank-level consumption remains in the original Monte Carlo
     forecast, where the 13-rank resolution is needed.
     """
-    valid_particles = [counts for counts in particles if int(np.sum(counts)) >= 6]
+    raw_weights=_normalise(np.asarray(weights,dtype=np.float64)) if weights is not None else np.full(len(particles),1.0/max(1,len(particles)),dtype=np.float64)
+    valid_particles=[(counts,float(raw_weights[index])) for index,counts in enumerate(particles) if int(np.sum(counts))>=6]
     if not valid_particles:
         return _empty_hand_state_posterior()
     rng = np.random.default_rng(random_state + 1618033)
     accumulator = _new_hand_state_accumulator()
     state_draws = max(1, int(initial_state_draws))
-    particle_weight = 1.0 / len(valid_particles)
-    for rank_counts in valid_particles:
+    valid_weight=sum(weight for _,weight in valid_particles)
+    for rank_counts, particle_weight in valid_particles:
         base_points = _point_value_counts(rank_counts)
         for _ in range(state_draws):
             points = base_points.copy()
@@ -642,7 +729,7 @@ def _rb_next_hand_forecast(
                 points,
                 player_initial_total=player_initial_total,
                 banker_initial_total=banker_initial_total,
-                weight=particle_weight / state_draws,
+                weight=(particle_weight/max(valid_weight,1e-12)) / state_draws,
             )
     forecast = _finalise_hand_state_posterior(accumulator)
     forecast["forecast_method"] = "rao_blackwellized_conditional"
@@ -655,14 +742,57 @@ def _systematic_resample(
     consumed: np.ndarray,
     weights: np.ndarray,
     rng: np.random.Generator,
+    *,
+    target_count: int | None = None,
 ) -> tuple[list[np.ndarray], np.ndarray]:
-    n = len(counts)
+    source_count=len(counts)
+    n=max(1,int(target_count or source_count))
     cdf = np.cumsum(weights)
     start = float(rng.random()) / n
     positions = start + np.arange(n, dtype=np.float64) / n
     indices = np.searchsorted(cdf, positions, side="left")
-    indices = np.clip(indices, 0, n - 1)
+    indices = np.clip(indices, 0, source_count - 1)
     return [counts[int(i)].copy() for i in indices], consumed[indices].copy()
+
+
+def _unique_particle_ratio(particles: Sequence[np.ndarray]) -> float:
+    if not particles:
+        return 0.0
+    return float(len({tuple(np.asarray(counts,dtype=np.int16).tolist()) for counts in particles})/len(particles))
+
+
+def _rejuvenate_particles(
+    particles: Sequence[np.ndarray],
+    rng: np.random.Generator,
+    *,
+    rate: float = REJUVENATION_RATE,
+) -> tuple[list[np.ndarray], int]:
+    """Make a tiny legal rank-composition move after a collapsed resample."""
+    output=[np.asarray(counts,dtype=np.int16).copy() for counts in particles]
+    if not output:
+        return output,0
+    selected=max(1,int(round(len(output)*_clip(rate,0.02,0.05))))
+    indices=rng.choice(len(output),size=min(selected,len(output)),replace=False)
+    changed=0
+    for index in np.asarray(indices,dtype=int):
+        counts=output[int(index)]
+        sources=np.flatnonzero(counts>0)
+        targets=np.flatnonzero(counts<INITIAL_PER_RANK)
+        if not len(sources) or not len(targets):
+            continue
+        source=int(sources[int(rng.integers(len(sources)))])
+        target=int(targets[int(rng.integers(len(targets)))])
+        if source==target:
+            alternatives=targets[targets!=source]
+            if not len(alternatives):
+                continue
+            target=int(alternatives[int(rng.integers(len(alternatives)))])
+        if counts[source]<=0 or counts[target]>=INITIAL_PER_RANK:
+            continue
+        counts[source]-=1
+        counts[target]+=1
+        changed+=1
+    return output,changed
 
 
 def _filter_particles(
@@ -675,11 +805,12 @@ def _filter_particles(
     particles = [np.full(RANKS, INITIAL_PER_RANK, dtype=np.int16) for _ in range(particle_count)]
     consumed = np.zeros(particle_count, dtype=np.float64)
     ess_history: list[float] = []
+    log_weights=np.full(particle_count,-math.log(max(1,particle_count)),dtype=np.float64)
 
     for actual in history:
         next_particles: list[np.ndarray] = []
         next_consumed = np.zeros(particle_count, dtype=np.float64)
-        raw_weights = np.zeros(particle_count, dtype=np.float64)
+        log_likelihoods = np.zeros(particle_count, dtype=np.float64)
 
         for index, base in enumerate(particles):
             proposals: list[tuple[SimulatedHand, np.ndarray]] = []
@@ -710,13 +841,20 @@ def _filter_particles(
 
             next_particles.append(chosen_after)
             next_consumed[index] = consumed[index] + chosen_hand.card_count
-            raw_weights[index] = likelihood
+            log_likelihoods[index] = math.log(max(likelihood,1e-12))
 
-        weight_sum = float(raw_weights.sum())
-        weights = raw_weights / weight_sum if weight_sum > 1e-12 else np.full(particle_count, 1.0 / particle_count)
+        weights=_normalise_log_weights(log_weights+log_likelihoods)
         ess = 1.0 / max(1e-12, float(np.sum(weights * weights)))
-        ess_history.append(_clip(ess / particle_count))
-        particles, consumed = _systematic_resample(next_particles, next_consumed, weights, rng)
+        ess_ratio=_clip(ess/particle_count)
+        ess_history.append(ess_ratio)
+        if should_resample(ess_ratio):
+            particles,consumed=_systematic_resample(next_particles,next_consumed,weights,rng)
+            if _unique_particle_ratio(particles)<REJUVENATION_UNIQUE_RATIO:
+                particles,_=_rejuvenate_particles(particles,rng)
+            log_weights=np.full(particle_count,-math.log(max(1,particle_count)),dtype=np.float64)
+        else:
+            particles,consumed=next_particles,next_consumed
+            log_weights=_log_weights_from_normalised(weights)
 
     return particles, consumed, ess_history
 
@@ -725,38 +863,41 @@ def _forecast_particles(
     particles: Sequence[np.ndarray],
     consumed: np.ndarray,
     *,
+    weights: Sequence[float] | None = None,
     random_state: int,
     forecast_draws: int,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     rng = np.random.default_rng(random_state + 104729)
     out = np.zeros(PHYSICS_DIM, dtype=np.float64)
-    samples = 0
+    sample_mass = 0.0
+    particle_weights=_normalise(np.asarray(weights,dtype=np.float64)) if weights is not None else np.full(len(particles),1.0/max(1,len(particles)),dtype=np.float64)
 
-    for counts in particles:
+    for index,counts in enumerate(particles):
         for _ in range(forecast_draws):
             if int(np.sum(counts)) < 6:
                 continue
             hand, _ = _deal_from_counts(counts, rng)
-            samples += 1
-            out[{4: 0, 5: 1, 6: 2}[hand.card_count]] += 1.0
-            out[3 + hand.player_point] += 1.0
-            out[13 + hand.banker_point] += 1.0
-            out[23 + {"B": 0, "P": 1, "T": 2}[hand.outcome]] += 1.0
+            mass=float(particle_weights[index])/max(1,int(forecast_draws))
+            sample_mass += mass
+            out[{4: 0, 5: 1, 6: 2}[hand.card_count]] += mass
+            out[3 + hand.player_point] += mass
+            out[13 + hand.banker_point] += mass
+            out[23 + {"B": 0, "P": 1, "T": 2}[hand.outcome]] += mass
             for rank in hand.ranks:
-                out[26 + rank] += 1.0
+                out[26 + rank] += mass
             diff = hand.banker_point - hand.player_point
-            out[46] += diff / 9.0
-            out[47] += abs(diff) / 9.0
+            out[46] += mass*diff / 9.0
+            out[47] += mass*abs(diff) / 9.0
 
-    if samples <= 0:
+    if sample_mass <= 1e-12:
         raise RuntimeError("particle forecast produced no samples")
 
-    out[0:3] /= samples
-    out[3:13] /= samples
-    out[13:23] /= samples
-    out[23:26] /= samples
-    out[26:39] /= samples
-    rb_forecast = _rb_next_hand_forecast(particles, random_state=random_state)
+    out[0:3] /= sample_mass
+    out[3:13] /= sample_mass
+    out[13:23] /= sample_mass
+    out[23:26] /= sample_mass
+    out[26:39] /= sample_mass
+    rb_forecast = _rb_next_hand_forecast(particles, weights=particle_weights, random_state=random_state)
     if rb_forecast["available"]:
         out[0:3] = np.asarray(rb_forecast["cards_distribution"], dtype=np.float64)
         out[3:13] = np.asarray(rb_forecast["player_final_point_distribution"], dtype=np.float64)
@@ -775,30 +916,84 @@ def _forecast_particles(
     out[40]=physical_ev_p
     out[41]=physical_ev_b-physical_ev_p
     out[42]=0.0  # filled from posterior uncertainty after ESS/composition diagnostics
-    out[43] = float(np.mean(consumed)) if len(consumed) else 0.0
+    out[43] = float(np.dot(particle_weights,consumed)) if len(consumed) else 0.0
 
-    mean_counts = np.mean(np.vstack(particles).astype(np.float64), axis=0)
+    mean_counts = np.average(np.vstack(particles).astype(np.float64),axis=0,weights=particle_weights)
     remaining_total = max(1.0, float(np.sum(mean_counts)))
     out[44] = float(np.sum(mean_counts[:5]) / remaining_total)
     out[45] = float(np.sum(mean_counts[8:]) / remaining_total)
     if not rb_forecast["available"]:
-        out[46] /= samples
-        out[47] /= samples
+        out[46] /= sample_mass
+        out[47] /= sample_mass
     return out.astype(np.float32), rb_forecast
 
 
 class ParticleShoeTracker:
     """Incremental particle state for chronological rows from the same shoe."""
 
-    def __init__(self, *, particle_count: int = PARTICLE_COUNT, random_state: int = RANDOM_STATE):
-        self.particle_count = max(16, int(particle_count))
+    def __init__(
+        self,
+        *,
+        particle_count: int | None = None,
+        mode: str = "runtime",
+        particle_filter_version: int = PARTICLE_FILTER_VERSION,
+        random_state: int = RANDOM_STATE,
+    ):
+        self.mode="teacher" if str(mode).lower()=="teacher" else "runtime"
+        self.particle_filter_version=int(particle_filter_version)
+        self.particle_count_override=max(16,int(particle_count)) if particle_count is not None else None
         self.random_state = int(random_state)
         self.reset()
 
+    @property
+    def adaptive_enabled(self) -> bool:
+        return self.particle_filter_version>=PARTICLE_FILTER_VERSION
+
+    def _initial_budget(self) -> int:
+        if self.particle_count_override is not None:
+            return self.particle_count_override
+        if self.mode=="teacher":
+            return PARTICLE_TEACHER
+        return PARTICLE_MID if self.adaptive_enabled else LEGACY_PARTICLE_COUNT
+
+    def _normalised_weights(self) -> np.ndarray:
+        return _normalise_log_weights(self.log_weights)
+
+    def _resize_particle_budget(self, target: int) -> None:
+        target=max(16,int(target))
+        if target==len(self.particles):
+            return
+        self.last_rejuvenated=0
+        weights=self._normalised_weights()
+        self.particles,self.consumed=_systematic_resample(
+            self.particles,self.consumed,weights,self.rng,target_count=target,
+        )
+        if target>len(weights) and _unique_particle_ratio(self.particles)<REJUVENATION_UNIQUE_RATIO:
+            self.particles,self.last_rejuvenated=_rejuvenate_particles(self.particles,self.rng)
+        self.log_weights=np.full(target,-math.log(target),dtype=np.float64)
+        self.last_budget_transition=(len(weights),target)
+
+    def _prepare_next_hand_budget(self) -> None:
+        if self.particle_count_override is not None:
+            return
+        if self.mode=="teacher":
+            target=PARTICLE_TEACHER
+        elif self.adaptive_enabled:
+            target=select_particle_budget(
+                self.last_diagnostics,
+                mode=self.mode,
+                previous_budget=len(self.particles),
+            )
+        else:
+            target=LEGACY_PARTICLE_COUNT
+        self._resize_particle_budget(target)
+
     def reset(self) -> None:
         self.rng = np.random.default_rng(self.random_state)
-        self.particles = [np.full(RANKS, INITIAL_PER_RANK, dtype=np.int16) for _ in range(self.particle_count)]
-        self.consumed = np.zeros(self.particle_count, dtype=np.float64)
+        initial_budget=self._initial_budget()
+        self.particles = [np.full(RANKS, INITIAL_PER_RANK, dtype=np.int16) for _ in range(initial_budget)]
+        self.consumed = np.zeros(initial_budget, dtype=np.float64)
+        self.log_weights=np.full(initial_budget,-math.log(initial_budget),dtype=np.float64)
         self.ess_history: list[float] = []
         self.history: list[str] = []
         self.current_hand_posterior = _empty_hand_state_posterior()
@@ -808,14 +1003,21 @@ class ParticleShoeTracker:
         self.pre_hand_snapshot_history_round = 0
         self.shoe_error_correction = _empty_shoe_error_correction()
         self.error_memory: list[dict[str, float]] = []
+        self.last_diagnostics: dict[str, Any]={}
+        self.last_resampled=False
+        self.last_rejuvenated=0
+        self.last_unique_particle_ratio=1.0
+        self.last_budget_transition=(initial_budget,initial_budget)
 
     def _advance(self, actual: str) -> None:
+        self._prepare_next_hand_budget()
+        particle_count=len(self.particles)
         next_particles: list[np.ndarray] = []
-        next_consumed = np.zeros(self.particle_count, dtype=np.float64)
-        raw_weights = np.zeros(self.particle_count, dtype=np.float64)
+        next_consumed = np.zeros(particle_count, dtype=np.float64)
+        log_likelihoods = np.zeros(particle_count, dtype=np.float64)
         hand_state = _new_hand_state_accumulator()
         prior_hand_state = _new_hand_state_accumulator()
-        prior_particle_weight = 1.0 / self.particle_count
+        prior_particle_weights=self._normalised_weights()
 
         for index, base in enumerate(self.particles):
             proposals: list[tuple[SimulatedHand, np.ndarray]] = []
@@ -828,7 +1030,7 @@ class ParticleShoeTracker:
                 _accumulate_simulated_hand(
                     prior_hand_state,
                     hand,
-                    prior_particle_weight / LIKELIHOOD_DRAWS,
+                    float(prior_particle_weights[index]) / LIKELIHOOD_DRAWS,
                 )
                 if hand.outcome == actual:
                     matches.append((hand, after))
@@ -848,7 +1050,7 @@ class ParticleShoeTracker:
                     likelihood = max(likelihood, 0.02)
                 # B/P/T remains the observation.  This only records the
                 # matching latent hand states with particle x likelihood mass.
-                posterior_weight = prior_particle_weight * likelihood / len(matches)
+                posterior_weight = float(prior_particle_weights[index]) * likelihood / len(matches)
                 for matching_hand, _ in matches:
                     _accumulate_simulated_hand(hand_state, matching_hand, posterior_weight)
             else:
@@ -857,12 +1059,11 @@ class ParticleShoeTracker:
 
             next_particles.append(chosen_after)
             next_consumed[index] = self.consumed[index] + chosen_hand.card_count
-            raw_weights[index] = likelihood
+            log_likelihoods[index] = math.log(max(likelihood,1e-12))
 
-        weight_sum = float(raw_weights.sum())
-        weights = raw_weights / weight_sum if weight_sum > 1e-12 else np.full(self.particle_count, 1.0 / self.particle_count)
+        weights=_normalise_log_weights(self.log_weights+log_likelihoods)
         ess = 1.0 / max(1e-12, float(np.sum(weights * weights)))
-        ess_ratio = _clip(ess / self.particle_count)
+        ess_ratio = _clip(ess / particle_count)
         self.ess_history.append(ess_ratio)
         self.current_hand_posterior = _finalise_hand_state_posterior(hand_state)
         proposal_prior = _finalise_hand_state_posterior(prior_hand_state)
@@ -890,7 +1091,19 @@ class ParticleShoeTracker:
             selected_increment = float(np.dot(weights, next_consumed - self.consumed))
             expected_increment = float(self.current_hand_posterior["expected_cards_consumed"])
             next_consumed += expected_increment - selected_increment
-        self.particles, self.consumed = _systematic_resample(next_particles, next_consumed, weights, self.rng)
+        self.last_resampled=should_resample(ess_ratio)
+        self.last_rejuvenated=0
+        if self.last_resampled:
+            self.particles,self.consumed=_systematic_resample(next_particles,next_consumed,weights,self.rng)
+            self.last_unique_particle_ratio=_unique_particle_ratio(self.particles)
+            if self.last_unique_particle_ratio<REJUVENATION_UNIQUE_RATIO:
+                self.particles,self.last_rejuvenated=_rejuvenate_particles(self.particles,self.rng)
+                self.last_unique_particle_ratio=_unique_particle_ratio(self.particles)
+            self.log_weights=np.full(particle_count,-math.log(particle_count),dtype=np.float64)
+        else:
+            self.particles,self.consumed=next_particles,next_consumed
+            self.log_weights=_log_weights_from_normalised(weights)
+            self.last_unique_particle_ratio=_unique_particle_ratio(self.particles)
         self.history.append(actual)
 
     def sync(self, history: str | Sequence[str]) -> None:
@@ -904,16 +1117,24 @@ class ParticleShoeTracker:
     def estimate(self, history: str | Sequence[str] | None = None, *, forecast_draws: int = FORECAST_DRAWS) -> ParticlePhysicsEstimate:
         if history is not None:
             self.sync(history)
+        effective_forecast_draws=max(1,int(forecast_draws))
+        if self.mode=="runtime" and self.adaptive_enabled and float(self.last_diagnostics.get("posterior_uncertainty",0.0))>.55:
+            effective_forecast_draws=min(4,max(effective_forecast_draws,3))
         physics, next_hand_forecast = _forecast_particles(
             self.particles,
             self.consumed,
+            weights=self._normalised_weights(),
             random_state=self.random_state + len(self.history) * 1009,
-            forecast_draws=max(1, int(forecast_draws)),
+            forecast_draws=effective_forecast_draws,
         )
         matrix = np.vstack(self.particles).astype(np.float64)
-        spread = float(np.mean(np.std(matrix, axis=0) / INITIAL_PER_RANK))
+        weights=self._normalised_weights()
+        mean_counts=np.average(matrix,axis=0,weights=weights)
+        variance=np.average((matrix-mean_counts)**2,axis=0,weights=weights)
+        spread = float(np.mean(np.sqrt(np.maximum(variance,0.0)) / INITIAL_PER_RANK))
         recent_ess = float(np.mean(self.ess_history[-8:])) if self.ess_history else 1.0
-        consumed_std = float(np.std(self.consumed)) if len(self.consumed) else 0.0
+        consumed_mean=float(np.dot(weights,self.consumed)) if len(self.consumed) else 0.0
+        consumed_std = float(np.sqrt(np.dot(weights,(self.consumed-consumed_mean)**2))) if len(self.consumed) else 0.0
         base_uncertainty = _clip(0.60 * min(1.0, spread * 4.0) + 0.40 * (1.0 - recent_ess))
         if self.history:
             draw_state_uncertainty = _clip(
@@ -933,7 +1154,23 @@ class ParticleShoeTracker:
         )
         self.pre_hand_snapshot_history_round = len(self.history)
         diagnostics = {
-            "particle_count": float(self.particle_count),
+            "particle_count": float(len(self.particles)),
+            "particle_budget": float(len(self.particles)),
+            "particle_mode": self.mode,
+            "particle_filter_version": float(self.particle_filter_version if self.adaptive_enabled else 0),
+            "particle_policy": PARTICLE_POLICY if self.adaptive_enabled else "legacy_fixed_64",
+            "particle_teacher_count": float(PARTICLE_TEACHER),
+            "particle_runtime_min": float(PARTICLE_MIN),
+            "particle_runtime_mid": float(PARTICLE_MID),
+            "particle_runtime_max": float(PARTICLE_MAX),
+            "forecast_draws": float(effective_forecast_draws),
+            "ess_resample_threshold": ESS_RESAMPLE_THRESHOLD,
+            "resampling_policy": "ess_triggered_systematic",
+            "weight_policy": "log_weight_normalization",
+            "resampled": self.last_resampled,
+            "unique_particle_ratio": self.last_unique_particle_ratio,
+            "rejuvenated_particles": float(self.last_rejuvenated),
+            "budget_transition": tuple(float(value) for value in self.last_budget_transition),
             "history_rounds": float(len(self.history)),
             "expected_consumed_cards": float(physics[43]),
             "current_hand_expected_cards_consumed": float(self.current_hand_posterior["expected_cards_consumed"]),
@@ -962,17 +1199,26 @@ class ParticleShoeTracker:
             "error_memory_size": float(len(self.error_memory)),
             "shoe_error_correction": dict(self.shoe_error_correction),
         }
+        diagnostics["particle_quality"]=particle_quality(diagnostics)
+        self.last_diagnostics=dict(diagnostics)
         return ParticlePhysicsEstimate(physics, diagnostics)
 
 
 def estimate_particle_physics(
     history: str | Sequence[str],
     *,
-    particle_count: int = PARTICLE_COUNT,
+    particle_count: int | None = None,
+    mode: str = "runtime",
+    particle_filter_version: int = PARTICLE_FILTER_VERSION,
     forecast_draws: int = FORECAST_DRAWS,
     random_state: int = RANDOM_STATE,
 ) -> ParticlePhysicsEstimate:
-    tracker = ParticleShoeTracker(particle_count=particle_count, random_state=random_state)
+    tracker = ParticleShoeTracker(
+        particle_count=particle_count,
+        mode=mode,
+        particle_filter_version=particle_filter_version,
+        random_state=random_state,
+    )
     return tracker.estimate(history, forecast_draws=forecast_draws)
 
 
@@ -1046,7 +1292,9 @@ def fuse_particle_physics(
     mlp_48d: Sequence[float],
     history: str | Sequence[str],
     *,
-    particle_count: int = PARTICLE_COUNT,
+    particle_count: int | None = None,
+    particle_mode: str = "runtime",
+    particle_filter_version: int | None = None,
     forecast_draws: int = FORECAST_DRAWS,
     random_state: int = RANDOM_STATE,
     tracker: ParticleShoeTracker | None = None,
@@ -1059,12 +1307,16 @@ def fuse_particle_physics(
         raise ValueError(f"expected {PHYSICS_DIM} MLP features, got {mlp.size}")
 
     seq = _tokens(history)
+    enabled_version=(tracker.particle_filter_version if particle_filter_version is None and tracker is not None
+                     else int(particle_filter_version or 0))
     estimate = (
         tracker.estimate(seq, forecast_draws=forecast_draws)
         if tracker is not None
         else estimate_particle_physics(
             seq,
             particle_count=particle_count,
+            mode=particle_mode,
+            particle_filter_version=enabled_version,
             forecast_draws=forecast_draws,
             random_state=random_state,
         )
@@ -1076,6 +1328,11 @@ def fuse_particle_physics(
                      if early35_enabled else weight)
     ev_reliability=(early35_physical_ev_reliability(len(seq),estimate.diagnostics)
                     if early35_enabled else _physical_ev_reliability(len(seq),estimate.diagnostics))
+    quality=particle_quality(estimate.diagnostics)
+    if enabled_version>=PARTICLE_FILTER_VERSION:
+        # Reliability only shrinks raw Physical EV.  Its formula and direction
+        # remain untouched, and a larger N alone grants no confidence bonus.
+        ev_reliability*=.70+.30*quality
     correction_enabled = int(shoe_error_correction_version) >= SHOE_ERROR_CORRECTION_VERSION
     correction = estimate.diagnostics.get("shoe_error_correction", {}) if correction_enabled else {}
     posterior_multiplier = _clip(correction.get("posterior_reliability_multiplier", 1.0), .90, 1.0)
@@ -1118,6 +1375,9 @@ def fuse_particle_physics(
     diagnostics["fusion_weight"] = float(weight)
     diagnostics["particle_evidence_weight"] = float(evidence_weight)
     diagnostics["physical_ev_reliability"] = float(ev_reliability)
+    diagnostics["particle_quality"] = float(quality)
+    diagnostics["particle_filter_version"] = float(PARTICLE_FILTER_VERSION if enabled_version>=PARTICLE_FILTER_VERSION else 0)
+    diagnostics["particle_policy"] = PARTICLE_POLICY if enabled_version>=PARTICLE_FILTER_VERSION else "legacy_fixed_64"
     diagnostics["shoe_error_correction_version"] = float(SHOE_ERROR_CORRECTION_VERSION if correction_enabled else 0)
     diagnostics["posterior_reliability_multiplier"] = float(posterior_multiplier)
     diagnostics["draw_reliability_multiplier"] = float(draw_multiplier)
