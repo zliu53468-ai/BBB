@@ -1719,7 +1719,7 @@ def export_browser_bundle(
         "shoe_error_correction_version": SHOE_ERROR_CORRECTION_VERSION,
         "physics_direct_version": PHYSICS_DIRECT_VERSION,
         "physics_primary_version": PHYSICS_PRIMARY_VERSION,
-        "particle_filter_version": 0,
+        "particle_filter_version": 1,
         "particle_filter_enabled": False,
         "model_type": MODEL_TYPE,
         "trained": True,
@@ -1749,14 +1749,14 @@ def export_browser_bundle(
             "early35_version": EARLY35_VERSION,
             "shoe_error_correction_version": SHOE_ERROR_CORRECTION_VERSION,
             "shoe_error_correction_policy": SHOE_ERROR_CORRECTION_POLICY,
-            "particle_filter_version": 0,
+            "particle_filter_version": 1,
             "particle_filter_enabled": False,
-            "physics_pipeline": "direct_physics_then_physical_ev_candidate_then_physics_ema_then_core_xgb_aux_filter_then_final_ev_guard",
+            "physics_pipeline": "direct_physics_then_stateless_particle500_then_physical_ev_candidate_then_physics_ema_then_core_xgb_aux_filter_then_final_ev_guard",
             "stage_progress_policy": "relative_estimated_total_hands_plus_direct_physics_consumption_v4",
             "probability_bounds_policy": "smooth_effective_progress",
             "calibration_selection_policy": "overall_plus_effective_progress_ge_70_weighted_brier",
             "physics_input": "B/P/T only",
-            "execution_order": ["direct_physics","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"],
+            "execution_order": ["direct_physics","particle_filter","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"],
             "physics_noise_calibration": dict(physics_noise_calibration or {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]}),
             "skip_guardrail": {"preferred_max_increase": PREFERRED_SKIP_RATE_INCREASE, "hard_max_increase": MAX_SKIP_RATE_INCREASE},
             "feature_snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
@@ -1940,7 +1940,7 @@ def train_command(args: argparse.Namespace) -> int:
     final_model.bbb_decision_policy_ = decision_policy
     final_model.bbb_physics_noise_calibration_ = physics_noise_calibration
     final_model.bbb_shoe_error_correction_version_ = SHOE_ERROR_CORRECTION_VERSION
-    final_model.bbb_particle_filter_version_ = 0
+    final_model.bbb_particle_filter_version_ = 1
     final_model.bbb_physics_direct_version_ = PHYSICS_DIRECT_VERSION
     if args.joblib_output:
         joblib.dump(final_model, args.joblib_output)
