@@ -157,7 +157,7 @@ require("./final_probability_runtime.js");
 
     // V4 uses relative hand progress plus actual Particle card consumption;
     // these assertions are intentionally independent from Final EV/#43 policy.
-    finalBundle.training={particle_physics_version:1,stage_progress_version:4,early35_version:1};
+    finalBundle.training={particle_physics_version:1,stage_progress_version:4,early35_version:1,shoe_error_correction_version:1};
     const lowCards={expected_consumed_cards:120,posterior_uncertainty:.30,recent_ess_ratio:1};
     const highCards={...lowCards,expected_consumed_cards:260};
     const p50=api.effectiveParticleProgress(40,highCards,50),p70=api.effectiveParticleProgress(40,highCards,70);
@@ -180,6 +180,22 @@ require("./final_probability_runtime.js");
     if(Math.abs(alpha49-alpha51)>=.03)throw new Error("V4 EMA discontinuity");
     const clip69=api.applyProbabilityBounds(.9,50,.1,.69**3),clip71=api.applyProbabilityBounds(.9,50,.1,.71**3);
     if(Math.abs(clip69.high-clip71.high)>=.02)throw new Error("V4 clip discontinuity");
+
+    if(!api.shoeErrorCorrectionEnabled())throw new Error("shoe error-correction version gate failed");
+    const makeSnapshot=(winner,gap=.08)=>({available:true,winner_distribution:winner,cards_distribution:[.25,.50,.25],player_final_point_distribution:Array(10).fill(.1),banker_final_point_distribution:Array(10).fill(.1),expected_consumed_cards:5,physical_ev_gap:gap,particle_uncertainty:.10,recent_ess_ratio:.90});
+    const posterior={available:true,cards_distribution:[.20,.50,.30],player_final_point_distribution:[.2,...Array(9).fill(.8/9)],banker_final_point_distribution:[.2,...Array(9).fill(.8/9)],winner_distribution:[.2,.7,.1],expected_cards_consumed:5.2};
+    const ordinary=api.updateShoeErrorCorrection(api.emptyShoeErrorCorrection(),[],makeSnapshot([.45,.45,.10]),posterior,"P",{recentEssRatio:.90,particleUncertainty:.10});
+    const severe=api.updateShoeErrorCorrection(api.emptyShoeErrorCorrection(),[],makeSnapshot([.72,.20,.08]),posterior,"P",{recentEssRatio:.20,particleUncertainty:.80});
+    if(!(ordinary.state.prediction_surprise<severe.state.prediction_surprise&&ordinary.state.shoe_posterior_health>severe.state.shoe_posterior_health&&ordinary.state.shoe_posterior_health>.90))throw new Error("surprise-sensitive health update mismatch");
+    let repeated=severe;for(let i=0;i<5;i++)repeated=api.updateShoeErrorCorrection(repeated.state,repeated.memory,makeSnapshot([.72,.20,.08]),posterior,"P",{recentEssRatio:.20,particleUncertainty:.80});
+    if(!(repeated.state.shoe_posterior_health<severe.state.shoe_posterior_health&&repeated.state.shoe_posterior_health>.30))throw new Error("asymmetric repeated-error health mismatch");
+    let recovered=repeated;for(let i=0;i<8;i++)recovered=api.updateShoeErrorCorrection(recovered.state,recovered.memory,makeSnapshot([.50,.45,.05]),makeSnapshot([.50,.45,.05]),"B",{recentEssRatio:1,particleUncertainty:0});
+    if(!(recovered.state.shoe_posterior_health>repeated.state.shoe_posterior_health))throw new Error("low-surprise recovery mismatch");
+    if(!(severe.state.particle_observation_reused===true&&severe.state.particle_posterior_reweighted===false&&severe.state.physical_ev_reliability_multiplier>=.80&&severe.state.physical_ev_reliability_multiplier<=1))throw new Error("double-count or physical-EV correction mismatch");
+    if(Math.sign(.12)===-Math.sign(.12*severe.state.physical_ev_reliability_multiplier))throw new Error("physical EV direction flipped");
+    const reset=api.emptyShoeErrorCorrection();if(reset.shoe_posterior_health!==1||reset.draw_state_health!==1||reset.physical_ev_health!==1)throw new Error("new-shoe health reset mismatch");
+    const correctionEstimate=api.estimateParticlePhysics(history);if(!correctionEstimate.diagnostics.pre_hand_snapshot?.available||correctionEstimate.diagnostics.error_memory_size>10)throw new Error("sequential correction replay audit missing");
+    const correctedOut=api.applyFinalPrediction(history,core);if(correctedOut.finalProbability.physics?.length!==48||correctedOut.finalProbability.extended?.length!==57)throw new Error("error-correction changed dimensions");
   }
 
   const tieHistory=[...history,"T"],tieCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(tieHistory),tiePrediction=api.applyFinalPrediction(tieHistory,tieCore);

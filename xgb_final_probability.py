@@ -61,6 +61,8 @@ MAX_MODEL_BRIER_REGRESSION = 0.0015
 MIN_PRIMARY_GAIN = 1e-6
 STAGE_PROGRESS_VERSION = 4
 EARLY35_VERSION = 1
+SHOE_ERROR_CORRECTION_VERSION = 1
+SHOE_ERROR_CORRECTION_POLICY = "posterior_health_only_no_observation_reweight"
 ESTIMATED_TOTAL_HANDS_MIN = 50.0
 ESTIMATED_TOTAL_HANDS_MAX = 70.0
 ESTIMATED_PLAYABLE_CARDS = 416.0 - 60.0  # Existing 8-deck / cut-card setting.
@@ -1728,6 +1730,7 @@ def export_browser_bundle(
     bundle = {
         "schema_version": 2,
         "early35_version": EARLY35_VERSION,
+        "shoe_error_correction_version": SHOE_ERROR_CORRECTION_VERSION,
         "model_type": MODEL_TYPE,
         "trained": True,
         "feature_names": list(FEATURE_NAMES),
@@ -1747,6 +1750,8 @@ def export_browser_bundle(
             "particle_physics_version": 2,
             "stage_progress_version": STAGE_PROGRESS_VERSION,
             "early35_version": EARLY35_VERSION,
+            "shoe_error_correction_version": SHOE_ERROR_CORRECTION_VERSION,
+            "shoe_error_correction_policy": SHOE_ERROR_CORRECTION_POLICY,
             "stage_progress_policy": "relative_estimated_total_hands_plus_particle_consumption_v4",
             "probability_bounds_policy": "smooth_effective_progress",
             "calibration_selection_policy": "overall_plus_effective_progress_ge_70_weighted_brier",
@@ -1929,6 +1934,7 @@ def train_command(args: argparse.Namespace) -> int:
     final_model.bbb_smoothing_ = smoothing_config
     final_model.bbb_decision_policy_ = decision_policy
     final_model.bbb_physics_noise_calibration_ = physics_noise_calibration
+    final_model.bbb_shoe_error_correction_version_ = SHOE_ERROR_CORRECTION_VERSION
     if args.joblib_output:
         joblib.dump(final_model, args.joblib_output)
     export_browser_bundle(
