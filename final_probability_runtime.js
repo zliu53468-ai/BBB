@@ -4,7 +4,7 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_V12_PHYSICS_PRIMARY_AUX_FILTER";
+const VERSION="PHYSICS_57D_V13_PHYSICS_PRIMARY_PRECISION";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -267,9 +267,15 @@ function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null,physic
   return clip(base+gain*(.5-clip(+noiseScore||0))+physicsAdjustment,.35,.75);
 }
 function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWeight=null){
-  const config=final56Bundle?.smoothing||{},dynamic=config.method==="dynamic_post_clip_ema"&&config.enabled===true;
+  const configured=final56Bundle?.smoothing||{};
+  // Physics Primary V13: EMA is part of the primary Physics path, not an
+  // optional XGB-selected post-process.  If model selection disables smoothing,
+  // fall back to the locked Physics-primary dynamic profile.
+  const config=(configured.method==="dynamic_post_clip_ema"&&configured.enabled===true)||configured.method==="causal_ema"
+    ?configured
+    :{method:"dynamic_post_clip_ema",enabled:true,profile:"physics_primary_v13",early_alpha:.40,middle_alpha:.55,late_alpha:.70,noise_gain:.04};
+  const dynamic=config.method==="dynamic_post_clip_ema"&&config.enabled===true;
   const legacy=config.method==="causal_ema"&&(+config.strength||0)>0;
-  if(!dynamic&&!legacy)return {value:clippedPB,alpha:1,strength:0,profile:"off",applied:false};
   const shoeId=getShoeId(),rows=readRows();let previous=null;
   for(let i=rows.length-1;i>=0;i--){const row=rows[i];if(row?.shoe_id!==shoeId||+row.round_index>=roundIndex)continue;
     const value=Number.isFinite(+row.physics_smoothed_p_b)?+row.physics_smoothed_p_b:(Number.isFinite(+row.primary_smoothed_p_b)?+row.primary_smoothed_p_b:NaN);
@@ -340,29 +346,58 @@ function directPhysicsProgressWeight(roundIndex,physics){
   const effectiveProgress=adaptiveStageEnabled()?clip((.55+.25*uncertainty)*roundProgress+(.45-.25*uncertainty)*cardProgress):roundProgress;
   return effectiveProgress**3;
 }
+function physicsConsistencyScore(physics){
+  const pB=clip(+physics?.[23]||0),pP=clip(+physics?.[24]||0);
+  const winnerSignal=pB-pP,pointSignal=Number.isFinite(+physics?.[46])?+physics[46]:0,modelEvSignal=Number.isFinite(+physics?.[41])?+physics[41]:0;
+  const sign=v=>v>.015?1:v<-.015?-1:0,w=sign(winnerSignal);
+  if(w===0)return .55;
+  const signals=[sign(pointSignal),sign(modelEvSignal)].filter(v=>v!==0);
+  if(!signals.length)return .70;
+  const agree=signals.filter(v=>v===w).length;
+  return clip(.45+.275*agree,0,1);
+}
+function calibratedPhysicsDirectionalPB(rawPB,roundIndex,uncertainty,consistency){
+  const p=clip(rawPB),u=clip(uncertainty),c=clip(consistency);
+  if(roundIndex>40)return p;
+  const stage=interpAnchors(roundIndex,[[1,.72],[5,.76],[10,.81],[15,.85],[20,.89],[25,.92],[30,.94],[35,.96],[40,1]]);
+  const reliability=clip(stage*(1-.12*u)*(.92+.08*c),.60,1);
+  return clip(.5+(p-.5)*reliability);
+}
+function physicsPrecisionPenalty(roundIndex,uncertainty,consistency){
+  const u=clip(uncertainty),c=clip(consistency),early=roundIndex<=35?1:roundIndex<45?(45-roundIndex)/10:0;
+  return .0045*Math.max(0,u-.35)/.65 + .0035*(1-c) + .0015*early*(1-c);
+}
 function directPhysicsPrimary(physics,roundIndex){
   const pB=clip(+physics?.[23]||0),pP=clip(+physics?.[24]||0),pT=clip(+physics?.[25]||0);
-  const directionalMass=Math.max(1e-9,pB+pP),directionalPB=clip(pB/directionalMass);
+  const directionalMass=Math.max(1e-9,pB+pP),rawDirectionalPB=clip(pB/directionalMass);
+  const uncertainty=clip(+physics?.[42]||0),consistency=physicsConsistencyScore(physics);
+  const directionalPB=calibratedPhysicsDirectionalPB(rawDirectionalPB,roundIndex,uncertainty,consistency);
   const progressWeight=directPhysicsProgressWeight(roundIndex,physics),noise=physicsNoiseScore(physics,roundIndex,Math.cbrt(progressWeight));
   const policy=decisionPolicy(roundIndex,noise),distance=Math.abs(directionalPB-.5);
-  // Primary EV is always recomputed from the Direct Physics winner distribution.
-  // The learned EV slots remain 48D diagnostics/features for the auxiliary XGB only.
+  // Primary EV is computed only from the Direct Physics winner head.
   const evBanker=pB*.95-pP,evPlayer=pP-pB;
   const modelEvBanker=Number.isFinite(+physics?.[39])?+physics[39]:evBanker,modelEvPlayer=Number.isFinite(+physics?.[40])?+physics[40]:evPlayer;
-  const candidate=distance>=policy.confidenceBand&&evBanker>policy.activationEv&&evBanker>evPlayer?"B":
-    distance>=policy.confidenceBand&&evPlayer>policy.activationEv&&evPlayer>evBanker?"P":"Skip";
-  return {pB,pP,pT,directionalPB,progressWeight,noise,policy,distance,evBanker,evPlayer,modelEvBanker,modelEvPlayer,candidate};
+  const precisionPenalty=physicsPrecisionPenalty(roundIndex,uncertainty,consistency);
+  const physicsActivationEv=policy.activationEv+precisionPenalty;
+  const physicsConfidenceBand=policy.confidenceBand+.006*(1-consistency)+.004*Math.max(0,uncertainty-.50);
+  const candidate=distance>=physicsConfidenceBand&&evBanker>physicsActivationEv&&evBanker>evPlayer?"B":
+    distance>=physicsConfidenceBand&&evPlayer>physicsActivationEv&&evPlayer>evBanker?"P":"Skip";
+  return {pB,pP,pT,rawDirectionalPB,directionalPB,progressWeight,noise,policy,distance,uncertainty,consistency,precisionPenalty,
+    physicsActivationEv,physicsConfidenceBand,evBanker,evPlayer,modelEvBanker,modelEvPlayer,candidate};
 }
+
 function auxiliaryCandidateFilter(candidate,corePB,xgbPB){
   if(candidate!=="B"&&candidate!=="P")return {decision:"skip",reason:"physics_candidate_skip",coreSupport:.5,xgbSupport:.5,support:.5,shrink:0};
   const coreSupport=candidate==="B"?clip(corePB):1-clip(corePB),xgbSupport=candidate==="B"?clip(xgbPB):1-clip(xgbPB);
-  const support=.25*coreSupport+.75*xgbSupport;
-  const hardConflict=(xgbSupport<.46&&coreSupport<.46)||xgbSupport<.42;
-  const downgrade=!hardConflict&&(xgbSupport<.49||support<.49||coreSupport<.44);
+  // Physics Primary V13: Core/XGB are a light confirmation filter only.
+  // They can mildly shrink confidence, and may veto only on joint severe conflict.
+  const support=.15*coreSupport+.85*xgbSupport;
+  const hardConflict=xgbSupport<.35&&coreSupport<.40;
+  const downgrade=!hardConflict&&xgbSupport<.46&&coreSupport<.46;
   return hardConflict
-    ?{decision:"skip",reason:"core_xgb_conflict",coreSupport,xgbSupport,support,shrink:0}
+    ?{decision:"skip",reason:"severe_joint_aux_conflict",coreSupport,xgbSupport,support,shrink:0}
     :downgrade
-      ?{decision:"downgrade",reason:"weak_aux_support",coreSupport,xgbSupport,support,shrink:.82}
+      ?{decision:"downgrade",reason:"light_aux_downgrade",coreSupport,xgbSupport,support,shrink:.94}
       :{decision:"keep",reason:"aux_support_ok",coreSupport,xgbSupport,support,shrink:1};
 }
 function preserveCandidateDirection(candidate,probabilityB){
@@ -437,7 +472,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     executionOrder.push("final_ev_guard");
     const pPlayer=1-finalPB,evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
     const policy=primary.policy,candidate=primary.candidate;
-    const baseBand=policy.confidenceBand,baseActivation=policy.activationEv,distance=Math.abs(finalPB-.5);
+    const baseBand=Math.max(policy.confidenceBand,primary.physicsConfidenceBand),baseActivation=Math.max(policy.activationEv,primary.physicsActivationEv),distance=Math.abs(finalPB-.5);
     const candidateEdge=candidate==="B"?evBanker:candidate==="P"?evPlayer:0;
     const aligned=candidate==="B"?finalPB>.5:candidate==="P"?finalPB<.5:false;
     const basePass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=baseBand&&candidateEdge>baseActivation;
@@ -483,7 +518,8 @@ function applyFinalPrediction(seq,corePrediction=null){
     regime:mode==="physics_primary"?(direction==="Skip"?"Physics 主訊號觀望":auxFilter?.decision==="downgrade"?"Physics 主訊號 / XGB降權":"Physics 主訊號 / XGB篩選"):resolvedCore.regime,
     finalProbability:{version:VERSION,active:mode==="physics_primary",mode,
       primary_source:"direct_physics_physical_ev",primary_candidate:primary?.candidate??"Skip",
-      physics_raw_p_b:primary?.directionalPB??null,physics_clipped_p_b:clippedPB,physics_smoothed_p_b:smoothedPB,
+      physics_raw_p_b:primary?.rawDirectionalPB??null,physics_calibrated_p_b:primary?.directionalPB??null,physics_clipped_p_b:clippedPB,physics_smoothed_p_b:smoothedPB,
+      physics_consistency:primary?.consistency??null,physics_precision_penalty:primary?.precisionPenalty??null,physics_activation_ev:primary?.physicsActivationEv??null,physics_confidence_band:primary?.physicsConfidenceBand??null,
       rawPB,clippedPB,smoothedPB,filteredPB,finalPB,bounds,smoothingAlpha,smoothingStrength,smoothingProfile,
       xgb_role:"auxiliary_filter_no_flip",xgb_aux_p_b:xgbAuxPB,core_aux_p_b:corePB,aux_filter:auxFilter,
       physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,particle_uncertainty:physicsUncertainty,
@@ -571,7 +607,7 @@ function installUI(){
   if(b)b.addEventListener("click",()=>settlePending("B"));if(p)p.addEventListener("click",()=>settlePending("P"));if(t)t.addEventListener("click",()=>settlePending("T"));
   const end=document.getElementById("btnEnd");if(end)end.addEventListener("click",rotateShoeId);
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
   registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 loadModels();installUI();
 })();
