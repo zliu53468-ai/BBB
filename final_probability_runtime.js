@@ -345,11 +345,13 @@ function directPhysicsPrimary(physics,roundIndex){
   const directionalMass=Math.max(1e-9,pB+pP),directionalPB=clip(pB/directionalMass);
   const progressWeight=directPhysicsProgressWeight(roundIndex,physics),noise=physicsNoiseScore(physics,roundIndex,Math.cbrt(progressWeight));
   const policy=decisionPolicy(roundIndex,noise),distance=Math.abs(directionalPB-.5);
-  const evBanker=Number.isFinite(+physics?.[39])?+physics[39]:pB*.95-pP;
-  const evPlayer=Number.isFinite(+physics?.[40])?+physics[40]:pP-pB;
+  // Primary EV is always recomputed from the Direct Physics winner distribution.
+  // The learned EV slots remain 48D diagnostics/features for the auxiliary XGB only.
+  const evBanker=pB*.95-pP,evPlayer=pP-pB;
+  const modelEvBanker=Number.isFinite(+physics?.[39])?+physics[39]:evBanker,modelEvPlayer=Number.isFinite(+physics?.[40])?+physics[40]:evPlayer;
   const candidate=distance>=policy.confidenceBand&&evBanker>policy.activationEv&&evBanker>evPlayer?"B":
     distance>=policy.confidenceBand&&evPlayer>policy.activationEv&&evPlayer>evBanker?"P":"Skip";
-  return {pB,pP,pT,directionalPB,progressWeight,noise,policy,distance,evBanker,evPlayer,candidate};
+  return {pB,pP,pT,directionalPB,progressWeight,noise,policy,distance,evBanker,evPlayer,modelEvBanker,modelEvPlayer,candidate};
 }
 function auxiliaryCandidateFilter(candidate,corePB,xgbPB){
   if(candidate!=="B"&&candidate!=="P")return {decision:"skip",reason:"physics_candidate_skip",coreSupport:.5,xgbSupport:.5,support:.5,shrink:0};
@@ -470,7 +472,7 @@ function applyFinalPrediction(seq,corePrediction=null){
   if(!resolvedCore){resolvedCore=corePrediction||CORE.hazardChoose(seq);original7=buildOriginal7(seq,resolvedCore);corePB=original7.core_p_b;}
   const direction=evDecision?.direction||(mode==="core_fallback"?resolvedCore.direction:"Skip"),finalPP=1-finalPB;
   const confidence=evDecision?.confidence??(mode==="core_fallback"?(resolvedCore.confidence??0):0);
-  const physicalEvBanker=physicalEv?.banker??null,physicalEvPlayer=physicalEv?.player??null,physicalEvGap=physicalEv?.gap??null,physicsUncertainty=physicalEv?.uncertainty??null;
+  const physicalEvBanker=primary?.evBanker??physicalEv?.banker??null,physicalEvPlayer=primary?.evPlayer??physicalEv?.player??null,physicalEvGap=primary?(primary.evBanker-primary.evPlayer):(physicalEv?.gap??null),physicsUncertainty=physicalEv?.uncertainty??null;
   return {...resolvedCore,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
     ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,
     physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,particle_uncertainty:physicsUncertainty,
