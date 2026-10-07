@@ -4,7 +4,7 @@
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_FINAL_PROBABILITY_V11_DIRECT_PHYSICS";
+const VERSION="PHYSICS_57D_V12_PHYSICS_PRIMARY_AUX_FILTER";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -272,7 +272,8 @@ function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWe
   if(!dynamic&&!legacy)return {value:clippedPB,alpha:1,strength:0,profile:"off",applied:false};
   const shoeId=getShoeId(),rows=readRows();let previous=null;
   for(let i=rows.length-1;i>=0;i--){const row=rows[i];if(row?.shoe_id!==shoeId||+row.round_index>=roundIndex)continue;
-    const value=Number.isFinite(+row.final_p_b)?+row.final_p_b:+row.smoothed_p_b;if(Number.isFinite(value)){previous=value;break;}}
+    const value=Number.isFinite(+row.physics_smoothed_p_b)?+row.physics_smoothed_p_b:(Number.isFinite(+row.primary_smoothed_p_b)?+row.primary_smoothed_p_b:NaN);
+    if(Number.isFinite(value)){previous=value;break;}}
   if(previous===null)return {value:clippedPB,alpha:1,strength:0,profile:config.profile||"first_round",applied:false};
   const alpha=dynamic?dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight,lastPhysicsDiagnostics):1-clip(+config.strength||0,0,.15);
   const value=clip(alpha*clippedPB+(1-alpha)*previous,bounds.low,bounds.high);
@@ -333,11 +334,49 @@ function volumeGuardState(roundIndex,probabilityB,policy){
   return {active,bandRelief:active?Math.max(0,+config.band_relief||0):0,evRelief:active?Math.max(0,+config.ev_relief||0):0};
 }
 
+function directPhysicsProgressWeight(roundIndex,physics){
+  const total=Math.max(ESTIMATED_TOTAL_HANDS_MIN,Math.min(ESTIMATED_TOTAL_HANDS_MAX,getEstimatedTotalHands()));
+  const roundProgress=clip(roundIndex/total),uncertainty=clip(+physics?.[42]||0),cardProgress=clip((+physics?.[43]||0)/ESTIMATED_PLAYABLE_CARDS);
+  const effectiveProgress=adaptiveStageEnabled()?clip((.55+.25*uncertainty)*roundProgress+(.45-.25*uncertainty)*cardProgress):roundProgress;
+  return effectiveProgress**3;
+}
+function directPhysicsPrimary(physics,roundIndex){
+  const pB=clip(+physics?.[23]||0),pP=clip(+physics?.[24]||0),pT=clip(+physics?.[25]||0);
+  const directionalMass=Math.max(1e-9,pB+pP),directionalPB=clip(pB/directionalMass);
+  const progressWeight=directPhysicsProgressWeight(roundIndex,physics),noise=physicsNoiseScore(physics,roundIndex,Math.cbrt(progressWeight));
+  const policy=decisionPolicy(roundIndex,noise),distance=Math.abs(directionalPB-.5);
+  const evBanker=Number.isFinite(+physics?.[39])?+physics[39]:pB*.95-pP;
+  const evPlayer=Number.isFinite(+physics?.[40])?+physics[40]:pP-pB;
+  const candidate=distance>=policy.confidenceBand&&evBanker>policy.activationEv&&evBanker>evPlayer?"B":
+    distance>=policy.confidenceBand&&evPlayer>policy.activationEv&&evPlayer>evBanker?"P":"Skip";
+  return {pB,pP,pT,directionalPB,progressWeight,noise,policy,distance,evBanker,evPlayer,candidate};
+}
+function auxiliaryCandidateFilter(candidate,corePB,xgbPB){
+  if(candidate!=="B"&&candidate!=="P")return {decision:"skip",reason:"physics_candidate_skip",coreSupport:.5,xgbSupport:.5,support:.5,shrink:0};
+  const coreSupport=candidate==="B"?clip(corePB):1-clip(corePB),xgbSupport=candidate==="B"?clip(xgbPB):1-clip(xgbPB);
+  const support=.25*coreSupport+.75*xgbSupport;
+  const hardConflict=(xgbSupport<.46&&coreSupport<.46)||xgbSupport<.42;
+  const downgrade=!hardConflict&&(xgbSupport<.49||support<.49||coreSupport<.44);
+  return hardConflict
+    ?{decision:"skip",reason:"core_xgb_conflict",coreSupport,xgbSupport,support,shrink:0}
+    :downgrade
+      ?{decision:"downgrade",reason:"weak_aux_support",coreSupport,xgbSupport,support,shrink:.82}
+      :{decision:"keep",reason:"aux_support_ok",coreSupport,xgbSupport,support,shrink:1};
+}
+function preserveCandidateDirection(candidate,probabilityB){
+  if(candidate==="B")return Math.max(.5,clip(probabilityB));
+  if(candidate==="P")return Math.min(.5,clip(probabilityB));
+  return .5;
+}
+
 function applyFinalPrediction(seq,corePrediction=null){
-  // Production order is intentional:
-  // Direct Physics -> Physical EV -> Frozen Core history pattern -> Final XGB -> Final EV -> #43 Volume Guard.
+  // Locked production order:
+  // Direct Physics -> Physical EV candidate -> Physics EMA -> Frozen Core + XGB auxiliary filter
+  // -> Final EV Guard -> #43 Volume Guard -> B/P/Skip.  Auxiliary models can never flip Physics direction.
   let physics=null,physicsForecast=null,physicsIntegrityReport=null,physicalEv=null,error="";
-  let resolvedCore=null,original7=null,corePB=.5,extended=null,rawPB=.5,clippedPB=.5,smoothedPB=.5,smoothingAlpha=1,smoothingStrength=0,smoothingProfile="off",finalPB=.5,bounds=null,mode="core",evDecision=null;
+  let resolvedCore=null,original7=null,corePB=.5,extended=null,xgbAuxPB=.5,primary=null,auxFilter=null;
+  let rawPB=.5,clippedPB=.5,smoothedPB=.5,filteredPB=.5,finalPB=.5,bounds=null;
+  let smoothingAlpha=1,smoothingStrength=0,smoothingProfile="off",evDecision=null,mode="physics_primary";
   const executionOrder=[];
 
   try{
@@ -351,60 +390,112 @@ function applyFinalPrediction(seq,corePrediction=null){
     }
   }catch(e){error="physics:"+String(e?.message||e||"runtime_error");physics=null;physicalEv=null;}
 
-  try{
-    executionOrder.push("frozen_core");
+  if(physics&&physicsBundleUsesPhysicalEv()){
+    const roundIndex=Math.max(1,Math.min(70,seq.length+1));
+    primary=directPhysicsPrimary(physics,roundIndex);
+    executionOrder.push("physics_candidate");
+    rawPB=primary.directionalPB;
+    bounds=applyProbabilityBounds(rawPB,roundIndex,primary.noise,primary.progressWeight);
+    clippedPB=bounds.value;
+    const smoothing=applyDynamicSmoothing(clippedPB,roundIndex,primary.noise,bounds,primary.progressWeight);
+    smoothedPB=smoothing.value;smoothingAlpha=smoothing.alpha;smoothingStrength=smoothing.strength;smoothingProfile=smoothing.profile;
+    executionOrder.push("physics_ema");
+
+    try{
+      executionOrder.push("frozen_core");
+      resolvedCore=corePrediction||CORE.hazardChoose(seq);
+      original7=buildOriginal7(seq,resolvedCore);
+      corePB=original7.core_p_b;
+
+      if(final56Bundle?.trained&&modelSemanticsCompatible()){
+        extended=buildExtended(corePB,original7,physics);
+        executionOrder.push("xgb_aux_filter");
+        xgbAuxPB=predictFinalProbability(final56Bundle,extended,final56Bundle.feature_names||EXTENDED_NAMES);
+        auxFilter=auxiliaryCandidateFilter(primary.candidate,corePB,xgbAuxPB);
+      }else{
+        auxFilter=primary.candidate==="Skip"
+          ?{decision:"skip",reason:"physics_candidate_skip",coreSupport:.5,xgbSupport:.5,support:.5,shrink:0}
+          :{decision:"keep",reason:"xgb_unavailable_physics_primary",coreSupport:primary.candidate==="B"?corePB:1-corePB,xgbSupport:.5,support:.5,shrink:1};
+        if(final56Bundle?.trained&&!modelSemanticsCompatible())error=error?error+";feature_semantics_mismatch":"feature_semantics_mismatch";
+      }
+    }catch(e){
+      const message=String(e?.message||e||"runtime_error");error=error?error+";"+message:message;
+      if(!resolvedCore)resolvedCore=corePrediction||CORE.hazardChoose(seq);
+      if(!original7)original7=buildOriginal7(seq,resolvedCore);
+      corePB=original7.core_p_b;
+      auxFilter=primary.candidate==="Skip"
+        ?{decision:"skip",reason:"physics_candidate_skip",coreSupport:.5,xgbSupport:.5,support:.5,shrink:0}
+        :{decision:"keep",reason:"aux_runtime_error_physics_primary",coreSupport:primary.candidate==="B"?corePB:1-corePB,xgbSupport:.5,support:.5,shrink:1};
+    }
+
+    const shrink=auxFilter?.decision==="downgrade"?auxFilter.shrink:(auxFilter?.decision==="skip"?0:1);
+    filteredPB=auxFilter?.decision==="skip"?.5:preserveCandidateDirection(primary.candidate,.5+(smoothedPB-.5)*shrink);
+    finalPB=filteredPB;
+
+    executionOrder.push("final_ev_guard");
+    const pPlayer=1-finalPB,evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
+    const policy=primary.policy,candidate=primary.candidate;
+    const baseBand=policy.confidenceBand,baseActivation=policy.activationEv,distance=Math.abs(finalPB-.5);
+    const candidateEdge=candidate==="B"?evBanker:candidate==="P"?evPlayer:0;
+    const aligned=candidate==="B"?finalPB>.5:candidate==="P"?finalPB<.5:false;
+    const basePass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=baseBand&&candidateEdge>baseActivation;
+
+    executionOrder.push("volume_guard");
+    const guard=volumeGuardState(roundIndex,finalPB,policy);
+    const effectiveBand=Math.max(policy.bandMinimum,baseBand-guard.bandRelief),effectiveActivationEv=Math.max(0,baseActivation-guard.evRelief);
+    const guardedPass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=effectiveBand&&candidateEdge>effectiveActivationEv;
+    const direction=basePass||guardedPass?candidate:"Skip";
+    const entryTier=direction==="Skip"?"skip":distance>=effectiveBand+policy.strongMargin?"strong":"weak";
+    evDecision={
+      pTie:primary.pT,pPlayer,evBanker,evPlayer,
+      physicalEvBanker:primary.evBanker,physicalEvPlayer:primary.evPlayer,
+      minEv:policy.minEv,activationEv:policy.activationEv,effectiveActivationEv,
+      softBand:policy.softBand,confidenceBand:policy.confidenceBand,effectiveConfidenceBand:effectiveBand,
+      volumeGuardActive:guard.active,entryTier,stakeMultiplier:entryTier==="weak"?.5:entryTier==="strong"?1:0,
+      policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
+      finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",
+      confidence:direction==="Skip"?0:softConfidence(candidateEdge,{...policy,activationEv:effectiveActivationEv}),
+      basePass,guardedPass,candidate
+    };
+    mode="physics_primary";
+  }else{
+    // Safety fallback only. Core is never used as the preferred production predictor.
+    executionOrder.push("frozen_core_fallback");
     resolvedCore=corePrediction||CORE.hazardChoose(seq);
     original7=buildOriginal7(seq,resolvedCore);
-    corePB=original7.core_p_b;
-    rawPB=corePB;clippedPB=corePB;smoothedPB=corePB;finalPB=corePB;
-
-    if(physics&&final56Bundle?.trained&&modelSemanticsCompatible()){
-      executionOrder.push("final_xgboost");
-      extended=buildExtended(corePB,original7,physics);
-      rawPB=predictFinalProbability(final56Bundle,extended,final56Bundle.feature_names||EXTENDED_NAMES);
-      bounds=applyProbabilityBounds(rawPB,original7.round_index,extended.at(-1),extended[1]);clippedPB=bounds.value;
-      const smoothing=applyDynamicSmoothing(clippedPB,original7.round_index,extended.at(-1),bounds,extended[1]);
-      smoothedPB=smoothing.value;smoothingAlpha=smoothing.alpha;smoothingStrength=smoothing.strength;smoothingProfile=smoothing.profile;finalPB=smoothedPB;
-
-      executionOrder.push("final_ev");
-      const pTie=clip(+physics[23]),pPlayer=1-finalPB;
-      const evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
-      const policy=decisionPolicy(original7.round_index,extended.at(-1));
-
-      executionOrder.push("volume_guard");
-      const guard=volumeGuardState(original7.round_index,finalPB,policy);
-      const effectiveBand=Math.max(policy.bandMinimum,policy.confidenceBand-guard.bandRelief),effectiveActivationEv=Math.max(0,policy.activationEv-guard.evRelief);
-      const distance=Math.abs(finalPB-.5);
-      const direction=distance>=effectiveBand&&evBanker>effectiveActivationEv&&evBanker>evPlayer?"B":distance>=effectiveBand&&evPlayer>effectiveActivationEv&&evPlayer>evBanker?"P":"Skip";
-      const edge=direction==="B"?evBanker:direction==="P"?evPlayer:0;
-      const entryTier=direction==="Skip"?"skip":distance>=effectiveBand+policy.strongMargin?"strong":"weak";
-      evDecision={pTie,pPlayer,evBanker,evPlayer,minEv:policy.minEv,activationEv:policy.activationEv,effectiveActivationEv,softBand:policy.softBand,confidenceBand:policy.confidenceBand,effectiveConfidenceBand:effectiveBand,volumeGuardActive:guard.active,entryTier,stakeMultiplier:entryTier==="weak"?.5:entryTier==="strong"?1:0,policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
-        finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",confidence:direction==="Skip"?0:softConfidence(edge,{...policy,activationEv:effectiveActivationEv})};
-      mode="final56";
-    }else if(physics&&final56Bundle?.trained&&!modelSemanticsCompatible()){
-      error=error?error+";feature_semantics_mismatch":"feature_semantics_mismatch";
-    }
-  }catch(e){
-    const message=String(e?.message||e||"runtime_error");error=error?error+";"+message:message;
-    if(!resolvedCore)resolvedCore=corePrediction||CORE.hazardChoose(seq);
-    if(!original7)original7=buildOriginal7(seq,resolvedCore);
-    corePB=original7.core_p_b;rawPB=corePB;clippedPB=corePB;smoothedPB=corePB;finalPB=corePB;mode="core";
+    corePB=original7.core_p_b;rawPB=corePB;clippedPB=corePB;smoothedPB=corePB;filteredPB=corePB;finalPB=corePB;mode="core_fallback";
+    error=error?error+";physics_primary_unavailable":"physics_primary_unavailable";
   }
 
-  const direction=evDecision?.direction||resolvedCore.direction,finalPP=1-finalPB;
-  const confidence=evDecision?.confidence??resolvedCore.confidence??0;
+  if(!resolvedCore){resolvedCore=corePrediction||CORE.hazardChoose(seq);original7=buildOriginal7(seq,resolvedCore);corePB=original7.core_p_b;}
+  const direction=evDecision?.direction||(mode==="core_fallback"?resolvedCore.direction:"Skip"),finalPP=1-finalPB;
+  const confidence=evDecision?.confidence??(mode==="core_fallback"?(resolvedCore.confidence??0):0);
   const physicalEvBanker=physicalEv?.banker??null,physicalEvPlayer=physicalEv?.player??null,physicalEvGap=physicalEv?.gap??null,physicsUncertainty=physicalEv?.uncertainty??null;
-  return {...resolvedCore,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),confidence,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,
+  return {...resolvedCore,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
+    ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,
     physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,particle_uncertainty:physicsUncertainty,
-    min_ev:evDecision?.minEv??null,activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
-    regime:mode==="final56"?(direction==="Skip"?"EV 觀望":direction!==resolvedCore.direction?"Final XGB換邊":"Final XGB裁決"):resolvedCore.regime,
-    finalProbability:{version:VERSION,active:mode==="final56",mode,corePB,rawPB,clippedPB,smoothedPB,smoothingAlpha,smoothingStrength,smoothingProfile,finalPB,bounds,
-      physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,particle_uncertainty:physicsUncertainty,execution_order:executionOrder,
-      p_tie:evDecision?.pTie??null,p_player:evDecision?.pPlayer??null,ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
-      activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"core",stake_multiplier:evDecision?.stakeMultiplier??1,decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",
-      coreDirection:resolvedCore.direction,finalDirection:evDecision?.finalDirection||(direction==="B"?"莊 B":"閒 P"),flipped:direction!==resolvedCore.direction,
+    min_ev:evDecision?.minEv??null,activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,
+    soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,
+    volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"skip",stake_multiplier:evDecision?.stakeMultiplier??0,
+    decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
+    regime:mode==="physics_primary"?(direction==="Skip"?"Physics 主訊號觀望":auxFilter?.decision==="downgrade"?"Physics 主訊號 / XGB降權":"Physics 主訊號 / XGB篩選"):resolvedCore.regime,
+    finalProbability:{version:VERSION,active:mode==="physics_primary",mode,
+      primary_source:"direct_physics_physical_ev",primary_candidate:primary?.candidate??"Skip",
+      physics_raw_p_b:primary?.directionalPB??null,physics_clipped_p_b:clippedPB,physics_smoothed_p_b:smoothedPB,
+      rawPB,clippedPB,smoothedPB,filteredPB,finalPB,bounds,smoothingAlpha,smoothingStrength,smoothingProfile,
+      xgb_role:"auxiliary_filter_no_flip",xgb_aux_p_b:xgbAuxPB,core_aux_p_b:corePB,aux_filter:auxFilter,
+      physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,particle_uncertainty:physicsUncertainty,
+      execution_order:executionOrder,p_tie:evDecision?.pTie??primary?.pT??null,p_player:evDecision?.pPlayer??null,
+      ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,
+      activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,
+      soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,
+      volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"skip",stake_multiplier:evDecision?.stakeMultiplier??0,
+      decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",
+      coreDirection:resolvedCore.direction,finalDirection:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),
+      flipped_from_physics:primary?.candidate==="B"&&direction==="P"||primary?.candidate==="P"&&direction==="B",
       original7,physics,physicsForecast,physicsIntegrity:physicsIntegrityReport,physicsDiagnostics:lastPhysicsDiagnostics,particleDiagnostics:null,dataQuality:dataQuality(seq),extended,error}};
 }
+
 function readHistory(){
   if(typeof localStorage==="undefined")return[];
   for(const key of["bgs256d_frozen_6x15_forward_v18","bgs256d_frozen_6x15_sensitive_v17","bgs256d_frozen_6x15_bigroad_v16"]){
@@ -425,7 +516,9 @@ function registerPrediction(seq,prediction){
     core_p_b:f.core_p_b,round_index:f.round_index,estimated_total_hands:f.estimated_total_hands,remaining_ratio:f.remaining_ratio,
     sx_markov_p_same:f.sx_markov_p_same,stage:f.stage,depth:f.depth,original_7d:original7Vector(f),physics_48d:cloneFiniteVector(r.physics,PHYSICS_DIM),
     features_57d:cloneFiniteVector(r.extended,FEATURE_DIM),shoe_progress_weight:Number.isFinite(+r.extended?.[1])?+r.extended[1]:null,physics_noise_score:Number.isFinite(+r.extended?.at(-1))?+r.extended.at(-1):null,
-    raw_p_b:Number.isFinite(+r.rawPB)?+r.rawPB:null,clipped_p_b:Number.isFinite(+r.clippedPB)?+r.clippedPB:null,smoothed_p_b:Number.isFinite(+r.smoothedPB)?+r.smoothedPB:null,
+    raw_p_b:Number.isFinite(+r.physics_raw_p_b)?+r.physics_raw_p_b:null,clipped_p_b:Number.isFinite(+r.physics_clipped_p_b)?+r.physics_clipped_p_b:null,smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,
+    primary_raw_p_b:Number.isFinite(+r.physics_raw_p_b)?+r.physics_raw_p_b:null,primary_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,physics_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,
+    primary_candidate:r.primary_candidate||"Skip",xgb_aux_p_b:Number.isFinite(+r.xgb_aux_p_b)?+r.xgb_aux_p_b:null,core_aux_p_b:Number.isFinite(+r.core_aux_p_b)?+r.core_aux_p_b:null,aux_filter:r.aux_filter||null,
     smoothing_alpha:Number.isFinite(+r.smoothingAlpha)?+r.smoothingAlpha:1,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,smoothing_profile:r.smoothingProfile||"off",final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
     probability_bounds:r.bounds?[r.bounds.low,r.bounds.high]:null,min_ev:Number.isFinite(+r.min_ev)?+r.min_ev:null,
     activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,effective_activation_ev:Number.isFinite(+r.effective_activation_ev)?+r.effective_activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,confidence_band:Number.isFinite(+r.confidence_band)?+r.confidence_band:0,effective_confidence_band:Number.isFinite(+r.effective_confidence_band)?+r.effective_confidence_band:0,volume_guard_active:r.volume_guard_active===true,entry_tier:r.entry_tier||"core",stake_multiplier:Number.isFinite(+r.stake_multiplier)?+r.stake_multiplier:1,decision_policy_enabled:r.decision_policy_enabled===true,decision_policy_profile:r.decision_policy_profile||"hard_ev",
@@ -465,7 +558,7 @@ function renderPrediction(p,n){
   const el=id=>document.getElementById(id),orb=el("directionOrb");if(!orb)return;const isSkip=p.direction==="Skip",isB=p.direction==="B";
   el("directionText").textContent=isSkip?"觀望":isB?"莊":"閒";el("directionCode").textContent=isSkip?"SKIP":isB?"BANKER":"PLAYER";el("confidence").textContent=(p.confidence*100).toFixed(1)+"%";
   el("regime").textContent=p.regime;el("strength").textContent=isSkip?"觀望":p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isSkip?"":isB?"banker":"player");
-  if(el("modePill"))el("modePill").textContent=p.finalProbability?.mode==="final56"?"Final 57D 完成":"Core 完成";
+  if(el("modePill"))el("modePill").textContent=p.finalProbability?.mode==="physics_primary"?"Physics主預測＋57D篩選":"Core備援";
   if(el("roundCount"))el("roundCount").textContent=n;if(el("message"))el("message").textContent="第 "+(n+1)+" 局分析完成";
 }
 function installUI(){
