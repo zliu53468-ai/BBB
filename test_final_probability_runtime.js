@@ -17,7 +17,7 @@ const finalBundle={
   base_margin:Math.log(.90/.10),
   feature_names:Array.from({length:57},(_,i)=>"f"+i),
   probability_bounds:[.40,.60],
-  training:{particle_physics_version:1},
+  training:{particle_physics_version:0,physics_direct_version:1,particle_filter_version:0},
   trees:[],
 };
 const useGeneratedBundle=process.env.BGS_USE_GENERATED_MODEL==="1";
@@ -42,16 +42,6 @@ require("./final_probability_runtime.js");
 
   const history="BPPBTBBPPTBBPPBTBP".split("");
   const core=global.__BGS256_CONTINUATION_TEST__.hazardChoose(history);
-  const particleA=api.estimateParticlePhysics(history),particleB=api.estimateParticlePhysics(history);
-  if(JSON.stringify(particleA.physics)!==JSON.stringify(particleB.physics))throw new Error("particle physics is not deterministic");
-  if(particleA.physics?.length!==48)throw new Error("particle physics dimension mismatch");
-  const particleCards=4*particleA.physics[0]+5*particleA.physics[1]+6*particleA.physics[2];
-  const particleRanks=particleA.physics.slice(26,39).reduce((a,b)=>a+b,0);
-  if(Math.abs(particleCards-particleRanks)>1e-6)throw new Error("particle card-count/rank-consumption mismatch");
-  if(!(particleA.diagnostics.expected_consumed_cards>4*history.length&&particleA.diagnostics.expected_consumed_cards<6*history.length))throw new Error("particle consumed-card posterior invalid");
-  const physicalEvB=particleA.physics[23]*.95-particleA.physics[24],physicalEvP=particleA.physics[24]-particleA.physics[23];
-  if(Math.abs(particleA.physics[39]-physicalEvB)>1e-9||Math.abs(particleA.physics[40]-physicalEvP)>1e-9||Math.abs(particleA.physics[41]-(physicalEvB-physicalEvP))>1e-9)throw new Error("particle Physical EV mismatch");
-  if(!(particleA.physics[42]>=0&&particleA.physics[42]<=1))throw new Error("particle uncertainty feature invalid");
 
   // No Core is supplied here: production must compute Physics/Physical EV first.
   const out=api.applyFinalPrediction(history);
@@ -65,15 +55,12 @@ require("./final_probability_runtime.js");
   const cardExpectation=4*forecast.nextCardCountProbabilities["4_cards"]+5*forecast.nextCardCountProbabilities["5_cards"]+6*forecast.nextCardCountProbabilities["6_cards"];
   if(Math.abs(cardExpectation-forecast.expectedNextCardCount)>1e-9)throw new Error("incorrect next-hand card expectation");
   if(!r.physicsIntegrity||typeof r.physicsIntegrity.valid!=="boolean")throw new Error("missing physics integrity report");
-  const firstPhysicsStep=useGeneratedBundle?"particle_physics":"legacy_physics";
-  if(!Array.isArray(r.execution_order)||r.execution_order[0]!==firstPhysicsStep||r.execution_order.indexOf("frozen_core")<1)throw new Error("Physics was not executed before Frozen Core");
-  if(useGeneratedBundle){
-    const expectedOrder=["particle_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"];
-    if(JSON.stringify(r.execution_order)!==JSON.stringify(expectedOrder))throw new Error("Physical EV first execution order mismatch");
-    if(!r.particleDiagnostics||!(r.particleDiagnostics.fusion_weight>=.1&&r.particleDiagnostics.fusion_weight<=.58))throw new Error("particle fusion diagnostics missing");
-    if(!(r.particleDiagnostics.physical_ev_reliability>=.2&&r.particleDiagnostics.physical_ev_reliability<=.9)||!Number.isFinite(r.particleDiagnostics.effective_progress_round))throw new Error("adaptive stage diagnostics missing");
-    if(!Number.isFinite(r.physical_ev_banker)||!Number.isFinite(r.physical_ev_player)||!Number.isFinite(r.physical_ev_gap)||!Number.isFinite(r.particle_uncertainty))throw new Error("Physical EV audit fields missing");
-  }else if(r.particleDiagnostics?.enabled!==false)throw new Error("legacy model should not consume remapped Physical EV features");
+  const expectedOrder=["direct_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"];
+  if(!Array.isArray(r.execution_order)||r.execution_order[0]!=="direct_physics"||r.execution_order.indexOf("frozen_core")<2)throw new Error("Direct Physics/EV was not executed before Frozen Core");
+  if(JSON.stringify(r.execution_order)!==JSON.stringify(expectedOrder))throw new Error("Direct Physics -> EV -> Core -> XGB execution order mismatch");
+  if(r.particleDiagnostics!==null)throw new Error("Particle diagnostics must be disabled");
+  if(!r.physicsDiagnostics||r.physicsDiagnostics.particle_filter_enabled!==false||r.physicsDiagnostics.physics_source!=="direct_multitask_mlp")throw new Error("direct Physics diagnostics missing");
+  if(!Number.isFinite(r.physical_ev_banker)||!Number.isFinite(r.physical_ev_player)||!Number.isFinite(r.physical_ev_gap)||!Number.isFinite(r.physics_uncertainty))throw new Error("Direct Physical EV audit fields missing");
   if(r.dataQuality?.stage!=="warm"||r.dataQuality?.directionalRounds!==15)throw new Error("incorrect prediction data stage");
   if(useGeneratedBundle){
     if(!(r.rawPB>=0&&r.rawPB<=1))throw new Error("generated model did not return a probability");
@@ -140,10 +127,10 @@ require("./final_probability_runtime.js");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57)throw new Error("prediction snapshot is missing exact model features");
   if(!Number.isFinite(snapshot.clipped_p_b)||!Number.isFinite(snapshot.smoothed_p_b)||snapshot.smoothing_alpha!==1||snapshot.smoothing_strength!==0)throw new Error("smoothing snapshot metadata is missing");
   if(!Number.isFinite(snapshot.confidence_band)||!Number.isFinite(snapshot.effective_confidence_band)||!["strong","weak","skip","core"].includes(snapshot.entry_tier))throw new Error("entry policy snapshot metadata is missing");
-  if(!snapshot.particle_physics)throw new Error("particle physics snapshot metadata is missing");
+  if(snapshot.particle_physics!==null||!snapshot.physics_direct)throw new Error("direct Physics snapshot metadata is missing");
   if(useGeneratedBundle){
-    if(!Number.isFinite(snapshot.particle_physics.expected_consumed_cards)||!Number.isFinite(snapshot.physical_ev_banker)||!Number.isFinite(snapshot.physical_ev_player))throw new Error("Physical EV snapshot metadata is missing");
-    if(JSON.stringify(snapshot.execution_order)!==JSON.stringify(["particle_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"]))throw new Error("snapshot execution order mismatch");
+    if(!Number.isFinite(snapshot.physics_direct.expected_consumed_cards)||!Number.isFinite(snapshot.physical_ev_banker)||!Number.isFinite(snapshot.physical_ev_player))throw new Error("Physical EV snapshot metadata is missing");
+    if(JSON.stringify(snapshot.execution_order)!==JSON.stringify(["direct_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"]))throw new Error("snapshot execution order mismatch");
   }
   const expectedFinalSchema=useGeneratedBundle?JSON.parse(fs.readFileSync("final_probability_model.json","utf8")).schema_version:1;
   if(snapshot.data_stage!=="warm"||snapshot.model_versions?.final_probability!==expectedFinalSchema)throw new Error("snapshot model metadata is missing");
@@ -155,61 +142,15 @@ require("./final_probability_runtime.js");
     if(Math.abs(smoothOut.finalProbability.smoothingAlpha-.40)>1e-9||smoothOut.finalProbability.smoothingProfile!=="balanced")throw new Error("dynamic EMA alpha failed");
     delete finalBundle.smoothing;finalBundle.base_margin=Math.log(.90/.10);
 
-    // V4 uses relative hand progress plus actual Particle card consumption;
-    // these assertions are intentionally independent from Final EV/#43 policy.
-    finalBundle.training={particle_physics_version:1,stage_progress_version:4,early35_version:1,shoe_error_correction_version:1,particle_filter_version:3};
-    const lowCards={expected_consumed_cards:120,posterior_uncertainty:.30,recent_ess_ratio:1};
-    const highCards={...lowCards,expected_consumed_cards:260};
-    const p50=api.effectiveParticleProgress(40,highCards,50),p70=api.effectiveParticleProgress(40,highCards,70);
-    if(!(p50>=.70&&p70<.70))throw new Error("relative estimated-total-hands progress mismatch");
-    if(!(api.effectiveParticleProgress(50,highCards,60)>api.effectiveParticleProgress(50,lowCards,60)))throw new Error("card-consumption progress mismatch");
-    const uncertain={...lowCards,posterior_uncertainty:.95},certain={...lowCards,posterior_uncertainty:.05};
-    const round=50/60,card=120/(416-60);
-    const highU=api.effectiveParticleProgress(50,uncertain,60),lowU=api.effectiveParticleProgress(50,certain,60);
-    if(!(Math.abs(highU-round)<Math.abs(highU-card)&&Math.abs(lowU-card)<Math.abs(lowU-round)))throw new Error("uncertainty progress weighting mismatch");
-    const early35Diag={expected_consumed_cards:180,posterior_uncertainty:.20,recent_ess_ratio:.90};
-    const e5=api.early35EvidenceWeight(5,early35Diag,60),e15=api.early35EvidenceWeight(15,early35Diag,60),e25=api.early35EvidenceWeight(25,early35Diag,60),e35=api.early35EvidenceWeight(35,early35Diag,60);
-    if(!(e5<e15&&e15<e25&&e25<e35))throw new Error("Early-35 evidence anchors are not ordered");
-    if(!(api.early35EvidenceWeight(10,{...early35Diag,posterior_uncertainty:.80},60)<api.early35EvidenceWeight(10,early35Diag,60)))throw new Error("Early-35 uncertainty evidence shrinkage failed");
-    if(!(api.early35EvidenceWeight(10,early35Diag,60)>api.early35EvidenceWeight(10,{...early35Diag,recent_ess_ratio:.20},60)))throw new Error("Early-35 ESS evidence scaling failed");
-    if(Math.abs(api.early35EvidenceWeight(21,early35Diag,60)-api.early35EvidenceWeight(20,early35Diag,60))>=.10)throw new Error("Early-35 20/21 evidence transition jumped");
-    if(Math.abs(api.early35EvidenceWeight(36,early35Diag,60)-e35)>=.10)throw new Error("Early-35 35/36 evidence transition jumped");
-    if(Math.abs(api.early35PhysicalEvReliability(36,early35Diag,60)-api.early35PhysicalEvReliability(35,early35Diag,60))>=.10)throw new Error("Early-35 35/36 EV reliability transition jumped");
-    if(!api.early35Enabled())throw new Error("Early-35 model version gate failed");
-    if(!api.particleFilterV3Enabled())throw new Error("Adaptive Particle V3 model-version gate failed");
-    const lowParticle={posterior_uncertainty:.20,recent_ess_ratio:.85,composition_spread:.04},midParticle={posterior_uncertainty:.45,recent_ess_ratio:.60,composition_spread:.10},highParticle={posterior_uncertainty:.80,recent_ess_ratio:.20,composition_spread:.30};
-    if(api.selectParticleBudget(lowParticle)!==512||api.selectParticleBudget(midParticle)!==1024||api.selectParticleBudget(highParticle)!==2000)throw new Error("Adaptive Particle budget thresholds failed");
-    if(api.selectParticleBudget(highParticle,512)!==1024||api.selectParticleBudget(lowParticle,2000)!==1024)throw new Error("Adaptive Particle hysteresis failed");
-    const logWeights=api.normaliseLogWeights([-900,-901,-1200]);if(Math.abs(logWeights.reduce((a,b)=>a+b,0)-1)>1e-10||logWeights.some(value=>!Number.isFinite(value)||value<0))throw new Error("log-weight normalisation failed");
-    if(!api.particleShouldResample(.49)||api.particleShouldResample(.50))throw new Error("ESS-triggered resampling threshold failed");
-    const duplicate=Array.from({length:128},()=>[30,...Array(12).fill(32)]),rejuvenated=api.particleRejuvenate(duplicate,()=>.37);if(!rejuvenated.changed||rejuvenated.particles.some(counts=>counts.reduce((a,b)=>a+b,0)!==414||counts.some(value=>value<0||value>32)))throw new Error("legal rejuvenation failed");
-    if(!(api.particleQuality(lowParticle)>api.particleQuality(highParticle)))throw new Error("Particle quality should not use raw count");
-    if(!(api.physicalEvReliability(25,lowParticle,60)>api.physicalEvReliability(25,highParticle,60)))throw new Error("Physical EV reliability quality scaling failed");
-    const adaptiveEstimate=api.estimateParticlePhysics(["B"]);if(adaptiveEstimate.physics.length!==48||adaptiveEstimate.diagnostics.particle_count<512||adaptiveEstimate.diagnostics.particle_count>2000)throw new Error("Adaptive Particle runtime dimension/budget mismatch");
+    // Direct Physics keeps the existing smooth progress/EMA/Clip behavior.
+    finalBundle.training={particle_physics_version:0,physics_direct_version:1,stage_progress_version:4,early35_version:1,shoe_error_correction_version:0,particle_filter_version:0};
+    if(!api.directPhysicsEnabled())throw new Error("Direct Physics version gate failed");
     const alpha49=api.dynamicEmaAlpha(50,.5,{},.49**3),alpha51=api.dynamicEmaAlpha(50,.5,{},.51**3);
     if(Math.abs(alpha49-alpha51)>=.03)throw new Error("V4 EMA discontinuity");
     const clip69=api.applyProbabilityBounds(.9,50,.1,.69**3),clip71=api.applyProbabilityBounds(.9,50,.1,.71**3);
     if(Math.abs(clip69.high-clip71.high)>=.02)throw new Error("V4 clip discontinuity");
-
-    // Existing correction coverage remains on the legacy gate; V3 was
-    // already exercised above without changing the 48D/57D contract.
-    finalBundle.training={...finalBundle.training,particle_filter_version:0};
-
-    if(!api.shoeErrorCorrectionEnabled())throw new Error("shoe error-correction version gate failed");
-    const makeSnapshot=(winner,gap=.08)=>({available:true,winner_distribution:winner,cards_distribution:[.25,.50,.25],player_final_point_distribution:Array(10).fill(.1),banker_final_point_distribution:Array(10).fill(.1),expected_consumed_cards:5,physical_ev_gap:gap,particle_uncertainty:.10,recent_ess_ratio:.90});
-    const posterior={available:true,cards_distribution:[.20,.50,.30],player_final_point_distribution:[.2,...Array(9).fill(.8/9)],banker_final_point_distribution:[.2,...Array(9).fill(.8/9)],winner_distribution:[.2,.7,.1],expected_cards_consumed:5.2};
-    const ordinary=api.updateShoeErrorCorrection(api.emptyShoeErrorCorrection(),[],makeSnapshot([.45,.45,.10]),posterior,"P",{recentEssRatio:.90,particleUncertainty:.10});
-    const severe=api.updateShoeErrorCorrection(api.emptyShoeErrorCorrection(),[],makeSnapshot([.72,.20,.08]),posterior,"P",{recentEssRatio:.20,particleUncertainty:.80});
-    if(!(ordinary.state.prediction_surprise<severe.state.prediction_surprise&&ordinary.state.shoe_posterior_health>severe.state.shoe_posterior_health&&ordinary.state.shoe_posterior_health>.90))throw new Error("surprise-sensitive health update mismatch");
-    let repeated=severe;for(let i=0;i<5;i++)repeated=api.updateShoeErrorCorrection(repeated.state,repeated.memory,makeSnapshot([.72,.20,.08]),posterior,"P",{recentEssRatio:.20,particleUncertainty:.80});
-    if(!(repeated.state.shoe_posterior_health<severe.state.shoe_posterior_health&&repeated.state.shoe_posterior_health>.30))throw new Error("asymmetric repeated-error health mismatch");
-    let recovered=repeated;for(let i=0;i<8;i++)recovered=api.updateShoeErrorCorrection(recovered.state,recovered.memory,makeSnapshot([.50,.45,.05]),makeSnapshot([.50,.45,.05]),"B",{recentEssRatio:1,particleUncertainty:0});
-    if(!(recovered.state.shoe_posterior_health>repeated.state.shoe_posterior_health))throw new Error("low-surprise recovery mismatch");
-    if(!(severe.state.particle_observation_reused===true&&severe.state.particle_posterior_reweighted===false&&severe.state.physical_ev_reliability_multiplier>=.80&&severe.state.physical_ev_reliability_multiplier<=1))throw new Error("double-count or physical-EV correction mismatch");
-    if(Math.sign(.12)===-Math.sign(.12*severe.state.physical_ev_reliability_multiplier))throw new Error("physical EV direction flipped");
-    const reset=api.emptyShoeErrorCorrection();if(reset.shoe_posterior_health!==1||reset.draw_state_health!==1||reset.physical_ev_health!==1)throw new Error("new-shoe health reset mismatch");
-    const correctionEstimate=api.estimateParticlePhysics(history);if(!correctionEstimate.diagnostics.pre_hand_snapshot?.available||correctionEstimate.diagnostics.error_memory_size>10)throw new Error("sequential correction replay audit missing");
-    const correctedOut=api.applyFinalPrediction(history,core);if(correctedOut.finalProbability.physics?.length!==48||correctedOut.finalProbability.extended?.length!==57)throw new Error("error-correction changed dimensions");
+    const directOut=api.applyFinalPrediction(history,core);
+    if(directOut.finalProbability.physics?.length!==48||directOut.finalProbability.extended?.length!==57)throw new Error("direct Physics changed dimensions");
   }
 
   const tieHistory=[...history,"T"],tieCore=global.__BGS256_CONTINUATION_TEST__.hazardChoose(tieHistory),tiePrediction=api.applyFinalPrediction(tieHistory,tieCore);
