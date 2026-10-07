@@ -97,8 +97,6 @@ function early35Version(){return Math.max(0,Math.floor(+final56Bundle?.training?
 function early35Enabled(){return early35Version()>=EARLY35_VERSION;}
 function shoeErrorCorrectionVersion(){return Math.max(0,Math.floor(+final56Bundle?.training?.shoe_error_correction_version||+final56Bundle?.shoe_error_correction_version||0));}
 function shoeErrorCorrectionEnabled(){return shoeErrorCorrectionVersion()>=SHOE_ERROR_CORRECTION_VERSION;}
-function particleFilterVersion(){return Math.max(0,Math.floor(+final56Bundle?.training?.particle_filter_version||+final56Bundle?.particle_filter_version||+physicsBundle?.metadata?.particle_filter_version||0));}
-function particleFilterV3Enabled(){return particleFilterVersion()>=PARTICLE_FILTER_VERSION;}
 function modelSemanticsCompatible(){return directPhysicsEnabled()&&physicsBundleUsesPhysicalEv();}
 function sanitizePhysics(raw,temperatures={},physicalEvSemantics=physicsBundleUsesPhysicalEv()){
   if(raw.length!==PHYSICS_DIM)throw new Error("physics dim mismatch");
@@ -113,175 +111,8 @@ function sanitizePhysics(raw,temperatures={},physicalEvSemantics=physicsBundleUs
   out[dst++]=clip(raw[src++],-1,1);out[dst++]=clip(raw[src++],0,1);
   return out;
 }
-const LEGACY_PARTICLE_COUNT=64,PARTICLE_MIN=512,PARTICLE_MID=1024,PARTICLE_MAX=2000,PARTICLE_TEACHER=2000,PARTICLE_FILTER_VERSION=3,ESS_RESAMPLE_THRESHOLD=.50,PARTICLE_REJUVENATION_RATE=.03,PARTICLE_LIKELIHOOD_DRAWS=4,PARTICLE_FALLBACK_DRAWS=12,PARTICLE_FORECAST_DRAWS=2;
-let lastParticleDiagnostics=null,lastParticleBudget=null;
-function particleRng(seed=20261005){let x=seed>>>0;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};}
-function particleValue(rank){const r=rank+1;return r<=9?r:0;}
-function particleBankerDraws(total,third){if(third===null)return total<=5;if(total<=2)return true;if(total===3)return third!==8;if(total===4)return third>=2&&third<=7;if(total===5)return third>=4&&third<=7;if(total===6)return third>=6&&third<=7;return false;}
-function particleDraw(counts,rng){let total=counts.reduce((a,b)=>a+b,0);if(total<=0)throw new Error("empty particle shoe");let pick=Math.floor(rng()*total),sum=0;for(let i=0;i<counts.length;i++){sum+=counts[i];if(pick<sum){counts[i]--;return i;}}throw new Error("particle draw overflow");}
-function particleDeal(base,rng){
-  const counts=base.slice();if(counts.reduce((a,b)=>a+b,0)<6)throw new Error("particle shoe exhausted");
-  const p1=particleDraw(counts,rng),b1=particleDraw(counts,rng),p2=particleDraw(counts,rng),b2=particleDraw(counts,rng);
-  const ranks=[p1,b1,p2,b2];let pt=(particleValue(p1)+particleValue(p2))%10,bt=(particleValue(b1)+particleValue(b2))%10;
-  const playerInitial=pt,bankerInitial=bt,natural=[8,9].includes(pt)||[8,9].includes(bt);let playerThird=null,bankerThird=null;
-  if(!natural){if(pt<=5){const p3=particleDraw(counts,rng);ranks.push(p3);playerThird=particleValue(p3);pt=(pt+playerThird)%10;}if(particleBankerDraws(bt,playerThird)){const b3=particleDraw(counts,rng);ranks.push(b3);bankerThird=particleValue(b3);bt=(bt+bankerThird)%10;}}
-  return {outcome:bt>pt?"B":pt>bt?"P":"T",playerPoint:pt,bankerPoint:bt,ranks,counts,cardCount:ranks.length,playerInitial,bankerInitial,natural,playerThird,bankerThird};
-}
-function particleResample(particles,consumed,weights,rng){
-  const n=particles.length,cdf=[];let sum=0;for(const w of weights){sum+=w;cdf.push(sum);}
-  const start=rng()/n,next=[],nextConsumed=[];let j=0;
-  for(let i=0;i<n;i++){const pos=start+i/n;while(j<n-1&&pos>cdf[j])j++;next.push(particles[j].slice());nextConsumed.push(consumed[j]);}
-  return {particles:next,consumed:nextConsumed};
-}
-function normaliseLogWeights(logWeights){const finite=logWeights.filter(Number.isFinite);if(!finite.length)return Array(logWeights.length).fill(1/Math.max(1,logWeights.length));const maximum=Math.max(...finite),weights=logWeights.map(value=>Number.isFinite(value)?Math.exp(Math.max(-745,Math.min(0,value-maximum))):0),sum=weights.reduce((a,b)=>a+b,0);return sum>1e-300?weights.map(value=>value/sum):Array(logWeights.length).fill(1/Math.max(1,logWeights.length));}
-function particleCompositionInstability(diagnostics={}){return clip((+diagnostics?.composition_spread||.12)/.20);}
-function particleQuality(diagnostics={}){const ess=clip(diagnostics?.recent_ess_ratio??.5),uncertainty=clip(diagnostics?.posterior_uncertainty??.5),instability=particleCompositionInstability(diagnostics);return clip(.45*ess+.35*(1-uncertainty)+.20*(1-instability));}
-function desiredParticleBudget(diagnostics={}){const uncertainty=clip(diagnostics?.posterior_uncertainty??.5),ess=clip(diagnostics?.recent_ess_ratio??.5),instability=particleCompositionInstability(diagnostics);if(uncertainty<=.30&&ess>=.70&&instability<=.60)return PARTICLE_MIN;if(uncertainty<=.55&&ess>=.45&&instability<=.85)return PARTICLE_MID;return PARTICLE_MAX;}
-function selectParticleBudget(diagnostics={},previousBudget=null,mode="runtime"){if(mode==="teacher")return PARTICLE_TEACHER;const desired=desiredParticleBudget(diagnostics),previous=+previousBudget||0;if(![PARTICLE_MIN,PARTICLE_MID,PARTICLE_MAX].includes(previous)||desired===previous)return desired;return (previous===PARTICLE_MIN&&desired===PARTICLE_MAX)||(previous===PARTICLE_MAX&&desired===PARTICLE_MIN)?PARTICLE_MID:desired;}
-function particleShouldResample(essRatio){return clip(essRatio)<ESS_RESAMPLE_THRESHOLD;}
-function particleUniqueRatio(particles){return particles.length?new Set(particles.map(counts=>counts.join(","))).size/particles.length:0;}
-function particleRejuvenate(particles,rng,rate=PARTICLE_REJUVENATION_RATE){const output=particles.map(counts=>counts.slice()),take=Math.min(output.length,Math.max(1,Math.round(output.length*clip(rate,.02,.05))));let changed=0;for(let step=0;step<take;step++){const counts=output[Math.floor(rng()*output.length)],sources=[],targets=[];for(let rank=0;rank<counts.length;rank++){if(counts[rank]>0)sources.push(rank);if(counts[rank]<32)targets.push(rank);}if(!sources.length||!targets.length)continue;const source=sources[Math.floor(rng()*sources.length)];let target=targets[Math.floor(rng()*targets.length)];if(source===target){const alternatives=targets.filter(rank=>rank!==source);if(!alternatives.length)continue;target=alternatives[Math.floor(rng()*alternatives.length)];}if(counts[source]>0&&counts[target]<32){counts[source]--;counts[target]++;changed++;}}return {particles:output,changed};}
-function handStateAccumulator(){return {weight:0,natural:0,playerDraw:0,bankerDraw:0,cards:Array(3).fill(0),playerPoints:Array(10).fill(0),bankerPoints:Array(10).fill(0),winner:Array(3).fill(0),cardsConsumed:0};}
-function addHandState(acc,hand,weight){
-  const w=Math.max(0,+weight||0),outcomeIndex={B:0,P:1,T:2}[hand?.outcome];if(!(w>0)||outcomeIndex===undefined)return;
-  const cardIndex=(+hand.cardCount||4)-4;if(cardIndex<0||cardIndex>2)return;
-  acc.weight+=w;acc.natural+=w*(hand.natural?1:0);acc.playerDraw+=w*(hand.playerThird===null?0:1);acc.bankerDraw+=w*(hand.bankerThird===null?0:1);acc.cards[cardIndex]+=w;
-  acc.playerPoints[(+hand.playerPoint||0)%10]+=w;acc.bankerPoints[(+hand.bankerPoint||0)%10]+=w;acc.winner[outcomeIndex]+=w;acc.cardsConsumed+=w*(+hand.cardCount||4);
-}
-function finishHandState(acc){
-  const total=+acc?.weight||0;if(!(total>1e-12))return {available:false,cards_distribution:[0,0,0],player_final_point_distribution:Array(10).fill(0),banker_final_point_distribution:Array(10).fill(0),winner_distribution:[0,0,0],expected_cards_consumed:0};
-  return {available:true,cards_distribution:normalise(acc.cards,[1/3,1/3,1/3]),player_final_point_distribution:normalise(acc.playerPoints,Array(10).fill(.1)),banker_final_point_distribution:normalise(acc.bankerPoints,Array(10).fill(.1)),winner_distribution:normalise(acc.winner,[1/3,1/3,1/3]),expected_cards_consumed:acc.cardsConsumed/total,natural_probability:clip(acc.natural/total),player_draw_probability:clip(acc.playerDraw/total),banker_draw_probability:clip(acc.bankerDraw/total)};
-}
-function distributionShift(a,b){const left=normalise(Array.isArray(a)?a:[],Array.isArray(a)&&a.length?Array(a.length).fill(1/a.length):[]),right=normalise(Array.isArray(b)?b:[],Array.isArray(b)&&b.length?Array(b.length).fill(1/b.length):[]);if(left.length!==right.length||!left.length)return 1;return clip(.5*left.reduce((sum,value,index)=>sum+Math.abs(value-right[index]),0));}
-function snapshotFromHandState(state,{particleUncertainty=0,recentEssRatio=1,physicalEv=null}={}){
-  const winner=normalise(state?.winner_distribution||[],[1/3,1/3,1/3]),rawEv=physicalEv||{banker:winner[0]*.95-winner[1],player:winner[1]-winner[0]};const gap=Number.isFinite(+rawEv.gap)?+rawEv.gap:(+rawEv.banker||0)-(+rawEv.player||0);
-  return {available:!!state?.available,winner_probabilities:{B:winner[0],P:winner[1],T:winner[2]},winner_distribution:winner,cards_distribution:(state?.cards_distribution||[0,0,0]).slice(),player_final_point_distribution:(state?.player_final_point_distribution||Array(10).fill(0)).slice(),banker_final_point_distribution:(state?.banker_final_point_distribution||Array(10).fill(0)).slice(),physical_ev_banker:+rawEv.banker||0,physical_ev_player:+rawEv.player||0,physical_ev_gap:gap,particle_uncertainty:clip(particleUncertainty),recent_ess_ratio:clip(recentEssRatio),expected_consumed_cards:+state?.expected_cards_consumed||0};
-}
-function emptyShoeErrorCorrection(){return {shoe_error_correction_version:SHOE_ERROR_CORRECTION_VERSION,shoe_error_correction_policy:"posterior_health_only_no_observation_reweight",available:false,shoe_posterior_health:1,draw_state_health:1,physical_ev_health:1,posterior_reliability_multiplier:1,draw_reliability_multiplier:1,physical_ev_reliability_multiplier:1,recent_miscalibration_score:0,particle_observation_reused:true,particle_posterior_reweighted:false};}
-function updateHealth(health,badEvidence){const current=clip(health),bad=clip(badEvidence);return bad>.04?clip(.80*current+.20*(1-.75*bad)):clip(current+.06*(1-current));}
-function updateShoeErrorCorrection(state,memory,prior,posterior,actual,{recentEssRatio=1,particleUncertainty=1}={}){
-  const expected=normalise(prior?.winner_distribution||[],[1/3,1/3,1/3]),index={B:0,P:1,T:2}[actual]??2,actualProbability=clip(expected[index],.01,.99),predictionSurprise=-Math.log(actualProbability),oneHot=[0,0,0];oneHot[index]=1;
-  const brierResidual=expected.reduce((sum,value,i)=>sum+(value-oneHot[i])**2,0)/3,drawCountShift=distributionShift(prior?.cards_distribution,posterior?.cards_distribution),pointDistributionShift=.5*(distributionShift(prior?.player_final_point_distribution,posterior?.player_final_point_distribution)+distributionShift(prior?.banker_final_point_distribution,posterior?.banker_final_point_distribution)),consumptionShift=clip(Math.abs((+prior?.expected_consumed_cards||0)-(+posterior?.expected_cards_consumed||0))/2),ess=clip(recentEssRatio),uncertainty=clip(particleUncertainty),surpriseSeverity=clip((predictionSurprise-.65)/1.65),history=(memory||[]).slice(-SHOE_ERROR_CORRECTION_MEMORY),recent=history.length?history.reduce((sum,item)=>sum+(+item.surprise_severity||0),0)/history.length:0,latentShift=Math.max(drawCountShift,pointDistributionShift,consumptionShift),posteriorProblem=clip(.55*surpriseSeverity+.25*(1-ess)+.20*uncertainty),drawProblem=clip(.50*surpriseSeverity+.35*latentShift+.15*uncertainty),evStrength=clip(Math.abs(+prior?.physical_ev_gap||0)/.10),evOverconfidence=clip(evStrength*(.60*surpriseSeverity+.25*recent+.15*(1-ess)),0,1);
-  const next={...(state||emptyShoeErrorCorrection())};next.shoe_posterior_health=updateHealth(next.shoe_posterior_health,posteriorProblem);next.draw_state_health=updateHealth(next.draw_state_health,drawProblem);next.physical_ev_health=updateHealth(next.physical_ev_health,evOverconfidence);Object.assign(next,{shoe_error_correction_version:SHOE_ERROR_CORRECTION_VERSION,shoe_error_correction_policy:"posterior_health_only_no_observation_reweight",available:!!prior?.available&&!!posterior?.available,actual_outcome:actual,actual_probability:actualProbability,prediction_surprise:predictionSurprise,brier_residual:brierResidual,draw_count_shift:drawCountShift,point_distribution_shift:pointDistributionShift,consumption_shift:consumptionShift,recent_ess_ratio:ess,particle_uncertainty:uncertainty,recent_miscalibration_score:recent,posterior_problem:posteriorProblem,draw_point_problem:drawProblem,physical_ev_overconfidence:evOverconfidence,posterior_reliability_multiplier:clip(.90+.10*next.shoe_posterior_health,.90,1),draw_reliability_multiplier:clip(.90+.10*next.draw_state_health,.90,1),physical_ev_reliability_multiplier:clip(.80+.20*next.physical_ev_health,.80,1),particle_observation_reused:true,particle_posterior_reweighted:false});
-  const nextMemory=[...history,{surprise:predictionSurprise,surprise_severity:surpriseSeverity,brier_residual:brierResidual,draw_count_shift:drawCountShift,point_distribution_shift:pointDistributionShift,consumption_shift:consumptionShift,recent_ess_ratio:ess,particle_uncertainty:uncertainty}].slice(-SHOE_ERROR_CORRECTION_MEMORY);return {state:next,memory:nextMemory};
-}
-function settledErrorCorrectionAudit(snapshot,actual){if(!snapshot?.available)return null;const expected=normalise(snapshot.winner_distribution||[],[1/3,1/3,1/3]),index={B:0,P:1,T:2}[actual]??2,probability=clip(expected[index],.01,.99),oneHot=[0,0,0];oneHot[index]=1;return {actual_probability:probability,prediction_surprise:-Math.log(probability),brier_residual:expected.reduce((sum,value,i)=>sum+(value-oneHot[i])**2,0)/3,particle_observation_reused:true,particle_posterior_reweighted:false};}
-function estimateParticlePhysicsLegacy(seq){
-  const history=seq.filter(x=>x==="B"||x==="P"||x==="T"),rng=particleRng(),n=LEGACY_PARTICLE_COUNT;
-  const correctionEnabled=shoeErrorCorrectionEnabled();let particles=Array.from({length:n},()=>Array(13).fill(32)),consumed=Array(n).fill(0),essHistory=[],correction=emptyShoeErrorCorrection(),correctionMemory=[];
-  for(const actual of history){
-    const next=[],nextConsumed=Array(n).fill(0),rawWeights=Array(n).fill(0),priorState=correctionEnabled?handStateAccumulator():null,posteriorState=correctionEnabled?handStateAccumulator():null;
-    for(let i=0;i<n;i++){
-      const base=particles[i],proposals=[],matches=[];
-      for(let k=0;k<PARTICLE_LIKELIHOOD_DRAWS;k++){const hand=particleDeal(base,rng);proposals.push(hand);if(correctionEnabled)addHandState(priorState,hand,1/(n*PARTICLE_LIKELIHOOD_DRAWS));if(hand.outcome===actual)matches.push(hand);}
-      const initialMatches=matches.length;let likelihood=(initialMatches+.15)/(PARTICLE_LIKELIHOOD_DRAWS+.45);
-      if(!matches.length){for(let k=0;k<PARTICLE_FALLBACK_DRAWS;k++){const hand=particleDeal(base,rng);if(hand.outcome===actual){matches.push(hand);break;}}}
-      let chosen;if(matches.length){chosen=matches[Math.floor(rng()*matches.length)];if(initialMatches===0)likelihood=Math.max(likelihood,.02);if(correctionEnabled)for(const matching of matches)addHandState(posteriorState,matching,likelihood/(n*matches.length));}else{chosen=proposals[Math.floor(rng()*proposals.length)];likelihood=1e-4;}
-      next.push(chosen.counts);nextConsumed[i]=consumed[i]+chosen.cardCount;rawWeights[i]=likelihood;
-    }
-    const total=rawWeights.reduce((a,b)=>a+b,0),weights=total>1e-12?rawWeights.map(w=>w/total):Array(n).fill(1/n);
-    const ess=1/Math.max(1e-12,weights.reduce((a,w)=>a+w*w,0)),essRatio=clip(ess/n);essHistory.push(essRatio);
-    if(correctionEnabled){const prior=snapshotFromHandState(finishHandState(priorState),{particleUncertainty:clip(1-essRatio),recentEssRatio:essRatio}),posterior=finishHandState(posteriorState),update=updateShoeErrorCorrection(correction,correctionMemory,prior,posterior,actual,{recentEssRatio:essRatio,particleUncertainty:prior.particle_uncertainty});correction=update.state;correctionMemory=update.memory;}
-    const resampled=particleResample(next,nextConsumed,weights,rng);particles=resampled.particles;consumed=resampled.consumed;
-  }
-  const out=Array(PHYSICS_DIM).fill(0),forecastRng=particleRng(20261005+104729);let samples=0;
-  for(const counts of particles)for(let k=0;k<PARTICLE_FORECAST_DRAWS;k++){
-    const hand=particleDeal(counts,forecastRng);samples++;out[{4:0,5:1,6:2}[hand.cardCount]]++;out[3+hand.playerPoint]++;out[13+hand.bankerPoint]++;out[23+({B:0,P:1,T:2}[hand.outcome])]++;
-    for(const rank of hand.ranks)out[26+rank]++;const diff=hand.bankerPoint-hand.playerPoint;out[46]+=diff/9;out[47]+=Math.abs(diff)/9;
-  }
-  for(const [a,b] of [[0,3],[3,13],[13,23],[23,26],[26,39]])for(let i=a;i<b;i++)out[i]/=samples;
-  const pB=out[23],pP=out[24],physicalEvB=pB*.95-pP,physicalEvP=pP-pB;
-  out[39]=physicalEvB;out[40]=physicalEvP;out[41]=physicalEvB-physicalEvP;out[43]=consumed.reduce((a,b)=>a+b,0)/n;
-  const means=Array(13).fill(0);for(const counts of particles)for(let j=0;j<13;j++)means[j]+=counts[j]/n;
-  const remaining=Math.max(1,means.reduce((a,b)=>a+b,0));out[44]=means.slice(0,5).reduce((a,b)=>a+b,0)/remaining;out[45]=means.slice(8).reduce((a,b)=>a+b,0)/remaining;out[46]/=samples;out[47]/=samples;
-  let spread=0;for(let j=0;j<13;j++){let v=0;for(const counts of particles)v+=(counts[j]-means[j])**2/n;spread+=Math.sqrt(v)/32;}spread/=13;
-  const recent=essHistory.length?essHistory.slice(-8).reduce((a,b)=>a+b,0)/Math.min(8,essHistory.length):1;
-  const consumedMean=out[43],consumedStd=Math.sqrt(consumed.reduce((a,v)=>a+(v-consumedMean)**2,0)/n),uncertainty=clip(.60*Math.min(1,spread*4)+.40*(1-recent));
-  out[42]=uncertainty;
-  const forecastState={available:true,cards_distribution:out.slice(0,3),player_final_point_distribution:out.slice(3,13),banker_final_point_distribution:out.slice(13,23),winner_distribution:out.slice(23,26),expected_cards_consumed:4*out[0]+5*out[1]+6*out[2]},preHandSnapshot=snapshotFromHandState(forecastState,{particleUncertainty:uncertainty,recentEssRatio:recent,physicalEv:{banker:physicalEvB,player:physicalEvP,gap:physicalEvB-physicalEvP}});
-  return {physics:out,diagnostics:{particle_count:n,history_rounds:history.length,expected_consumed_cards:consumedMean,consumed_cards_std:consumedStd,recent_ess_ratio:recent,composition_spread:spread,posterior_uncertainty:uncertainty,physical_ev_banker:physicalEvB,physical_ev_player:physicalEvP,physical_ev_gap:physicalEvB-physicalEvP,pre_hand_snapshot:preHandSnapshot,shoe_error_correction_version:correctionEnabled?SHOE_ERROR_CORRECTION_VERSION:0,shoe_error_correction:correctionEnabled?correction:null,shoe_posterior_health:correctionEnabled?correction.shoe_posterior_health:1,draw_state_health:correctionEnabled?correction.draw_state_health:1,physical_ev_health:correctionEnabled?correction.physical_ev_health:1,posterior_reliability_multiplier:correctionEnabled?correction.posterior_reliability_multiplier:1,draw_reliability_multiplier:correctionEnabled?correction.draw_reliability_multiplier:1,physical_ev_reliability_multiplier:correctionEnabled?correction.physical_ev_reliability_multiplier:1,recent_miscalibration_score:correctionEnabled?correction.recent_miscalibration_score:0,error_memory_size:correctionEnabled?correctionMemory.length:0}};
-}
-function estimateParticlePhysicsAdaptive(seq,{mode="runtime"}={}){
-  const history=seq.filter(x=>x==="B"||x==="P"||x==="T"),rng=particleRng(),priorDiagnostics=lastParticleDiagnostics||{},n=selectParticleBudget(priorDiagnostics,lastParticleBudget,mode),correctionEnabled=shoeErrorCorrectionEnabled();
-  lastParticleBudget=n;let particles=Array.from({length:n},()=>Array(13).fill(32)),consumed=Array(n).fill(0),logWeights=Array(n).fill(-Math.log(n)),essHistory=[],correction=emptyShoeErrorCorrection(),correctionMemory=[],resamplingCount=0,rejuvenatedParticles=0,uniqueRatio=1;
-  for(const actual of history){
-    const next=[],nextConsumed=Array(n).fill(0),logLikelihoods=Array(n).fill(0),priorWeights=normaliseLogWeights(logWeights),priorState=correctionEnabled?handStateAccumulator():null,posteriorState=correctionEnabled?handStateAccumulator():null;
-    for(let i=0;i<n;i++){
-      const base=particles[i],proposals=[],matches=[];
-      for(let k=0;k<PARTICLE_LIKELIHOOD_DRAWS;k++){const hand=particleDeal(base,rng);proposals.push(hand);if(correctionEnabled)addHandState(priorState,hand,priorWeights[i]/PARTICLE_LIKELIHOOD_DRAWS);if(hand.outcome===actual)matches.push(hand);}
-      const initialMatches=matches.length;let likelihood=(initialMatches+.15)/(PARTICLE_LIKELIHOOD_DRAWS+.45);
-      if(!matches.length){for(let k=0;k<PARTICLE_FALLBACK_DRAWS;k++){const hand=particleDeal(base,rng);if(hand.outcome===actual){matches.push(hand);break;}}}
-      let chosen;if(matches.length){chosen=matches[Math.floor(rng()*matches.length)];if(initialMatches===0)likelihood=Math.max(likelihood,.02);if(correctionEnabled)for(const matching of matches)addHandState(posteriorState,matching,priorWeights[i]*likelihood/matches.length);}else{chosen=proposals[Math.floor(rng()*proposals.length)];likelihood=1e-4;}
-      next.push(chosen.counts);nextConsumed[i]=consumed[i]+chosen.cardCount;logLikelihoods[i]=Math.log(Math.max(likelihood,1e-12));
-    }
-    const weights=normaliseLogWeights(logWeights.map((value,index)=>value+logLikelihoods[index])),ess=1/Math.max(1e-12,weights.reduce((sum,value)=>sum+value*value,0)),essRatio=clip(ess/n);essHistory.push(essRatio);
-    if(correctionEnabled){const prior=snapshotFromHandState(finishHandState(priorState),{particleUncertainty:clip(1-essRatio),recentEssRatio:essRatio}),posterior=finishHandState(posteriorState),update=updateShoeErrorCorrection(correction,correctionMemory,prior,posterior,actual,{recentEssRatio:essRatio,particleUncertainty:prior.particle_uncertainty});correction=update.state;correctionMemory=update.memory;}
-    if(particleShouldResample(essRatio)){const resampled=particleResample(next,nextConsumed,weights,rng);particles=resampled.particles;consumed=resampled.consumed;resamplingCount++;uniqueRatio=particleUniqueRatio(particles);if(uniqueRatio<.55){const rejuvenated=particleRejuvenate(particles,rng);particles=rejuvenated.particles;rejuvenatedParticles+=rejuvenated.changed;uniqueRatio=particleUniqueRatio(particles);}logWeights=Array(n).fill(-Math.log(n));}else{particles=next;consumed=nextConsumed;logWeights=weights.map(value=>Math.log(Math.max(value,1e-300)));uniqueRatio=particleUniqueRatio(particles);}
-  }
-  const finalWeights=normaliseLogWeights(logWeights),forecastDraws=mode==="runtime"&&clip(priorDiagnostics?.posterior_uncertainty??0)>.55?Math.min(4,Math.max(3,PARTICLE_FORECAST_DRAWS)):PARTICLE_FORECAST_DRAWS,out=Array(PHYSICS_DIM).fill(0),forecastRng=particleRng(20261005+104729);let sampleMass=0;
-  for(let index=0;index<particles.length;index++)for(let k=0;k<forecastDraws;k++){const counts=particles[index];if(counts.reduce((a,b)=>a+b,0)<6)continue;const hand=particleDeal(counts,forecastRng),mass=finalWeights[index]/forecastDraws;sampleMass+=mass;out[{4:0,5:1,6:2}[hand.cardCount]]+=mass;out[3+hand.playerPoint]+=mass;out[13+hand.bankerPoint]+=mass;out[23+({B:0,P:1,T:2}[hand.outcome])]+=mass;for(const rank of hand.ranks)out[26+rank]+=mass;const diff=hand.bankerPoint-hand.playerPoint;out[46]+=mass*diff/9;out[47]+=mass*Math.abs(diff)/9;}
-  if(!(sampleMass>1e-12))throw new Error("adaptive particle forecast produced no samples");
-  for(const [a,b] of [[0,3],[3,13],[13,23],[23,26],[26,39]])for(let i=a;i<b;i++)out[i]/=sampleMass;
-  const pB=out[23],pP=out[24],physicalEvB=pB*.95-pP,physicalEvP=pP-pB;out[39]=physicalEvB;out[40]=physicalEvP;out[41]=physicalEvB-physicalEvP;out[43]=consumed.reduce((sum,value,index)=>sum+value*finalWeights[index],0);
-  const means=Array(13).fill(0);for(let index=0;index<n;index++)for(let rank=0;rank<13;rank++)means[rank]+=particles[index][rank]*finalWeights[index];const remaining=Math.max(1,means.reduce((a,b)=>a+b,0));out[44]=means.slice(0,5).reduce((a,b)=>a+b,0)/remaining;out[45]=means.slice(8).reduce((a,b)=>a+b,0)/remaining;
-  let spread=0;for(let rank=0;rank<13;rank++){let variance=0;for(let index=0;index<n;index++)variance+=finalWeights[index]*(particles[index][rank]-means[rank])**2;spread+=Math.sqrt(Math.max(0,variance))/32;}spread/=13;
-  const recent=essHistory.length?essHistory.slice(-8).reduce((a,b)=>a+b,0)/Math.min(8,essHistory.length):1,consumedMean=out[43],consumedStd=Math.sqrt(consumed.reduce((sum,value,index)=>sum+finalWeights[index]*(value-consumedMean)**2,0)),uncertainty=clip(.60*Math.min(1,spread*4)+.40*(1-recent));out[42]=uncertainty;
-  const forecastState={available:true,cards_distribution:out.slice(0,3),player_final_point_distribution:out.slice(3,13),banker_final_point_distribution:out.slice(13,23),winner_distribution:out.slice(23,26),expected_cards_consumed:4*out[0]+5*out[1]+6*out[2]},preHandSnapshot=snapshotFromHandState(forecastState,{particleUncertainty:uncertainty,recentEssRatio:recent,physicalEv:{banker:physicalEvB,player:physicalEvP,gap:physicalEvB-physicalEvP}}),diagnostics={particle_count:n,particle_budget:n,particle_mode:mode,particle_filter_version:PARTICLE_FILTER_VERSION,particle_policy:"adaptive_512_1024_2000",particle_teacher_count:PARTICLE_TEACHER,particle_runtime_min:PARTICLE_MIN,particle_runtime_mid:PARTICLE_MID,particle_runtime_max:PARTICLE_MAX,ess_resample_threshold:ESS_RESAMPLE_THRESHOLD,resampling_policy:"ess_triggered_systematic",weight_policy:"log_weight_normalization",resampling_count:resamplingCount,unique_particle_ratio:uniqueRatio,rejuvenated_particles:rejuvenatedParticles,forecast_draws:forecastDraws,history_rounds:history.length,expected_consumed_cards:consumedMean,consumed_cards_std:consumedStd,recent_ess_ratio:recent,composition_spread:spread,posterior_uncertainty:uncertainty,physical_ev_banker:physicalEvB,physical_ev_player:physicalEvP,physical_ev_gap:physicalEvB-physicalEvP,pre_hand_snapshot:preHandSnapshot,shoe_error_correction_version:correctionEnabled?SHOE_ERROR_CORRECTION_VERSION:0,shoe_error_correction:correctionEnabled?correction:null,shoe_posterior_health:correctionEnabled?correction.shoe_posterior_health:1,draw_state_health:correctionEnabled?correction.draw_state_health:1,physical_ev_health:correctionEnabled?correction.physical_ev_health:1,posterior_reliability_multiplier:correctionEnabled?correction.posterior_reliability_multiplier:1,draw_reliability_multiplier:correctionEnabled?correction.draw_reliability_multiplier:1,physical_ev_reliability_multiplier:correctionEnabled?correction.physical_ev_reliability_multiplier:1,recent_miscalibration_score:correctionEnabled?correction.recent_miscalibration_score:0,error_memory_size:correctionEnabled?correctionMemory.length:0};diagnostics.particle_quality=particleQuality(diagnostics);lastParticleDiagnostics=diagnostics;return {physics:out,diagnostics};
-}
-function estimateParticlePhysics(seq){return particleFilterV3Enabled()?estimateParticlePhysicsAdaptive(seq):estimateParticlePhysicsLegacy(seq);}
+let lastParticleDiagnostics=null;
 function interpAnchors(value,anchors){if(value<=anchors[0][0])return anchors[0][1];for(let i=1;i<anchors.length;i++){if(value<=anchors[i][0]){const [x0,y0]=anchors[i-1],[x1,y1]=anchors[i],t=(value-x0)/Math.max(1e-12,x1-x0);return y0+t*(y1-y0);}}return anchors.at(-1)[1];}
-function effectiveParticleProgress(rounds,d,estimatedTotalHands=60){
-  const uncertainty=clip(+d?.posterior_uncertainty||1);
-  if(!stageProgressV4Enabled()){
-    const roundProgress=clip(rounds/70),cardProgress=clip((+d?.expected_consumed_cards||0)/ESTIMATED_PLAYABLE_CARDS),roundWeight=.55+.25*uncertainty;
-    return clip(roundWeight*roundProgress+(1-roundWeight)*cardProgress);
-  }
-  const totalHands=clip(estimatedTotalHands,ESTIMATED_TOTAL_HANDS_MIN,ESTIMATED_TOTAL_HANDS_MAX),roundProgress=clip(rounds/totalHands),cardProgress=clip((+d?.expected_consumed_cards||0)/ESTIMATED_PLAYABLE_CARDS),roundWeight=.45+.30*uncertainty;
-  return clip(roundWeight*roundProgress+(1-roundWeight)*cardProgress);
-}
-function baselineParticleFusionWeight(rounds,d,estimatedTotalHands=60){
-  if(!adaptiveStageEnabled()){const base=rounds<12?.18:rounds<20?.25:rounds<=40?.34:rounds<=50?.40:.46,reliability=.75+.25*clip(d?.recent_ess_ratio??1);return clip(base*reliability,.10,.46);}
-  const progress=effectiveParticleProgress(rounds,d,estimatedTotalHands),base=stageProgressV4Enabled()?interpAnchors(progress,[[0,.18],[.15,.22],[.30,.29],[.45,.36],[.60,.43],[.70,.48],[.80,.52],[.90,.55],[1,.58]]):interpAnchors(70*progress,[[0,.18],[10,.20],[20,.27],[30,.33],[40,.39],[50,.45],[55,.48],[60,.52],[65,.55],[70,.57]]);
-  const ess=clip(d?.recent_ess_ratio??1),uncertainty=clip(d?.posterior_uncertainty??1),reliability=(.70+.30*ess)*(1-.20*uncertainty);
-  return clip(base*reliability,.10,.58);
-}
-function particleReliability(d){return clip(d?.recent_ess_ratio??1)*(1-clip(d?.posterior_uncertainty??1));}
-function early35EvidenceWeight(rounds,d,estimatedTotalHands=60){
-  const stage=interpAnchors(rounds,EARLY35_EVIDENCE_ANCHORS),early=clip(stage*(.65+.35*particleReliability(d)),.10,.80);
-  if(rounds<=EARLY35_BRIDGE_START)return early;
-  const baseline=baselineParticleFusionWeight(rounds,d,estimatedTotalHands);
-  if(rounds>=EARLY35_BRIDGE_END)return baseline;
-  const t=clip((rounds-EARLY35_BRIDGE_START)/(EARLY35_BRIDGE_END-EARLY35_BRIDGE_START));return early+(baseline-early)*t;
-}
-function particleFusionWeight(rounds,d,estimatedTotalHands=60){return baselineParticleFusionWeight(rounds,d,estimatedTotalHands);}
-function baselinePhysicalEvReliability(rounds,d,estimatedTotalHands=60){
-  if(!adaptiveStageEnabled())return 1;
-  const progress=effectiveParticleProgress(rounds,d,estimatedTotalHands),stage=stageProgressV4Enabled()?interpAnchors(progress,[[0,.30],[.15,.36],[.30,.45],[.45,.56],[.60,.68],[.70,.75],[.80,.81],[.90,.85],[1,.88]]):interpAnchors(70*progress,[[0,.32],[10,.36],[20,.45],[30,.53],[40,.61],[50,.70],[55,.75],[60,.80],[65,.84],[70,.87]]);
-  const ess=clip(d?.recent_ess_ratio??1),uncertainty=clip(d?.posterior_uncertainty??1);
-  return clip(stage*(.72+.28*ess)*(1-.30*uncertainty),.20,.90);
-}
-function early35PhysicalEvReliability(rounds,d,estimatedTotalHands=60){
-  const stage=interpAnchors(rounds,EARLY35_EV_RELIABILITY_ANCHORS),ess=clip(d?.recent_ess_ratio??1),uncertainty=clip(d?.posterior_uncertainty??1),early=clip(stage*(.70+.30*ess)*(1-.35*uncertainty),0,.85);
-  if(rounds<=EARLY35_BRIDGE_START)return early;
-  const baseline=baselinePhysicalEvReliability(rounds,d,estimatedTotalHands);
-  if(rounds>=EARLY35_BRIDGE_END)return baseline;
-  const t=clip((rounds-EARLY35_BRIDGE_START)/(EARLY35_BRIDGE_END-EARLY35_BRIDGE_START));return early+(baseline-early)*t;
-}
-function physicalEvReliability(rounds,d,estimatedTotalHands=60){const base=early35Enabled()?early35PhysicalEvReliability(rounds,d,estimatedTotalHands):baselinePhysicalEvReliability(rounds,d,estimatedTotalHands);return particleFilterV3Enabled()?clip(base*(.70+.30*particleQuality(d)),0,.90):base;}
-function fuseParticlePhysics(mlp,seq){
-  const estimate=estimateParticlePhysics(seq),p=estimate.physics.slice(),estimatedTotalHands=getEstimatedTotalHands(),w=particleFusionWeight(seq.length,estimate.diagnostics,estimatedTotalHands),evidenceWeight=early35Enabled()?early35EvidenceWeight(seq.length,estimate.diagnostics,estimatedTotalHands):w,evReliability=physicalEvReliability(seq.length,estimate.diagnostics,estimatedTotalHands),out=mlp.slice(),correctionEnabled=shoeErrorCorrectionEnabled(),correction=correctionEnabled?(estimate.diagnostics.shoe_error_correction||{}):{},posteriorMultiplier=clip(correction.posterior_reliability_multiplier??1,.90,1),drawMultiplier=clip(correction.draw_reliability_multiplier??1,.90,1),physicalEvMultiplier=clip(correction.physical_ev_reliability_multiplier??1,.80,1);
-  const rawEv=p.slice(39,42);if(adaptiveStageEnabled()||correctionEnabled)for(let i=39;i<42;i++)p[i]*=(adaptiveStageEnabled()?evReliability:1)*physicalEvMultiplier;
-  for(const [a,b] of [[0,3],[3,13],[13,23],[23,26]]){const blockWeight=evidenceWeight*(a===23?posteriorMultiplier:drawMultiplier),mixed=mlp.slice(a,b).map((v,i)=>(1-blockWeight)*v+blockWeight*p[a+i]),norm=normalise(mixed,Array(b-a).fill(1/(b-a)));for(let i=a;i<b;i++)out[i]=norm[i-a];}
-  const rankWeight=w*drawMultiplier;for(let i=26;i<39;i++)out[i]=(1-rankWeight)*mlp[i]+rankWeight*p[i];
-  for(let i=39;i<43;i++)out[i]=p[i];
-  for(let i=43;i<48;i++)out[i]=(1-rankWeight)*mlp[i]+rankWeight*p[i];
-  const expected=4*out[0]+5*out[1]+6*out[2],rankTotal=out.slice(26,39).reduce((a,b)=>a+b,0);if(rankTotal>1e-12)for(let i=26;i<39;i++)out[i]*=expected/rankTotal;
-  const effectiveProgress=effectiveParticleProgress(seq.length,estimate.diagnostics,estimatedTotalHands);estimate.diagnostics.estimated_total_hands=estimatedTotalHands;estimate.diagnostics.round_progress=clip(seq.length/estimatedTotalHands);estimate.diagnostics.card_progress=clip((+estimate.diagnostics.expected_consumed_cards||0)/ESTIMATED_PLAYABLE_CARDS);estimate.diagnostics.effective_progress=effectiveProgress;estimate.diagnostics.effective_progress_round=70*effectiveProgress;
-  estimate.diagnostics.fusion_weight=w;estimate.diagnostics.particle_evidence_weight=evidenceWeight;estimate.diagnostics.early35_version=early35Enabled()?EARLY35_VERSION:0;estimate.diagnostics.physical_ev_reliability=evReliability;estimate.diagnostics.shoe_error_correction_version=correctionEnabled?SHOE_ERROR_CORRECTION_VERSION:0;estimate.diagnostics.posterior_reliability_multiplier=posteriorMultiplier;estimate.diagnostics.draw_reliability_multiplier=drawMultiplier;estimate.diagnostics.physical_ev_reliability_multiplier=physicalEvMultiplier;estimate.diagnostics.effective_particle_evidence_weight=evidenceWeight*posteriorMultiplier;estimate.diagnostics.effective_draw_evidence_weight=evidenceWeight*drawMultiplier;estimate.diagnostics.raw_physical_ev_banker=rawEv[0];estimate.diagnostics.raw_physical_ev_player=rawEv[1];
-  estimate.diagnostics.physical_ev_banker=out[39];estimate.diagnostics.physical_ev_player=out[40];estimate.diagnostics.physical_ev_gap=out[41];estimate.diagnostics.expected_next_card_count=expected;lastParticleDiagnostics=estimate.diagnostics;
-  return sanitizePhysics(out,{},true);
-}
-
 function predictPhysics(seq){
   if(!physicsBundle?.trained)return null;
   let x=historyVector(seq),mean=physicsBundle.scaler?.mean||[],scale=physicsBundle.scaler?.scale||[];
@@ -417,7 +248,7 @@ function applyProbabilityBounds(rawPB,roundIndex,noiseScore,progressWeight=null)
   }
   return {value:clip(rawPB,low,high),low,high};
 }
-function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null,particleDiagnostics=null){
+function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null,physicsDiagnostics=null){
   if(!adaptiveStageEnabled()){
     const stage=roundIndex<=40?"early":roundIndex>50?"late":"middle",range=stage==="early"?[.35,.45]:stage==="middle"?[.50,.60]:[.65,.75];
     const base=Number.isFinite(+config[stage+"_alpha"])?+config[stage+"_alpha"]:(range[0]+range[1])/2,gain=Math.max(0,Number.isFinite(+config.noise_gain)?+config.noise_gain:.05);
@@ -425,15 +256,15 @@ function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null,partic
   }
   if(stageProgressV4Enabled()){
     const progress=Math.cbrt(clip(+progressWeight||0)),base=interpAnchors(progress,[[0,.38],[.20,.41],[.35,.46],[.50,.53],[.65,.59],[.75,.63],[.85,.67],[.95,.70],[1,.72]]),noise=clip(noiseScore),adjustment=.03*Math.max(0,.5-noise)/.5-.05*Math.max(0,noise-.5)/.5;
-    const diagnostics=particleDiagnostics||lastParticleDiagnostics||{},particleAdjustment=particleFilterV3Enabled()?(.04*clip(diagnostics.recent_ess_ratio??.5)-.06*clip(diagnostics.posterior_uncertainty??.5)-.03*particleCompositionInstability(diagnostics)):0;
-    return clip(base+adjustment+particleAdjustment,.35,.75);
+    const diagnostics=physicsDiagnostics||lastParticleDiagnostics||{},directUncertainty=clip(diagnostics.physics_uncertainty??.5),physicsAdjustment=-.04*Math.max(0,directUncertainty-.50)/.50;
+    return clip(base+adjustment+physicsAdjustment,.35,.75);
   }
   const early=Number.isFinite(+config.early_alpha)?+config.early_alpha:.40,middle=Number.isFinite(+config.middle_alpha)?+config.middle_alpha:.55,late=Number.isFinite(+config.late_alpha)?+config.late_alpha:.70;
   const progressRound=stageProgressV3Enabled()?effectiveProgressRound(roundIndex,progressWeight):roundIndex;
   const base=interpAnchors(progressRound,[[1,early],[20,early],[40,(early+middle)/2],[50,middle],[60,(middle+late)/2],[70,late]]);
   const gain=Math.max(0,Number.isFinite(+config.noise_gain)?+config.noise_gain:.05);
-  const diagnostics=particleDiagnostics||lastParticleDiagnostics||{},particleAdjustment=particleFilterV3Enabled()?(.04*clip(diagnostics.recent_ess_ratio??.5)-.06*clip(diagnostics.posterior_uncertainty??.5)-.03*particleCompositionInstability(diagnostics)):0;
-  return clip(base+gain*(.5-clip(+noiseScore||0))+particleAdjustment,.35,.75);
+  const diagnostics=physicsDiagnostics||lastParticleDiagnostics||{},directUncertainty=clip(diagnostics.physics_uncertainty??.5),physicsAdjustment=-.04*Math.max(0,directUncertainty-.50)/.50;
+  return clip(base+gain*(.5-clip(+noiseScore||0))+physicsAdjustment,.35,.75);
 }
 function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWeight=null){
   const config=final56Bundle?.smoothing||{},dynamic=config.method==="dynamic_post_clip_ema"&&config.enabled===true;
