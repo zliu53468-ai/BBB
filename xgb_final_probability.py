@@ -31,15 +31,6 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only in lean dev env
     DMatrix = None  # type: ignore[assignment,misc]
     XGBClassifier = None  # type: ignore[assignment,misc]
 
-from particle_shoe_filter import (
-    PARTICLE_FILTER_VERSION,
-    PARTICLE_MAX,
-    PARTICLE_MID,
-    PARTICLE_MIN,
-    PARTICLE_POLICY,
-    PARTICLE_TEACHER,
-    ParticleShoeTracker,
-)
 from physics_feature_extractor import (
     PHYSICS_DIM,
     PHYSICS_FEATURE_NAMES,
@@ -70,7 +61,8 @@ MIN_PRIMARY_GAIN = 1e-6
 STAGE_PROGRESS_VERSION = 4
 EARLY35_VERSION = 1
 SHOE_ERROR_CORRECTION_VERSION = 1
-SHOE_ERROR_CORRECTION_POLICY = "posterior_health_only_no_observation_reweight"
+SHOE_ERROR_CORRECTION_POLICY = "disabled_without_particle_filter"
+PHYSICS_DIRECT_VERSION = 1
 ESTIMATED_TOTAL_HANDS_MIN = 50.0
 ESTIMATED_TOTAL_HANDS_MAX = 70.0
 ESTIMATED_PLAYABLE_CARDS = 416.0 - 60.0  # Existing 8-deck / cut-card setting.
@@ -196,7 +188,7 @@ def unpack_physics_forecast(physics_48d: Sequence[float]) -> dict[str, Any]:
 
     This is a pure view of the supplied feature block: it does not invoke, train,
     or alter any simulation/MCMC component. Physical EV fields are generated
-    by the pre-Core particle/physics layer and remain explicit in the 48D block.
+    by the pre-Core direct Physics layer and remain explicit in the 48D block.
     """
     physics = _physics_vector(physics_48d)
     value = lambda name: float(physics[_PHYSICS_INDEX[name]])
@@ -630,19 +622,13 @@ def _original_7d(record: Mapping[str, Any], core_pb: float) -> np.ndarray:
 def _physics_48d(
     record: Mapping[str, Any],
     extractor: PhysicsFeatureExtractor | None,
-    particle_tracker: ParticleShoeTracker | None = None,
 ) -> np.ndarray:
     supplied = record.get("physics_48d")
     if supplied is not None:
         return np.asarray(supplied, dtype=np.float32).reshape(-1)
     if extractor is None:
         raise ValueError("physics_48d is missing and no physics extractor was supplied")
-    if particle_tracker is None:
-        return extractor.predict_features(_history(record))
-    return extractor.predict_features_with_diagnostics(
-        _history(record), particle_tracker=particle_tracker
-    )[0]
-
+    return extractor.predict_features(_history(record))
 
 def _snapshot_56d(record: Mapping[str, Any]) -> np.ndarray | None:
     """Accept new 57D snapshots and migrate legacy 56D snapshots in-place."""
@@ -681,44 +667,19 @@ def make_training_dataset(
     *,
     physics_extractor: PhysicsFeatureExtractor | None = None,
 ) -> tuple[np.ndarray, np.ndarray, list[Mapping[str, Any]]]:
-    """Build direct-label training data and retain the matching chronological rows.
-
-    New browser records provide the exact 57D vector that was used at
-    prediction-time.  Older records remain supported by rebuilding the feature
-    blocks only when no snapshot is available.
-    """
+    """Build chronological direct-Physics -> Core -> 57D XGBoost training rows."""
     rows: list[np.ndarray] = []
     labels: list[int] = []
     used_records: list[Mapping[str, Any]] = []
-    active_shoe = ""
-    particle_tracker: ParticleShoeTracker | None = None
     for record in records:
         try:
             x = _snapshot_56d(record)
             if x is None:
-                shoe_id = str(record.get("shoe_id") or "").strip()
-                if physics_extractor is not None and shoe_id:
-                    if shoe_id != active_shoe:
-                        active_shoe = shoe_id
-                        # Teacher labels intentionally use the fixed 2000
-                        # particle posterior; browser serving remains gated
-                        # to adaptive runtime budgets by model metadata.
-                        particle_tracker = ParticleShoeTracker(
-                            mode="teacher",
-                            particle_filter_version=PARTICLE_FILTER_VERSION,
-                        )
-                else:
-                    particle_tracker = None
-                # Keep training feature construction aligned with production:
-                # Physics/Particle + Physical EV are materialized before Core is
-                # read into the final 57D bridge.
-                physics = _physics_48d(record, physics_extractor, particle_tracker)
+                # Production/training order is fixed:
+                # Direct Physics -> Physical EV -> Frozen Core -> 57D XGBoost.
+                physics = _physics_48d(record, physics_extractor)
                 pb = _core_pb(record)
-                x = build_56d_feature_matrix(
-                    pb,
-                    _original_7d(record, pb),
-                    physics,
-                )
+                x = build_56d_feature_matrix(pb, _original_7d(record, pb), physics)
             y = _actual_b(record)
         except (KeyError, TypeError, ValueError):
             continue
@@ -732,7 +693,6 @@ def make_training_dataset(
         np.asarray(labels, dtype=np.int8),
         used_records,
     )
-
 
 def make_training_arrays(
     records: Sequence[Mapping[str, Any]],
@@ -866,33 +826,12 @@ def nested_tuning_masks(
     return fit, tuning
 
 
-def _particle_weight_quality(
-    records: Sequence[Mapping[str, Any]] | None,
-    particle_uncertainty: np.ndarray,
-) -> np.ndarray:
-    """Training reliability from posterior health, never from raw particle N."""
-    uncertainty=np.clip(np.asarray(particle_uncertainty,dtype=np.float64),0.0,1.0)
-    ess=np.full(len(uncertainty),.50,dtype=np.float64)
-    spread=np.full(len(uncertainty),.12,dtype=np.float64)
-    if records is not None:
-        for index,record in enumerate(records[:len(uncertainty)]):
-            diagnostics=(record.get("particle_physics") or record.get("particle_diagnostics") or
-                         record.get("physics_diagnostics") or {}) if isinstance(record,Mapping) else {}
-            if isinstance(diagnostics,Mapping):
-                for target,key in ((ess,"recent_ess_ratio"),(spread,"composition_spread"),(uncertainty,"posterior_uncertainty")):
-                    try:
-                        target[index]=np.clip(float(diagnostics.get(key,target[index])),0.0,1.0)
-                    except (TypeError,ValueError):
-                        pass
-    return np.clip(.45*ess+.35*(1.0-uncertainty)+.20*(1.0-np.clip(spread/.20,0.0,1.0)),0.0,1.0)
-
-
 def balanced_sample_weights(
     y: np.ndarray,
     x: np.ndarray,
-    particle_records: Sequence[Mapping[str, Any]] | None = None,
+    physics_records: Sequence[Mapping[str, Any]] | None = None,
 ) -> np.ndarray:
-    """Class/stage weights with quality-aware Particle reliability (no N bonus)."""
+    """Keep existing class/stage weighting, using direct Physics uncertainty only."""
     labels=np.asarray(y,dtype=np.int8).reshape(-1);features=np.asarray(x,dtype=np.float64)
     rounds=features[:,2];weights=np.ones(len(labels),dtype=np.float64)
     for label in (0,1):
@@ -905,8 +844,8 @@ def balanced_sample_weights(
         [0.00,.25,.40,.55,.70,.80,.90,1.00],
         [.95,1.00,1.05,1.12,1.22,1.30,1.38,1.42],
     )
-    particle_uncertainty=np.clip(features[:,8+_PHYSICS_INDEX["particle_uncertainty"]],0.0,1.0)
-    quality=_particle_weight_quality(particle_records,particle_uncertainty)
+    physics_uncertainty=np.clip(features[:,8+_PHYSICS_INDEX["particle_uncertainty"]],0.0,1.0)
+    quality=1.0-physics_uncertainty
     reliability=.75+.25*quality
     early35=(rounds>=1.0)&(rounds<=35.0)
     early35_stage=np.select(
@@ -921,7 +860,7 @@ def balanced_sample_weights(
     physical_b=features[:,8+_PHYSICS_INDEX["physical_ev_banker"]]
     physical_p=features[:,8+_PHYSICS_INDEX["physical_ev_player"]]
     physical_edge=np.maximum(np.maximum(physical_b,physical_p),0.0)
-    physical_actionability=physical_edge*(1.0-particle_uncertainty)
+    physical_actionability=physical_edge*(1.0-physics_uncertainty)
     normalized_actionability=np.clip(physical_actionability/.05,0.0,1.0)
     action_factor=1.0+.08*normalized_actionability
 
@@ -929,7 +868,6 @@ def balanced_sample_weights(
     multiplier=np.where(early35,np.minimum(multiplier,1.50),multiplier)
     weights*=multiplier
     return np.clip(weights/np.mean(weights),0.35,1.50).astype(np.float32)
-
 
 def recalibrate_noise_feature(
     x: np.ndarray,
@@ -1462,7 +1400,7 @@ def dynamic_ema_alpha(
     noise_score: float,
     config: Mapping[str, Any],
     progress_weight: float | None = None,
-    particle_diagnostics: Mapping[str, Any] | None = None,
+    physics_diagnostics: Mapping[str, Any] | None = None,
 ) -> float:
     progress=_effective_progress(round_index,progress_weight)
     base=float(np.interp(progress,
@@ -1471,12 +1409,10 @@ def dynamic_ema_alpha(
     ))
     noise=_clip(noise_score,0.0,1.0)
     adjustment=.03*max(0.0,.50-noise)/.50-.05*max(0.0,noise-.50)/.50
-    diagnostics=particle_diagnostics or {}
+    diagnostics=physics_diagnostics or {}
     if diagnostics:
-        ess=_clip(float(diagnostics.get("recent_ess_ratio",.5)))
-        uncertainty=_clip(float(diagnostics.get("posterior_uncertainty",.5)))
-        instability=_clip(float(diagnostics.get("composition_spread",.12))/.20)
-        adjustment+=.04*ess-.06*uncertainty-.03*instability
+        direct_uncertainty=_clip(float(diagnostics.get("physics_uncertainty",diagnostics.get("posterior_uncertainty",.5))))
+        adjustment-=.04*max(0.0,direct_uncertainty-.50)/.50
     return _clip(base+adjustment,.35,.75)
 
 
@@ -1612,7 +1548,7 @@ def evaluate(
                              "smoothing_skip_rate_delta":tuned_stage["skip_rate"]-pre_stage["skip_rate"],
                              "mean_effective_progress":float(np.mean(effective_progress[mask])) if stage_rows else None,
                              "mean_effective_progress_round":float(np.mean(70.0*effective_progress[mask])) if stage_rows else None,
-                             "mean_particle_uncertainty":float(np.mean(x[mask,8+_PHYSICS_INDEX["particle_uncertainty"]])) if stage_rows else None,
+                             "mean_physics_uncertainty":float(np.mean(x[mask,8+_PHYSICS_INDEX["particle_uncertainty"]])) if stage_rows else None,
                              "mean_physical_ev_edge":float(np.mean(np.maximum(x[mask,8+_PHYSICS_INDEX["physical_ev_banker"]],x[mask,8+_PHYSICS_INDEX["physical_ev_player"]]))) if stage_rows else None}
     return {
         "samples": float(len(y)),
@@ -1780,12 +1716,9 @@ def export_browser_bundle(
         "schema_version": 2,
         "early35_version": EARLY35_VERSION,
         "shoe_error_correction_version": SHOE_ERROR_CORRECTION_VERSION,
-        "particle_filter_version": PARTICLE_FILTER_VERSION,
-        "particle_policy": PARTICLE_POLICY,
-        "particle_teacher_count": PARTICLE_TEACHER,
-        "particle_runtime_min": PARTICLE_MIN,
-        "particle_runtime_mid": PARTICLE_MID,
-        "particle_runtime_max": PARTICLE_MAX,
+        "physics_direct_version": PHYSICS_DIRECT_VERSION,
+        "particle_filter_version": 0,
+        "particle_filter_enabled": False,
         "model_type": MODEL_TYPE,
         "trained": True,
         "feature_names": list(FEATURE_NAMES),
@@ -1802,25 +1735,20 @@ def export_browser_bundle(
             "label_mapping": {"P": 0, "B": 1},
             "residual": False,
             "noise_score_version": 5,
-            "particle_physics_version": 2,
+            "particle_physics_version": 0,
+            "physics_direct_version": PHYSICS_DIRECT_VERSION,
             "stage_progress_version": STAGE_PROGRESS_VERSION,
             "early35_version": EARLY35_VERSION,
             "shoe_error_correction_version": SHOE_ERROR_CORRECTION_VERSION,
             "shoe_error_correction_policy": SHOE_ERROR_CORRECTION_POLICY,
-            "particle_filter_version": PARTICLE_FILTER_VERSION,
-            "particle_policy": PARTICLE_POLICY,
-            "particle_teacher_count": PARTICLE_TEACHER,
-            "particle_runtime_min": PARTICLE_MIN,
-            "particle_runtime_mid": PARTICLE_MID,
-            "particle_runtime_max": PARTICLE_MAX,
-            "ess_policy": "normalized_ess_ratio",
-            "resampling_policy": "ess_triggered_systematic",
-            "weight_policy": "log_weight_normalization",
-            "stage_progress_policy": "relative_estimated_total_hands_plus_particle_consumption_v4",
+            "particle_filter_version": 0,
+            "particle_filter_enabled": False,
+            "physics_pipeline": "direct_physics_then_physical_ev_then_frozen_core_then_xgboost",
+            "stage_progress_policy": "relative_estimated_total_hands_plus_direct_physics_consumption_v4",
             "probability_bounds_policy": "smooth_effective_progress",
             "calibration_selection_policy": "overall_plus_effective_progress_ge_70_weighted_brier",
-            "particle_physics_input": "B/P/T only",
-            "execution_order": ["particle_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"],
+            "physics_input": "B/P/T only",
+            "execution_order": ["direct_physics","physical_ev","frozen_core","final_xgboost","final_ev","volume_guard"],
             "physics_noise_calibration": dict(physics_noise_calibration or {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]}),
             "skip_guardrail": {"preferred_max_increase": PREFERRED_SKIP_RATE_INCREASE, "hard_max_increase": MAX_SKIP_RATE_INCREASE},
             "feature_snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
@@ -2004,7 +1932,8 @@ def train_command(args: argparse.Namespace) -> int:
     final_model.bbb_decision_policy_ = decision_policy
     final_model.bbb_physics_noise_calibration_ = physics_noise_calibration
     final_model.bbb_shoe_error_correction_version_ = SHOE_ERROR_CORRECTION_VERSION
-    final_model.bbb_particle_filter_version_ = PARTICLE_FILTER_VERSION
+    final_model.bbb_particle_filter_version_ = 0
+    final_model.bbb_physics_direct_version_ = PHYSICS_DIRECT_VERSION
     if args.joblib_output:
         joblib.dump(final_model, args.joblib_output)
     export_browser_bundle(
