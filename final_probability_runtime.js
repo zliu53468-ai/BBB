@@ -5,7 +5,7 @@ const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:nul
 const PARTICLE500=(typeof window!=="undefined")?window.__BGS_PARTICLE500__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_V14_4_AGGRESSIVE_LOW_SKIP";
+const VERSION="PHYSICS_57D_V14_5_BALANCED_LOW_SKIP";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -30,12 +30,14 @@ const ESTIMATED_TOTAL_HANDS_MIN=50,ESTIMATED_TOTAL_HANDS_MAX=70,ESTIMATED_PLAYAB
 const DEFAULT_BOUNDS=[.40,.60],EARLY_BOUNDS=[.45,.55],LATE_CLEAN_BOUNDS=[.35,.65],PHYSICS_NOISE_LOW_THRESHOLD=.78;
 const SHOE_ERROR_CORRECTION_VERSION=0,SHOE_ERROR_CORRECTION_MEMORY=10;
 const PHYSICS_DIRECT_VERSION=1;
-const LOW_SKIP_CONFIDENCE_SCALE=.70;
-const LOW_SKIP_EV_RELIEF=.008;
-const LOW_SKIP_FINAL_BAND_RELIEF=.008;
-const LOW_SKIP_CONSISTENCY_BAND_GAIN=.001;
-const LOW_SKIP_UNCERTAINTY_BAND_GAIN=.001;
-const LOW_SKIP_PRECISION_SCALE=.30;
+const LOW_SKIP_CONFIDENCE_SCALE=.78;
+const LOW_SKIP_EV_RELIEF=.005;
+const LOW_SKIP_FINAL_BAND_RELIEF=.005;
+const LOW_SKIP_CONSISTENCY_BAND_GAIN=.002;
+const LOW_SKIP_UNCERTAINTY_BAND_GAIN=.0015;
+const LOW_SKIP_PRECISION_SCALE=.45;
+const BANKER_EV_FLOOR=-0.0015; // Candidate-only: permit a tiny banker EV floor.
+const PLAYER_EV_FLOOR=0.0;
 const SNAPSHOT_SCHEMA_VERSION=7;
 const TRAINING_KEY="bgs_xgb_final_training_v5",PENDING_KEY="bgs_xgb_final_pending_v5";
 const SHOE_KEY="bgs_xgb_final_shoe_id_v5",CUT_KEY="bgs_xgb_estimated_total_hands_v1";
@@ -367,7 +369,7 @@ function calibratedPhysicsDirectionalPB(rawPB,roundIndex,uncertainty,consistency
   const p=clip(rawPB),u=clip(uncertainty),c=clip(consistency);
   if(roundIndex>40)return p;
   const stage=interpAnchors(roundIndex,[[1,.72],[5,.76],[10,.81],[15,.85],[20,.89],[25,.92],[30,.94],[35,.96],[40,1]]);
-  const reliability=clip(stage*(1-.03*u)*(.98+.02*c),.85,1);
+  const reliability=clip(stage*(1-.05*u)*(.95+.05*c),.72,1);
   return clip(.5+(p-.5)*reliability);
 }
 function physicsPrecisionPenalty(roundIndex,uncertainty,consistency){
@@ -395,8 +397,13 @@ function directPhysicsPrimary(physics,roundIndex){
       LOW_SKIP_CONSISTENCY_BAND_GAIN*(1-consistency)+
       LOW_SKIP_UNCERTAINTY_BAND_GAIN*Math.max(0,uncertainty-.50)
   );
-  const candidate=distance>=physicsConfidenceBand&&evBanker>physicsActivationEv&&evBanker>evPlayer?"B":
-    distance>=physicsConfidenceBand&&evPlayer>physicsActivationEv&&evPlayer>evBanker?"P":"Skip";
+  let candidate="Skip";
+  if(distance>=physicsConfidenceBand){
+    const bankerOk=evBanker>=evPlayer&&evBanker>physicsActivationEv+BANKER_EV_FLOOR;
+    const playerOk=evPlayer>evBanker&&evPlayer>physicsActivationEv+PLAYER_EV_FLOOR;
+    if(bankerOk)candidate="B";
+    else if(playerOk)candidate="P";
+  }
   return {pB,pP,pT,rawDirectionalPB,directionalPB,progressWeight,noise,policy,distance,uncertainty,consistency,precisionPenalty,
     physicsActivationEv,physicsConfidenceBand,evBanker,evPlayer,modelEvBanker,modelEvPlayer,candidate};
 }
