@@ -535,7 +535,7 @@ function settlePending(actualOutcome){
   const actual=String(actualOutcome||"").toUpperCase();
   if(actual!=="B"&&actual!=="P"&&actual!=="T")return;
   let p=null;try{p=JSON.parse(localStorage.getItem(PENDING_KEY)||"null");}catch(_){}if(!p)return;
-  const row={...p,settled_at:Date.now(),actual_outcome:actual,actual_b:actual==="B"?1:actual==="P"?0:null,is_directional_label:actual!=="T",shoe_error_correction_audit:settledErrorCorrectionAudit(p.pre_hand_snapshot,actual)},rows=readRows();
+  const row={...p,settled_at:Date.now(),actual_outcome:actual,actual_b:actual==="B"?1:actual==="P"?0:null,is_directional_label:actual!=="T",shoe_error_correction_audit:null},rows=readRows();
   if(!rows.length||rows.at(-1)?.shoe_id!==row.shoe_id||rows.at(-1)?.history_fingerprint!==row.history_fingerprint)rows.push(row);
   writeRows(rows);try{localStorage.removeItem(PENDING_KEY);}catch(_){}
 }
