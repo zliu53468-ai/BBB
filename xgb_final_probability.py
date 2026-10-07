@@ -1864,14 +1864,7 @@ def train_command(args: argparse.Namespace) -> int:
     deployment_min_skip_increase=max(0.0,float(decision_policy.get("min_skip_increase",0.0))) if decision_policy_enabled else 0.0
     deployment_skip_clear_passed=bool(deployment_skip_delta+1e-12>=deployment_min_skip_increase)
     deployment_absolute_correct_passed=bool(metrics["absolute_correct_bets"]+1e-12>=.95*legacy_decision["absolute_correct_bets"])
-    standard_retraining_success=bool(deployment_quality_passed and deployment_skip_passed and deployment_skip_clear_passed and deployment_absolute_correct_passed and deployment_smoothing_passed and deployment_policy_passed and deployment_upgrade_passed)
-    # One-time owner-authorized V13 promotion: the production runtime has moved
-    # from XGB-as-primary to Physics-primary + no-flip auxiliary XGB.  Keep the
-    # standard gate audited, but permit this exact V13 CI-smoke bundle to be
-    # published only when its numerical sanity check passes. Browser production
-    # smoke still runs after this and must pass before the workflow can commit.
-    manual_v13_promotion=bool(args.ci_smoke and PHYSICS_PRIMARY_VERSION==13 and metrics["bounded_brier"]<=0.26)
-    retraining_success=bool(standard_retraining_success or manual_v13_promotion)
+    retraining_success=bool(deployment_quality_passed and deployment_skip_passed and deployment_skip_clear_passed and deployment_absolute_correct_passed and deployment_smoothing_passed and deployment_policy_passed and deployment_upgrade_passed)
     metrics.update({
         "validation_strategy": "chronological_shoe_train_tune_calibrate_ev_tune_strict_holdout",
         "training_shoes": int(len({str(record["shoe_id"]) for record, selected in zip(training_records, train) if selected})),
@@ -1905,8 +1898,6 @@ def train_command(args: argparse.Namespace) -> int:
         "primary_ev_per_bet_delta_vs_legacy": ev_delta,
         "absolute_correct_bets_delta_vs_legacy": correct_delta,
         "retraining_success": retraining_success,
-        "standard_retraining_success": standard_retraining_success,
-        "manual_v13_promotion": manual_v13_promotion,
         "physics_noise_calibration": physics_noise_calibration,
         "ci_smoke_override": bool(args.ci_smoke),
         "deployment_smoothing_constraint_passed": deployment_smoothing_passed,
