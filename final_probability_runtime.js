@@ -5,7 +5,7 @@ const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:nul
 const PARTICLE500=(typeof window!=="undefined")?window.__BGS_PARTICLE500__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_V14_7_BIAS_ACTION_RELIEF";
+const VERSION="PHYSICS_57D_V14_6_EARLY_ACTION_BOOST";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -299,19 +299,17 @@ function decisionPolicy(roundIndex,noiseScore){
   const base=roundIndex<=40?pick("early",.020):roundIndex>50?pick("late",.005):pick("middle",.010);
   const config=final56Bundle?.decision_policy||{};
   const profile=String(config.profile||final56Bundle?.decision_policy_profile||(config.enabled===true?"custom":"hard_ev"));
-  const stage=roundIndex<=40?"early":roundIndex<=50?"middle":"late";
-  if(config.enabled!==true)return {enabled:false,profile,stage,minEv:base,activationEv:base,softBand:0,minConfidence:0,confidenceBand:0,strongMargin:0,bandMinimum:0,biasScale:1,maxBiasBoost:0,volumeGuard:{}};
+  if(config.enabled!==true)return {enabled:false,profile,minEv:base,activationEv:base,softBand:0,minConfidence:0,confidenceBand:0,strongMargin:0,bandMinimum:0,volumeGuard:{}};
   const value=(key,fallback)=>Number.isFinite(+config[key])?+config[key]:fallback;
   const noiseThreshold=value("noise_threshold",.78),noise=clip(+noiseScore||0),lowNoise=noise<=noiseThreshold;
-  const middle=stage==="middle",late=stage==="late";
-  const inheritedEvRelief=lowNoise?(middle?value("middle_relief",.001):late?value("late_relief",.001):0):0;
-  const stageBandRelief=Math.max(0,value(stage+"_band_relief",0)),stageEvRelief=Math.max(0,value(stage+"_ev_relief",0));
-  const lowNoiseExtra=lowNoise?Math.max(0,value("low_noise_extra_relief",0)):0;
+  const middle=roundIndex>40&&roundIndex<=50,late=roundIndex>50;
+  const relief=lowNoise?(middle?value("middle_relief",.001):late?value("late_relief",.001):0):0;
   const maxPenalty=Math.max(0,value("max_noise_ev_penalty",.001));
   const penalty=Math.min(maxPenalty,Math.max(0,noise-noiseThreshold)*(maxPenalty/Math.max(1e-9,1-noiseThreshold)));
-  const minEv=Math.max(0,base-inheritedEvRelief-stageEvRelief-lowNoiseExtra+penalty);
+  const minEv=Math.max(0,base-relief+penalty);
   const softBand=lowNoise?(middle?value("middle_soft_band",.001):late?value("late_soft_band",.0015):0):0;
   const bandConfig=config.confidence_band&&typeof config.confidence_band==="object"?config.confidence_band:{};
+  const stage=roundIndex<=40?"early":roundIndex<=50?"middle":"late";
   const bandBase=Math.max(0,Number.isFinite(+bandConfig[stage])?+bandConfig[stage]:0);
   const bandReference=clip(Number.isFinite(+bandConfig.noise_reference)?+bandConfig.noise_reference:.50);
   const bandGain=Math.max(0,Number.isFinite(+bandConfig.noise_gain)?+bandConfig.noise_gain:0);
@@ -319,22 +317,11 @@ function decisionPolicy(roundIndex,noiseScore){
   const cleanLateRelief=cleanLate?Math.max(0,Number.isFinite(+bandConfig.clean_late_relief)?+bandConfig.clean_late_relief:0):0;
   const bandMinimum=Math.max(0,Number.isFinite(+bandConfig.minimum)?+bandConfig.minimum:0);
   const bandMaximum=Math.max(bandMinimum,Number.isFinite(+bandConfig.maximum)?+bandConfig.maximum:.5);
-  const confidenceBand=clip(bandBase+bandGain*Math.max(0,noise-bandReference)-cleanLateRelief-stageBandRelief-lowNoiseExtra,bandMinimum,bandMaximum);
+  const confidenceBand=clip(bandBase+bandGain*Math.max(0,noise-bandReference)-cleanLateRelief,bandMinimum,bandMaximum);
   const strong=bandConfig.strong_margin&&typeof bandConfig.strong_margin==="object"?bandConfig.strong_margin:{};
   const strongMargin=Math.max(0,Number.isFinite(+strong[stage])?+strong[stage]:0);
-  const biasScale=clip(value("bias_scale",1.15),1,1.18),maxBiasBoost=clip(value("max_bias_boost",.08),0,.08);
-  return {enabled:true,profile,stage,minEv,activationEv:Math.max(0,minEv-softBand),softBand,minConfidence:Math.max(0,value("min_confidence",.0005)),confidenceBand,strongMargin,bandMinimum,biasScale,maxBiasBoost,stageBandRelief,stageEvRelief,lowNoiseExtra,volumeGuard:config.volume_guard||{}};
+  return {enabled:true,profile,minEv,activationEv:Math.max(0,minEv-softBand),softBand,minConfidence:Math.max(0,value("min_confidence",.0005)),confidenceBand,strongMargin,bandMinimum,volumeGuard:config.volume_guard||{}};
 }
-function amplifyDecisionBias(probabilityB,policy){
-  const input=clip(probabilityB),centered=input-.5;
-  const scale=clip(Number.isFinite(+policy?.biasScale)?+policy.biasScale:1,1,1.18);
-  const maxBiasBoost=clip(Number.isFinite(+policy?.maxBiasBoost)?+policy.maxBiasBoost:0,0,.08);
-  const magnitude=Math.abs(centered);
-  const boosted=.5+Math.sign(centered)*Math.min(magnitude*scale,magnitude+maxBiasBoost);
-  const value=clip(boosted,.01,.99);
-  return {input,value,scale,maxBiasBoost,delta:value-input,applied:Math.abs(value-input)>1e-12};
-}
-
 function softConfidence(edge,policy){
   if(edge<=policy.activationEv)return 0;
   const premium=Math.max(0,edge-policy.minEv);
@@ -447,7 +434,7 @@ function applyFinalPrediction(seq,corePrediction=null){
   let particleEstimate=null,particleDiagnostics=null;
   let resolvedCore=null,original7=null,corePB=.5,extended=null,xgbAuxPB=.5,primary=null,auxFilter=null;
   let rawPB=.5,clippedPB=.5,smoothedPB=.5,filteredPB=.5,finalPB=.5,bounds=null;
-  let smoothingAlpha=1,smoothingStrength=0,smoothingProfile="off",evDecision=null,decisionBias=null,mode="physics_primary";
+  let smoothingAlpha=1,smoothingStrength=0,smoothingProfile="off",evDecision=null,mode="physics_primary";
   const executionOrder=[];
 
   try{
@@ -531,9 +518,7 @@ function applyFinalPrediction(seq,corePrediction=null){
 
     const shrink=auxFilter?.decision==="downgrade"?auxFilter.shrink:(auxFilter?.decision==="skip"?0:1);
     filteredPB=auxFilter?.decision==="skip"?.5:preserveCandidateDirection(primary.candidate,.5+(smoothedPB-.5)*shrink);
-    // Post-clip, no-flip preference amplification. Candidate direction remains Physics-owned.
-    decisionBias=amplifyDecisionBias(filteredPB,primary.policy);
-    finalPB=auxFilter?.decision==="skip"?.5:preserveCandidateDirection(primary.candidate,decisionBias.value);
+    finalPB=filteredPB;
 
     executionOrder.push("final_ev_guard");
     const pPlayer=1-finalPB,evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
@@ -589,7 +574,7 @@ function applyFinalPrediction(seq,corePrediction=null){
       physics_consistency:primary?.consistency??null,physics_precision_penalty:primary?.precisionPenalty??null,physics_activation_ev:primary?.physicsActivationEv??null,physics_confidence_band:primary?.physicsConfidenceBand??null,
       low_skip_policy:{confidence_scale:LOW_SKIP_CONFIDENCE_SCALE,ev_relief:LOW_SKIP_EV_RELIEF,final_band_relief:LOW_SKIP_FINAL_BAND_RELIEF},
       rawPB,clippedPB,smoothedPB,filteredPB,finalPB,bounds,smoothingAlpha,smoothingStrength,smoothingProfile,
-      xgb_role:"auxiliary_filter_no_flip",xgb_aux_p_b:xgbAuxPB,core_aux_p_b:corePB,aux_filter:auxFilter,decision_bias:decisionBias,
+      xgb_role:"auxiliary_filter_no_flip",xgb_aux_p_b:xgbAuxPB,core_aux_p_b:corePB,aux_filter:auxFilter,
       particle_role:"bounded_posterior_uncertainty_correction_no_flip",particle_count:particleDiagnostics?.particle_count??0,
       particle_policy:particleDiagnostics?.policy??null,particle_persistent_state:false,
       physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,particle_uncertainty:particleDiagnostics?.posterior_uncertainty??physicsUncertainty,
