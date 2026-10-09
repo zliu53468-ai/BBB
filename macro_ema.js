@@ -74,7 +74,11 @@
     const signal=beta("six_card")*features.Six_Card_Spread+beta("low_score")*features.Low_Score_Spread+beta("point_diff")*features.Point_Diff_Spread/9;
     const start=clamp(number("progress_start",.30),0,.99),power=clamp(number("progress_power",2),1,4);
     const weight=clamp((progress-start)/(1-start))**power,cap=clamp(number("max_delta",.03),0,.05);
-    const gate=noiseGate(noise),delta=cap*Math.tanh(signal)*weight*gate;
+    // v2 coefficients are literal probability-point sensitivities per normalized spread.
+    // Legacy bundles retain their prior cap*tanh(signal) interpretation.
+    const gate=noiseGate(noise),probabilityUnits=config.coefficient_units==="probability_delta";
+    const boundedSignal=clamp(signal,-cap,cap);
+    const delta=(probabilityUnits?boundedSignal:cap*Math.tanh(signal))*weight*gate;
     // B/P EV preference boundary: .95*p-(1-p) = (1-p)-p.
     const boundary=2/3.95,raw=clamp(p+delta);
     const value=p>=boundary?Math.max(boundary,raw):Math.min(boundary,raw);
