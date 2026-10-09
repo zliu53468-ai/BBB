@@ -140,3 +140,8 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
   .brand-hero{height:190px;border-radius:17px}.hero-art{object-position:center}.hero-logo{width:min(320px,82%);max-height:92px}.hero-content{padding-bottom:11px}.hero-content p{font-size:8px;letter-spacing:.16em}
   .status-area{flex-direction:column;align-items:flex-end;gap:5px}.card{padding:14px;border-radius:17px}.prediction-layout{grid-template-columns:1fr}.direction-orb{width:144px;height:144px}.direction-orb span{font-size:48px}.metrics{grid-template-columns:1fr 1fr}.result-btn{min-height:82px}.result-btn strong{font-size:27px}.action-buttons{grid-template-columns:1fr}.clear-note{text-align:center}
 }
+
+/* Isolated zero-Skip experiment control. Does not alter existing analysis layout. */
+.zero-skip-toggle{display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;border:1px solid rgba(169,134,255,.30);background:rgba(115,75,190,.11);border-radius:10px;color:#ede7ff;font-size:13px;font-weight:650;cursor:pointer}
+.zero-skip-toggle input{width:18px;height:18px;accent-color:#b58aff;flex:none}
+.zero-skip-note{font-size:12px;line-height:1.6;color:var(--muted);margin:7px 2px 2px}
