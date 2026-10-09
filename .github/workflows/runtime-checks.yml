@@ -26,3 +26,4 @@ jobs:
       - run: node test_final_probability_runtime.js
       - run: BGS_USE_GENERATED_MODEL=1 node test_final_probability_runtime.js
       - run: node test_macro_runtime.js
+      - run: node --check calibrate_macro_direction.js && node --check evaluate_macro_replay.js && node test_macro_direction_calibration.js
