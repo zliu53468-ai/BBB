@@ -4,6 +4,7 @@
 const fs=require("fs");
 global.window=global;
 const store=new Map();
+store.set("bgs_zero_skip_experiment_v1","0"); // Preserve legacy guard assertions in the normal mode.
 global.localStorage={getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)};
 global.document={getElementById:()=>null,createElement:()=>({click(){},remove(){}}),body:{appendChild(){}}};
 global.URL={createObjectURL:()=>"",revokeObjectURL(){}};
