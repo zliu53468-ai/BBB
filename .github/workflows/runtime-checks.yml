@@ -28,3 +28,8 @@ jobs:
       - run: node test_macro_runtime.js
       - run: node --check calibrate_macro_direction.js && node --check evaluate_macro_replay.js && node test_macro_direction_calibration.js
       - run: node calibrate_macro_direction.js --synthetic 3000 /tmp/macro_direction_3000.json > /tmp/macro_direction_output.txt && node -e 'const r=require("/tmp/macro_direction_3000.json"); console.log(JSON.stringify({shoes:r.shoes,hands:r.completed_hands,coefficients:r.candidate_coefficients,features:Object.fromEntries(Object.entries(r.analysis).map(([k,v])=>[k,{train:v.train.pearson_r,calibration:v.calibration.pearson_r,holdout:v.holdout.pearson_r}]))}))'
+      - name: Shadow coefficient replay safety
+        run: |
+          node -e 'const c=require("./calibrate_macro_direction.js"),fs=require("fs");fs.writeFileSync("/tmp/macro_shadow_hands.json",JSON.stringify({rows:c.synthetic(5).filter(x=>["sim-000000","sim-000001"].includes(x.shoe_id))}))'
+          node evaluate_macro_replay.js /tmp/macro_shadow_hands.json /tmp/macro_shadow_report.json --candidate-coefficients '{"six_card":-0.01,"low_score":-0.01,"point_diff":0.01}' > /tmp/macro_shadow_stdout.txt
+          node -e 'const r=require("/tmp/macro_shadow_report.json");if(r.current.no_flip_violations!==0||r.candidate.no_flip_violations!==0||r.candidate.max_macro_delta>.03000000001)process.exit(1);console.log(JSON.stringify({shadow_ok:true,shoes:r.shoes,eligible:r.current.metrics.all.eligible_hands,baseline:r.current.metrics.all,candidate:r.candidate.metrics.all,max_macro_delta:r.candidate.max_macro_delta,no_flip_violations:r.candidate.no_flip_violations}))'
