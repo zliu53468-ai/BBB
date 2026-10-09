@@ -15,6 +15,19 @@ assert.equal(M.adjustment(.6,null,1,.2,config).delta,0);
 for(let i=0;i<4;i++)M.update(state,{outcome:"B"});
 assert.equal(M.adjustment(.6,M.snapshot(state),1,.2,config).delta,0,"stale observations");
 
+// Under the v2 coefficient-unit policy, .01 denotes a .01 probability shift
+// for a normalized spread of 1 BEFORE the unchanged progress/noise gates.
+const signed={...config,max_delta:.03,coefficient_units:"probability_delta",
+  coefficients:{six_card:.01,low_score:0,point_diff:0}};
+const plus=M.adjustment(.60,features,1,.2,signed);
+const minus=M.adjustment(.60,features,1,.2,{...signed,coefficients:{six_card:-.01,low_score:0,point_diff:0}});
+assert(Math.abs(plus.delta-.01*features.Six_Card_Spread)<1e-12);
+assert(Math.abs(minus.delta+.01*features.Six_Card_Spread)<1e-12);
+assert(Math.abs(plus.delta)<=.03&&Math.abs(minus.delta)<=.03);
+assert.equal(M.adjustment(.60,features,1,.2,{...signed,enabled:false}).delta,0);
+assert.equal(M.adjustment(.60,features,1,.8,signed).delta,0);
+assert.equal(M.adjustment(.60,features,.2,.2,signed).delta,0);
+
 function context(store=new Map(),withoutParticle=false,finalOverride=null){
   const sandbox={console,setTimeout,clearTimeout,localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},
     document:{getElementById:()=>null},fetch:async url=>({ok:true,json:async()=>finalOverride&&url==="final_probability_model.json"?finalOverride:JSON.parse(fs.readFileSync(url,"utf8"))})};
