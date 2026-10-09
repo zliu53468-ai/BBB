@@ -27,3 +27,4 @@ jobs:
       - run: BGS_USE_GENERATED_MODEL=1 node test_final_probability_runtime.js
       - run: node test_macro_runtime.js
       - run: node --check calibrate_macro_direction.js && node --check evaluate_macro_replay.js && node test_macro_direction_calibration.js
+      - run: node calibrate_macro_direction.js --synthetic 3000 /tmp/macro_direction_3000.json > /tmp/macro_direction_output.txt && node -e 'const r=require("/tmp/macro_direction_3000.json"); console.log(JSON.stringify({shoes:r.shoes,hands:r.completed_hands,coefficients:r.candidate_coefficients,features:Object.fromEntries(Object.entries(r.analysis).map(([k,v])=>[k,{train:v.train.pearson_r,calibration:v.calibration.pearson_r,holdout:v.holdout.pearson_r}]))}))'
