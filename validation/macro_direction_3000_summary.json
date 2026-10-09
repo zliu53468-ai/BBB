@@ -1,0 +1,33 @@
+{
+  "schema": "macro_direction_synthetic_3000_summary_v1",
+  "generated_by": "node calibrate_macro_direction.js --synthetic 3000",
+  "head_sha": "2def49276c64d425a6998fcba99ac6c8cc3bb393",
+  "workflow_url": "https://github.com/zliu53468-ai/BBB/actions/runs/37878117422",
+  "seed": 20261009,
+  "split": "chronological shoe 60% train / 20% calibration / 20% holdout",
+  "shoes": 3000,
+  "hands": 209640,
+  "coefficients": {
+    "six_card": 0,
+    "low_score": 0,
+    "point_diff": 0
+  },
+  "features": {
+    "six_card": {
+      "train": 0.0010142709304161726,
+      "calibration": -0.00802934407678755,
+      "holdout": 0.0028378750904728693
+    },
+    "low_score": {
+      "train": -0.006151218454707657,
+      "calibration": 0.001129301520756338,
+      "holdout": 0.0019101176451317794
+    },
+    "point_diff": {
+      "train": 0.002471357022373552,
+      "calibration": 0.005029631269221258,
+      "holdout": 0.010503777556743876
+    }
+  },
+  "warning": "Synthetic observational correlations, not evidence of real-world advantage or positive EV. All production coefficients remain zero."
+}
