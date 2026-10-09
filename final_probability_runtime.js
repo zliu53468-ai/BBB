@@ -603,7 +603,7 @@ function applyFinalPrediction(seq,corePrediction=null){
       volumeGuardActive:guard.active,entryTier,stakeMultiplier:experimentalForced?0:entryTier==="weak"?.5:entryTier==="strong"?1:0,
       policyEnabled:policy.enabled,policyProfile:policy.profile,direction,standardDirection,experimentalForced,zeroSkipExperiment:primary.zeroSkipExperiment,
       finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",
-      confidence:direction==="Skip"?0:softConfidence(candidateEdge,{...policy,activationEv:effectiveActivationEv}),
+      confidence:experimentalForced||direction==="Skip"?0:softConfidence(candidateEdge,{...policy,activationEv:effectiveActivationEv}),
       basePass,guardedPass,candidate
     };
     mode="physics_primary";
