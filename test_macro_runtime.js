@@ -40,7 +40,7 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
   return {sandbox,api:sandbox.__BGS_FINAL56__,store};
 }
 (async()=>{
-  const {api,store}=context();await api.loadModels();
+  const {api,store}=context();store.set("bgs_zero_skip_experiment_v1","0");await api.loadModels();
   const seq=[];
   for(let i=0;i<16;i++){seq.push(i%2?"P":"B");api.recordCompletedHand(seq,{card_count:i%3?6:4,player_score:i%2?8:1,banker_score:i%2?0:3});}
   const original=JSON.stringify(api.getMacroFeatures(seq));
