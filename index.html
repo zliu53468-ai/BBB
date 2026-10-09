@@ -73,6 +73,8 @@
         <button class="action-btn" id="btnBack" type="button">返回上一局</button>
         <button class="action-btn danger" id="btnEnd" type="button">結束分析</button>
       </div>
+      <label class="zero-skip-toggle"><input type="checkbox" id="zeroSkipExperimentToggle" checked> 零觀望實驗模式（有模型時每局給莊／閒方向）</label>
+      <p class="zero-skip-note">僅供統計／回放。強制方向可能沒有正期望值；模型失效仍會觀望。取消勾選可恢復原有觀望規則。</p>
       <div class="clear-note">結束分析會清空本靴全部紀錄</div>
     </section>
 
@@ -89,7 +91,7 @@
   <script src="app256continuation.js"></script>
   <script src="particle_filter_runtime.js?v=1-fixed500-stateless"></script>
   <script src="macro_ema.js?v=1"></script>
-  <script src="final_probability_runtime.js?v=14.8-macro-ema-guard"></script>
+  <script src="final_probability_runtime.js?v=14.9-zero-skip-experiment"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
