@@ -1,3 +1,5 @@
+> 2026-10-09：Physics-primary 巨觀 EMA 與動態門檻更新，完整程式碼、參數、驗證結果與回滾方式見 [MACRO_EMA_UPGRADE.md](MACRO_EMA_UPGRADE.md)。EMA 方向係數尚未校準，預設零偏移；下方保留歷史架構說明。
+
 # BGS 256D（128D＋128D）Frozen Direct 測試面板
 
 目前 `main` 是以使用者指定的基準 commit `c3420c274bd7acf1096e44178de482297ae542e4` 為底，將原本 128D（64D 牌靴 + 64D 牌路）對稱擴充成：

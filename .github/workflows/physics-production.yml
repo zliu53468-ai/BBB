@@ -12,12 +12,9 @@ on:
       - "particle_filter_runtime.js"
       - "xgb_final_probability.py"
       - "build_synthetic_residual_rows.js"
-      - "final_probability_runtime.js"
       - "test_physics_feature_extractor.py"
       - "test_final_probability.py"
-      - "test_final_probability_runtime.js"
       - "requirements-xgb.txt"
-      - ".github/workflows/physics-production.yml"
   pull_request:
     branches:
       - main
@@ -27,12 +24,9 @@ on:
       - "particle_filter_runtime.js"
       - "xgb_final_probability.py"
       - "build_synthetic_residual_rows.js"
-      - "final_probability_runtime.js"
       - "test_physics_feature_extractor.py"
       - "test_final_probability.py"
-      - "test_final_probability_runtime.js"
       - "requirements-xgb.txt"
-      - ".github/workflows/physics-production.yml"
   workflow_dispatch:
 
 permissions:

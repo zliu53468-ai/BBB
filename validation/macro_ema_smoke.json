@@ -1,0 +1,137 @@
+{
+  "input": "macro_smoke_hands.json",
+  "data_kind": "synthetic_mechanics_only_seed_20261009",
+  "shoes": 8,
+  "completed_hands": 560,
+  "definitions": {
+    "hit_rate_on_bets": "wins / non-tie bets; ties excluded",
+    "realized_ev_per_bet": "fixed-unit net profit / all bets; banker +0.95, player +1, loss -1, tie 0",
+    "skip_rate": "skips / eligible hands; first hand per shoe excluded",
+    "stages": "early 1-40, middle 41-50, late 51+",
+    "timing": "predict first, then settle/update observations",
+    "limitation": "Small/synthetic runs are mechanics checks, not evidence of profitable prediction."
+  },
+  "current": {
+    "version": "PHYSICS_57D_V14_8_MACRO_EMA_GUARD",
+    "metrics": {
+      "all": {
+        "eligible_hands": 552,
+        "bets": 144,
+        "non_tie_bets": 131,
+        "tie_pushes": 13,
+        "wins": 68,
+        "losses": 63,
+        "unit_profit": 3.4,
+        "skips": 408,
+        "hit_rate_on_bets": 0.5190839694656488,
+        "realized_ev_per_bet": 0.023611111111111076,
+        "skip_rate": 0.7391304347826086
+      },
+      "early": {
+        "eligible_hands": 312,
+        "bets": 68,
+        "non_tie_bets": 63,
+        "tie_pushes": 5,
+        "wins": 33,
+        "losses": 30,
+        "unit_profit": 2.35,
+        "skips": 244,
+        "hit_rate_on_bets": 0.5238095238095238,
+        "realized_ev_per_bet": 0.03455882352941173,
+        "skip_rate": 0.782051282051282
+      },
+      "middle": {
+        "eligible_hands": 80,
+        "bets": 25,
+        "non_tie_bets": 21,
+        "tie_pushes": 4,
+        "wins": 12,
+        "losses": 9,
+        "unit_profit": 2.5,
+        "skips": 55,
+        "hit_rate_on_bets": 0.5714285714285714,
+        "realized_ev_per_bet": 0.1,
+        "skip_rate": 0.6875
+      },
+      "late": {
+        "eligible_hands": 160,
+        "bets": 51,
+        "non_tie_bets": 47,
+        "tie_pushes": 4,
+        "wins": 23,
+        "losses": 24,
+        "unit_profit": -1.45,
+        "skips": 109,
+        "hit_rate_on_bets": 0.48936170212765956,
+        "realized_ev_per_bet": -0.028431372549019597,
+        "skip_rate": 0.68125
+      }
+    },
+    "no_flip_violations": 0,
+    "max_macro_delta": 0,
+    "zero_coefficient_or_signal_predictions": 464
+  },
+  "baseline": {
+    "version": "PHYSICS_57D_V14_6_EARLY_ACTION_BOOST",
+    "metrics": {
+      "all": {
+        "eligible_hands": 552,
+        "bets": 136,
+        "non_tie_bets": 123,
+        "tie_pushes": 13,
+        "wins": 65,
+        "losses": 58,
+        "unit_profit": 5.4,
+        "skips": 416,
+        "hit_rate_on_bets": 0.5284552845528455,
+        "realized_ev_per_bet": 0.039705882352941146,
+        "skip_rate": 0.7536231884057971
+      },
+      "early": {
+        "eligible_hands": 312,
+        "bets": 67,
+        "non_tie_bets": 62,
+        "tie_pushes": 5,
+        "wins": 32,
+        "losses": 30,
+        "unit_profit": 1.35,
+        "skips": 245,
+        "hit_rate_on_bets": 0.5161290322580645,
+        "realized_ev_per_bet": 0.02014925373134328,
+        "skip_rate": 0.7852564102564102
+      },
+      "middle": {
+        "eligible_hands": 80,
+        "bets": 25,
+        "non_tie_bets": 21,
+        "tie_pushes": 4,
+        "wins": 12,
+        "losses": 9,
+        "unit_profit": 2.5,
+        "skips": 55,
+        "hit_rate_on_bets": 0.5714285714285714,
+        "realized_ev_per_bet": 0.1,
+        "skip_rate": 0.6875
+      },
+      "late": {
+        "eligible_hands": 160,
+        "bets": 44,
+        "non_tie_bets": 40,
+        "tie_pushes": 4,
+        "wins": 21,
+        "losses": 19,
+        "unit_profit": 1.55,
+        "skips": 116,
+        "hit_rate_on_bets": 0.525,
+        "realized_ev_per_bet": 0.03522727272727272,
+        "skip_rate": 0.725
+      }
+    },
+    "no_flip_violations": 0,
+    "max_macro_delta": 0,
+    "zero_coefficient_or_signal_predictions": 0
+  },
+  "elapsed_seconds": 69.642,
+  "baseline_commit": "6368b3e9cfea19e5120a2e6610606f1d6e213824",
+  "coefficient_status": "unfitted; all three coefficients zero"
+}

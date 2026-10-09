@@ -3,9 +3,10 @@
 
 const CORE=(typeof window!=="undefined")?window.__BGS256_CONTINUATION_TEST__:null;
 const PARTICLE500=(typeof window!=="undefined")?window.__BGS_PARTICLE500__:null;
+const MACRO=(typeof window!=="undefined")?window.__BGS_MACRO_EMA__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_V14_6_EARLY_ACTION_BOOST";
+const VERSION="PHYSICS_57D_V14_8_MACRO_EMA_GUARD";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -294,6 +295,23 @@ function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWe
   const value=clip(alpha*clippedPB+(1-alpha)*previous,bounds.low,bounds.high);
   return {value,alpha,strength:1-alpha,profile:config.profile||(legacy?"legacy":"custom"),applied:true};
 }
+function dynamicBand(roundIndex,noiseScore,bandConfig,config){
+  const stage=roundIndex<=40?"early":roundIndex<=50?"middle":"late";
+  const number=(obj,key,fallback)=>typeof obj?.[key]==="number"&&Number.isFinite(obj[key])?obj[key]:fallback;
+  const noise=typeof noiseScore==="number"&&Number.isFinite(noiseScore)?clip(noiseScore):1;
+  const progress=clip(roundIndex/getEstimatedTotalHands());
+  const low=clip(number(config,"low_noise",.60),0,.95),high=clip(number(config,"high_noise",.75),low+.001,1);
+  const gate=clip((high-noise)/(high-low));
+  const base=Math.max(0,number(bandConfig,stage,0));
+  const progressRelief=clip(number(config,"progress_relief",.4),0,.4)*progress*gate;
+  const noisePenalty=Math.max(0,noise-number(config,"noise_reference",.55))*Math.max(0,number(config,"noise_gain",.015));
+  const extra=progress>number(config,"extra_progress",.65)&&noise<low?Math.max(0,number(config,"extra_relief",.0005)):0;
+  const minimum=Math.max(0,number(config.minimum_by_stage,stage,number(bandConfig,"minimum",.003)));
+  const maximum=Math.max(minimum,number(bandConfig,"maximum",.02));
+  const finalRelief=Math.max(0,number(config.final_band_relief,stage,0))*gate;
+  return {stage,progress,noise,reliefScale:gate,bandMinimum:minimum,finalBandRelief:finalRelief,
+    confidenceBand:clip(base*(1-progressRelief)+noisePenalty-extra,minimum,maximum),progressRelief,noisePenalty,extra};
+}
 function decisionPolicy(roundIndex,noiseScore){
   const threshold=final56Bundle?.ev_thresholds||{},pick=(key,fallback)=>Number.isFinite(+threshold[key])?+threshold[key]:fallback;
   const base=roundIndex<=40?pick("early",.020):roundIndex>50?pick("late",.005):pick("middle",.010);
@@ -315,12 +333,21 @@ function decisionPolicy(roundIndex,noiseScore){
   const bandGain=Math.max(0,Number.isFinite(+bandConfig.noise_gain)?+bandConfig.noise_gain:0);
   const cleanLate=stage==="late"&&noise<=PHYSICS_NOISE_LOW_THRESHOLD;
   const cleanLateRelief=cleanLate?Math.max(0,Number.isFinite(+bandConfig.clean_late_relief)?+bandConfig.clean_late_relief:0):0;
-  const bandMinimum=Math.max(0,Number.isFinite(+bandConfig.minimum)?+bandConfig.minimum:0);
+  let bandMinimum=Math.max(0,Number.isFinite(+bandConfig.minimum)?+bandConfig.minimum:0);
   const bandMaximum=Math.max(bandMinimum,Number.isFinite(+bandConfig.maximum)?+bandConfig.maximum:.5);
-  const confidenceBand=clip(bandBase+bandGain*Math.max(0,noise-bandReference)-cleanLateRelief,bandMinimum,bandMaximum);
+  let confidenceBand=clip(bandBase+bandGain*Math.max(0,noise-bandReference)-cleanLateRelief,bandMinimum,bandMaximum);
+  const dynamic=config.dynamic_band?.enabled===true?dynamicBand(roundIndex,noiseScore,bandConfig,config.dynamic_band):null;
+  if(dynamic){confidenceBand=dynamic.confidenceBand;bandMinimum=dynamic.bandMinimum;}
   const strong=bandConfig.strong_margin&&typeof bandConfig.strong_margin==="object"?bandConfig.strong_margin:{};
   const strongMargin=Math.max(0,Number.isFinite(+strong[stage])?+strong[stage]:0);
-  return {enabled:true,profile,minEv,activationEv:Math.max(0,minEv-softBand),softBand,minConfidence:Math.max(0,value("min_confidence",.0005)),confidenceBand,strongMargin,bandMinimum,volumeGuard:config.volume_guard||{}};
+  // Every new relief route shares the same noise gate; unknown noise is high.
+  const reliefScale=dynamic?.reliefScale??1;
+  const safeMinEv=dynamic?Math.max(0,base-relief*reliefScale+Math.min(maxPenalty,Math.max(0,dynamic.noise-noiseThreshold)*maxPenalty/Math.max(1e-9,1-noiseThreshold))):minEv;
+  const safeSoftBand=softBand*reliefScale;
+  return {enabled:true,profile,stage,progress:dynamic?.progress??clip(roundIndex/getEstimatedTotalHands()),noise:dynamic?.noise??noise,
+    minEv:safeMinEv,activationEv:Math.max(0,safeMinEv-safeSoftBand),softBand:safeSoftBand,
+    minConfidence:Math.max(0,value("min_confidence",.0005)),confidenceBand,strongMargin,bandMinimum,
+    reliefScale,finalBandRelief:dynamic?.finalBandRelief??LOW_SKIP_FINAL_BAND_RELIEF,dynamicBand:dynamic,volumeGuard:config.volume_guard||{}};
 }
 function softConfidence(edge,policy){
   if(edge<=policy.activationEv)return 0;
@@ -329,9 +356,9 @@ function softConfidence(edge,policy){
 }
 function volumeGuardState(roundIndex,probabilityB,policy){
   const config=policy?.volumeGuard||{};
-  if(policy?.enabled!==true||config.enabled!==true)return {active:false,bandRelief:0,evRelief:0};
+  if(policy?.enabled!==true||config.enabled!==true||(policy.reliefScale??1)<=0)return {active:false,bandRelief:0,evRelief:0};
   const window=Math.max(1,Math.floor(+config.window||16)),minimum=Math.max(0,Math.floor(+config.min_history||8));
-  const shoeId=getShoeId(),rows=readRows().filter(row=>row?.shoe_id===shoeId&&+row.round_index<roundIndex&&Number.isFinite(+row.final_p_b)).slice(-window);
+  const shoeId=getShoeId(),rows=readRows().filter(row=>row?.shoe_id===shoeId&&+row.round_index<roundIndex&&typeof row.final_p_b==="number"&&Number.isFinite(row.final_p_b)).slice(-window);
   if(rows.length<minimum)return {active:false,bandRelief:0,evRelief:0};
   const p=clip(probabilityB),expectedProbability=value=>Math.max(clip(value),1-clip(value));
   let actions=0,expected=0,baseline=0;
@@ -339,14 +366,18 @@ function volumeGuardState(roundIndex,probabilityB,policy){
     const priorP=clip(+row.final_p_b),priorPlayer=1-priorP;
     const priorActivation=Math.max(0,Number.isFinite(+row.activation_ev)?+row.activation_ev:policy.activationEv);
     const baseAction=(priorP*.95-priorPlayer)>priorActivation||(priorPlayer-priorP)>priorActivation;
-    const action=String(row.predicted_direction||"").includes("莊 B")||String(row.predicted_direction||"").includes("閒 P");
+    const action=["B","P","莊 B","閒 P"].includes(String(row.predicted_direction||""));
     if(action){actions++;expected+=expectedProbability(priorP);}
     if(baseAction)baseline+=expectedProbability(priorP);
   }
   const stage=roundIndex<=40?"early":roundIndex<=50?"middle":"late",rates=config.target_action_rate&&typeof config.target_action_rate==="object"?config.target_action_rate:{};
-  const target=Math.max(0,Number.isFinite(+rates[stage])?+rates[stage]:0),floor=clip(Number.isFinite(+config.expected_correct_floor)?+config.expected_correct_floor:.95);
+  const target=clip(Number.isFinite(+rates[stage])?+rates[stage]:0),floor=clip(Number.isFinite(+config.expected_correct_floor)?+config.expected_correct_floor:.95);
   const active=actions/rows.length<target||(baseline>0&&expected+1e-12<floor*baseline);
-  return {active,bandRelief:active?Math.max(0,+config.band_relief||0):0,evRelief:active?Math.max(0,+config.ev_relief||0):0};
+  const scale=policy.reliefScale??1,fraction=policy.dynamicBand?clip(Number.isFinite(+config.max_relief_fraction)?+config.max_relief_fraction:.25):1;
+  const bandCap=policy.dynamicBand?policy.confidenceBand*fraction:Infinity,evCap=policy.dynamicBand?policy.activationEv*fraction:Infinity;
+  return {active,target,actionRate:actions/rows.length,observations:rows.length,
+    bandRelief:active?Math.min(bandCap,Math.max(0,+config.band_relief||0))*scale:0,
+    evRelief:active?Math.min(evCap,Math.max(0,+config.ev_relief||0))*scale:0};
 }
 
 function directPhysicsProgressWeight(roundIndex,physics){
@@ -378,19 +409,23 @@ function physicsPrecisionPenalty(roundIndex,uncertainty,consistency){
     .0045*Math.max(0,u-.35)/.65 + .0035*(1-c) + .0015*early*(1-c)
   );
 }
-function directPhysicsPrimary(physics,roundIndex){
+function directPhysicsPrimary(physics,roundIndex,macroFeatures=null){
   const pB=clip(+physics?.[23]||0),pP=clip(+physics?.[24]||0),pT=clip(+physics?.[25]||0);
   const directionalMass=Math.max(1e-9,pB+pP),rawDirectionalPB=clip(pB/directionalMass);
   const uncertainty=clip(+physics?.[42]||0),consistency=physicsConsistencyScore(physics);
-  const directionalPB=calibratedPhysicsDirectionalPB(rawDirectionalPB,roundIndex,uncertainty,consistency);
+  const calibratedPB=calibratedPhysicsDirectionalPB(rawDirectionalPB,roundIndex,uncertainty,consistency);
   const progressWeight=directPhysicsProgressWeight(roundIndex,physics),noise=physicsNoiseScore(physics,roundIndex,Math.cbrt(progressWeight));
-  const policy=decisionPolicy(roundIndex,noise),distance=Math.abs(directionalPB-.5);
+  const policy=decisionPolicy(roundIndex,noise);
   // Primary EV is computed only from the Direct Physics winner head.
-  const evBanker=pB*.95-pP,evPlayer=pP-pB;
+  const baseEvBanker=pB*.95-pP,baseEvPlayer=pP-pB;
+  const macro=MACRO?MACRO.adjustment(calibratedPB,macroFeatures,clip(roundIndex/getEstimatedTotalHands()),noise,final56Bundle?.decision_policy?.macro_ema||{}):{value:calibratedPB,delta:0,reason:"module_unavailable"};
+  const directionalPB=macro.value,distance=Math.abs(directionalPB-.5);
+  // Soft correction of Physics EV only; tie mass and Direct MLP 48D stay fixed.
+  const evBanker=baseEvBanker+1.95*directionalMass*macro.delta,evPlayer=baseEvPlayer-2*directionalMass*macro.delta;
   const modelEvBanker=Number.isFinite(+physics?.[39])?+physics[39]:evBanker,modelEvPlayer=Number.isFinite(+physics?.[40])?+physics[40]:evPlayer;
   const precisionPenalty=physicsPrecisionPenalty(roundIndex,uncertainty,consistency);
   // V14.3 Low-Skip: retain the safety terms but reduce their dominance.
-  const physicsActivationEv=Math.max(0,policy.activationEv-LOW_SKIP_EV_RELIEF)+precisionPenalty;
+  const physicsActivationEv=Math.max(0,policy.activationEv-LOW_SKIP_EV_RELIEF*(policy.reliefScale??1))+precisionPenalty;
   const physicsConfidenceBand=Math.max(
     policy.bandMinimum,
     policy.confidenceBand*LOW_SKIP_CONFIDENCE_SCALE+
@@ -405,7 +440,7 @@ function directPhysicsPrimary(physics,roundIndex){
     else if(playerOk)candidate="P";
   }
   return {pB,pP,pT,rawDirectionalPB,directionalPB,progressWeight,noise,policy,distance,uncertainty,consistency,precisionPenalty,
-    physicsActivationEv,physicsConfidenceBand,evBanker,evPlayer,modelEvBanker,modelEvPlayer,candidate};
+    physicsActivationEv,physicsConfidenceBand,evBanker,evPlayer,baseEvBanker,baseEvPlayer,modelEvBanker,modelEvPlayer,candidate,macro};
 }
 
 function auxiliaryCandidateFilter(candidate,corePB,xgbPB){
@@ -476,9 +511,11 @@ function applyFinalPrediction(seq,corePrediction=null){
     physics=physicsDirect||null;particleEstimate=null;particleDiagnostics=null;physicalEv=null;
   }
 
-  if(physics&&physicsBundleUsesPhysicalEv()){
+  if(physics&&physicsBundleUsesPhysicalEv()&&particleDiagnostics?.particle_count===500){
     const roundIndex=Math.max(1,Math.min(70,seq.length+1));
-    primary=directPhysicsPrimary(physics,roundIndex);
+    const macroFeatures=getMacroFeatures(seq);
+    primary=directPhysicsPrimary(physics,roundIndex,macroFeatures);
+    primary.macroFeatures=macroFeatures;
     executionOrder.push("physics_candidate");
     rawPB=primary.directionalPB;
     bounds=applyProbabilityBounds(rawPB,roundIndex,primary.noise,primary.progressWeight);
@@ -530,9 +567,7 @@ function applyFinalPrediction(seq,corePrediction=null){
 
     executionOrder.push("volume_guard");
     const guard=volumeGuardState(roundIndex,finalPB,policy);
-    // Keep #43's own relief values unchanged; V14.1 adds a small Final-EV-only
-    // confidence relief so near-threshold Physics candidates can act more often.
-    const effectiveBand=Math.max(policy.bandMinimum,baseBand-guard.bandRelief-LOW_SKIP_FINAL_BAND_RELIEF),effectiveActivationEv=Math.max(0,baseActivation-guard.evRelief);
+    const effectiveBand=Math.max(policy.bandMinimum,baseBand-guard.bandRelief-(policy.finalBandRelief??LOW_SKIP_FINAL_BAND_RELIEF)),effectiveActivationEv=Math.max(0,baseActivation-guard.evRelief);
     const guardedPass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=effectiveBand&&candidateEdge>effectiveActivationEv;
     const direction=basePass||guardedPass?candidate:"Skip";
     const entryTier=direction==="Skip"?"skip":distance>=effectiveBand+policy.strongMargin?"strong":"weak";
@@ -549,16 +584,16 @@ function applyFinalPrediction(seq,corePrediction=null){
     };
     mode="physics_primary";
   }else{
-    executionOrder.push("frozen_core_fallback");
+    executionOrder.push("physics_unavailable_skip");
     resolvedCore=corePrediction||CORE.hazardChoose(seq);
     original7=buildOriginal7(seq,resolvedCore);
-    corePB=original7.core_p_b;rawPB=corePB;clippedPB=corePB;smoothedPB=corePB;filteredPB=corePB;finalPB=corePB;mode="core_fallback";
+    corePB=original7.core_p_b;rawPB=.5;clippedPB=.5;smoothedPB=.5;filteredPB=.5;finalPB=.5;mode="physics_unavailable";
     error=error?error+";physics_primary_unavailable":"physics_primary_unavailable";
   }
 
   if(!resolvedCore){resolvedCore=corePrediction||CORE.hazardChoose(seq);original7=buildOriginal7(seq,resolvedCore);corePB=original7.core_p_b;}
-  const direction=evDecision?.direction||(mode==="core_fallback"?resolvedCore.direction:"Skip"),finalPP=1-finalPB;
-  const confidence=evDecision?.confidence??(mode==="core_fallback"?(resolvedCore.confidence??0):0);
+  const direction=evDecision?.direction||"Skip",finalPP=1-finalPB;
+  const confidence=evDecision?.confidence??0;
   const physicalEvBanker=primary?.evBanker??physicalEv?.banker??null,physicalEvPlayer=primary?.evPlayer??physicalEv?.player??null,physicalEvGap=primary?(primary.evBanker-primary.evPlayer):(physicalEv?.gap??null),physicsUncertainty=primary?.uncertainty??physicalEv?.uncertainty??null;
   return {...resolvedCore,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
     ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,
@@ -567,9 +602,11 @@ function applyFinalPrediction(seq,corePrediction=null){
     soft_band:evDecision?.softBand??0,confidence_band:evDecision?.confidenceBand??0,effective_confidence_band:evDecision?.effectiveConfidenceBand??0,
     volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"skip",stake_multiplier:evDecision?.stakeMultiplier??0,
     decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
-    regime:mode==="physics_primary"?(direction==="Skip"?"Physics＋Particle觀望":auxFilter?.decision==="downgrade"?"Physics＋Particle / XGB降權":"Physics＋Particle / XGB篩選"):resolvedCore.regime,
+    regime:mode==="physics_primary"?(direction==="Skip"?"Physics＋Particle觀望":auxFilter?.decision==="downgrade"?"Physics＋Particle / XGB降權":"Physics＋Particle / XGB篩選"):"模型未就緒／觀望",
     finalProbability:{version:VERSION,active:mode==="physics_primary",mode,
       primary_source:"direct_physics_particle500_physical_ev",primary_candidate:primary?.candidate??"Skip",
+      macro_ema:primary?.macroFeatures??null,macro_adjustment:primary?.macro??null,
+      decision_stage:primary?.policy?.stage??(seq.length<40?"early":seq.length<50?"middle":"late"),decision_progress:clip((seq.length+1)/getEstimatedTotalHands()),dynamic_band:primary?.policy?.dynamicBand??null,
       physics_raw_p_b:primary?.rawDirectionalPB??null,physics_calibrated_p_b:primary?.directionalPB??null,physics_clipped_p_b:clippedPB,physics_smoothed_p_b:smoothedPB,
       physics_consistency:primary?.consistency??null,physics_precision_penalty:primary?.precisionPenalty??null,physics_activation_ev:primary?.physicsActivationEv??null,physics_confidence_band:primary?.physicsConfidenceBand??null,
       low_skip_policy:{confidence_scale:LOW_SKIP_CONFIDENCE_SCALE,ev_relief:LOW_SKIP_EV_RELIEF,final_band_relief:LOW_SKIP_FINAL_BAND_RELIEF},
@@ -596,7 +633,68 @@ function readHistory(){
   }return[];
 }
 function getShoeId(){try{let id=localStorage.getItem(SHOE_KEY)||"";if(!id){id="shoe_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);localStorage.setItem(SHOE_KEY,id);}return id;}catch(_){return"browser_shoe";}}
-function rotateShoeId(){try{localStorage.removeItem(SHOE_KEY);localStorage.removeItem(PENDING_KEY);}catch(_){}}
+const MACRO_KEY="bgs_macro_observations_v1",MACRO_ARCHIVE_KEY="bgs_macro_observation_shoes_v1";
+let macroJournal=null,macroState=null;
+function readMacroArchive(){try{const value=JSON.parse(localStorage.getItem(MACRO_ARCHIVE_KEY)||"[]");return Array.isArray(value)?value:[];}catch(_){return[];}}
+function rotateShoeId(){
+  try{
+    const current=macroJournal||JSON.parse(localStorage.getItem(MACRO_KEY)||"null");
+    if(current?.events?.length){
+      const archive=readMacroArchive().filter(shoe=>shoe.shoe_id!==current.shoe_id);archive.push(current);
+      let count=archive.reduce((n,shoe)=>n+(shoe.events?.length||0),0);
+      while(count>MAX_TRAINING_ROWS&&archive.length>1)count-=archive.shift().events.length;
+      localStorage.setItem(MACRO_ARCHIVE_KEY,JSON.stringify(archive));
+    }
+  }catch(_){}
+  // A full archive/quota must never prevent shoe isolation/reset.
+  for(const key of [SHOE_KEY,PENDING_KEY,MACRO_KEY])try{localStorage.removeItem(key);}catch(_){}
+  macroJournal=null;macroState=null;
+}
+function saveMacroJournal(){try{localStorage.setItem(MACRO_KEY,JSON.stringify(macroJournal));}catch(_){}}
+function syncMacro(history){
+  if(!MACRO)return null;
+  const shoeId=getShoeId();
+  if(!macroJournal||macroJournal.shoe_id!==shoeId){
+    let saved=null;try{saved=JSON.parse(localStorage.getItem(MACRO_KEY)||"null");}catch(_){}
+    macroJournal={shoe_id:shoeId,events:saved?.shoe_id===shoeId&&Array.isArray(saved.events)?saved.events.slice(0,500):[]};
+    macroState=null;
+  }
+  const events=macroJournal.events;
+  let common=0;
+  while(common<Math.min(events.length,history.length)&&events[common]?.outcome===history[common])common++;
+  if(!macroState||common<events.length){
+    events.splice(common);macroState=MACRO.createState(shoeId);
+    for(let i=0;i<events.length;i++){
+      try{events[i]=MACRO.normalizeHand(events[i]);}catch(_){events[i]=MACRO.normalizeHand({outcome:history[i]});}
+      MACRO.update(macroState,events[i]);
+    }
+  }
+  for(let i=events.length;i<history.length;i++){
+    const observed=MACRO.normalizeHand({outcome:history[i]});events.push(observed);MACRO.update(macroState,observed);
+  }
+  saveMacroJournal();return MACRO.snapshot(macroState);
+}
+function getMacroFeatures(history=readHistory()){return syncMacro(history);}
+function recordCompletedHand(history,observation={}){
+  if(!MACRO||!history.length)return null;
+  const outcome=history.at(-1);
+  if(observation.outcome!==undefined&&observation.outcome!==outcome)throw new Error("observation/history mismatch");
+  const observed=MACRO.normalizeHand({...observation,outcome});
+  // Replaying a replacement/duplicate last hand yields the same state, not a
+  // second EMA update; unknown older B/P/T events have null measurements.
+  syncMacro(history.slice(0,-1));
+  macroJournal.events.push(observed);MACRO.update(macroState,observed);saveMacroJournal();
+  return MACRO.snapshot(macroState);
+}
+function undoRuntimeHistory(){
+  const history=readHistory(),shoeId=getShoeId();syncMacro(history);
+  writeRows(readRows().filter(row=>{
+    if(row?.shoe_id!==shoeId)return true;
+    const count=Number(row.history_event_count??(row.round_index-1));
+    return Number.isInteger(count)&&count>=0&&count<history.length&&row.history_fingerprint===history.slice(0,count).join("")&&row.actual_outcome===history[count];
+  }));
+  try{localStorage.removeItem(PENDING_KEY);}catch(_){}
+}
 function readRows(){try{const r=JSON.parse(localStorage.getItem(TRAINING_KEY)||"[]");return Array.isArray(r)?r:[];}catch(_){return[];}}
 function writeRows(rows){try{localStorage.setItem(TRAINING_KEY,JSON.stringify(rows.slice(-MAX_TRAINING_ROWS)));}catch(_){}}
 function cloneFiniteVector(values,dimension){return Array.isArray(values)&&values.length===dimension&&values.every(value=>Number.isFinite(+value))?values.map(value=>+value):null;}
@@ -612,6 +710,8 @@ function registerPrediction(seq,prediction){
     raw_p_b:Number.isFinite(+r.physics_raw_p_b)?+r.physics_raw_p_b:null,clipped_p_b:Number.isFinite(+r.physics_clipped_p_b)?+r.physics_clipped_p_b:null,smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,
     primary_raw_p_b:Number.isFinite(+r.physics_raw_p_b)?+r.physics_raw_p_b:null,primary_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,physics_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,
     primary_candidate:r.primary_candidate||"Skip",xgb_aux_p_b:Number.isFinite(+r.xgb_aux_p_b)?+r.xgb_aux_p_b:null,core_aux_p_b:Number.isFinite(+r.core_aux_p_b)?+r.core_aux_p_b:null,aux_filter:r.aux_filter||null,
+    macro_schema_version:1,macro_ema:r.macro_ema??null,macro_adjustment:r.macro_adjustment??null,
+    decision_stage:r.decision_stage,decision_progress:r.decision_progress,dynamic_band:r.dynamic_band??null,runtime_version:VERSION,
     smoothing_alpha:Number.isFinite(+r.smoothingAlpha)?+r.smoothingAlpha:1,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,smoothing_profile:r.smoothingProfile||"off",final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
     probability_bounds:r.bounds?[r.bounds.low,r.bounds.high]:null,min_ev:Number.isFinite(+r.min_ev)?+r.min_ev:null,
     activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,effective_activation_ev:Number.isFinite(+r.effective_activation_ev)?+r.effective_activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,confidence_band:Number.isFinite(+r.confidence_band)?+r.confidence_band:0,effective_confidence_band:Number.isFinite(+r.effective_confidence_band)?+r.effective_confidence_band:0,volume_guard_active:r.volume_guard_active===true,entry_tier:r.entry_tier||"core",stake_multiplier:Number.isFinite(+r.stake_multiplier)?+r.stake_multiplier:1,decision_policy_enabled:r.decision_policy_enabled===true,decision_policy_profile:r.decision_policy_profile||"hard_ev",
@@ -623,20 +723,29 @@ function registerPrediction(seq,prediction){
     execution_order:Array.isArray(r.execution_order)?r.execution_order.slice():[]};
   try{localStorage.setItem(PENDING_KEY,JSON.stringify(pending));}catch(_){}
 }
-function settlePending(actualOutcome){
+function settlePending(actualOutcome,observation=null,expectedHistory=null){
   const actual=String(actualOutcome||"").toUpperCase();
   if(actual!=="B"&&actual!=="P"&&actual!=="T")return;
   let p=null;try{p=JSON.parse(localStorage.getItem(PENDING_KEY)||"null");}catch(_){}if(!p)return;
-  const row={...p,settled_at:Date.now(),actual_outcome:actual,actual_b:actual==="B"?1:actual==="P"?0:null,is_directional_label:actual!=="T",shoe_error_correction_audit:null},rows=readRows();
+  if(p.shoe_id!==getShoeId()||(expectedHistory&&p.history_fingerprint!==expectedHistory.join(""))){try{localStorage.removeItem(PENDING_KEY);}catch(_){}return;}
+  const observed=observation&&MACRO?MACRO.normalizeHand({...observation,outcome:actual}):null;
+  const row={...p,settled_at:Date.now(),actual_outcome:actual,actual_b:actual==="B"?1:actual==="P"?0:null,is_directional_label:actual!=="T",observed_hand:observed,shoe_error_correction_audit:null},rows=readRows();
   if(!rows.length||rows.at(-1)?.shoe_id!==row.shoe_id||rows.at(-1)?.history_fingerprint!==row.history_fingerprint)rows.push(row);
   writeRows(rows);try{localStorage.removeItem(PENDING_KEY);}catch(_){}
 }
 function exportTrainingData(){
   const physicsNames=physicsBundleUsesPhysicalEv()?PHYSICS_NAMES:LEGACY_PHYSICS_NAMES;
   const featureNames=Array.isArray(final56Bundle?.feature_names)&&final56Bundle.feature_names.length===FEATURE_DIM?final56Bundle.feature_names:["core_p_b_external","shoe_progress_weight",...ORIGINAL7_NAMES.slice(1).map(x=>"original7_"+x),...physicsNames,"physics_noise_score"];
-  return JSON.stringify({schema_version:SNAPSHOT_SCHEMA_VERSION,target:"actual_b_binary",feature_names:featureNames,original_7d_feature_names:ORIGINAL7_NAMES,physics_48d_feature_names:physicsNames,physics_semantics:physicsBundleUsesPhysicalEv()?"physical_ev_v2":"legacy_suit_v1",rows:readRows()},null,2);
+  return JSON.stringify({schema_version:SNAPSHOT_SCHEMA_VERSION,macro_schema_version:1,target:"actual_b_binary",feature_names:featureNames,original_7d_feature_names:ORIGINAL7_NAMES,physics_48d_feature_names:physicsNames,physics_semantics:physicsBundleUsesPhysicalEv()?"physical_ev_v2":"legacy_suit_v1",rows:readRows()},null,2);
 }
 function downloadTrainingData(){const blob=new Blob([exportTrainingData()],{type:"application/json;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="bgs_final57_training_"+Date.now()+".json";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);}
+function exportMacroObservations(){
+  syncMacro(readHistory());
+  const shoes=readMacroArchive().filter(shoe=>shoe.shoe_id!==macroJournal?.shoe_id);
+  if(macroJournal)shoes.push(macroJournal);
+  return JSON.stringify({rows:shoes.flatMap(shoe=>(shoe.events||[]).map((hand,i)=>({...hand,shoe_id:shoe.shoe_id,round_index:i+1})))},null,2);
+}
+function downloadMacroObservations(){const blob=new Blob([exportMacroObservations()],{type:"application/json;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="bgs_observed_hands_"+Date.now()+".json";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);}
 
 async function fetchBundle(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(url+":HTTP"+r.status);return await r.json();}
 async function loadModels(){
@@ -652,18 +761,37 @@ function renderPrediction(p,n){
   const el=id=>document.getElementById(id),orb=el("directionOrb");if(!orb)return;const isSkip=p.direction==="Skip",isB=p.direction==="B";
   el("directionText").textContent=isSkip?"觀望":isB?"莊":"閒";el("directionCode").textContent=isSkip?"SKIP":isB?"BANKER":"PLAYER";el("confidence").textContent=(p.confidence*100).toFixed(1)+"%";
   el("regime").textContent=p.regime;el("strength").textContent=isSkip?"觀望":p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isSkip?"":isB?"banker":"player");
-  if(el("modePill"))el("modePill").textContent=p.finalProbability?.mode==="physics_primary"?"Physics＋Particle500":"Core備援";
+  if(el("modePill"))el("modePill").textContent=p.finalProbability?.mode==="physics_primary"?"Physics＋Particle500":"模型未就緒";
   if(el("roundCount"))el("roundCount").textContent=n;if(el("message"))el("message").textContent="第 "+(n+1)+" 局分析完成";
 }
 function installUI(){
   if(typeof document==="undefined")return;const old=document.getElementById("btnStart");if(!old)return;const btn=old.cloneNode(true);old.replaceWith(btn);
   btn.addEventListener("click",()=>{const history=readHistory();if(!history.length){const m=document.getElementById("message");if(m)m.textContent="請先輸入牌局紀錄";return;}
     const p=applyFinalPrediction(history);saveSelection(p.direction);registerPrediction(history,p);renderPrediction(p,history.length);});
-  const b=document.getElementById("btnB"),p=document.getElementById("btnP"),t=document.getElementById("btnT");
-  if(b)b.addEventListener("click",()=>settlePending("B"));if(p)p.addEventListener("click",()=>settlePending("P"));if(t)t.addEventListener("click",()=>settlePending("T"));
+  const fieldIds=["macroCardCount","macroPlayerScore","macroBankerScore"];
+  const clearFields=()=>{for(const id of fieldIds){const e=document.getElementById(id);if(e)e.value="";}};
+  for(const [id,outcome] of [["btnB","B"],["btnP","P"],["btnT","T"]]){
+    const button=document.getElementById(id);if(!button)continue;let observed=null;
+    // Capture validation runs BEFORE the unmodified Frozen Core click handler.
+    button.addEventListener("click",event=>{
+      try{
+        const get=id=>document.getElementById(id)?.value??"";
+        observed=MACRO?MACRO.normalizeHand({outcome,card_count:get(fieldIds[0]),player_score:get(fieldIds[1]),banker_score:get(fieldIds[2])}):null;
+        const history=readHistory();syncMacro(history);settlePending(outcome,observed,history);
+      }catch(error){event.preventDefault();event.stopImmediatePropagation();const m=document.getElementById("message");if(m)m.textContent=error.message;}
+    },true);
+    button.addEventListener("click",()=>{recordCompletedHand(readHistory(),observed||{});clearFields();});
+  }
+  const back=document.getElementById("btnBack");if(back)back.addEventListener("click",()=>{undoRuntimeHistory();clearFields();});
   const end=document.getElementById("btnEnd");if(end)end.addEventListener("click",rotateShoeId);
+  if(end)end.addEventListener("click",clearFields);
+  const training=document.getElementById("btnExportTraining");if(training)training.addEventListener("click",downloadTrainingData);
+  const observations=document.getElementById("btnExportObservations");if(observations)observations.addEventListener("click",downloadMacroObservations);
+  syncMacro(readHistory());
 }
 if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,particleFilterAvailable:()=>!!(PARTICLE500&&typeof PARTICLE500.estimate==="function"),
-  registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
+  registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,
+  getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
+if(typeof window?.addEventListener==="function")window.addEventListener("storage",event=>{if(event.key===MACRO_KEY||event.key===SHOE_KEY){macroJournal=null;macroState=null;}});
 loadModels();installUI();
 })();

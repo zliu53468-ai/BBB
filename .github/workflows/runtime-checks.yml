@@ -1,0 +1,28 @@
+name: Physics Primary Runtime Checks
+on:
+  push:
+    branches: [main]
+    paths: ["*runtime.js", "macro_ema*", "test_macro*", "test_final_probability_runtime.js", "final_probability_model.json", "index.html", ".github/workflows/runtime-checks.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["*runtime.js", "macro_ema*", "test_macro*", "test_final_probability_runtime.js", "final_probability_model.json", "index.html", ".github/workflows/runtime-checks.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: node --check final_probability_runtime.js && node --check macro_ema.js
+      - run: python -m unittest -v test_macro_ema.py
+      - run: node test_final_probability_runtime.js
+      - run: BGS_USE_GENERATED_MODEL=1 node test_final_probability_runtime.js
+      - run: node test_macro_runtime.js

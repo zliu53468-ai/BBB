@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
   <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=14.8-macro-ema">
 </head>
 <body>
   <main class="app-shell">
@@ -54,6 +54,15 @@
     </section>
 
     <section class="card controls-card">
+      <details class="macro-inputs">
+        <summary>本局張數與點數（選填）</summary>
+        <p>先填寫已開牌的資料，再點莊／閒／和。未知請留空。</p>
+        <div class="macro-fields">
+          <label>總張數<select id="macroCardCount"><option value="">未知</option><option value="4">4 張</option><option value="5">5 張</option><option value="6">6 張</option></select></label>
+          <label>閒點數<input id="macroPlayerScore" type="number" inputmode="numeric" min="0" max="9" step="1" placeholder="0–9"></label>
+          <label>莊點數<input id="macroBankerScore" type="number" inputmode="numeric" min="0" max="9" step="1" placeholder="0–9"></label>
+        </div>
+      </details>
       <div class="result-buttons">
         <button class="result-btn banker" id="btnB" type="button"><strong>莊</strong><small>BANKER</small></button>
         <button class="result-btn player" id="btnP" type="button"><strong>閒</strong><small>PLAYER</small></button>
@@ -70,6 +79,7 @@
     <section class="card history-card">
       <div class="card-title"><span>本靴紀錄</span><small>依輸入順序排列</small></div>
       <div class="history-track" id="historyTrack"><div class="empty-history">尚未輸入牌局</div></div>
+      <div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div>
     </section>
 
     <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
@@ -78,7 +88,8 @@
   <script src="app256forward.js"></script>
   <script src="app256continuation.js"></script>
   <script src="particle_filter_runtime.js?v=1-fixed500-stateless"></script>
-  <script src="final_probability_runtime.js?v=14.6-early-action-boost"></script>
+  <script src="macro_ema.js?v=1"></script>
+  <script src="final_probability_runtime.js?v=14.8-macro-ema-guard"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

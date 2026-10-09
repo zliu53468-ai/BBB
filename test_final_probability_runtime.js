@@ -40,6 +40,7 @@ global.fetch=async function(url){
 require("./app256forward.js");
 require("./app256continuation.js");
 require("./particle_filter_runtime.js");
+require("./macro_ema.js");
 require("./final_probability_runtime.js");
 
 (async()=>{
@@ -61,9 +62,9 @@ require("./final_probability_runtime.js");
   if(!r.particleDiagnostics||r.physicsDiagnostics?.particle_filter_enabled!==true)throw new Error("Particle500 was not active");
   if(r.particleDiagnostics.particle_count!==500||r.particleDiagnostics.persistent_state!==false||r.particleDiagnostics.rebuild_from_scratch!==true)throw new Error("Particle500 stateless policy mismatch");
   if(r.particleDiagnostics.history_fingerprint!==history.join(""))throw new Error("Particle500 did not rebuild from current history");
-  if(Math.abs((r.low_skip_policy?.confidence_scale??0)-.92)>1e-12||
-     Math.abs((r.low_skip_policy?.ev_relief??0)-.0025)>1e-12||
-     Math.abs((r.low_skip_policy?.final_band_relief??0)-.002)>1e-12)throw new Error("V14.1 Low-Skip policy mismatch");
+  if(Math.abs((r.low_skip_policy?.confidence_scale??0)-.75)>1e-12||
+     Math.abs((r.low_skip_policy?.ev_relief??0)-.006)>1e-12||
+     Math.abs((r.low_skip_policy?.final_band_relief??0)-.006)>1e-12)throw new Error("V14.6 inherited Low-Skip policy mismatch");
 
   const expectedOrder=["direct_physics","particle_filter","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"];
   if(JSON.stringify(r.execution_order)!==JSON.stringify(expectedOrder))throw new Error("production execution order mismatch");
@@ -79,10 +80,10 @@ require("./final_probability_runtime.js");
   const softB=api.auxiliaryCandidateFilter("B",.44,.44);
   const xgbOnlyWeak=api.auxiliaryCandidateFilter("B",.60,.34);
   if(hardB.decision!=="skip"||hardP.decision!=="skip")throw new Error("severe joint Core/XGB conflict was not filtered");
-  if(softB.decision!=="downgrade"||Math.abs(softB.shrink-.94)>1e-9)throw new Error("light auxiliary downgrade mismatch");
+  if(softB.decision!=="keep"||softB.shrink!==1)throw new Error("light auxiliary keep policy mismatch");
   if(xgbOnlyWeak.decision==="skip")throw new Error("XGB alone must not veto a Physics candidate");
   if(api.preserveCandidateDirection("B",.40)<.5||api.preserveCandidateDirection("P",.60)>.5)throw new Error("candidate-direction preservation failed");
-  const lowUncertainty=api.calibratedPhysicsDirectionalPB(.60,10,.10,1),highUncertainty=api.calibratedPhysicsDirectionalPB(.60,10,.90,.45);
+  const lowUncertainty=api.calibratedPhysicsDirectionalPB(.60,35,.10,1),highUncertainty=api.calibratedPhysicsDirectionalPB(.60,35,.90,.45);
   if(!(lowUncertainty>highUncertainty&&lowUncertainty>.5&&highUncertainty>.5))throw new Error("Early-35 Physics calibration did not preserve direction/reduce overconfidence");
   if(!(api.physicsPrecisionPenalty(10,.90,.45)>api.physicsPrecisionPenalty(10,.10,1)))throw new Error("uncertainty-aware Physics EV penalty failed");
 
@@ -98,7 +99,8 @@ require("./final_probability_runtime.js");
     if(training.runtime_role!=="auxiliary_candidate_filter_no_flip")throw new Error("generated XGB runtime role metadata missing");
     if(training.primary_predictor!=="direct_physics_physical_ev")throw new Error("generated primary predictor metadata missing");
     if((+training.physics_primary_version||0)<13)throw new Error("Physics Primary V13 metadata missing");
-    if(JSON.stringify(training.execution_order)!==JSON.stringify(expectedOrder))throw new Error("generated execution-order metadata mismatch");
+    // Older trained bundles predate the stateless runtime Particle500 wrapper.
+    if(JSON.stringify(training.execution_order.filter(x=>x!=="particle_filter"))!==JSON.stringify(expectedOrder.filter(x=>x!=="particle_filter")))throw new Error("generated execution-order metadata mismatch");
   }
 
   api.registerPrediction(history,out);
