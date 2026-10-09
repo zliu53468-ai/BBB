@@ -92,6 +92,8 @@ JSON 層：`final_probability_model.json → decision_policy → macro_ema`：
 
 一律以完整靴／時間切分。樣本不足、標籤不完整、Pearson 不穩定時，結論是證據不足，而不是輸出正向收益預測。出手命中率不保證是獲利率；需要考慮莊家抽水與投注頻率。
 
+GitHub CI 額外對兩靴 `138` 次可分析機會執行了候選 `-0.01/-0.01/+0.01` 對照，結果：原設定與候選均為 `31` 筆出手、`28` 筆非和、`8` 勝、`3` 和退回、命中率 `28.57%`、每注實現 EV `-0.3919`、Skip `77.54%`；候選最大實際偏移 `0.002243`、no-flip 違規 `0`。完整 [機械檢查記錄](validation/macro_direction_shadow_smoke.json)。**這是極小的 smoke，不可用來證明候選係數改善命中率或 EV。**
+
 ## 快速關閉與完整回滾
 
 **最快停用（只影響巨觀結構偏移）**：把 `final_probability_model.json` 的 `decision_policy.macro_ema.enabled` 改為 `false`，或者維持 `enabled:true` 但三個 `coefficients` 設為 0。前者停掉整個 EMA 偏移；後者保留觀測與巨觀 gate。正常模型仍可載入。
