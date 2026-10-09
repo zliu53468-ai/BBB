@@ -1,0 +1,43 @@
+{
+  "schema": "macro_direction_shadow_smoke_v1",
+  "data_kind": "synthetic_mechanics_only",
+  "seed": 20261009,
+  "workflow_url": "https://github.com/zliu53468-ai/BBB/actions/runs/37878240916",
+  "coefficients": {
+    "six_card": -0.01,
+    "low_score": -0.01,
+    "point_diff": 0.01
+  },
+  "shadow_ok": true,
+  "shoes": 2,
+  "eligible": 138,
+  "baseline": {
+    "eligible_hands": 138,
+    "bets": 31,
+    "non_tie_bets": 28,
+    "tie_pushes": 3,
+    "wins": 8,
+    "losses": 20,
+    "unit_profit": -12.15,
+    "skips": 107,
+    "hit_rate_on_bets": 0.2857142857142857,
+    "realized_ev_per_bet": -0.39193548387096777,
+    "skip_rate": 0.7753623188405797
+  },
+  "candidate": {
+    "eligible_hands": 138,
+    "bets": 31,
+    "non_tie_bets": 28,
+    "tie_pushes": 3,
+    "wins": 8,
+    "losses": 20,
+    "unit_profit": -12.15,
+    "skips": 107,
+    "hit_rate_on_bets": 0.2857142857142857,
+    "realized_ev_per_bet": -0.39193548387096777,
+    "skip_rate": 0.7753623188405797
+  },
+  "max_macro_delta": 0.002242690166218142,
+  "no_flip_violations": 0,
+  "warning": "Tiny 2-shoe smoke tests arithmetic and no-flip invariants, not statistical superiority."
+}
