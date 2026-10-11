@@ -6,7 +6,7 @@ compatibility_date = "2026-10-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "bbb-license-db"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_UUID"
+database_id = "e7578d99-8926-4e1c-bca5-4489662dbca1"
 migrations_dir = "migrations"
 
 [vars]
