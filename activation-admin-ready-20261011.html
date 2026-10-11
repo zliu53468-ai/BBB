@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>莊家剋星 · 開通碼管理</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0b0717;color:#f8f4ff;font-family:Inter,"Noto Sans TC",system-ui,sans-serif}
+main{width:min(1060px,calc(100% - 28px));margin:35px auto}h1{font-size:27px;margin-bottom:5px}p{color:#b5a8cf;line-height:1.55}
+section{background:#19112b;border:1px solid #44335e;border-radius:15px;padding:18px;margin-top:18px}
+label{font-size:13px;color:#d5c4f5;display:block;margin:9px 0 5px}
+input,button{font:inherit;border-radius:9px;padding:11px}input{width:100%;border:1px solid #6a547d;color:#fff;background:#100c20}
+button{background:#7c50d5;border:0;color:white;cursor:pointer;font-weight:700;margin:6px 5px 4px 0}
+button:disabled{opacity:.5}button.secondary{background:#483563}button.danger{background:#9a3556}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#d9c5ff;font:13px/1.7 monospace}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:9px;border-bottom:1px solid #45345d;text-align:left;word-break:break-word}
+th{color:#bba4e9}.scroll{overflow-x:auto}#note{min-height:20px;color:#caaeff}.code-output{background:#0c0917;padding:13px;border-radius:9px}
+</style>
+</head>
+<body>
+<main>
+<h1>莊家剋星 · 程式開通碼管理</h1>
+<p>產生開通碼、查看綁定狀態、重置裝置或撤銷授權。管理金鑰只用於本次請求，不保存在瀏覽器中。</p>
+<p id="gatewayStatus" style="font-size:12px;color:#bda6fa">驗證伺服器：https://bbb-license-gateway.zliu53468.workers.dev（固定正式環境；不需要讀取 auth-config.js）</p>
+<section>
+<label for="adminToken">管理者 API 金鑰（Worker ADMIN_TOKEN）</label>
+<input id="adminToken" type="password" autocomplete="off" placeholder="請輸入伺服器設定的 ADMIN_TOKEN">
+<p>這不是會員開通碼。請勿將管理者金鑰發給使用者。</p>
+</section>
+<section>
+<h2>產生程式開通碼</h2>
+<div class="controls">
+<div><label for="count">產生組數（1～30）</label><input id="count" type="number" min="1" max="30" value="1"></div>
+<div><label for="label">標籤／會員備註</label><input id="label" placeholder="例如：會員 A"></div>
+<div><label for="expiresAt">到期日期（留空表示無期限）</label><input id="expiresAt" type="date"></div>
+</div>
+<button id="create">產生開通碼</button><button id="refresh" class="secondary">重新讀取狀態</button>
+<div id="note" role="status"></div>
+<pre class="code-output" id="created">開通碼僅在產生當下顯示一次，請立即妥善保存。</pre>
+</section>
+<section>
+<h2>開通碼清單</h2>
+<div class="scroll"><table><thead><tr><th>標籤</th><th>尾碼</th><th>狀態</th><th>綁定時間</th><th>到期時間</th><th>操作</th></tr></thead><tbody id="records"><tr><td colspan="6">輸入管理金鑰後按「重新讀取狀態」。</td></tr></tbody></table></div>
+</section>
+<p><a href="index.html" style="color:#b996ff">返回程式登入畫面</a></p>
+</main>
+<script>
+(() => {
+"use strict";
+// The Worker origin is public; secrets remain exclusively in Cloudflare.
+const base="https://bbb-license-gateway.zliu53468.workers.dev";
+const byId=id=>document.getElementById(id),note=byId("note"),tbody=byId("records");
+function say(text){note.textContent=text;}
+async function call(path,method="GET",body){
+  if(!base.startsWith("https://"))throw new Error("請先在 auth-config.js 填入 HTTPS Worker 網址。");
+  const token=byId("adminToken").value.trim();
+  if(token.length<24)throw new Error("管理者金鑰不得少於 24 碼。");
+  const r=await fetch(base+path,{method,cache:"no-store",headers:{"Authorization":"Bearer "+token,...(body?{"Content-Type":"application/json"}:{})},body:body?JSON.stringify(body):undefined});
+  const result=await r.json().catch(()=>({error:"invalid_server_response"}));
+  if(!r.ok)throw new Error(result.error||"server_error_"+r.status);
+  return result;
+}
+function td(text){const cell=document.createElement("td");cell.textContent=String(text??"—");return cell;}
+function date(ms){return ms?new Date(ms).toLocaleString("zh-TW"):"—";}
+async function load(){
+  say("讀取中…");
+  const data=await call("/api/admin/licenses");
+  tbody.textContent="";
+  for(const row of data.licenses){
+    const tr=document.createElement("tr");
+    const status=row.revoked_at?"已停用":row.expires_at&&row.expires_at<=Date.now()?"已到期":row.bound_at?"已綁定":"尚未綁定";
+    for(const value of [row.label||"—","••••"+row.code_suffix,status,date(row.bound_at),date(row.expires_at)])tr.appendChild(td(value));
+    const actions=document.createElement("td");
+    for(const [action,label,klass] of [["reset","重置裝置","secondary"],["revoke","停用","danger"]]){
+      const b=document.createElement("button");b.type="button";b.textContent=label;b.className=klass;b.disabled=!!row.revoked_at;
+      b.addEventListener("click",async()=>{
+        if(!confirm(action==="reset"?"要解除這組碼的現有裝置綁定嗎？原裝置重新開通前，其他持碼者可搶先綁定。":"確定停用此開通碼？這個動作不能直接復原。"))return;
+        try{b.disabled=true;await call("/api/admin/licenses/"+encodeURIComponent(row.id)+"/"+action,"POST",{});await load();}
+        catch(e){say("操作失敗："+e.message);b.disabled=false;}
+      });actions.appendChild(b);
+    }
+    tr.appendChild(actions);tbody.appendChild(tr);
+  }
+  if(!data.licenses.length){const tr=document.createElement("tr"),cell=td("尚無開通碼");cell.colSpan=6;tr.appendChild(cell);tbody.appendChild(tr);}
+  say("目前共有 "+data.licenses.length+" 組開通碼（最多顯示最近 250 組）。");
+}
+byId("refresh").addEventListener("click",()=>load().catch(e=>say("讀取失敗："+e.message)));
+byId("create").addEventListener("click",async()=>{
+  const count=Number(byId("count").value),label=byId("label").value.trim(),dateValue=byId("expiresAt").value;
+  if(!Number.isInteger(count)||count<1||count>30){say("每次限 1～30 組。");return;}
+  let expires_at=null;
+  if(dateValue){expires_at=new Date(dateValue+"T23:59:59+08:00").getTime();if(!Number.isFinite(expires_at)||expires_at<=Date.now()){say("到期日必須在未來。");return;}}
+  const button=byId("create");button.disabled=true;
+  try{
+    const data=await call("/api/admin/licenses","POST",{count,label,expires_at});
+    byId("created").textContent=data.created.map((r,i)=>(i+1)+". "+r.code).join("\n")+"\n\n請立即複製並保存，稍後無法重新查詢完整開通碼。";
+    await load();say("已建立 "+data.created.length+" 組開通碼，請保存。");
+  }catch(e){say("建立失敗："+e.message);}
+  finally{button.disabled=false;}
+});
+})();
+
+</script>
+</body></html>
