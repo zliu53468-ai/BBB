@@ -6,7 +6,8 @@ const DB_NAME="bbb-license-device-v1",KEY="device-key",LICENSE="license-code";
 const gate=document.getElementById("licenseGate"),panel=document.getElementById("predictionApp");
 const form=document.getElementById("licenseForm"),input=document.getElementById("licenseCode");
 const message=document.getElementById("licenseMessage"),submit=document.getElementById("licenseSubmit");
-const api=String(window.BBB_AUTH_API_BASE||"").replace(/\/+$/,"");
+// Public server URL is not a secret; only Cloudflare holds ADMIN_TOKEN and LICENSE_PEPPER.
+const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu53468.workers.dev").replace(/\/+$/,"");
 const scripts=[
   "app256forward.js",
   "app256continuation.js",
