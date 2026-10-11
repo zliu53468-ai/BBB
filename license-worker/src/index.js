@@ -89,6 +89,13 @@ async function handle(req,env,path){
  return reply({error:"not_found"},404);
 }
 export default {
+ // Background cleanup prevents one-use challenges and per-IP counters from growing forever.
+ async scheduled(_event,env){
+   if(!env.DB)return;
+   const now=Date.now();
+   await env.DB.prepare("DELETE FROM challenges WHERE expires_at<?").bind(now).run();
+   await env.DB.prepare("DELETE FROM rate_limits WHERE window_start<?").bind(Math.floor(now/60000)-1440).run();
+ },
  async fetch(req,env){
    const origin=req.headers.get("Origin");
    const allow=(env.ALLOWED_ORIGINS||"https://bgsv1.xyz").split(",").map(x=>x.trim()).includes(origin);
