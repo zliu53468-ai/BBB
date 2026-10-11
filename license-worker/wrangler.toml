@@ -1,0 +1,13 @@
+name = "bbb-license-gateway"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# Change database_id after `npx wrangler d1 create bbb-license-db`.
+[[d1_databases]]
+binding = "DB"
+database_name = "bbb-license-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_UUID"
+migrations_dir = "migrations"
+
+[vars]
+ALLOWED_ORIGINS = "https://bgsv1.xyz,https://www.bgsv1.xyz"
