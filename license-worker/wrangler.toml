@@ -11,3 +11,6 @@ migrations_dir = "migrations"
 
 [vars]
 ALLOWED_ORIGINS = "https://bgsv1.xyz,https://www.bgsv1.xyz"
+
+[triggers]
+crons = ["0 3 * * *"]
