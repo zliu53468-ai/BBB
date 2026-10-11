@@ -2,10 +2,10 @@ name: Physics Primary Runtime Checks
 on:
   push:
     branches: [main]
-    paths: ["*runtime.js", "macro_ema*", "test_macro*", "test_final_probability_runtime.js", "final_probability_model.json", "index.html", ".github/workflows/runtime-checks.yml"]
+    paths: ["*runtime.js", "macro_ema*", "test_macro*", "test_final_probability_runtime.js", "final_probability_model.json", "index.html", "v15*", "test_v15*", ".github/workflows/runtime-checks.yml"]
   pull_request:
     branches: [main]
-    paths: ["*runtime.js", "macro_ema*", "test_macro*", "test_final_probability_runtime.js", "final_probability_model.json", "index.html", ".github/workflows/runtime-checks.yml"]
+    paths: ["*runtime.js", "macro_ema*", "test_macro*", "test_final_probability_runtime.js", "final_probability_model.json", "index.html", "v15*", "test_v15*", ".github/workflows/runtime-checks.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -30,6 +30,7 @@ jobs:
       - name: V15-B offline causal shadow smoke (no auto-promote)
         run: |
           node --check v15_balanced_replay.js
+          node -e 'const p=require("./v15_candidate_policies.json");if(p.mode!=="offline_shadow_only"||p.hard_limits.auto_activate!==false)process.exit(1)'
           node v15_balanced_replay.js --synthetic 5 /tmp/v15_balanced_smoke.json
           node -e 'const r=require("/tmp/v15_balanced_smoke.json"); if(r.promotion.eligible||r.promotion.auto_activate||r.total_shoes!==5||r.splits.train.baseline.all.eligible<1||r.splits.holdout.baseline.all.eligible<1)process.exit(1); for(const split of Object.values(r.splits))if(!split.baseline.all||!split.baseline.rounds_2_5)process.exit(1); console.log(JSON.stringify({v15_shadow_ok:true,selected:r.selection,promotion:r.promotion,baseline:r.splits.holdout.baseline.all}));'
 
