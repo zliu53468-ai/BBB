@@ -1,0 +1,36 @@
+name: BBB License Gate Checks
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'license-worker/**'
+      - 'auth-client.js'
+      - 'auth-config.js'
+      - 'activation-admin.js'
+      - 'activation-admin.html'
+      - 'index.html'
+      - '.github/workflows/license-checks.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'license-worker/**'
+      - 'auth-client.js'
+      - 'auth-config.js'
+      - 'activation-admin.js'
+      - 'activation-admin.html'
+      - 'index.html'
+      - '.github/workflows/license-checks.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check auth-client.js && node --check auth-config.js && node --check activation-admin.js && node --check license-worker/src/index.js
+      - run: node license-worker/test-license.mjs
