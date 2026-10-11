@@ -53,6 +53,13 @@ require("./final_probability_runtime.js");
   const core=global.__BGS256_CONTINUATION_TEST__.hazardChoose(history);
   const out=api.applyFinalPrediction(history);
   const r=out.finalProbability;
+  const diag=r.skip_diagnostics;
+  if(diag?.schema_version!==1||diag.final_action!==out.direction)throw new Error("V15 Skip audit metadata invalid");
+  if(out.direction==="Skip"&&(!diag.primary_reason||!Array.isArray(diag.failed_conditions)||!diag.failed_conditions.length))
+    throw new Error("V15 Skip must identify failed conditions");
+  if(out.direction!=="Skip"&&(diag.primary_reason!=="entry"||diag.failed_conditions.length))
+    throw new Error("V15 entry must have no Skip causes");
+  if(!Number.isFinite(diag.physics_distance)||!Number.isFinite(diag.physics_band))throw new Error("V15 lacks auditable Physics thresholds");
 
   if(r?.mode!=="physics_primary")throw new Error("Physics-primary inference path was not used");
   if(r.primary_source!=="direct_physics_particle500_physical_ev"||r.xgb_role!=="auxiliary_filter_no_flip")throw new Error("primary/filter roles are incorrect");
@@ -108,6 +115,7 @@ require("./final_probability_runtime.js");
   let rows=api.getTrainingRows();
   if(rows.length!==1)throw new Error("prediction snapshot was not retained");
   const snapshot=rows[0];
+  if(JSON.stringify(snapshot.skip_diagnostics)!==JSON.stringify(diag))throw new Error("V15 settled snapshot lost its pre-hand Skip diagnosis");
   if(snapshot.schema_version!==7||snapshot.actual_b!==1)throw new Error("invalid snapshot metadata");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57||snapshot.physics_direct_48d?.length!==48)throw new Error("snapshot feature dimensions changed");
   if(!Number.isFinite(snapshot.physics_smoothed_p_b)||!snapshot.physics_direct)throw new Error("Physics-primary EMA snapshot missing");
