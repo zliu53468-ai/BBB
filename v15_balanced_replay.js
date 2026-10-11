@@ -35,12 +35,22 @@ for(const row of rows){
 if(shoes.size<5)throw Error("At least five independent shoes required");
 const ordered=[...shoes],n=ordered.length,a=Math.floor(n*.6),b=Math.floor(n*.8);
 const subsets={train:ordered.slice(0,a),calibration:ordered.slice(a,b),holdout:ordered.slice(b)};
-const configs=[
- {id:"baseline",early_band_relief:0,early_ev_relief:0},
- {id:"early_precision_1",early_band_relief:.00075,early_ev_relief:.0005},
- {id:"early_precision_2",early_band_relief:.0015,early_ev_relief:.001},
- {id:"early_precision_3",early_band_relief:.002,early_ev_relief:.0015}
-];
+const parameters=JSON.parse(fs.readFileSync(path.join(__dirname,"v15_candidate_policies.json"),"utf8"));
+if(parameters.mode!=="offline_shadow_only"||parameters.hard_limits?.auto_activate!==false)
+  throw Error("V15 shadow policy config must remain non-activating");
+if(!Array.isArray(parameters.candidates)||parameters.candidates.length<1||parameters.candidates.length>8)
+  throw Error("Expected 1..8 explicit offline candidates");
+const ids=new Set();
+for(const c of parameters.candidates){
+  if(typeof c.id!=="string"||!/^early_precision_[a-zA-Z0-9]+$/.test(c.id)||ids.has(c.id))
+    throw Error("Invalid or duplicate candidate id");
+  ids.add(c.id);
+  for(const [name,cap] of [["early_band_relief",.002],["early_ev_relief",.0015]]){
+    if(typeof c[name]!=="number"||!Number.isFinite(c[name])||c[name]<0||c[name]>cap)
+      throw Error("Candidate relief outside offline safety bound: "+name);
+  }
+}
+const configs=[{id:"baseline",early_band_relief:0,early_ev_relief:0},...parameters.candidates];
 const stages=["all","rounds_2_5","rounds_6_10","rounds_11_20","rounds_21_40","rounds_41_50","rounds_51_plus"];
 function stageFor(round){
   return round<=5?"rounds_2_5":round<=10?"rounds_6_10":round<=20?"rounds_11_20":
@@ -148,7 +158,9 @@ function summarize(entry){return entry.metrics;}
 function eligibleToRecommend(baseline,candidate,delta,ci,subsetSize){
   if(subsetSize<30||baseline.all.non_tie_bets<500||candidate.all.non_tie_bets<500)return false;
   return delta.action_rate>0&&delta.hit_rate_on_bets>=0&&delta.realized_ev_per_bet>=0&&
-    ci?.action_rate?.low_95>0&&ci.hit_rate_on_bets?.low_95>=0&&ci.realized_ev_per_bet?.low_95>=0;
+    Number.isFinite(ci?.action_rate?.low_95)&&ci.action_rate.low_95>0&&
+    Number.isFinite(ci?.hit_rate_on_bets?.low_95)&&ci.hit_rate_on_bets.low_95>=0&&
+    Number.isFinite(ci?.realized_ev_per_bet?.low_95)&&ci.realized_ev_per_bet.low_95>=0;
 }
 (async()=>{
   const started=Date.now();
