@@ -1,6 +1,7 @@
 (() => {
 "use strict";
-const base=String(window.BBB_AUTH_API_BASE||"").replace(/\/+$/,"");
+// The Worker origin is public; secrets remain exclusively in Cloudflare.
+const base=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu53468.workers.dev").replace(/\/+$/,"");
 const byId=id=>document.getElementById(id),note=byId("note"),tbody=byId("records");
 function say(text){note.textContent=text;}
 async function call(path,method="GET",body){
