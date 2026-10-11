@@ -9,7 +9,22 @@
   <link rel="stylesheet" href="styles.css?v=14.8-macro-ema">
 </head>
 <body>
-  <main class="app-shell">
+  <section id="licenseGate" class="license-gate" aria-label="程式授權登入">
+    <div class="license-shell">
+      <div class="license-logo"><img src="assets/logo-baccarat-slayer.webp" alt="莊家剋星"></div>
+      <div class="license-kicker">BANKER SLAYER · LICENSE ACCESS</div>
+      <h1>莊家剋星 AI 百家程式</h1>
+      <p class="license-desc">請輸入程式開通碼，通過裝置驗證後才會進入分析面板。</p>
+      <form id="licenseForm" class="license-form">
+        <label for="licenseCode">程式開通碼</label>
+        <input id="licenseCode" type="text" autocomplete="off" autocapitalize="characters" maxlength="32" placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX" required>
+        <button type="submit" id="licenseSubmit">驗證開通碼並進入</button>
+      </form>
+      <p id="licenseMessage" class="license-message" role="status" aria-live="polite">正在載入開通系統…</p>
+      <p class="license-detail">首次開通會綁定本瀏覽器的裝置金鑰。換手機、重裝瀏覽器或清除網站資料，請聯絡管理者重置。</p>
+    </div>
+  </section>
+  <main class="app-shell" id="predictionApp" hidden>
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">
@@ -85,11 +100,8 @@
     <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
   </main>
 
-  <script src="app256forward.js"></script>
-  <script src="app256continuation.js"></script>
-  <script src="particle_filter_runtime.js?v=1-fixed500-stateless"></script>
-  <script src="macro_ema.js?v=1"></script>
-  <script src="final_probability_runtime.js?v=14.8-macro-ema-guard"></script>
+  <script src="auth-config.js?v=1"></script>
+  <script src="auth-client.js?v=1"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
