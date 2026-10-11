@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "mode": "offline_shadow_only",
+  "provenance": "BBB 10ce55b Physics-primary decision layer; parameter trial presets, not model weights or live settings",
+  "objective": "increase early 1-40 action rate without lower held-out hit rate or realized EV",
+  "hard_limits": {
+    "apply_stages": [
+      "rounds_2_5",
+      "rounds_6_10",
+      "rounds_11_20",
+      "rounds_21_40"
+    ],
+    "minimum_holdout_shoes": 30,
+    "minimum_holdout_non_tie_bets_each": 500,
+    "auto_activate": false
+  },
+  "candidates": [
+    {
+      "id": "early_precision_1",
+      "early_band_relief": 0.00075,
+      "early_ev_relief": 0.0005
+    },
+    {
+      "id": "early_precision_2",
+      "early_band_relief": 0.0015,
+      "early_ev_relief": 0.001
+    },
+    {
+      "id": "early_precision_3",
+      "early_band_relief": 0.002,
+      "early_ev_relief": 0.0015
+    }
+  ]
+}
