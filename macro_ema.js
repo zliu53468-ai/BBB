@@ -67,11 +67,31 @@
     if(config.enabled!==true)return result;
     const number=(key,fallback)=>typeof config[key]==="number"&&Number.isFinite(config[key])?config[key]:fallback;
     const minimum=Math.max(1,Math.floor(number("min_observations",12))),maxAge=Math.max(0,number("max_age",3));
-    const ready=NAMES.every(k=>Number.isFinite(features?.[k+"_Spread"])&&features?.counts?.[k]>=minimum&&features?.ages?.[k]<=maxAge);
-    if(!ready)return {...result,reason:"insufficient_observations"};
-    const weights=config.coefficients||{};
+    // Each observed feature is independently eligible. A missing card_count
+    // MUST NOT suppress Low_Score / Point_Diff when final scores were supplied.
+    // Missing/stale readings do not become zero-valued observations.
+    const weights=config.coefficients||{},active=[],available=[],ignored=[],readiness={};
+    const coefficientNames={Six_Card:"six_card",Low_Score:"low_score",Point_Diff:"point_diff"};
     const beta=k=>typeof weights[k]==="number"&&Number.isFinite(weights[k])?clamp(weights[k],-10,10):0;
-    const signal=beta("six_card")*features.Six_Card_Spread+beta("low_score")*features.Low_Score_Spread+beta("point_diff")*features.Point_Diff_Spread/9;
+    let signal=0,configured=0;
+    for(const name of NAMES){
+      const key=coefficientNames[name],weight=beta(key);
+      const value=features?.[name+"_Spread"];
+      const count=features?.counts?.[name],age=features?.ages?.[name];
+      const valid=Number.isFinite(value)&&Number.isInteger(count)&&count>=minimum&&
+        Number.isInteger(age)&&age>=0&&age<=maxAge;
+      readiness[key]=valid;
+      if(valid)available.push(key);
+      if(weight===0)continue;
+      configured++;
+      if(!valid){ignored.push(key);continue;}
+      active.push(key);
+      signal+=weight*value/(name==="Point_Diff"?9:1);
+    }
+    const availability={available_features:available,active_features:active,
+      ignored_configured_features:ignored,feature_ready:readiness};
+    if(!active.length)return {...result,...availability,
+      reason:configured?"insufficient_observations":"zero_coefficients_or_signal"};
     const start=clamp(number("progress_start",.30),0,.99),power=clamp(number("progress_power",2),1,4);
     const weight=clamp((progress-start)/(1-start))**power,cap=clamp(number("max_delta",.03),0,.05);
     // v2 coefficients are literal probability-point sensitivities per normalized spread.
@@ -82,7 +102,7 @@
     // B/P EV preference boundary: .95*p-(1-p) = (1-p)-p.
     const boundary=2/3.95,raw=clamp(p+delta);
     const value=p>=boundary?Math.max(boundary,raw):Math.min(boundary,raw);
-    return {...result,value,delta:value-p,signal,ready:true,progress_weight:weight,noise_gate:gate,max_delta:cap,
+    return {...result,...availability,value,delta:value-p,signal,ready:true,progress_weight:weight,noise_gate:gate,max_delta:cap,
       reason:signal===0?"zero_coefficients_or_signal":gate===0?"high_noise":"applied"};
   }
   return {NAMES,createState,normalizeHand,values,update,snapshot,noiseGate,adjustment};
