@@ -9,6 +9,26 @@
   <link rel="stylesheet" href="styles.css?v=10ce55b-license-gate">
   <style>
     .bbb-scan-block,.bbb-score-block{padding:18px;border:1px solid rgba(164,128,246,.26);border-radius:16px;background:rgba(32,20,55,.45);margin-bottom:16px}
+    /* Desktop live snip: a new optional control. Mobile image/video workflows remain untouched. */
+    .bbb-capture-entry{display:flex;gap:10px;align-items:stretch}
+    .bbb-capture-entry .bbb-upload{flex:1;min-width:0}
+    .bbb-capture-icon{flex:0 0 104px;display:flex;flex-direction:column;gap:7px;align-items:center;justify-content:center;background:rgba(111,73,176,.21);border:1px solid #9073c7;color:#eaddff;border-radius:13px;cursor:pointer;font-size:13px;font-weight:800;padding:12px}
+    .bbb-capture-icon:hover,.bbb-capture-icon:focus-visible{background:rgba(119,79,212,.43);outline:2px solid #a48cff;outline-offset:1px}
+    .bbb-capture-icon:disabled{opacity:.5;cursor:wait}
+    .bbb-capture-dialog[hidden],.bbb-capture-icon[hidden]{display:none!important}
+    .bbb-capture-dialog{position:fixed;inset:0;z-index:99999;background:rgba(7,5,16,.93);padding:14px;display:flex;justify-content:center;align-items:center}
+    .bbb-capture-window{width:min(1320px,100%);max-height:calc(100dvh - 28px);border:1px solid #9772d5;border-radius:16px;background:#151125;box-shadow:0 14px 85px #000b;display:flex;flex-direction:column;gap:10px;padding:15px}
+    .bbb-capture-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;color:#f2eaff}
+    .bbb-capture-heading strong{font-size:19px}
+    .bbb-capture-heading p{color:#bbafd4;font-size:12px;line-height:1.5;margin:6px 0}
+    .bbb-capture-close{font-size:28px;color:#fff;border:1px solid #5b4a80;border-radius:10px;background:#292042;padding:0 10px;cursor:pointer}
+    .bbb-capture-image-box{display:flex;align-items:center;justify-content:center;flex:1;min-height:0;overflow:hidden;background:#070711;border-radius:12px;border:1px solid #3e3557}
+    #bbbCaptureCanvas{display:block;width:auto;height:auto;max-width:100%;max-height:calc(100dvh - 210px);object-fit:contain;cursor:crosshair;touch-action:none;user-select:none}
+    .bbb-capture-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;color:#cabaf1;font-size:13px}
+    .bbb-capture-actions{display:flex;gap:10px;flex-wrap:wrap}
+    .bbb-capture-actions .action-btn{width:auto;min-height:43px;padding:10px 16px}
+    .bbb-capture-actions button:disabled{opacity:.45}
+    @media(max-width:640px){.bbb-capture-entry .bbb-upload{width:100%}.bbb-capture-icon{display:none!important}}
     .bbb-upload{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:90px;border:1px dashed #a884f7;background:rgba(123,75,218,.13);color:#f2eaff;border-radius:13px;cursor:pointer;text-align:center;padding:15px;font-weight:800}
     .bbb-upload small{font-weight:400;font-size:12px;color:#bbaed3}
     #bbbScanFile{display:block;width:100%;max-width:100%;margin:10px 0 14px;color:#dad0f5;font-size:13px}
@@ -96,8 +116,34 @@
     <section class="card controls-card">
       <div class="bbb-scan-block" aria-label="大路截圖辨識">
         <div class="card-title"><span>① 上傳大路截圖</span><small>手機相簿／電腦圖片</small></div>
-        <label class="bbb-upload" for="bbbScanFile"><span>選擇大路截圖</span><small>從手機相簿、檔案或電腦選取 JPG／PNG／WebP</small></label>
+        <div class="bbb-capture-entry">
+          <label class="bbb-upload" for="bbbScanFile"><span>選擇大路截圖</span><small>手機相簿、手機螢幕截圖或電腦圖片（原功能保留）</small></label>
+          <button type="button" id="bbbCaptureScreen" class="bbb-capture-icon" aria-label="電腦即時螢幕截圖" title="像 LINE 截圖工具：選擇螢幕或視窗，再框選大路" hidden>
+            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/>
+              <rect x="7" y="7" width="10" height="10" rx="1"/>
+              <path d="m12 8-3 4h3l-1 4 4-5h-3l1-3Z"/>
+            </svg>
+            <span>電腦截圖</span>
+          </button>
+        </div>
         <input id="bbbScanFile" type="file" accept="image/*" aria-label="上傳大路截圖">
+        <section id="bbbCaptureDialog" class="bbb-capture-dialog" role="dialog" aria-modal="true" aria-labelledby="bbbCaptureTitle" hidden>
+          <div class="bbb-capture-window">
+            <div class="bbb-capture-heading">
+              <div><strong id="bbbCaptureTitle">框選大路區域</strong><p>在截到的電腦畫面上，用滑鼠拖曳框住完整六列大路；不會儲存或錄製畫面。</p></div>
+              <button id="bbbCaptureCancel" type="button" class="bbb-capture-close" aria-label="取消截圖">×</button>
+            </div>
+            <div class="bbb-capture-image-box"><canvas id="bbbCaptureCanvas" aria-label="螢幕截圖，拖曳選擇牌路區域"></canvas></div>
+            <div class="bbb-capture-footer">
+              <span id="bbbCaptureHint" role="status" aria-live="polite">拖曳滑鼠框選大路範圍</span>
+              <div class="bbb-capture-actions">
+                <button id="bbbCaptureFull" type="button" class="action-btn">使用整張截圖</button>
+                <button id="bbbCaptureUse" type="button" class="action-btn primary" disabled>截取框選並掃描</button>
+              </div>
+            </div>
+          </div>
+        </section>
         <label class="bbb-scan-select" for="bbbScanProfile">大路版型
           <select id="bbbScanProfile"><option value="auto">自動辨識</option><option value="DG">DG 真人</option><option value="DB">DB 真人</option><option value="MT">MT 真人</option><option value="crop">只拍攝大路／自行裁選</option></select>
         </label>
