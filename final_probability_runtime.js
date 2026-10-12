@@ -809,11 +809,20 @@ function installUI(){
   for(const [id,outcome] of [["btnB","B"],["btnP","P"],["btnT","T"]]){
     const button=document.getElementById(id);if(!button)continue;
     let observed=null,observationError="",beforeHistory=[];
-    // Capture the previous history, then settle the last prediction. All failures
-    // here are telemetry failures only; the Frozen Core must still receive click.
-    button.addEventListener("click",()=>{
+    // Capture the previous history, then settle the last prediction. All optional
+    // telemetry failures still let the Frozen Core receive the clicked outcome.
+    button.addEventListener("click",event=>{
       beforeHistory=readHistory();
       observed=null;observationError="";
+      const shown=Number(document.getElementById("roundCount")?.textContent);
+      if(Number.isInteger(shown)&&shown!==beforeHistory.length){
+        // Another tab (or failed persistent write) has changed history since this
+        // page loaded. Do not let an old Frozen Core instance erase newer hands.
+        event.preventDefault();event.stopImmediatePropagation();
+        const message=document.getElementById("message");
+        if(message){message.textContent="牌路資料已在其他頁籤更新，請重新整理後再報莊／閒／和，避免覆蓋已記錄的局數。";message.classList.add("warning");}
+        return;
+      }
       try{
         const get=id=>document.getElementById(id)?.value??"";
         observed=MACRO?MACRO.normalizeHand({outcome,card_count:get(fieldIds[0]),player_score:get(fieldIds[1]),banker_score:get(fieldIds[2])}):null;
