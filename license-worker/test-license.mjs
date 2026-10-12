@@ -16,6 +16,11 @@ const DB={prepare(raw){
     if(sql.startsWith("INSERT INTO licenses")){const [id,code_hash,code_suffix,label,created_at,expires_at]=p;rows.set(code_hash,{id,code_hash,code_suffix,label,created_at,expires_at,revoked_at:null,public_key:null,device_hash:null,bound_at:null,generation:0});return {meta:{changes:1}};}
     if(sql.startsWith("INSERT INTO challenges")){const [id,code_hash,nonce,expires_at]=p;challenges.set(id,{id,code_hash,nonce,expires_at});return {meta:{changes:1}};}
     if(sql.startsWith("UPDATE licenses SET public_key=?")){const [public_key,device_hash,bound_at,hash,now]=p,r=rows.get(hash);if(r&&!r.public_key&&!r.revoked_at&&(!r.expires_at||r.expires_at>now)){Object.assign(r,{public_key,device_hash,bound_at});return {meta:{changes:1}};}return {meta:{changes:0}};}
+    if(sql.startsWith("UPDATE licenses SET generation=generation+1")){
+      const [hash,key,now]=p,r=rows.get(hash);
+      if(!r||r.public_key!==key||r.revoked_at!==null||r.expires_at!==null&&r.expires_at<=now)return {meta:{changes:0}};
+      r.generation++;return {meta:{changes:1}};
+    }
     if(sql.startsWith("UPDATE licenses SET public_key=NULL")){const r=[...rows.values()].find(x=>x.id===p[0]&&!x.revoked_at);if(!r)return {meta:{changes:0}};r.public_key=null;r.device_hash=null;r.bound_at=null;r.generation++;return {meta:{changes:1}};}
     if(sql.startsWith("UPDATE licenses SET revoked_at")){const r=[...rows.values()].find(x=>x.id===p[1]&&!x.revoked_at);if(!r)return {meta:{changes:0}};r.revoked_at=p[0];return {meta:{changes:1}};}
     throw new Error("unmocked run "+sql);
@@ -25,6 +30,7 @@ const DB={prepare(raw){
     if(sql.startsWith("SELECT id,revoked_at,expires_at"))return rows.get(p[0])||null;
     if(sql.startsWith("DELETE FROM challenges")){const [id,hash,now]=p,v=challenges.get(id);if(v&&v.code_hash===hash&&v.expires_at>now){challenges.delete(id);return {nonce:v.nonce};}return null;}
     if(sql.startsWith("SELECT id,public_key"))return rows.get(p[0])||null;
+    if(sql.startsWith("SELECT generation"))return rows.get(p[0])||null;
     throw new Error("unmocked first "+sql);
   },
   async all(){
@@ -56,9 +62,27 @@ async function activate(pair){
   assert.equal(replay.status,403,"challenge must be one-use");
   return result;
 }
+async function endAnalysis(pair){
+  const challenge=await call("/api/challenge",{code});
+  assert.equal(challenge.status,200);
+  const c=challenge.data,message=new TextEncoder().encode("bbb-activate-v1:"+c.challenge_id+":"+c.nonce);
+  const signature=Buffer.from(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},pair.privateKey,message)).toString("base64url");
+  const jwk=await crypto.subtle.exportKey("jwk",pair.publicKey);
+  return call("/api/session/end",{code,challenge_id:c.challenge_id,signature,
+    public_key:{kty:"EC",crv:"P-256",x:jwk.x,y:jwk.y}});
+}
 const a=await issue(),b=await issue();
 assert.equal((await activate(a)).status,200,"first device activation");
-assert.equal((await activate(a)).status,200,"same device is remembered");
+const previous=await activate(a);
+assert.equal(previous.status,200,"same device is remembered");
+assert.equal(previous.data.generation,0,"new code starts at generation zero");
+const cleared=await endAnalysis(a);
+assert.equal(cleared.status,200,"signed end-analysis request accepted");
+assert.equal(cleared.data.generation,1,"end-analysis bumps the remote analysis epoch");
+assert.equal((await endAnalysis(b)).status,403,"unbound device cannot reset stored analysis");
+const restored=await activate(a);
+assert.equal(restored.status,200,"original device remains licensed after analysis reset");
+assert.equal(restored.data.generation,1,"subsequent verify returns latest analysis epoch");
 const denied=await activate(b);assert.equal(denied.status,409,"different device blocked");
 const listed=await call("/api/admin/licenses",undefined,admin);assert.equal(listed.status,200);
 assert(!JSON.stringify(listed.data).includes(code),"admin list should not leak plaintext codes");
@@ -69,4 +93,4 @@ assert.equal((await call("/api/admin/licenses/"+id+"/revoke",{},admin)).status,2
 assert.equal((await call("/api/challenge",{code})).status,403,"revoked code unusable");
 const options=await worker.fetch(new Request("https://localhost/api/verify",{method:"OPTIONS",headers:{Origin:"https://bgsv1.xyz"}}),env);
 assert.equal(options.status,204);
-console.log(JSON.stringify({ok:true,tests:["admin_secret","secure_code_generation","first_bind","same_device","second_device_denied","single_use_challenge","reset_binding","revoke","cors","no_plaintext_codes_in_listing"]}));
+console.log(JSON.stringify({ok:true,tests:["admin_secret","secure_code_generation","first_bind","same_device","second_device_denied","single_use_challenge","signed_end_analysis","remote_generation_increment","foreign_device_cannot_wipe","reset_binding","revoke","cors","no_plaintext_codes_in_listing"]}));
