@@ -18,6 +18,7 @@
     .bbb-scan-message.warning{color:#ffc9c9}
     .bbb-scan-visual{margin-top:10px}
     #bbbScanCanvas{display:block;max-width:100%;height:auto;border-radius:10px;border:1px solid #6d508c;touch-action:none;cursor:crosshair}
+    .bbb-scan-road-crop{display:block;width:100%;height:auto;max-height:170px;object-fit:contain;margin:10px 0;border:1px solid #70559a;border-radius:8px;image-rendering:auto}
     .bbb-scan-tokens{display:flex;flex-wrap:wrap;gap:5px;max-height:180px;overflow-y:auto;margin:10px 0;border:1px solid #48335c;padding:8px;border-radius:10px}
     .bbb-scan-token{border:0;border-radius:7px;color:#fff;font-size:12px;min-width:31px;min-height:32px;cursor:pointer}
     .bbb-scan-token.B{background:#a9384b}.bbb-scan-token.P{background:#296abe}.bbb-scan-token.T{background:#328566}
@@ -104,6 +105,7 @@
         <div id="bbbScanVisual" class="bbb-scan-visual" hidden><canvas id="bbbScanCanvas" aria-label="截圖預覽：在圖上拖曳可以框選大路區域"></canvas><p>若辨識失敗，可直接在圖片上拖曳框選真正的大路六列格線，手機也可用手指框選。</p><button type="button" id="bbbScanRescan" class="action-btn">重新辨識框選範圍</button></div>
         <div id="bbbScanResult" class="bbb-scan-result" hidden>
           <strong id="bbbScanSummary"></strong>
+          <canvas id="bbbScanRoadCrop" class="bbb-scan-road-crop" aria-label="實際辨識區域六列格線預覽"></canvas>
           <p id="bbbScanTieNote"></p>
           <div class="bbb-scan-tokens" id="bbbScanTokens" aria-label="辨識牌路預覽（點一下可更正單局）"></div>
           <p class="bbb-scan-hint">確認前請核對先後順序；可點某一局切換莊／閒／和。未確認前不會寫入歷史。</p>
