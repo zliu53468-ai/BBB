@@ -21,7 +21,7 @@
 4. 透過 BroadcastChannel 和 Storage 事件通知同瀏覽器的其他分析分頁重載；使用者本頁也重載、保持裝置授權。
 5. 嘗試用裝置私鑰所簽署的一次性 challenge，向新 Worker 的 `POST /api/session/end` 送出結束事件，令 D1 `licenses.generation` 遞增。其他可成功驗證的網頁／裝置在下次開啟或驗證時發現 generation 改變，即刪除本地該會員的舊資料。**離線裝置必須等待它再次連線；網站不可能直接操作完全離線的裝置。**
 
-若本地清除交易失敗，頁面必須顯示失敗訊息而非聲稱清除成功。若遠端 API 未部署或當時無網路，頁面仍清掉本機資料，重新登入後顯示「跨裝置同步尚未完成」警告；請稍後在 Cloudflare Worker 更新版本並重試。
+若本地清除交易失敗，頁面必須顯示失敗訊息而非聲稱清除成功。若遠端 API 未部署或當時無網路，頁面仍清掉本機資料，並將**待同步遠端清除狀態持久保存在該會員專屬 IndexedDB metadata**。重新登入或每次成功授權檢查都會重試；Worker 接受簽名清除請求、回傳新的 `generation`，且本機確認成功後，待辦旗標才會移除。舊版 Worker 或網路故障時只顯示警告，不會錯誤宣稱所有裝置已清除。
 
 ## 3. 必須手動更新 Cloudflare Worker
 
@@ -30,7 +30,7 @@ GitHub Pages 已自動部署，但 Cloudflare 上的 `bbb-license-gateway` 是�
 1. 開啟 [GitHub Worker 程式](https://github.com/zliu53468-ai/BBB/blob/main/license-worker/src/index.js) → `Raw`，複製整份最新程式碼。
 2. 登入 Cloudflare → Workers & Pages → **bbb-license-gateway** → Edit code → **Latest**，全選 `worker.js`、貼上最新程式 → Deploy。
 3. **保留** D1 Binding `DB`、Secret `ADMIN_TOKEN`、Secret `LICENSE_PEPPER`，不必再建立資料表。既有 D1 的 `licenses` 表本來就有 `generation INTEGER NOT NULL DEFAULT 0`。
-4. 開 `https://bbb-license-gateway.zliu53468.workers.dev/health`，確認 `configured:true`；健康檢查只驗證基本配置，不能證明 POST sync endpoint 成功。再用一組測試開通碼走「開始分析 → 報結果 → 結束分析 → 重整後 0 局」，並確認頁面不顯示遠端同步警告。
+4. 開 `https://bbb-license-gateway.zliu53468.workers.dev/health`，**同時確認 `configured:true` 及 `analysis_reset_protocol:1`**。如果第二個欄位不存在，你的 Cloudflare Worker 仍是舊版，表示 GitHub 更新還未同步到 Cloudflare。健康檢查只證明部署版本與基本配置，不能證明所有裝置都已刪除資料。再用一組測試開通碼走「開始分析 → 報結果 → 結束分析 → 重整後 0 局」，並確認頁面不顯示遠端同步警告。
 
 **若不更新 Worker：** 前端的每會員隔離、IndexedDB 和本機／同瀏覽器分頁清除可使用；**跨裝置**同步則尚未生效。不要宣稱跨裝置即時刪除。
 
