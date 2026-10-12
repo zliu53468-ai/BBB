@@ -5,6 +5,8 @@ on:
     paths:
       - 'license-worker/**'
       - 'auth-client.js'
+      - 'bbb-license-storage.js'
+      - 'test_license_storage.mjs'
       - 'auth-config.js'
       - 'activation-admin.js'
       - 'activation-admin.html'
@@ -15,6 +17,8 @@ on:
     paths:
       - 'license-worker/**'
       - 'auth-client.js'
+      - 'bbb-license-storage.js'
+      - 'test_license_storage.mjs'
       - 'auth-config.js'
       - 'activation-admin.js'
       - 'activation-admin.html'
@@ -32,5 +36,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check auth-client.js && node --check auth-config.js && node --check activation-admin.js && node --check license-worker/src/index.js
+      - run: node --check auth-client.js && node --check bbb-license-storage.js && node --check auth-config.js && node --check activation-admin.js && node --check license-worker/src/index.js
       - run: node license-worker/test-license.mjs
+      - run: node test_license_storage.mjs
