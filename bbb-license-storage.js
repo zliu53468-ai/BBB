@@ -186,16 +186,20 @@ async function start(licenseId,generation=null){
   // different licenses used on this browser before this privacy upgrade.
 }
 async function end(newGeneration=null){
-  if(!ready||clearing)return;
+  if(!ready||clearing)return false;
   clearing=true;
+  const scope=active;
   // The Frozen Core end-click handler has already reset in-memory history.
   await Promise.allSettled([...pending]);
   try{
-    await clearScope(active,newGeneration);
+    await clearScope(scope,newGeneration);
     memory.clear();writeError="";
     purgeLegacy();
-    if(channel)channel.postMessage({type:"reset",scope:active});
-    try{native.set.call(own(),RESET_PREFIX+active,String(Date.now()));}catch(_){}
+    if(channel)channel.postMessage({type:"reset",scope});
+    try{native.set.call(own(),RESET_PREFIX+scope,String(Date.now()));}catch(_){}
+    // Nothing can access this license again before the next verified start().
+    ready=false;active="";epoch="";
+    if(channel){channel.close();channel=null;}
     return true;
   }catch(error){notifyError(error);return false;}
   finally{clearing=false;}
