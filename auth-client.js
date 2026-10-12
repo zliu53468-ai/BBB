@@ -12,7 +12,7 @@ const scripts=[
   "app256forward.js",
   "app256continuation.js",
   "particle_filter_runtime.js?v=1-fixed500-stateless",
-  "macro_ema.js?v=1",
+  "macro_ema.js?v=20261013-score-ema-independent",
   "final_probability_runtime.js?v=20261012-result-history-fix",
   "bbb-screenshot-road.js?v=20261013-desktop-crop-v2",
   "bbb-desktop-capture.js?v=20261013-desktop-snip-v1"
