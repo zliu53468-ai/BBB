@@ -180,11 +180,13 @@ function scan(){
   proposal=null;el("bbbScanConfirm").disabled=true;
   msg("正在依照 BGS 六列大路辨識規則分析截圖…");
   let best=null;
-  for(const base of candidates())for(const roi of roiVariants(base)){
+  const scanDeadline=performance.now()+1650;
+  search: for(const base of candidates())for(const roi of roiVariants(base)){
     const aspect=roi[2]*sourceCanvas.width/(roi[3]*sourceCanvas.height);
     const estimate=clamp(Math.round(aspect*6),8,48);
     const cols=[estimate,estimate-1,estimate+1,15].filter((x,i,a)=>x>=8&&x<=48&&a.indexOf(x)===i);
     for(const n of cols){
+      if(performance.now()>scanDeadline)break search;
       const result=scoreRegion(roi,n);
       if(result&&(!best||result.score>best.score))best=result;
     }
@@ -218,6 +220,10 @@ async function importProposal(){
   if(busy||!proposal||proposal.length<1)return;
   if(history().length>0){msg("目前已有牌路紀錄，為避免污染，不允許覆蓋或混合。若要匯入新截圖，請先按「結束分析」。",true);return;}
   if(!root.__BGS_FINAL56__||!root.__BGS256_TEST__){msg("BBB 預測核心尚未就緒，請稍候。",true);return;}
+  const status=root.__BGS_FINAL56__.getModelStatus?.();
+  if(status&&(!status.physics||!status.final56)){
+    msg("BBB 模型檔案還在載入，請稍候再按確認匯入；目前沒有寫入牌路。",true);return;
+  }
   busy=true;el("bbbScanConfirm").disabled=true;
   const seq=proposal.slice();
   try{
