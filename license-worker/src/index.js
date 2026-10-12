@@ -81,10 +81,35 @@ async function handle(req,env,path){
    const deviceHash=await digest(publicKey);
    // Atomic first-writer binding. Different devices cannot overwrite an existing key.
    const bound=await env.DB.prepare("UPDATE licenses SET public_key=?,device_hash=?,bound_at=? WHERE code_hash=? AND public_key IS NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)").bind(publicKey,deviceHash,now,hash,now).run();
-   const row=await env.DB.prepare("SELECT id,public_key,bound_at,expires_at,revoked_at FROM licenses WHERE code_hash=?").bind(hash).first();
+   const row=await env.DB.prepare("SELECT id,public_key,bound_at,expires_at,revoked_at,generation FROM licenses WHERE code_hash=?").bind(hash).first();
    if(!isLive(row,now))return reply({error:"invalid_or_inactive_code"},403);
    if(row.public_key!==publicKey)return reply({error:"code_bound_to_another_device"},409);
-   return reply({ok:true,license_id:row.id,bound_at:row.bound_at,expires_at:row.expires_at,first_activation:!!bound.meta?.changes});
+   return reply({ok:true,license_id:row.id,bound_at:row.bound_at,expires_at:row.expires_at,
+     generation:row.generation??0,first_activation:!!bound.meta?.changes});
+ }
+ if(path==="/api/session/end"&&req.method==="POST"){
+   // Same one-use proof-of-possession as /api/verify. Only the bound device
+   // may clear the license's analysis epoch; ADMIN_TOKEN is never exposed.
+   await rateLimit(req,env,now);
+   const body=await readBody(req),code=normalizeCode(body.code),challengeId=String(body.challenge_id||"");
+   if(!validCode(code)||!(/^[a-f0-9-]{36}$/i).test(challengeId))return reply({error:"invalid_verification"},403);
+   const hash=await codeHash(code,env);
+   const used=await env.DB.prepare("DELETE FROM challenges WHERE id=? AND code_hash=? AND expires_at>? RETURNING nonce").bind(challengeId,hash,now).first();
+   if(!used)return reply({error:"challenge_expired_or_used"},403);
+   let publicKey;
+   try{publicKey=jwkClean(body.public_key)}catch(_){return reply({error:"invalid_device_key"},400);}
+   let signatureOk=false;
+   try{
+     const key=await crypto.subtle.importKey("jwk",JSON.parse(publicKey),{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
+     signatureOk=await crypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},key,
+       from64(String(body.signature||"")),encoder.encode("bbb-activate-v1:"+challengeId+":"+used.nonce));
+   }catch(_){signatureOk=false;}
+   if(!signatureOk)return reply({error:"invalid_device_signature"},403);
+   const updated=await env.DB.prepare("UPDATE licenses SET generation=generation+1 WHERE code_hash=? AND public_key=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)")
+     .bind(hash,publicKey,now).run();
+   if(!updated.meta?.changes)return reply({error:"invalid_or_unbound_license"},403);
+   const fresh=await env.DB.prepare("SELECT generation FROM licenses WHERE code_hash=?").bind(hash).first();
+   return reply({ok:true,generation:fresh.generation,cleared_at:now});
  }
  return reply({error:"not_found"},404);
 }
