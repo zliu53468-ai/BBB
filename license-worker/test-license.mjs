@@ -43,6 +43,9 @@ const env={DB,LICENSE_PEPPER:"test_only_random_secret_123456789",ADMIN_TOKEN:"te
 function req(path,data,token){return new Request("https://localhost"+path,{method:data===undefined?"GET":"POST",headers:{Origin:"https://bgsv1.xyz",...(data!==undefined?{"Content-Type":"application/json"}:{}),...(token?{"Authorization":"Bearer "+token}:{})},body:data===undefined?undefined:JSON.stringify(data)});}
 async function call(path,data,token){const result=await worker.fetch(req(path,data,token),env);return {status:result.status,data:await result.json()};}
 const admin=env.ADMIN_TOKEN;
+const health=await call("/health");
+assert.equal(health.status,200);
+assert.equal(health.data.analysis_reset_protocol,1,"deployed Worker must expose signed end/reset protocol");
 assert.equal((await call("/api/admin/licenses",{count:1})).status,401);
 const created=await call("/api/admin/licenses",{count:1,label:"QA"},admin);
 assert.equal(created.status,201);
@@ -93,4 +96,4 @@ assert.equal((await call("/api/admin/licenses/"+id+"/revoke",{},admin)).status,2
 assert.equal((await call("/api/challenge",{code})).status,403,"revoked code unusable");
 const options=await worker.fetch(new Request("https://localhost/api/verify",{method:"OPTIONS",headers:{Origin:"https://bgsv1.xyz"}}),env);
 assert.equal(options.status,204);
-console.log(JSON.stringify({ok:true,tests:["admin_secret","secure_code_generation","first_bind","same_device","second_device_denied","single_use_challenge","signed_end_analysis","remote_generation_increment","foreign_device_cannot_wipe","reset_binding","revoke","cors","no_plaintext_codes_in_listing"]}));
+console.log(JSON.stringify({ok:true,tests:["admin_secret","secure_code_generation","first_bind","same_device","second_device_denied","single_use_challenge","health_protocol_v1","signed_end_analysis","remote_generation_increment","foreign_device_cannot_wipe","reset_binding","revoke","cors","no_plaintext_codes_in_listing"]}));
