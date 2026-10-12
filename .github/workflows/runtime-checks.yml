@@ -2,10 +2,10 @@ name: Physics Primary Runtime Checks
 on:
   push:
     branches: [main]
-    paths: ["*runtime.js", "macro_ema*", "test_macro*", "test_final_probability_runtime.js", "final_probability_model.json", "index.html", "v15*", "test_v15*", ".github/workflows/runtime-checks.yml"]
+    paths: ["*runtime.js", "macro_ema*", "test_macro*", "test_final_probability_runtime.js", "test_bbb_result_persistence.js", "final_probability_model.json", "index.html", "v15*", "test_v15*", ".github/workflows/runtime-checks.yml"]
   pull_request:
     branches: [main]
-    paths: ["*runtime.js", "macro_ema*", "test_macro*", "test_final_probability_runtime.js", "final_probability_model.json", "index.html", "v15*", "test_v15*", ".github/workflows/runtime-checks.yml"]
+    paths: ["*runtime.js", "macro_ema*", "test_macro*", "test_final_probability_runtime.js", "test_bbb_result_persistence.js", "final_probability_model.json", "index.html", "v15*", "test_v15*", ".github/workflows/runtime-checks.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,6 +23,7 @@ jobs:
           python-version: "3.11"
       - run: node --check final_probability_runtime.js && node --check macro_ema.js
       - run: python -m unittest -v test_macro_ema.py
+      - run: node --check test_bbb_result_persistence.js && node test_bbb_result_persistence.js
       - run: node test_final_probability_runtime.js
       - run: BGS_USE_GENERATED_MODEL=1 node test_final_probability_runtime.js
       - run: node test_macro_runtime.js
