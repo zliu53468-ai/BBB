@@ -112,6 +112,25 @@ assert.equal(stored().at(-1),"B");
 report("btnBack");
 assert.equal(stored().length,27);
 assert.equal(el("roundCount").textContent,27);
-// Pressing Start should NOT add a completed-hand result: display next round only.
+// Another browser tab can advance storage without updating this tab's Frozen Core.
+// Block an outdated tab rather than rolling stored 28 hands back to 27.
+const newer=[...stored(),"P"];
+storage.set(HISTORY,JSON.stringify({...JSON.parse(storage.get(HISTORY)),history:newer}));
+report("btnB");
+assert.deepEqual(stored(),newer,"stale tab did not overwrite the newer history");
+assert.match(el("message").textContent,/其他頁籤更新/);
+assert.equal(el("roundCount").textContent,27);
+// Reload should adopt the freshest saved value, allowing the next B/P/T as usual.
+elements.clear();
+for(const id of ids)elements.set(id,new Element(id));
+for(const modulePath of ["./app256forward.js","./app256continuation.js","./final_probability_runtime.js"])
+  delete require.cache[require.resolve(modulePath)];
+require("./app256forward.js");
+require("./app256continuation.js");
+require("./final_probability_runtime.js");
+assert.equal(el("roundCount").textContent,28);
+report("btnB");
+assert.equal(stored().length,29);
+assert.equal(el("roundCount").textContent,29);
 console.log(JSON.stringify({ok:true,checks:["invalid_optional_does_not_block","valid_observation","banker_player_tie","silent_storage_write_retry",
-  "persistent_storage_failure_warns","reload_restores_last_saved_history","backwards_compatible_core"],final_round:stored().length}));
+  "persistent_storage_failure_warns","reload_restores_last_saved_history","backwards_compatible_core","stale_tab_protects_newer_history"],final_round:stored().length}));
