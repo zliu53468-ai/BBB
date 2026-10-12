@@ -10,7 +10,7 @@ const MANAGED=/^bgs(?:[_a-z0-9])/i;
 const RESET_PREFIX="bbb-isolated-reset:";
 const native={get:Storage.prototype.getItem,set:Storage.prototype.setItem,
   remove:Storage.prototype.removeItem};
-let dbPromise=null,active="",epoch="",remoteGeneration=null,ready=false,clearing=false;
+let dbPromise=null,active="",epoch="",remoteGeneration=null,remotePending=false,ready=false,clearing=false;
 let memory=new Map(),pending=new Set(),channel=null;
 let installDone=false,writeError="";
 const own=()=>root.localStorage;
@@ -120,7 +120,7 @@ async function readScope(scope,generation){
         const cursor=keys.result;
         if(cursor){ds.delete(cursor.primaryKey);cursor.continue();}
       };
-      record={epoch:unique(),remote_generation:generation};
+      record={epoch:unique(),remote_generation:generation,pending_remote_end:false};
       ms.put(record,scope);
       metaValue=record;
       data=[];
@@ -144,7 +144,9 @@ async function clearScope(scope,newGeneration=null){
   const r=meta.get(scope);
   r.onsuccess=()=>{
     const old=r.result||{},g=Number.isInteger(newGeneration)?Math.max(newGeneration,old.remote_generation||0):old.remote_generation??null;
-    meta.put({epoch:unique(),remote_generation:g},scope);
+    // Persist a durable server-reset outbox in IndexedDB even if this browser
+    // closes or Cloudflare still runs the older Worker during End Analysis.
+    meta.put({epoch:unique(),remote_generation:g,pending_remote_end:newGeneration===null},scope);
     const cursor=data.index("scope").openKeyCursor(IDBKeyRange.only(scope));
     cursor.onsuccess=()=>{
       const item=cursor.result;
@@ -186,6 +188,7 @@ async function start(licenseId,generation=null){
   ready=false;clearing=false;active=String(licenseId);writeError="";
   const snapshot=await readScope(active,Number.isInteger(generation)?generation:null);
   epoch=snapshot.meta.epoch;remoteGeneration=snapshot.meta.remote_generation??null;
+  remotePending=snapshot.meta.pending_remote_end===true;
   memory=new Map(snapshot.data.map(row=>[row.key,row.value]));
   install();ready=true;
   setupListeners(active);
@@ -201,6 +204,7 @@ async function end(newGeneration=null){
   try{
     await clearScope(scope,newGeneration);
     memory.clear();writeError="";
+    remotePending=newGeneration===null;
     purgeLegacy();
     if(channel)channel.postMessage({type:"reset",scope});
     try{native.set.call(own(),RESET_PREFIX+scope,String(Date.now()));}catch(_){}
@@ -211,6 +215,20 @@ async function end(newGeneration=null){
   }catch(error){notifyError(error);return false;}
   finally{clearing=false;}
 }
+async function acknowledgeRemoteEnd(scope,generation){
+  if(!/^[a-f0-9-]{36}$/i.test(String(scope||"")))throw Error("verified_license_id_required");
+  if(!Number.isInteger(generation)||generation<0)throw Error("invalid_remote_generation");
+  const db=await database(),tx=db.transaction(META,"readwrite"),done=transactionDone(tx);
+  const meta=tx.objectStore(META),read=meta.get(scope);
+  read.onsuccess=()=>{
+    const old=read.result;
+    if(!old)return;
+    meta.put({...old,remote_generation:Math.max(generation,old.remote_generation??0),
+      pending_remote_end:false},scope);
+  };
+  await done;
+  if(ready&&active===scope){remotePending=false;remoteGeneration=Math.max(generation,remoteGeneration??0);}
+}
 async function syncGeneration(generation){
   if(!ready||!Number.isInteger(generation)||generation<0)return false;
   if(remoteGeneration===null){
@@ -218,7 +236,7 @@ async function syncGeneration(generation){
     // Initial older deployments can report no generation. Preserve until a
     // later *strictly greater* generation is verified.
     const db=await database(),tx=db.transaction(META,"readwrite"),done=transactionDone(tx);
-    tx.objectStore(META).put({epoch,remote_generation:generation},active);
+    tx.objectStore(META).put({epoch,remote_generation:generation,pending_remote_end:remotePending},active);
     await done;return false;
   }
   if(generation<=remoteGeneration)return false;
@@ -226,6 +244,7 @@ async function syncGeneration(generation){
   if(ok){reloadOther();return true;}
   throw Error("remote_analysis_reset_failed");
 }
-root.__BBB_LICENSE_STORAGE__={start,end,syncGeneration,managedKey:isKey,
-  status:()=>({active:!!ready,scope:active,pending:pending.size,size:memory.size,error:writeError})};
+root.__BBB_LICENSE_STORAGE__={start,end,syncGeneration,acknowledgeRemoteEnd,managedKey:isKey,
+  status:()=>({active:!!ready,scope:active,pending_writes:pending.size,
+    pending_remote_end:remotePending,size:memory.size,error:writeError})};
 })(window);
