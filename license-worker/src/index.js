@@ -23,7 +23,7 @@ async function rateLimit(req,env,now){const ip=req.headers.get("CF-Connecting-IP
 }
 async function handle(req,env,path){
  const now=Date.now();
- if(path==="/health"&&req.method==="GET")return reply({ok:true,service:"bbb-license-api",configured:!!(env.DB&&env.LICENSE_PEPPER&&env.ADMIN_TOKEN)});
+ if(path==="/health"&&req.method==="GET")return reply({ok:true,service:"bbb-license-api",configured:!!(env.DB&&env.LICENSE_PEPPER&&env.ADMIN_TOKEN),analysis_reset_protocol:1});
  if(!env.DB||!env.LICENSE_PEPPER||!env.ADMIN_TOKEN)return reply({error:"server_not_configured"},503);
  if(path.startsWith("/api/admin/")){
    if(!await authorize(req,env))return reply({error:"unauthorized"},401);
