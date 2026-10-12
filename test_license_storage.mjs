@@ -2,8 +2,10 @@
 "use strict";
 // No external packages. Mock only the IndexedDB primitives used by the
 // per-license adapter, then exercise actual module across fresh browser tabs.
-const assert=require("node:assert/strict");
-const fs=require("node:fs"),vm=require("node:vm"),{webcrypto}=require("node:crypto");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import vm from "node:vm";
+import {webcrypto} from "node:crypto";
 const source=fs.readFileSync("bbb-license-storage.js","utf8");
 const uuidA="11111111-1111-4111-8111-111111111111";
 const uuidB="22222222-2222-4222-8222-222222222222";
