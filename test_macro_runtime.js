@@ -130,8 +130,8 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
   scoreBasedModel.decision_policy.macro_ema.coefficients={six_card:.02,low_score:.015,point_diff:-.01};
   const scoreBased=context(new Map(),false,scoreBasedModel);
   await scoreBased.api.loadModels();
-  const scoreOnlyRuntime=scoreBased.api.directPhysicsPrimary(physics,60,so);
-  // so was made stale on purpose above; use a fresh observed-score snapshot.
+  const scoreOnlyRuntime=scoreBased.api.directPhysicsPrimary(physics,60,M.snapshot(scoreOnly));
+  // The scoreOnly state has had four missing-score rounds; only a fresh snapshot can adjust.
   const freshScore=M.createState("real_ui_scores");
   for(let i=0;i<24;i++)M.update(freshScore,{outcome:"B",banker_score:i<12?9:2,player_score:0});
   const scoreResult=scoreBased.api.directPhysicsPrimary(physics,60,M.snapshot(freshScore));
