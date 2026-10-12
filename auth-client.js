@@ -192,22 +192,28 @@ async function activate(code,silent=false){
 }
 async function confirmSession(){
   if(!authorized||busy||!activeCode)return;
+  const storage=window.__BBB_LICENSE_STORAGE__;
   try{
     const verified=await verify(activeCode);
     if(verified.license_id!==activeLicenseId){window.location.reload();return;}
-    const storage=window.__BBB_LICENSE_STORAGE__;
     if(Number.isInteger(verified.generation))
       await storage?.syncGeneration(verified.generation);
-    if(storage?.status().pending_remote_end){
-      const result=await signedChallenge(activeCode,"/api/session/end");
-      if(!result.ok||!Number.isInteger(result.generation))throw Error("invalid_end_response");
-      await storage.acknowledgeRemoteEnd(activeLicenseId,result.generation);
-    }
-  }
-  catch(_){
+  }catch(_){
     // License may have been revoked/reset. Lock the UI on any failed recheck.
     authorized=false;activeCode="";panel.hidden=true;gate.hidden=false;
     show("裝置授權需要重新驗證，請輸入開通碼。","error");
+    return;
+  }
+  if(storage?.status().pending_remote_end){
+    try{
+      const result=await signedChallenge(activeCode,"/api/session/end");
+      if(!result.ok||!Number.isInteger(result.generation))throw Error("invalid_end_response");
+      await storage.acknowledgeRemoteEnd(activeLicenseId,result.generation);
+    }catch(_){
+      // A network failure during optional remote cleanup is NOT license revocation.
+      const msg=document.getElementById("message");
+      if(msg){msg.textContent="本機分析紀錄已清除，跨裝置同步尚未成功；稍後會自動重試。";msg.classList.add("warning");}
+    }
   }
 }
 form.addEventListener("submit",event=>{
