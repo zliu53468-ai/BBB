@@ -77,7 +77,8 @@ function useRegion(full=false){
    // the user explicitly confirms its B/P/T result.
    closeOverlay();
    root.__BBB_ROAD_SCANNER__.loadCapturedCanvas(captured);
-   notify(full?"已擷取整張畫面；請核對掃描預覽。":"已擷取所選大路區域；請核對掃描預覽。");
+   // The OCR module owns its success/error message. Never overwrite a
+   // "recognition failed" warning with a misleading capture-success notice.
  }catch(e){el("bbbCaptureHint").textContent=e?.message||"截圖區域有誤";}
 }
 async function frameFromStream(stream){
