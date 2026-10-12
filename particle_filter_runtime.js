@@ -26,7 +26,16 @@ const MAX_BLEND=.16;
 const RANKS=13;
 const INITIAL_PER_RANK=32;
 const OUTCOMES=new Set(["B","P","T"]);
+const BLEND_MODES=new Set(["quality","off","fixed_0.06","fixed_0.10","fixed_0.16","uncertainty_only"]);
 const clip=(v,lo=0,hi=1)=>Math.max(lo,Math.min(hi,Number.isFinite(+v)?+v:lo));
+
+function normalizeBlendMode(mode){return BLEND_MODES.has(String(mode||"quality"))?String(mode||"quality"):"quality";}
+function fixedBlendWeight(mode){
+  if(mode==="fixed_0.06")return .06;
+  if(mode==="fixed_0.10")return .10;
+  if(mode==="fixed_0.16")return .16;
+  return null;
+}
 
 function seedFromHistory(history){
   let h=2166136261>>>0;
@@ -140,9 +149,16 @@ function posteriorForecast(particles,consumed,weights,rng){
   const variance=Math.max(0,consumedSq-consumedMean*consumedMean);
   return {physics:out,consumedStd:Math.sqrt(variance)};
 }
-function estimate(history,directPhysics){
+function estimate(history,directPhysics,mode="quality"){
   const seq=(Array.isArray(history)?history:[]).map(x=>String(x||"").toUpperCase()).filter(x=>OUTCOMES.has(x));
   if(!Array.isArray(directPhysics)||directPhysics.length!==48)throw new Error("particle500 requires Direct Physics 48D");
+  const blendMode=normalizeBlendMode(mode);
+  if(blendMode==="off")return {
+    physics:directPhysics.map(v=>+v||0),posterior:null,
+    diagnostics:{version:VERSION,enabled:false,particle_filter_enabled:false,particle_count:0,
+      policy:"direct_physics_only",persistent_state:false,rebuild_from_scratch:false,
+      history_rounds:seq.length,history_fingerprint:seq.join(""),particle_blend_mode:blendMode,blend_weight:0}
+  };
   const rng=rng32(seedFromHistory(seq));
   let particles=Array.from({length:PARTICLE_COUNT},()=>Array(RANKS).fill(INITIAL_PER_RANK));
   let consumed=Array(PARTICLE_COUNT).fill(0),weights=Array(PARTICLE_COUNT).fill(1/PARTICLE_COUNT);
@@ -175,23 +191,32 @@ function estimate(history,directPhysics){
   const spread=clip(forecast.consumedStd/18);
   const posteriorUncertainty=clip(.55*entropy3(winner)+.30*(1-lastEssRatio)+.15*spread);
   const quality=clip(.45*lastEssRatio+.35*(1-posteriorUncertainty)+.20*(1-spread));
-  const blendWeight=clip(MIN_BLEND+(MAX_BLEND-MIN_BLEND)*quality,MIN_BLEND,MAX_BLEND);
+  const qualityBlendWeight=clip(MIN_BLEND+(MAX_BLEND-MIN_BLEND)*quality,MIN_BLEND,MAX_BLEND);
+  const forcedBlendWeight=fixedBlendWeight(blendMode);
+  const blendWeight=forcedBlendWeight===null?qualityBlendWeight:forcedBlendWeight;
 
   const corrected=directPhysics.map(v=>+v||0);
-  blendBlock(corrected,posterior,0,3,blendWeight);
-  blendBlock(corrected,posterior,3,10,blendWeight);
-  blendBlock(corrected,posterior,13,10,blendWeight);
-  blendBlock(corrected,posterior,23,3,blendWeight);
-  const directionFlipBlocked=preserveWinnerDirection(corrected,directPhysics);
-  for(let i=26;i<39;i++)corrected[i]=(1-blendWeight)*corrected[i]+blendWeight*posterior[i];
-  corrected[43]=(1-blendWeight)*corrected[43]+blendWeight*posterior[43];
-  corrected[44]=(1-blendWeight)*corrected[44]+blendWeight*posterior[44];
-  corrected[45]=(1-blendWeight)*corrected[45]+blendWeight*posterior[45];
-  corrected[46]=(1-blendWeight)*corrected[46]+blendWeight*posterior[46];
-  corrected[47]=(1-blendWeight)*corrected[47]+blendWeight*posterior[47];
-  corrected[42]=clip(.65*clip(directPhysics[42])+.35*posteriorUncertainty);
-  const pB=clip(corrected[23]),pP=clip(corrected[24]);
-  corrected[39]=pB*.95-pP;corrected[40]=pP-pB;corrected[41]=corrected[39]-corrected[40];
+  let directionFlipBlocked=false;
+  if(blendMode==="uncertainty_only"){
+    corrected[42]=clip(.65*clip(directPhysics[42])+.35*posteriorUncertainty);
+    corrected[44]=(1-blendWeight)*corrected[44]+blendWeight*posterior[44];
+    corrected[45]=(1-blendWeight)*corrected[45]+blendWeight*posterior[45];
+  }else{
+    blendBlock(corrected,posterior,0,3,blendWeight);
+    blendBlock(corrected,posterior,3,10,blendWeight);
+    blendBlock(corrected,posterior,13,10,blendWeight);
+    blendBlock(corrected,posterior,23,3,blendWeight);
+    directionFlipBlocked=preserveWinnerDirection(corrected,directPhysics);
+    for(let i=26;i<39;i++)corrected[i]=(1-blendWeight)*corrected[i]+blendWeight*posterior[i];
+    corrected[43]=(1-blendWeight)*corrected[43]+blendWeight*posterior[43];
+    corrected[44]=(1-blendWeight)*corrected[44]+blendWeight*posterior[44];
+    corrected[45]=(1-blendWeight)*corrected[45]+blendWeight*posterior[45];
+    corrected[46]=(1-blendWeight)*corrected[46]+blendWeight*posterior[46];
+    corrected[47]=(1-blendWeight)*corrected[47]+blendWeight*posterior[47];
+    corrected[42]=clip(.65*clip(directPhysics[42])+.35*posteriorUncertainty);
+    const pB=clip(corrected[23]),pP=clip(corrected[24]);
+    corrected[39]=pB*.95-pP;corrected[40]=pP-pB;corrected[41]=corrected[39]-corrected[40];
+  }
 
   return {
     physics:corrected,
@@ -202,7 +227,8 @@ function estimate(history,directPhysics){
       history_rounds:seq.length,history_fingerprint:seq.join(""),likelihood_draws:LIKELIHOOD_DRAWS,
       fallback_draws:FALLBACK_DRAWS,forecast_draws:FORECAST_DRAWS,ess_resample_threshold:ESS_RESAMPLE_THRESHOLD,
       resampling_count:resamplingCount,recent_ess_ratio:lastEssRatio,posterior_uncertainty:posteriorUncertainty,
-      particle_quality:quality,blend_weight:blendWeight,tie_soft_update:true,tie_likelihood_influence:TIE_LIKELIHOOD_INFLUENCE,
+      particle_quality:quality,blend_weight:blendWeight,quality_blend_weight:qualityBlendWeight,particle_blend_mode:blendMode,
+      tie_soft_update:true,tie_likelihood_influence:TIE_LIKELIHOOD_INFLUENCE,
       tie_observation_count:seq.filter(x=>x==="T").length,direction_flip_blocked:directionFlipBlocked,
       direct_directional_pb:clip(directPhysics[23]/Math.max(1e-9,directPhysics[23]+directPhysics[24])),
       corrected_directional_pb:clip(corrected[23]/Math.max(1e-9,corrected[23]+corrected[24])),

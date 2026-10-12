@@ -6,7 +6,12 @@ const PARTICLE500=(typeof window!=="undefined")?window.__BGS_PARTICLE500__:null;
 const MACRO=(typeof window!=="undefined")?window.__BGS_MACRO_EMA__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
-const VERSION="PHYSICS_57D_V14_8_MACRO_EMA_GUARD";
+const EV_CONSISTENCY_V1=false; // Shadow gate failed; set true only after holdout acceptance.
+const EARLY_TIE_PENALTY=.15;
+const PARTICLE_BLEND_MODE="quality";
+const VERSION=EV_CONSISTENCY_V1
+  ?"PHYSICS_57D_V14_8_MACRO_EMA_GUARD_EVC1"
+  :"PHYSICS_57D_V14_8_MACRO_EMA_GUARD";
 const PHYSICS_URL="physics_multitask_model.json";
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
@@ -365,10 +370,19 @@ function volumeGuardState(roundIndex,probabilityB,policy){
   for(const row of rows){
     const priorP=clip(+row.final_p_b),priorPlayer=1-priorP;
     const priorActivation=Math.max(0,Number.isFinite(+row.activation_ev)?+row.activation_ev:policy.activationEv);
-    const baseAction=(priorP*.95-priorPlayer)>priorActivation||(priorPlayer-priorP)>priorActivation;
+    let baseAction=(priorP*.95-priorPlayer)>priorActivation||(priorPlayer-priorP)>priorActivation;
+    let expectedCorrect=expectedProbability(priorP);
+    if(EV_CONSISTENCY_V1){
+      const storedTie=Number.isFinite(+row.p_tie)?clip(+row.p_tie):
+        Array.isArray(row.physics_48d)&&Number.isFinite(+row.physics_48d[25])?clip(+row.physics_48d[25]):0;
+      const directionalMass=clip(1-storedTie),priorBankerMass=directionalMass*priorP,priorPlayerMass=directionalMass*(1-priorP);
+      const priorEvBanker=priorBankerMass*.95-priorPlayerMass,priorEvPlayer=priorPlayerMass-priorBankerMass;
+      baseAction=priorEvBanker>priorActivation||priorEvPlayer>priorActivation;
+      expectedCorrect=Math.max(priorBankerMass,priorPlayerMass);
+    }
     const action=["B","P","莊 B","閒 P"].includes(String(row.predicted_direction||""));
-    if(action){actions++;expected+=expectedProbability(priorP);}
-    if(baseAction)baseline+=expectedProbability(priorP);
+    if(action){actions++;expected+=expectedCorrect;}
+    if(baseAction)baseline+=expectedCorrect;
   }
   const stage=roundIndex<=40?"early":roundIndex<=50?"middle":"late",rates=config.target_action_rate&&typeof config.target_action_rate==="object"?config.target_action_rate:{};
   const target=clip(Number.isFinite(+rates[stage])?+rates[stage]:0),floor=clip(Number.isFinite(+config.expected_correct_floor)?+config.expected_correct_floor:.95);
@@ -396,11 +410,12 @@ function physicsConsistencyScore(physics){
   const agree=signals.filter(v=>v===w).length;
   return clip(.45+.275*agree,0,1);
 }
-function calibratedPhysicsDirectionalPB(rawPB,roundIndex,uncertainty,consistency){
+function calibratedPhysicsDirectionalPB(rawPB,roundIndex,uncertainty,consistency,pT=0){
   const p=clip(rawPB),u=clip(uncertainty),c=clip(consistency);
   if(roundIndex>40)return p;
   const stage=interpAnchors(roundIndex,[[1,.72],[5,.76],[10,.81],[15,.85],[20,.89],[25,.92],[30,.94],[35,.96],[40,1]]);
-  const reliability=clip(stage*(1-.03*u)*(.97+.03*c),.82,1);
+  let reliability=clip(stage*(1-.03*u)*(.97+.03*c),.82,1);
+  if(EV_CONSISTENCY_V1)reliability=clip(reliability*(1-EARLY_TIE_PENALTY*clip(pT)),.82,1);
   return clip(.5+(p-.5)*reliability);
 }
 function physicsPrecisionPenalty(roundIndex,uncertainty,consistency){
@@ -413,7 +428,7 @@ function directPhysicsPrimary(physics,roundIndex,macroFeatures=null){
   const pB=clip(+physics?.[23]||0),pP=clip(+physics?.[24]||0),pT=clip(+physics?.[25]||0);
   const directionalMass=Math.max(1e-9,pB+pP),rawDirectionalPB=clip(pB/directionalMass);
   const uncertainty=clip(+physics?.[42]||0),consistency=physicsConsistencyScore(physics);
-  const calibratedPB=calibratedPhysicsDirectionalPB(rawDirectionalPB,roundIndex,uncertainty,consistency);
+  const calibratedPB=calibratedPhysicsDirectionalPB(rawDirectionalPB,roundIndex,uncertainty,consistency,pT);
   const progressWeight=directPhysicsProgressWeight(roundIndex,physics),noise=physicsNoiseScore(physics,roundIndex,Math.cbrt(progressWeight));
   const policy=decisionPolicy(roundIndex,noise);
   // Primary EV is computed only from the Direct Physics winner head.
@@ -439,7 +454,8 @@ function directPhysicsPrimary(physics,roundIndex,macroFeatures=null){
     if(bankerOk)candidate="B";
     else if(playerOk)candidate="P";
   }
-  return {pB,pP,pT,rawDirectionalPB,directionalPB,progressWeight,noise,policy,distance,uncertainty,consistency,precisionPenalty,
+  const earlyTiePenaltyApplied=EV_CONSISTENCY_V1&&roundIndex<=40&&EARLY_TIE_PENALTY>0&&pT>0;
+  return {pB,pP,pT,rawDirectionalPB,directionalPB,progressWeight,noise,policy,distance,uncertainty,consistency,precisionPenalty,earlyTiePenaltyApplied,
     physicsActivationEv,physicsConfidenceBand,evBanker,evPlayer,baseEvBanker,baseEvPlayer,modelEvBanker,modelEvPlayer,candidate,macro};
 }
 
@@ -456,7 +472,8 @@ function auxiliaryCandidateFilter(candidate,corePB,xgbPB){
 function v15SkipDiagnostics(primary,auxFilter,decision,mode,error=""){
   if(mode!=="physics_primary"||!primary)
     return {schema_version:1,final_action:"Skip",primary_reason:"physics_unavailable",
-      failed_conditions:["physics_unavailable"],stage:null,runtime_error:String(error||"")};
+      failed_conditions:["physics_unavailable"],stage:null,runtime_error:String(error||""),physics_pt:null,
+      ev_consistency_active:!!EV_CONSISTENCY_V1,particle_blend_mode:PARTICLE_BLEND_MODE,early_tie_penalty_applied:false};
   const p=primary,d=decision||{},trace=d.v15Trace||{},failed=[];
   if(p.distance+1e-12<p.physicsConfidenceBand)failed.push("physics_confidence_band");
   const physicsEvOk=(p.evBanker>=p.evPlayer&&p.evBanker>p.physicsActivationEv+BANKER_EV_FLOOR)||
@@ -478,7 +495,9 @@ function v15SkipDiagnostics(primary,auxFilter,decision,mode,error=""){
     physics_ev_banker:p.evBanker,physics_ev_player:p.evPlayer,physics_activation_ev:p.physicsActivationEv,
     final_distance:trace.distance??null,final_effective_band:trace.effectiveBand??null,
     final_candidate_edge:trace.candidateEdge??null,final_activation_ev:trace.effectiveActivationEv??null,
-    xgb_aux_decision:auxFilter?.decision??null,volume_guard_active:d.volumeGuardActive===true};
+    xgb_aux_decision:auxFilter?.decision??null,volume_guard_active:d.volumeGuardActive===true,
+    physics_pt:p.pT,ev_consistency_active:!!EV_CONSISTENCY_V1,particle_blend_mode:PARTICLE_BLEND_MODE,
+    early_tie_penalty_applied:p.earlyTiePenaltyApplied===true};
 }
 function preserveCandidateDirection(candidate,probabilityB){
   if(candidate==="B")return Math.max(.5,clip(probabilityB));
@@ -505,8 +524,15 @@ function applyFinalPrediction(seq,corePrediction=null){
       executionOrder.push("direct_physics");
       physicsDirect=predictPhysics(seq);
       physics=physicsDirect;
-      if(PARTICLE500&&typeof PARTICLE500.estimate==="function"){
-        particleEstimate=PARTICLE500.estimate(seq,physicsDirect);
+      if(PARTICLE_BLEND_MODE==="off"){
+        particleDiagnostics={version:PARTICLE500?.version??null,enabled:false,particle_filter_enabled:false,particle_count:0,
+          policy:"direct_physics_only",persistent_state:false,rebuild_from_scratch:false,particle_blend_mode:"off",blend_weight:0};
+        lastPhysicsDiagnostics={...(lastPhysicsDiagnostics||{}),enabled:true,particle_filter_enabled:false,
+          physics_source:"direct_multitask_mlp",particle_blend_mode:"off",physics_uncertainty:clip(physics[42]),
+          expected_consumed_cards:+physics[43]||0,physical_ev_banker:+physics[39]||0,
+          physical_ev_player:+physics[40]||0,physical_ev_gap:+physics[41]||0};
+      }else if(PARTICLE500&&typeof PARTICLE500.estimate==="function"){
+        particleEstimate=PARTICLE500.estimate(seq,physicsDirect,PARTICLE_BLEND_MODE);
         if(Array.isArray(particleEstimate?.physics)&&particleEstimate.physics.length===PHYSICS_DIM){
           physics=sanitizePhysics(particleEstimate.physics,{},true);
           particleDiagnostics=particleEstimate.diagnostics||null;
@@ -518,6 +544,7 @@ function applyFinalPrediction(seq,corePrediction=null){
             physics_source:"direct_multitask_mlp_plus_particle500",
             particle_count:particleDiagnostics?.particle_count??500,
             particle_policy:particleDiagnostics?.policy||"stateless_rebuild_each_prediction",
+            particle_blend_mode:particleDiagnostics?.particle_blend_mode??PARTICLE_BLEND_MODE,
             particle_persistent_state:false,
             physics_uncertainty:clip(physics[42]),
             expected_consumed_cards:+physics[43]||0,
@@ -539,7 +566,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     physics=physicsDirect||null;particleEstimate=null;particleDiagnostics=null;physicalEv=null;
   }
 
-  if(physics&&physicsBundleUsesPhysicalEv()&&particleDiagnostics?.particle_count===500){
+  if(physics&&physicsBundleUsesPhysicalEv()&&(PARTICLE_BLEND_MODE==="off"||particleDiagnostics?.particle_count===500)){
     const roundIndex=Math.max(1,Math.min(70,seq.length+1));
     const macroFeatures=getMacroFeatures(seq);
     primary=directPhysicsPrimary(physics,roundIndex,macroFeatures);
@@ -586,7 +613,13 @@ function applyFinalPrediction(seq,corePrediction=null){
     finalPB=filteredPB;
 
     executionOrder.push("final_ev_guard");
-    const pPlayer=1-finalPB,evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
+    let pPlayer=1-finalPB,evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
+    if(EV_CONSISTENCY_V1){
+      const directionalMass=clip(primary.pB+primary.pP),pBanker=directionalMass*finalPB;
+      pPlayer=directionalMass*(1-finalPB);
+      evBanker=pBanker*.95-pPlayer;
+      evPlayer=pPlayer-pBanker;
+    }
     const policy=primary.policy,candidate=primary.candidate;
     const baseBand=Math.max(policy.confidenceBand,primary.physicsConfidenceBand),baseActivation=Math.max(policy.activationEv,primary.physicsActivationEv),distance=Math.abs(finalPB-.5);
     const candidateEdge=candidate==="B"?evBanker:candidate==="P"?evPlayer:0;
@@ -636,7 +669,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     regime:mode==="physics_primary"?(direction==="Skip"?"Physics＋Particle觀望":auxFilter?.decision==="downgrade"?"Physics＋Particle / XGB降權":"Physics＋Particle / XGB篩選"):"模型未就緒／觀望",
     finalProbability:{version:VERSION,active:mode==="physics_primary",mode,
       skip_diagnostics:skipDiagnostics,
-      primary_source:"direct_physics_particle500_physical_ev",primary_candidate:primary?.candidate??"Skip",
+      primary_source:PARTICLE_BLEND_MODE==="off"?"direct_physics_physical_ev":"direct_physics_particle500_physical_ev",primary_candidate:primary?.candidate??"Skip",
       macro_ema:primary?.macroFeatures??null,macro_adjustment:primary?.macro??null,
       decision_stage:primary?.policy?.stage??(seq.length<40?"early":seq.length<50?"middle":"late"),decision_progress:clip((seq.length+1)/getEstimatedTotalHands()),dynamic_band:primary?.policy?.dynamicBand??null,
       physics_raw_p_b:primary?.rawDirectionalPB??null,physics_calibrated_p_b:primary?.directionalPB??null,physics_clipped_p_b:clippedPB,physics_smoothed_p_b:smoothedPB,
@@ -644,8 +677,8 @@ function applyFinalPrediction(seq,corePrediction=null){
       low_skip_policy:{confidence_scale:LOW_SKIP_CONFIDENCE_SCALE,ev_relief:LOW_SKIP_EV_RELIEF,final_band_relief:LOW_SKIP_FINAL_BAND_RELIEF},
       rawPB,clippedPB,smoothedPB,filteredPB,finalPB,bounds,smoothingAlpha,smoothingStrength,smoothingProfile,
       xgb_role:"auxiliary_filter_no_flip",xgb_aux_p_b:xgbAuxPB,core_aux_p_b:corePB,aux_filter:auxFilter,
-      particle_role:"bounded_posterior_uncertainty_correction_no_flip",particle_count:particleDiagnostics?.particle_count??0,
-      particle_policy:particleDiagnostics?.policy??null,particle_persistent_state:false,
+      particle_role:PARTICLE_BLEND_MODE==="off"?"disabled_direct_physics_only":"bounded_posterior_uncertainty_correction_no_flip",particle_count:particleDiagnostics?.particle_count??0,
+      particle_policy:particleDiagnostics?.policy??null,particle_blend_mode:PARTICLE_BLEND_MODE,particle_persistent_state:false,
       physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,particle_uncertainty:particleDiagnostics?.posterior_uncertainty??physicsUncertainty,
       execution_order:executionOrder,p_tie:evDecision?.pTie??primary?.pT??null,p_player:evDecision?.pPlayer??null,
       ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,min_ev:evDecision?.minEv??null,

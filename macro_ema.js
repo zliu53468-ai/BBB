@@ -88,8 +88,11 @@
       active.push(key);
       signal+=weight*value/(name==="Point_Diff"?9:1);
     }
+    // Readiness is diagnostic only. The checked-in production bundle keeps all
+    // three macro coefficients at zero, so this module must return delta=0.
     const availability={available_features:available,active_features:active,
-      ignored_configured_features:ignored,feature_ready:readiness};
+      ignored_configured_features:ignored,feature_ready:readiness,
+      configured_coefficient_count:configured,all_coefficients_zero:configured===0};
     if(!active.length)return {...result,...availability,
       reason:configured?"insufficient_observations":"zero_coefficients_or_signal"};
     const start=clamp(number("progress_start",.30),0,.99),power=clamp(number("progress_power",2),1,4);
