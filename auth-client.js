@@ -15,7 +15,7 @@ const scripts=[
   "macro_ema.js?v=1",
   "final_probability_runtime.js?v=20261012-result-history-fix"
 ];
-let dbPromise,activeCode="",authorized=false,busy=false;
+let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
 function openDb(){
   if(!dbPromise)dbPromise=new Promise((resolve,reject)=>{
@@ -75,18 +75,21 @@ async function deviceKey(){
   }
   return pair;
 }
-async function verify(code){
-  if(!api||!api.startsWith("https://"))throw new Error("server_not_configured");
-  if(!/^[A-HJ-NP-Z2-9]{24}$/.test(code))throw new Error("invalid_code_format");
+async function signedChallenge(code,route="/api/verify"){
   const pair=await deviceKey();
   const challenge=await request("/api/challenge",{code});
   const bytes=new TextEncoder().encode("bbb-activate-v1:"+challenge.challenge_id+":"+challenge.nonce);
   const signature=b64url(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},pair.privateKey,bytes));
   const jwk=await crypto.subtle.exportKey("jwk",pair.publicKey);
-  const result=await request("/api/verify",{
+  return request(route,{
     code,challenge_id:challenge.challenge_id,signature,
     public_key:{kty:"EC",crv:"P-256",x:jwk.x,y:jwk.y}
   });
+}
+async function verify(code){
+  if(!api||!api.startsWith("https://"))throw new Error("server_not_configured");
+  if(!/^[A-HJ-NP-Z2-9]{24}$/.test(code))throw new Error("invalid_code_format");
+  const result=await signedChallenge(code);
   if(!result.ok)throw new Error("verification_failed");
   await putValue(LICENSE,code);
   return result;
@@ -111,29 +114,73 @@ async function injectScript(src){
     document.body.appendChild(el);
   });
 }
-async function unlock(){
+async function onEndAnalysis(){
+  if(!authorized||endBusy)return;
+  endBusy=true;
+  const storage=window.__BBB_LICENSE_STORAGE__;
+  const msg=document.getElementById("message");
+  if(msg)msg.textContent="正在完整清除本次牌靴的分析資料…";
+  try{
+    if(!await storage.end())throw Error("local_analysis_delete_failed");
+    // Physical deletion is local. Server epoch invalidates stale copies when
+    // another authorized page verifies again (requires updated Worker).
+    let remoteError="";
+    try{await signedChallenge(activeCode,"/api/session/end");}
+    catch(error){remoteError=error?.message||"remote_sync_unavailable";}
+    if(remoteError){
+      try{sessionStorage.setItem("bbb-analysis-sync-warning","本機紀錄已清空；跨裝置同步尚未完成："+remoteError+"。請更新 Cloudflare Worker 並確認連線。");}catch(_){}
+    }
+    window.location.reload();
+  }catch(error){
+    if(msg){msg.textContent="無法完整刪除本次分析紀錄，請先保留目前頁面並檢查儲存空間："+String(error?.message||error);msg.classList.add("warning");}
+  }finally{endBusy=false;}
+}
+async function unlock(verified){
   if(authorized)return;
+  if(runtimeLoaded){window.location.reload();return;}
+  if(!window.__BBB_LICENSE_STORAGE__)await injectScript("bbb-license-storage.js?v=20261012-license-isolation");
+  if(!verified?.license_id)throw Error("verified_license_id_missing");
+  await window.__BBB_LICENSE_STORAGE__.start(verified.license_id,
+    Number.isInteger(verified.generation)?verified.generation:null);
   for(const src of scripts)await injectScript(src);
+  runtimeLoaded=true;activeLicenseId=verified.license_id;
+  const end=document.getElementById("btnEnd");
+  if(end)end.addEventListener("click",onEndAnalysis);
   panel.hidden=false;gate.hidden=true;authorized=true;
+  try{
+    const warning=sessionStorage.getItem("bbb-analysis-sync-warning");
+    if(warning){
+      const msg=document.getElementById("message");
+      if(msg){msg.textContent=warning;msg.classList.add("warning");}
+      sessionStorage.removeItem("bbb-analysis-sync-warning");
+    }
+  }catch(_){}
 }
 async function activate(code,silent=false){
   if(busy)return;
   busy=true;submit.disabled=true;
   show(silent?"驗證這台裝置的授權中…":"正在核對開通碼與裝置…");
   try{
-    await verify(code);
+    const verified=await verify(code);
     activeCode=code;
-    await unlock();
+    await unlock(verified);
   }catch(e){
     // Never display cached private content on verification failure.
     authorized=false;panel.hidden=true;gate.hidden=false;
     if(e.status===403||e.status===409)await eraseValue(LICENSE);
-    show(errorText(e),"error");
+    const label=e.message==="verified_license_id_missing"?"授權服務尚未更新，無法安全隔離會員資料，請更新 Worker。":
+      e.message==="license_storage_not_ready"?"會員獨立儲存空間尚未準備完成，請重新整理。":errorText(e);
+    show(label,"error");
   }finally{busy=false;submit.disabled=false;}
 }
 async function confirmSession(){
   if(!authorized||busy||!activeCode)return;
-  try{await verify(activeCode);}
+  try{
+    const verified=await verify(activeCode);
+    if(verified.license_id!==activeLicenseId){window.location.reload();return;}
+    if(Number.isInteger(verified.generation))
+      await window.__BBB_LICENSE_STORAGE__?.syncGeneration(verified.generation);
+  }
   catch(_){
     // License may have been revoked/reset. Lock the UI on any failed recheck.
     authorized=false;activeCode="";panel.hidden=true;gate.hidden=false;
