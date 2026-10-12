@@ -13,7 +13,7 @@ const scripts=[
   "app256continuation.js",
   "particle_filter_runtime.js?v=1-fixed500-stateless",
   "macro_ema.js?v=1",
-  "final_probability_runtime.js?v=14.8-macro-ema-guard"
+  "final_probability_runtime.js?v=20261012-result-history-fix"
 ];
 let dbPromise,activeCode="",authorized=false,busy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
