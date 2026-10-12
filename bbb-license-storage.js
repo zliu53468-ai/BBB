@@ -84,15 +84,22 @@ function drop(key){
 function install(){
   if(installDone)return;
   Storage.prototype.getItem=function(key){
-    if(this===own()&&ready&&isKey(key))return memory.has(scoped(key))?memory.get(scoped(key)):null;
+    if(this===own()&&isKey(key))
+      return ready&&memory.has(scoped(key))?memory.get(scoped(key)):null;
     return native.get.call(this,key);
   };
   Storage.prototype.setItem=function(key,value){
-    if(this===own()&&ready&&isKey(key))return save(key,value);
+    if(this===own()&&isKey(key)){
+      if(!ready)throw Error("license_storage_not_ready");
+      return save(key,value);
+    }
     return native.set.call(this,key,value);
   };
   Storage.prototype.removeItem=function(key){
-    if(this===own()&&ready&&isKey(key))return drop(key);
+    if(this===own()&&isKey(key)){
+      if(!ready)return;
+      return drop(key);
+    }
     return native.remove.call(this,key);
   };
   installDone=true;
