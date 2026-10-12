@@ -28,6 +28,43 @@ assert.equal(M.adjustment(.60,features,1,.2,{...signed,enabled:false}).delta,0);
 assert.equal(M.adjustment(.60,features,1,.8,signed).delta,0);
 assert.equal(M.adjustment(.60,features,.2,.2,signed).delta,0);
 
+// New BBB score-only UI: total player/banker points arrive, but card count
+// remains unknown. Only actual observed totals may update the two EMA heads.
+const scoreOnly=M.createState("score_only");
+for(let i=0;i<24;i++)M.update(scoreOnly,{outcome:"B",banker_score:i<12?9:2,player_score:0});
+const so=M.snapshot(scoreOnly);
+assert.equal(so.counts.Six_Card,0,"never infer card count from the result or scores");
+assert.equal(so.Six_Card_Spread,null);
+assert.equal(so.counts.Low_Score,24);
+assert.equal(so.counts.Point_Diff,24);
+assert(so.Low_Score_Spread>0&&so.Point_Diff_Spread<0);
+const scorePolicy={enabled:true,coefficient_units:"probability_delta",max_delta:.03,
+  min_observations:12,progress_start:.3,progress_power:2,max_age:3,
+  coefficients:{six_card:.02,low_score:.015,point_diff:-.01}};
+const scoreAdjusted=M.adjustment(.65,so,1,.2,scorePolicy);
+const scoreSignal=.015*so.Low_Score_Spread-.01*so.Point_Diff_Spread/9;
+assert.equal(scoreAdjusted.ready,true,"score-only EMA must be able to activate");
+assert.deepEqual(scoreAdjusted.active_features,["low_score","point_diff"]);
+assert.deepEqual(scoreAdjusted.ignored_configured_features,["six_card"]);
+assert.equal(scoreAdjusted.feature_ready.six_card,false);
+assert.equal(scoreAdjusted.feature_ready.low_score,true);
+assert.equal(scoreAdjusted.feature_ready.point_diff,true);
+assert(Math.abs(scoreAdjusted.delta-scoreSignal)<1e-12,"do not impute missing 6-card readings");
+assert.equal(M.adjustment(.65,so,1,.2,{...scorePolicy,coefficients:{six_card:.02}}).delta,0,
+  "a missing card count cannot activate a six-card coefficient");
+assert.equal(M.adjustment(.65,so,1,.2,{...scorePolicy,coefficients:{}}).delta,0,
+  "zero live coefficients must remain neutral");
+assert.deepEqual(M.adjustment(.65,so,1,.2,{...scorePolicy,
+  coefficients:{point_diff:-.01}}).active_features,["point_diff"],
+  "point difference must activate on its own");
+// Missing score observations after enough rounds make both heads stale.
+for(let i=0;i<4;i++)M.update(scoreOnly,{outcome:"P"});
+const stale=M.adjustment(.65,M.snapshot(scoreOnly),1,.2,scorePolicy);
+assert.equal(stale.delta,0);
+assert.equal(stale.ready,false);
+assert.deepEqual(stale.ignored_configured_features,["six_card","low_score","point_diff"]);
+assert.equal(stale.reason,"insufficient_observations");
+
 function context(store=new Map(),withoutParticle=false,finalOverride=null){
   const sandbox={console,setTimeout,clearTimeout,localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},
     document:{getElementById:()=>null},fetch:async url=>({ok:true,json:async()=>finalOverride&&url==="final_probability_model.json"?finalOverride:JSON.parse(fs.readFileSync(url,"utf8"))})};
@@ -88,6 +125,20 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
   physics[26]=1;physics[39]=.27;physics[40]=-.3;physics[41]=.57;physics[42]=.1;physics[43]=300;physics[44]=.8;physics[45]=.1;physics[46]=.3;
   const adjusted=controlled.api.directPhysicsPrimary(physics,60,features);
   assert(adjusted.macro.delta>0,"configured structure correction never reached Physical EV");
+  // Real runtime integration: a score-only shoe needs no Six_Card observations.
+  const scoreBasedModel=JSON.parse(JSON.stringify(model));
+  scoreBasedModel.decision_policy.macro_ema.coefficients={six_card:.02,low_score:.015,point_diff:-.01};
+  const scoreBased=context(new Map(),false,scoreBasedModel);
+  await scoreBased.api.loadModels();
+  const scoreOnlyRuntime=scoreBased.api.directPhysicsPrimary(physics,60,so);
+  // so was made stale on purpose above; use a fresh observed-score snapshot.
+  const freshScore=M.createState("real_ui_scores");
+  for(let i=0;i<24;i++)M.update(freshScore,{outcome:"B",banker_score:i<12?9:2,player_score:0});
+  const scoreResult=scoreBased.api.directPhysicsPrimary(physics,60,M.snapshot(freshScore));
+  assert(scoreResult.macro.ready&&scoreResult.macro.delta!==0,
+    "score-only independent EMA does not reach the actual Physical EV integration");
+  assert.equal(scoreResult.macro.active_features.join(","),"low_score,point_diff");
+  assert.equal(scoreOnlyRuntime.macro.delta,0,"stale score-only snapshot must not adjust Physical EV");
   assert(Math.abs(adjusted.evBanker-(adjusted.baseEvBanker+1.95*.9*adjusted.macro.delta))<1e-12);
   assert.equal(adjusted.pT,.1,"macro adjustment changed tie mass");
   console.log(JSON.stringify({ok:true,checks:["bounded_adjustment","Python_JS_parity_separate_test","missing_and_stale","reload","undo","noise_gate","dimensions","no_flip","positive_final_EV","shoe_reset"]}));
