@@ -141,7 +141,7 @@ async function onEndAnalysis(){
 async function unlock(verified){
   if(authorized)return;
   if(runtimeLoaded){window.location.reload();return;}
-  if(!window.__BBB_LICENSE_STORAGE__)await injectScript("bbb-license-storage.js?v=20261012-license-isolation");
+  if(!window.__BBB_LICENSE_STORAGE__)await injectScript("bbb-license-storage.js?v=20261012-durable-reset-v2");
   if(!verified?.license_id)throw Error("verified_license_id_missing");
   const storage=window.__BBB_LICENSE_STORAGE__;
   await storage.start(verified.license_id,
