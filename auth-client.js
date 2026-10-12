@@ -125,8 +125,11 @@ async function onEndAnalysis(){
     // Physical deletion is local. Server epoch invalidates stale copies when
     // another authorized page verifies again (requires updated Worker).
     let remoteError="";
-    try{await signedChallenge(activeCode,"/api/session/end");}
-    catch(error){remoteError=error?.message||"remote_sync_unavailable";}
+    try{
+      const result=await signedChallenge(activeCode,"/api/session/end");
+      if(!result.ok||!Number.isInteger(result.generation))throw Error("invalid_end_response");
+      await storage.acknowledgeRemoteEnd(activeLicenseId,result.generation);
+    }catch(error){remoteError=error?.message||"remote_sync_unavailable";}
     if(remoteError){
       try{sessionStorage.setItem("bbb-analysis-sync-warning","本機紀錄已清空；跨裝置同步尚未完成："+remoteError+"。請更新 Cloudflare Worker 並確認連線。");}catch(_){}
     }
@@ -140,8 +143,22 @@ async function unlock(verified){
   if(runtimeLoaded){window.location.reload();return;}
   if(!window.__BBB_LICENSE_STORAGE__)await injectScript("bbb-license-storage.js?v=20261012-license-isolation");
   if(!verified?.license_id)throw Error("verified_license_id_missing");
-  await window.__BBB_LICENSE_STORAGE__.start(verified.license_id,
+  const storage=window.__BBB_LICENSE_STORAGE__;
+  await storage.start(verified.license_id,
     Number.isInteger(verified.generation)?verified.generation:null);
+  // Retry end/reset on the next authenticated visit if an earlier local purge
+  // happened while Cloudflare was offline or still serving an older version.
+  if(storage.status().pending_remote_end){
+    try{
+      const result=await signedChallenge(activeCode,"/api/session/end");
+      if(!result.ok||!Number.isInteger(result.generation))throw Error("invalid_end_response");
+      await storage.acknowledgeRemoteEnd(verified.license_id,result.generation);
+    }catch(error){
+      try{sessionStorage.setItem("bbb-analysis-sync-warning",
+        "本機紀錄已清空；跨裝置同步仍待完成："+String(error?.message||error)+
+        "。系統會在下次登入時重試。");}catch(_){}
+    }
+  }
   for(const src of scripts)await injectScript(src);
   runtimeLoaded=true;activeLicenseId=verified.license_id;
   const end=document.getElementById("btnEnd");
@@ -178,8 +195,14 @@ async function confirmSession(){
   try{
     const verified=await verify(activeCode);
     if(verified.license_id!==activeLicenseId){window.location.reload();return;}
+    const storage=window.__BBB_LICENSE_STORAGE__;
     if(Number.isInteger(verified.generation))
-      await window.__BBB_LICENSE_STORAGE__?.syncGeneration(verified.generation);
+      await storage?.syncGeneration(verified.generation);
+    if(storage?.status().pending_remote_end){
+      const result=await signedChallenge(activeCode,"/api/session/end");
+      if(!result.ok||!Number.isInteger(result.generation))throw Error("invalid_end_response");
+      await storage.acknowledgeRemoteEnd(activeLicenseId,result.generation);
+    }
   }
   catch(_){
     // License may have been revoked/reset. Lock the UI on any failed recheck.
