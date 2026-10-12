@@ -802,17 +802,54 @@ function installUI(){
     const p=applyFinalPrediction(history);saveSelection(p.direction);registerPrediction(history,p);renderPrediction(p,history.length);});
   const fieldIds=["macroCardCount","macroPlayerScore","macroBankerScore"];
   const clearFields=()=>{for(const id of fieldIds){const e=document.getElementById(id);if(e)e.value="";}};
+  // Result buttons are authoritative; optional card/point telemetry must never
+  // suppress the unmodified Frozen Core click handler or its B/P/T history write.
+  const historyKey="bgs256d_frozen_6x15_forward_v18";
+  const historyMatches=(actual,expected)=>actual.length===expected.length&&actual.every((v,i)=>v===expected[i]);
   for(const [id,outcome] of [["btnB","B"],["btnP","P"],["btnT","T"]]){
-    const button=document.getElementById(id);if(!button)continue;let observed=null;
-    // Capture validation runs BEFORE the unmodified Frozen Core click handler.
-    button.addEventListener("click",event=>{
+    const button=document.getElementById(id);if(!button)continue;
+    let observed=null,observationError="",beforeHistory=[];
+    // Capture the previous history, then settle the last prediction. All failures
+    // here are telemetry failures only; the Frozen Core must still receive click.
+    button.addEventListener("click",()=>{
+      beforeHistory=readHistory();
+      observed=null;observationError="";
       try{
         const get=id=>document.getElementById(id)?.value??"";
         observed=MACRO?MACRO.normalizeHand({outcome,card_count:get(fieldIds[0]),player_score:get(fieldIds[1]),banker_score:get(fieldIds[2])}):null;
-        const history=readHistory();syncMacro(history);settlePending(outcome,observed,history);
-      }catch(error){event.preventDefault();event.stopImmediatePropagation();const m=document.getElementById("message");if(m)m.textContent=error.message;}
+      }catch(error){
+        observationError=String(error?.message||error);
+        observed=MACRO?MACRO.normalizeHand({outcome}):null;
+      }
+      try{syncMacro(beforeHistory);settlePending(outcome,observed,beforeHistory);}
+      catch(error){observationError=observationError||"分析附加紀錄異常："+String(error?.message||error);}
     },true);
-    button.addEventListener("click",()=>{recordCompletedHand(readHistory(),observed||{});clearFields();});
+    // Runs after Frozen Core's original addOutcome handler. Verify the stored
+    // history, not merely the on-screen counter (Frozen Core save catches errors).
+    button.addEventListener("click",()=>{
+      const expected=[...beforeHistory,outcome];
+      let history=readHistory(),persistenceError="";
+      if(!historyMatches(history,expected)){
+        try{
+          const saved=JSON.parse(localStorage.getItem(historyKey)||"null")||{};
+          localStorage.setItem(historyKey,JSON.stringify({...saved,history:expected}));
+          history=readHistory();
+        }catch(error){persistenceError=String(error?.message||error);}
+      }
+      if(!historyMatches(history,expected)){
+        const message=document.getElementById("message");
+        if(message){message.textContent="本局儲存失敗，請勿重複按莊／閒；先匯出分析紀錄並檢查瀏覽器儲存空間。"+(persistenceError?"（"+persistenceError+"）":"");message.classList.add("warning");}
+        return;
+      }
+      try{recordCompletedHand(history,observed||{});}
+      catch(error){observationError=observationError||"分析附加紀錄異常："+String(error?.message||error);}
+      clearFields();
+      const message=document.getElementById("message");
+      if(message&&observationError){
+        message.textContent="已記錄第 "+history.length+" 局；選填張數／點數已忽略："+observationError;
+        message.classList.add("warning");
+      }
+    });
   }
   const back=document.getElementById("btnBack");if(back)back.addEventListener("click",()=>{undoRuntimeHistory();clearFields();});
   const end=document.getElementById("btnEnd");if(end)end.addEventListener("click",rotateShoeId);
