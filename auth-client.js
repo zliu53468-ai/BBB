@@ -116,7 +116,7 @@ async function injectScript(src){
 }
 async function onEndAnalysis(){
   if(!authorized||endBusy)return;
-  endBusy=true;
+  endBusy=true;busy=true;
   const storage=window.__BBB_LICENSE_STORAGE__;
   const msg=document.getElementById("message");
   if(msg)msg.textContent="正在完整清除本次牌靴的分析資料…";
@@ -133,7 +133,7 @@ async function onEndAnalysis(){
     window.location.reload();
   }catch(error){
     if(msg){msg.textContent="無法完整刪除本次分析紀錄，請先保留目前頁面並檢查儲存空間："+String(error?.message||error);msg.classList.add("warning");}
-  }finally{endBusy=false;}
+  }finally{endBusy=false;busy=false;}
 }
 async function unlock(verified){
   if(authorized)return;
