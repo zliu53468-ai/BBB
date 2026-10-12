@@ -148,12 +148,39 @@ function candidates(){
     ["db_mobile","db_desktop","db_desktop_alt","wide"];
   return names.map(x=>ROIS[x]);
 }
+// BGS Python searches near its fixed ROI instead of assuming screenshot
+// browser bars/camera crop always align exactly. Keep only four cheap bounded
+// variants per ROI to avoid multiscanning huge images on mobile.
+function roiVariants(roi){
+  if(selection)return [roi];
+  const [x,y,w,h]=roi;
+  return [roi,
+    [x,y+.08*h,w,.82*h],
+    [x,y,w,.82*h],
+    [x,y+.18*h,w,.82*h]
+  ].filter(r=>r[0]>=0&&r[1]>=0&&r[0]+r[2]<=1&&r[1]+r[3]<=1);
+}
+function showSelectedRoad(roi,columns){
+  const target=el("bbbScanRoadCrop");if(!target||!sourceCanvas)return;
+  const [x,y,w,h]=roi;
+  const tw=Math.min(900,Math.max(100,Math.round(w*sourceCanvas.width)));
+  const th=Math.max(35,Math.round(tw*h*sourceCanvas.height/(w*sourceCanvas.width)));
+  target.width=tw;target.height=th;
+  const ctx=target.getContext("2d");
+  ctx.drawImage(sourceCanvas,x*sourceCanvas.width,y*sourceCanvas.height,
+    w*sourceCanvas.width,h*sourceCanvas.height,0,0,tw,th);
+  ctx.strokeStyle="rgba(170,112,255,.5)";ctx.lineWidth=1;
+  for(let r=1;r<6;r++){const yy=Math.round(r*th/6)+.5;
+    ctx.beginPath();ctx.moveTo(0,yy);ctx.lineTo(tw,yy);ctx.stroke();}
+  for(let c=1;c<columns;c++){const xx=Math.round(c*tw/columns)+.5;
+    ctx.beginPath();ctx.moveTo(xx,0);ctx.lineTo(xx,th);ctx.stroke();}
+}
 function scan(){
   if(!sourceCanvas)return;
   proposal=null;el("bbbScanConfirm").disabled=true;
   msg("正在依照 BGS 六列大路辨識規則分析截圖…");
   let best=null;
-  for(const roi of candidates()){
+  for(const base of candidates())for(const roi of roiVariants(base)){
     const aspect=roi[2]*sourceCanvas.width/(roi[3]*sourceCanvas.height);
     const estimate=clamp(Math.round(aspect*6),8,48);
     const cols=[estimate,estimate-1,estimate+1,15].filter((x,i,a)=>x>=8&&x<=48&&a.indexOf(x)===i);
@@ -165,7 +192,8 @@ function scan(){
   if(!best){msg("無法可信地辨識完整六列大路。請在圖片上拖曳框選真正的「大路」格線區，再按重新辨識；不會寫入任何牌局。",true);el("bbbScanResult").hidden=true;return;}
   proposal=best.outcomes.slice();
   el("bbbScanResult").hidden=false;
-  el("bbbScanSummary").textContent="辨識 "+proposal.length+" 局（紅／藍格 "+best.recognized+" 個），平均色彩可信度 "+Math.round(best.quality*100)+"%。";
+  el("bbbScanSummary").textContent="辨識 "+proposal.length+" 局（紅／藍格 "+best.recognized+" 個），圖像品質指標 "+Math.round(best.quality*100)+"/100（非預測機率）。";
+  showSelectedRoad(best.roi,best.columns);
   el("bbbScanTieNote").textContent=best.tieMarkers?
     "偵測到 "+best.tieMarkers+" 個綠色和局標記：多次和局的數字不一定能辨識，請核對。":"若原圖含和局標記但未顯示在歷史預覽，請重新裁圖核對。";
   updateTokens();
