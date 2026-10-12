@@ -95,9 +95,14 @@ assert.equal(stored().length,27);
 assert.equal(el("roundCount").textContent,28,"Frozen Core in-memory state continued");
 assert.match(el("message").textContent,/本局儲存失敗/);
 failAllHistoryWrites=false;
-// Resimulate browser reload (rather than accepting unsaved in-memory state).
-delete require.cache[require.resolve("./app256forward.js")];
+// Resimulate a real browser reload: recreate the DOM, not only module state.
+elements.clear();
+for(const id of ids)elements.set(id,new Element(id));
+for(const modulePath of ["./app256forward.js","./app256continuation.js","./final_probability_runtime.js"])
+  delete require.cache[require.resolve(modulePath)];
 require("./app256forward.js");
+require("./app256continuation.js");
+require("./final_probability_runtime.js");
 assert.equal(el("roundCount").textContent,27,"reload uses persisted 27, does not pretend the failed 28th hand was saved");
 report("btnB");
 assert.equal(stored().length,28);
