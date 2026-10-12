@@ -314,6 +314,25 @@ function init(){
     msg("新牌靴可重新上傳截圖。");
   });
 }
-root.__BBB_ROAD_SCANNER__={scanImage:scan,history,source:"BGS road_detector ROI/color/reconstruction browser adaptation",maxSide:MAX_SIDE};
+// Separate desktop screenshot entry. Never relies on the file input and never
+// stores a bitmap in localStorage/IndexedDB. Mobile gallery path stays intact.
+function loadCapturedCanvas(captured){
+  if(!captured||!Number.isFinite(captured.width)||!Number.isFinite(captured.height)||
+     captured.width<40||captured.height<35)throw Error("截圖範圍過小，請重新框選完整大路");
+  ++scanNo;selection=null;proposal=null;drag=null;
+  const ratio=Math.min(1,MAX_SIDE/Math.max(captured.width,captured.height));
+  const c=document.createElement("canvas");
+  c.width=Math.max(1,Math.round(captured.width*ratio));
+  c.height=Math.max(1,Math.round(captured.height*ratio));
+  const ctx=c.getContext("2d",{willReadFrequently:true});
+  if(!ctx)throw Error("瀏覽器無法建立圖片畫布");
+  ctx.drawImage(captured,0,0,c.width,c.height);
+  sourceCanvas=c;
+  if(el("bbbScanFile"))el("bbbScanFile").value="";
+  el("bbbScanResult").hidden=true;
+  el("bbbScanConfirm").disabled=true;
+  showCanvas();scan();
+}
+root.__BBB_ROAD_SCANNER__={scanImage:scan,loadCapturedCanvas,history,source:"BGS road_detector ROI/color/reconstruction browser adaptation",maxSide:MAX_SIDE};
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init,{once:true});else init();
 })(window);
