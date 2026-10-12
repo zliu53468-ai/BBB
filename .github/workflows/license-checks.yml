@@ -6,6 +6,8 @@ on:
       - 'license-worker/**'
       - 'auth-client.js'
       - 'bbb-license-storage.js'
+      - 'bbb-screenshot-road.js'
+      - 'test_bbb_screenshot_road.mjs'
       - 'test_license_storage.mjs'
       - 'auth-config.js'
       - 'activation-admin.js'
@@ -18,6 +20,8 @@ on:
       - 'license-worker/**'
       - 'auth-client.js'
       - 'bbb-license-storage.js'
+      - 'bbb-screenshot-road.js'
+      - 'test_bbb_screenshot_road.mjs'
       - 'test_license_storage.mjs'
       - 'auth-config.js'
       - 'activation-admin.js'
@@ -39,3 +43,4 @@ jobs:
       - run: node --check auth-client.js && node --check bbb-license-storage.js && node --check auth-config.js && node --check activation-admin.js && node --check license-worker/src/index.js
       - run: node license-worker/test-license.mjs
       - run: node test_license_storage.mjs
+      - run: node --check bbb-screenshot-road.js && node test_bbb_screenshot_road.mjs
