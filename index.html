@@ -8,7 +8,7 @@
   <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
   <link rel="stylesheet" href="styles.css?v=10ce55b-license-gate">
   <style>
-    .bbb-scan-block,.bbb-score-block{padding:18px;border:1px solid rgba(164,128,246,.26);border-radius:16px;background:rgba(32,20,55,.45);margin-bottom:16px}
+    .bbb-scan-block,.bbb-results-block{padding:18px;border:1px solid rgba(164,128,246,.26);border-radius:16px;background:rgba(32,20,55,.45);margin-bottom:16px}
     /* Desktop live snip: a new optional control. Mobile image/video workflows remain untouched. */
     .bbb-capture-entry{display:flex;gap:10px;align-items:stretch}
     .bbb-capture-entry .bbb-upload{flex:1;min-width:0}
@@ -34,7 +34,7 @@
     #bbbScanFile{display:block;width:100%;max-width:100%;margin:10px 0 14px;color:#dad0f5;font-size:13px}
     .bbb-scan-select{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:#d2c2fa;margin:10px 0}
     .bbb-scan-select select{border:1px solid #685497;background:#211735;color:white;padding:9px;border-radius:9px;max-width:70%}
-    .bbb-scan-message,.bbb-score-block p,.bbb-scan-result p,.bbb-scan-visual p{font-size:13px;line-height:1.65;color:#c2b7da;margin:9px 0}
+    .bbb-scan-message,.bbb-results-block p,.bbb-scan-result p,.bbb-scan-visual p{font-size:13px;line-height:1.65;color:#c2b7da;margin:9px 0}
     .bbb-scan-message.warning{color:#ffc9c9}
     .bbb-scan-visual{margin-top:10px}
     #bbbScanCanvas{display:block;max-width:100%;height:auto;border-radius:10px;border:1px solid #6d508c;touch-action:none;cursor:crosshair}
@@ -43,14 +43,7 @@
     .bbb-scan-token{border:0;border-radius:7px;color:#fff;font-size:12px;min-width:31px;min-height:32px;cursor:pointer}
     .bbb-scan-token.B{background:#a9384b}.bbb-scan-token.P{background:#296abe}.bbb-scan-token.T{background:#328566}
     .bbb-confirm{width:100%;margin-top:10px}.bbb-confirm:disabled{opacity:.5;cursor:not-allowed}
-    .bbb-score-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .bbb-score-grid label{display:flex;flex-direction:column;gap:8px;font-weight:700;font-size:14px}
-    .bbb-score-grid input{width:100%;min-width:0;min-height:62px;padding:10px;border-radius:13px;border:2px solid #526d9f;text-align:center;color:#fff;background:#151024;font-size:26px;font-weight:800}
-    .bbb-score-grid .bbb-banker-score input{border-color:#a93f54}
-    .bbb-score-last{color:#aaf0ca!important;min-height:1.7em}
-    .bbb-manual-backup{margin:12px 0}.bbb-manual-backup summary{cursor:pointer;color:#aa9ac5;font-size:13px;padding:9px}
-    .bbb-manual-backup .result-buttons{margin-top:9px}
-    @media(max-width:480px){.bbb-scan-block,.bbb-score-block{padding:12px}.bbb-score-grid{gap:8px}.bbb-score-grid input{font-size:24px}.bbb-upload{min-height:85px}}
+    @media(max-width:480px){.bbb-scan-block,.bbb-results-block{padding:12px}.bbb-upload{min-height:85px}}
   </style>
 </head>
 <body>
@@ -147,7 +140,7 @@
         <label class="bbb-scan-select" for="bbbScanProfile">大路版型
           <select id="bbbScanProfile"><option value="auto">自動辨識</option><option value="DG">DG 真人</option><option value="DB">DB 真人</option><option value="MT">MT 真人</option><option value="crop">只拍攝大路／自行裁選</option></select>
         </label>
-        <p class="bbb-scan-message" id="bbbScanMessage" role="status" aria-live="polite">先上傳圖片辨識本靴大路；之後只要輸入莊、閒點數。圖片只在本機處理。</p>
+        <p class="bbb-scan-message" id="bbbScanMessage" role="status" aria-live="polite">可上傳圖片辨識本靴大路，或直接按莊／閒／和建立紀錄。圖片只在本機處理。</p>
         <div id="bbbScanVisual" class="bbb-scan-visual" hidden><canvas id="bbbScanCanvas" aria-label="截圖預覽：在圖上拖曳可以框選大路區域"></canvas><p>若辨識失敗，可直接在圖片上拖曳框選真正的大路六列格線，手機也可用手指框選。</p><button type="button" id="bbbScanRescan" class="action-btn">重新辨識框選範圍</button></div>
         <div id="bbbScanResult" class="bbb-scan-result" hidden>
           <strong id="bbbScanSummary"></strong>
@@ -158,23 +151,15 @@
         </div>
         <button type="button" class="action-btn primary bbb-confirm" id="bbbScanConfirm" disabled>確認辨識結果並匯入牌路</button>
       </div>
-      <div class="bbb-score-block">
-        <div class="card-title"><span>② 每局只輸入莊閒點數</span><small>自動判斷結果</small></div>
-        <p>請填入已結束這一局的總點數（0–9）；兩邊填齊後，自動判斷莊／閒／和、寫入歷史、清空欄位並分析下一局。</p>
-        <div class="bbb-score-grid">
-          <label class="bbb-player-score">閒家點數<input id="macroPlayerScore" type="number" inputmode="numeric" min="0" max="9" step="1" placeholder="0～9" autocomplete="off"></label>
-          <label class="bbb-banker-score">莊家點數<input id="macroBankerScore" type="number" inputmode="numeric" min="0" max="9" step="1" placeholder="0～9" autocomplete="off"></label>
-        </div>
-        <p id="bbbLastScore" class="bbb-score-last" role="status" aria-live="polite"></p>
-      </div>
-      <details class="bbb-manual-backup">
-        <summary>手動報莊／閒／和（備用）</summary>
+      <div class="bbb-results-block" aria-label="每局結果按鈕">
+        <div class="card-title"><span>② 按鈕記錄莊／閒／和</span><small>不需輸入點數</small></div>
+        <p>每局結束後按莊、閒或和記錄結果，再按「開始分析」取得下一局方向。</p>
         <div class="result-buttons">
           <button class="result-btn banker" id="btnB" type="button"><strong>莊</strong><small>BANKER</small></button>
           <button class="result-btn player" id="btnP" type="button"><strong>閒</strong><small>PLAYER</small></button>
           <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
         </div>
-      </details>
+      </div>
       <div class="action-buttons">
         <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
         <button class="action-btn" id="btnBack" type="button">返回上一局</button>
@@ -193,7 +178,7 @@
   </main>
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
-  <script src="auth-client.js?v=20261013-score-ema-independent"></script>
+  <script src="auth-client.js?v=20261018-button-only"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

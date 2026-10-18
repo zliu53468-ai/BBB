@@ -245,31 +245,6 @@ async function importProposal(){
   }catch(error){msg("匯入中斷："+String(error.message||error)+"。請核對歷史紀錄，避免重複匯入。",true);}
   finally{busy=false;el("bbbScanConfirm").disabled=!proposal;}
 }
-function pointValue(id){
-  const v=el(id)?.value?.trim()??"";
-  return /^[0-9]$/.test(v)?+v:null;
-}
-let autoLock=false;
-function settlePoints(){
-  if(autoLock||busy)return;
-  const p=pointValue("macroPlayerScore"),b=pointValue("macroBankerScore");
-  if(p===null||b===null)return;
-  autoLock=true;
-  try{
-    const before=history().length;
-    const winner=b>p?"B":p>b?"P":"T";
-    el({B:"btnB",P:"btnP",T:"btnT"}[winner]).click();
-    if(history().length!==before+1){
-      msg("點數回報沒有成功寫入歷史，請檢查原版 BBB 儲存訊息。",true);
-      return;
-    }
-    // Frozen Core + Particle500 uses the new B/P/T history on next analysis.
-    el("macroPlayerScore").value="";el("macroBankerScore").value="";
-    el("btnStart").click();
-    el("bbbLastScore").textContent="已記錄第 "+(before+1)+" 局："+(winner==="B"?"莊":winner==="P"?"閒":"和")+"（閒 "+p+" ／ 莊 "+b+"）。已自動分析下一局。";
-    // Mobile users can type the next score without extra taps.
-  }finally{autoLock=false;}
-}
 function pointerXY(event){
   const c=el("bbbScanCanvas"),r=c.getBoundingClientRect();
   return [clamp((event.clientX-r.left)/r.width,0,1),clamp((event.clientY-r.top)/r.height,0,1)];
@@ -302,15 +277,9 @@ function init(){
     showCanvas();scan();
   });
   canvas.addEventListener("pointercancel",()=>{drag=null;});
-  for(const id of ["macroPlayerScore","macroBankerScore"]){
-    el(id).addEventListener("input",settlePoints);
-    el(id).addEventListener("change",settlePoints);
-  }
   el("btnEnd")?.addEventListener("click",()=>{
     selection=null;proposal=null;sourceCanvas=null;el("bbbScanFile").value="";
     el("bbbScanVisual").hidden=true;el("bbbScanResult").hidden=true;
-    el("macroPlayerScore").value="";el("macroBankerScore").value="";
-    el("bbbLastScore").textContent="";
     msg("新牌靴可重新上傳截圖。");
   });
 }

@@ -6,7 +6,7 @@ import vm from "node:vm";
 let source=fs.readFileSync("bbb-screenshot-road.js","utf8");
 const anchor="root.__BBB_ROAD_SCANNER__={";
 assert(source.includes(anchor));
-source=source.replace(anchor,"root.__BBB_TEST_INTERNALS__={hslMask,reconstruct,scoreRegion,settlePoints,importProposal,setSource:c=>sourceCanvas=c,setProposal:s=>proposal=s};\n"+anchor);
+source=source.replace(anchor,"root.__BBB_TEST_INTERNALS__={hslMask,reconstruct,scoreRegion,importProposal,setSource:c=>sourceCanvas=c,setProposal:s=>proposal=s};\n"+anchor);
 const nodes=new Map(),states={history:[],start:0};
 const node=id=>{
   if(!nodes.has(id))nodes.set(id,{value:"",textContent:"",disabled:false,hidden:false,
@@ -20,14 +20,14 @@ node("btnStart").click=()=>states.start++;
 const localStorage={getItem(k){return k==="bgs256d_frozen_6x15_forward_v18"?JSON.stringify({history:states.history}):null;}};
 const root={localStorage,__BGS_FINAL56__:{},__BGS256_TEST__:{},
   __BBB_LICENSE_STORAGE__:{status:()=>({pending_writes:0,error:""})}};
-const document={readyState:"loading",getElementById:node,addEventListener(){},createElement(tag){
+const document={readyState:"complete",getElementById:id=>["macroPlayerScore","macroBankerScore","bbbLastScore"].includes(id)?null:node(id),addEventListener(){},createElement(tag){
   return {type:tag,className:"",textContent:"",addEventListener(){},title:""};
 }};
 const context={window:root,document,performance:{now:()=>0},localStorage,
   Image:class{},URL:{},Math,Array,Set,Map,Promise,Error,RegExp,String,Number,
   console,setTimeout,clearTimeout};
 vm.runInNewContext(source,context,{filename:"bbb-screenshot-road.js"});
-const {hslMask,reconstruct,scoreRegion,settlePoints,importProposal,setSource,setProposal}=root.__BBB_TEST_INTERNALS__;
+const {hslMask,reconstruct,scoreRegion,importProposal,setSource,setProposal}=root.__BBB_TEST_INTERNALS__;
 assert.equal(hslMask(230,25,28),1,"BGS red maps to banker");
 assert.equal(hslMask(25,80,240),2,"BGS blue maps to player");
 assert.equal(hslMask(12,200,40),4,"BGS green maps to tie marker");
@@ -65,22 +65,9 @@ await importProposal();
 assert.equal(states.history.join(""),outcomes.join(""),"confirmed scan goes through authoritative BBB result buttons");
 assert.equal(states.start,1,"confirmed scan automatically analyzes next hand");
 assert.equal(root.__BBB_ROAD_SCANNER__.source.includes("BGS"),true);
-for(const [p,b,expected] of [[2,8,"B"],[9,1,"P"],[5,5,"T"]]){
-  const prior=states.history.length,analyses=states.start;
-  node("macroPlayerScore").value=String(p);
-  node("macroBankerScore").value=String(b);
-  settlePoints();settlePoints();
-  assert.equal(states.history.length,prior+1,"two score inputs record exactly one hand");
-  assert.equal(states.history.at(-1),expected,"winning side is derived only from total scores");
-  assert.equal(node("macroPlayerScore").value,"","player score auto-cleared");
-  assert.equal(node("macroBankerScore").value,"","banker score auto-cleared");
-  assert.equal(states.start,analyses+1,"next prediction auto-started");
-}
-node("macroPlayerScore").value="10";node("macroBankerScore").value="5";
-const size=states.history.length;settlePoints();
-assert.equal(states.history.length,size,"invalid modulo-ten score must not be recorded");
+const size=states.history.length;
 setProposal(["B","P","T"]);
 await importProposal();
 assert.equal(states.history.length,size,"scan cannot replace or append to an active shoe");
 assert.match(node("bbbScanMessage").textContent,/不允許覆蓋或混合/);
-console.log(JSON.stringify({ok:true,checks:["BGS red blue green masks","6x15 chronology reconstruction","manual scan confirmation","score auto-inference B P T","no duplicate hands","clear both scores","reject invalid score","reject merging a second screenshot"]}));
+console.log(JSON.stringify({ok:true,checks:["BGS red blue green masks","6x15 chronology reconstruction","manual scan confirmation","reject merging a second screenshot"]}));
