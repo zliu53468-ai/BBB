@@ -9,7 +9,7 @@ on:
     paths:
       - "physics_feature_extractor.py"
       - "particle_shoe_filter.py"
-      - "particle_filter_runtime.js"
+      - ".github/workflows/physics-production.yml"
       - "xgb_final_probability.py"
       - "build_synthetic_residual_rows.js"
       - "test_physics_feature_extractor.py"
@@ -21,7 +21,7 @@ on:
     paths:
       - "physics_feature_extractor.py"
       - "particle_shoe_filter.py"
-      - "particle_filter_runtime.js"
+      - ".github/workflows/physics-production.yml"
       - "xgb_final_probability.py"
       - "build_synthetic_residual_rows.js"
       - "test_physics_feature_extractor.py"
@@ -38,6 +38,8 @@ concurrency:
 
 jobs:
   build-and-verify:
+    # Browser-only policy experiments do not require rebuilding trained models.
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip model-training]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
