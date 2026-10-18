@@ -10,11 +10,9 @@ const message=document.getElementById("licenseMessage"),submit=document.getEleme
 const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu53468.workers.dev").replace(/\/+$/,"");
 const scripts=[
   "app256forward.js",
-  "app256continuation.js",
-  "blind_upgrade_runtime.js?v=20261018-guarded-v1",
-  "particle_filter_runtime.js?v=20261018-conditioned-v2",
+  "app256continuation.js",  "particle_filter_runtime.js?v=20261019-rollback-v1",
   "macro_ema.js?v=20261013-score-ema-independent",
-  "final_probability_runtime.js?v=20261018-blind-v1",
+  "final_probability_runtime.js?v=20261019-rollback-v1",
   "bbb-screenshot-road.js?v=20261018-button-only",
   "bbb-desktop-capture.js?v=20261013-desktop-snip-v1"
 ];
