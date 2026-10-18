@@ -1,0 +1,96 @@
+{
+  "data_kind": "synthetic_mechanics_only",
+  "total_shoes": 5,
+  "holdout_shoes": 1,
+  "split": "last 20% of chronological shoes; no parameter selection",
+  "inputs": "B/P/T only",
+  "baseline": {
+    "predictions": 69,
+    "bets": 16,
+    "wins": 9,
+    "losses": 7,
+    "ties": 0,
+    "skips": 53,
+    "net_units": 1.8000000000000005,
+    "brier_sum": 15.602894749479985,
+    "brier_n": 63,
+    "max_losing_run": 3,
+    "no_flip_violations": 0,
+    "skip_rate": 0.7681159420289855,
+    "hit_rate": 0.5625,
+    "realized_ev_per_bet": 0.11250000000000003,
+    "brier": 0.24766499602349182,
+    "max_prediction_ms": 96,
+    "stages": {
+      "1_15": {
+        "predictions": 15,
+        "skips": 14,
+        "bets": 1,
+        "wins": 0,
+        "losses": 1
+      },
+      "16_50": {
+        "predictions": 35,
+        "skips": 25,
+        "bets": 10,
+        "wins": 5,
+        "losses": 5
+      },
+      "51_plus": {
+        "predictions": 19,
+        "skips": 14,
+        "bets": 5,
+        "wins": 4,
+        "losses": 1
+      }
+    }
+  },
+  "candidate": {
+    "predictions": 69,
+    "bets": 17,
+    "wins": 9,
+    "losses": 8,
+    "ties": 0,
+    "skips": 52,
+    "net_units": 0.8000000000000007,
+    "brier_sum": 15.63587990302986,
+    "brier_n": 63,
+    "max_losing_run": 4,
+    "no_flip_violations": 0,
+    "skip_rate": 0.7536231884057971,
+    "hit_rate": 0.5294117647058824,
+    "realized_ev_per_bet": 0.047058823529411806,
+    "brier": 0.24818856988936286,
+    "max_prediction_ms": 483,
+    "stages": {
+      "1_15": {
+        "predictions": 15,
+        "skips": 14,
+        "bets": 1,
+        "wins": 0,
+        "losses": 1
+      },
+      "16_50": {
+        "predictions": 35,
+        "skips": 24,
+        "bets": 11,
+        "wins": 5,
+        "losses": 6
+      },
+      "51_plus": {
+        "predictions": 19,
+        "skips": 14,
+        "bets": 5,
+        "wins": 4,
+        "losses": 1
+      }
+    }
+  },
+  "delta": {
+    "skip_rate": -0.01449275362318836,
+    "hit_rate": -0.03308823529411764
+  },
+  "performance_claim_validated": false,
+  "auto_promote": false,
+  "note": "Smoke comparison only; simulated or unverified outcomes cannot establish casino advantage or simultaneous hit-rate/coverage gains."
+}
