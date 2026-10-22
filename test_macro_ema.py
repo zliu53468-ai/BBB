@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent
 
 class MacroEMATest(unittest.TestCase):
     def test_initialization_missing_tie_and_exact_ema(self):
-        state = MacroEMA("a")
+        state = MacroEMA("a",profile="conservative")
         self.assertIsNone(state.snapshot()["Six_Card_Spread"])
         state.update(dict(outcome="B", card_count=6, banker_score=3, player_score=1))
         value = state.update(dict(outcome="P", card_count=4, banker_score=0, player_score=8))

@@ -1,3 +1,5 @@
+> 最新平滑、決策與重訓規格見 [CARDCOUNT_AGGRESSIVE_SMOOTH_SKIP.md](CARDCOUNT_AGGRESSIVE_SMOOTH_SKIP.md)。PF 仍完全不參與，回滾本次提交不會重新引入 PF。
+
 # 算牌優先修正（2026-10-22）
 
 本文件及 `COUNTING_PRIORITY_REVIEW.md` 取代上一版 `NO_PF_UPGRADE.md` 的規律權重、選模與 Skip 驗收設定。原始 main 基準為 `0bbd1f7db966be5c67f00809fa4db1822386ac21`，上一版修改為 `7f44d37`。

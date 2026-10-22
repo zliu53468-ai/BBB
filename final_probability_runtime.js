@@ -56,7 +56,27 @@ const bp=seq=>seq.filter(x=>x==="B"||x==="P");
 const directionalRoundCount=seq=>bp(seq).length;
 const sigmoid=x=>x>=0?1/(1+Math.exp(-x)):Math.exp(x)/(1+Math.exp(x));
 
-let physicsBundle=null,final56Bundle=null;
+let physicsBundle=null,final56Bundle=null,runtimeProfiles={};
+let selectedEntryProfile=(typeof window!=="undefined"&&window.BBB_ENTRY_PROFILE)||"production";
+let selectedMacroProfile="responsive_v1";
+let entryProfileExplicit=typeof window!=="undefined"&&!!window.BBB_ENTRY_PROFILE,macroProfileExplicit=false;
+function activePolicyConfig(){
+  const production=final56Bundle?.decision_policy||{};
+  return selectedEntryProfile==="production"?production:runtimeProfiles.entry_profiles?.[selectedEntryProfile]||production;
+}
+function macroConfig(){
+  const production=final56Bundle?.decision_policy?.macro_ema||{};
+  return {...production,...(runtimeProfiles.macro_profiles?.[selectedMacroProfile]||MACRO?.PROFILES?.[selectedMacroProfile]||{}),
+    profile:selectedMacroProfile,enabled:production.enabled!==false,coefficients:production.coefficients||{six_card:0,low_score:0,point_diff:0}};
+}
+function setEntryProfile(name){
+  if(name!=="production"&&!runtimeProfiles.entry_profiles?.[name])throw Error("unknown entry profile");
+  entryProfileExplicit=true;selectedEntryProfile=name;return name;
+}
+function setMacroProfile(name){
+  if(!MACRO?.PROFILES?.[name])throw Error("unknown Macro EMA profile");
+  macroProfileExplicit=true;selectedMacroProfile=name;macroState=null;return name;
+}
 let status={physics:false,final56:false,errors:[]};
 
 function transitionSequence(seq){const a=bp(seq),out=[];for(let i=1;i<a.length;i++)out.push(a[i]===a[i-1]?"S":"X");return out;}
@@ -279,7 +299,8 @@ function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null,physic
   if(stageProgressV4Enabled()){
     const progress=Math.cbrt(clip(+progressWeight||0)),base=interpAnchors(progress,validAlphaAnchors(config.progress_alpha_anchors)||[[0,.38],[.20,.41],[.35,.46],[.50,.53],[.65,.59],[.75,.63],[.85,.67],[.95,.70],[1,.72]]),noise=clip(noiseScore),adjustment=.03*Math.max(0,.5-noise)/.5-.05*Math.max(0,noise-.5)/.5;
     const diagnostics=physicsDiagnostics||lastPhysicsDiagnostics||{},directUncertainty=clip(diagnostics.physics_uncertainty??.5),physicsAdjustment=-.04*Math.max(0,directUncertainty-.50)/.50;
-    return clip(base+adjustment+physicsAdjustment,.35,.75);
+    const clearBoost=noise<.60&&directUncertainty<.45&&Number.isFinite(diagnostics.signal_distance)&&diagnostics.signal_distance>=.03?clip(config.clear_signal_boost,0,.10):0;
+    return clip(base+adjustment+physicsAdjustment+clearBoost,.35,.75);
   }
   const early=Number.isFinite(+config.early_alpha)?+config.early_alpha:.40,middle=Number.isFinite(+config.middle_alpha)?+config.middle_alpha:.55,late=Number.isFinite(+config.late_alpha)?+config.late_alpha:.70;
   const progressRound=stageProgressV3Enabled()?effectiveProgressRound(roundIndex,progressWeight):roundIndex;
@@ -289,7 +310,9 @@ function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null,physic
   return clip(base+gain*(.5-clip(+noiseScore||0))+physicsAdjustment,.35,.75);
 }
 function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWeight=null){
-  const configured=final56Bundle?.smoothing||{};
+  const configured=final56Bundle?.runtime_config_schema===1||final56Bundle?.smoothing?.enabled===true
+    ?final56Bundle?.smoothing||{}:runtimeProfiles.final_smoothing||final56Bundle?.smoothing||{};
+  if(final56Bundle?.runtime_config_schema===1&&configured.enabled===false)return {value:clippedPB,alpha:1,strength:0,profile:"off",applied:false};
   // Physics Primary V13: EMA is part of the primary Physics path, not an
   // optional XGB-selected post-process.  If model selection disables smoothing,
   // fall back to the locked Physics-primary dynamic profile.
@@ -303,7 +326,7 @@ function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWe
     const value=Number.isFinite(+row.physics_smoothed_p_b)?+row.physics_smoothed_p_b:(Number.isFinite(+row.primary_smoothed_p_b)?+row.primary_smoothed_p_b:NaN);
     if(Number.isFinite(value)){previous=value;break;}}
   if(previous===null)return {value:clippedPB,alpha:1,strength:0,profile:config.profile||"first_round",applied:false};
-  const alpha=dynamic?dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight,lastPhysicsDiagnostics):1-clip(+config.strength||0,0,.15);
+  const alpha=dynamic?dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight,{...lastPhysicsDiagnostics,signal_distance:Math.abs(clippedPB-.5)}):1-clip(+config.strength||0,0,.15);
   const value=clip(alpha*clippedPB+(1-alpha)*previous,bounds.low,bounds.high);
   return {value,alpha,strength:1-alpha,profile:config.profile||(legacy?"legacy":"custom"),applied:true};
 }
@@ -325,13 +348,13 @@ function dynamicBand(roundIndex,noiseScore,bandConfig,config){
     confidenceBand:clip(base*(1-progressRelief)+noisePenalty-extra,minimum,maximum),progressRelief,noisePenalty,extra};
 }
 function decisionPolicy(roundIndex,noiseScore){
-  const threshold=final56Bundle?.ev_thresholds||{},pick=(key,fallback)=>Number.isFinite(+threshold[key])?+threshold[key]:fallback;
+  const threshold=activePolicyConfig().ev_thresholds||final56Bundle?.ev_thresholds||{},pick=(key,fallback)=>Number.isFinite(+threshold[key])?+threshold[key]:fallback;
   const base=roundIndex<=40?pick("early",.020):roundIndex>50?pick("late",.005):pick("middle",.010);
-  const config=final56Bundle?.decision_policy||{};
+  const config=activePolicyConfig();
   const profile=String(config.profile||final56Bundle?.decision_policy_profile||(config.enabled===true?"custom":"hard_ev"));
   if(config.enabled!==true)return {enabled:false,profile,minEv:base,activationEv:base,softBand:0,minConfidence:0,confidenceBand:0,strongMargin:0,bandMinimum:0,volumeGuard:{}};
   const value=(key,fallback)=>Number.isFinite(+config[key])?+config[key]:fallback;
-  const noiseThreshold=value("noise_threshold",.78),noise=clip(+noiseScore||0),lowNoise=noise<=noiseThreshold;
+  const noiseThreshold=value("noise_threshold",.78),noise=typeof noiseScore==="number"&&Number.isFinite(noiseScore)?clip(noiseScore):1,lowNoise=noise<=noiseThreshold;
   const middle=roundIndex>40&&roundIndex<=50,late=roundIndex>50;
   const relief=lowNoise?(middle?value("middle_relief",.001):late?value("late_relief",.001):0):0;
   const maxPenalty=Math.max(0,value("max_noise_ev_penalty",.001));
@@ -440,7 +463,7 @@ function directPhysicsPrimary(physics,roundIndex,macroFeatures=null){
   const policy=decisionPolicy(roundIndex,noise);
   // Primary EV is computed only from the Direct Physics winner head.
   const baseEvBanker=pB*.95-pP,baseEvPlayer=pP-pB;
-  const macro=MACRO?MACRO.adjustment(calibratedPB,macroFeatures,clip(roundIndex/getEstimatedTotalHands()),noise,final56Bundle?.decision_policy?.macro_ema||{}):{value:calibratedPB,delta:0,reason:"module_unavailable"};
+  const macro=MACRO?MACRO.adjustment(calibratedPB,macroFeatures,clip(roundIndex/getEstimatedTotalHands()),noise,macroConfig()):{value:calibratedPB,delta:0,reason:"module_unavailable"};
   const directionalPB=macro.value,distance=Math.abs(directionalPB-.5);
   // Soft correction of Physics EV only; tie mass and Direct MLP 48D stay fixed.
   const evBanker=baseEvBanker+1.95*directionalMass*macro.delta,evPlayer=baseEvPlayer-2*directionalMass*macro.delta;
@@ -512,6 +535,14 @@ function preserveCandidateDirection(candidate,probabilityB){
   return .5;
 }
 
+function entryEligibility({candidate,finalPB,noise,edge,band,activation,auxDecision,confidence=null,minConfidence=0},profile=selectedEntryProfile){
+  if(![finalPB,noise,edge,band,activation].every(Number.isFinite))return false;
+  const distance=Math.abs(finalPB-.5);
+  if(profile==="aggressive_entry_v2"&&(noise>=.90||distance<.002))return false;
+  const aligned=candidate==="B"?finalPB>.5:candidate==="P"?finalPB<.5:false;
+  return auxDecision!=="skip"&&aligned&&distance>=band&&edge>Math.max(0,activation)&&
+    (confidence===null||Number.isFinite(confidence)&&confidence>=minConfidence);
+}
 function patternLabel(seq){
   const a=bp(seq),tail=a.slice(-8);
   let run=0;for(let i=a.length-1;i>=0&&a[i]===a.at(-1);i--)run++;
@@ -618,18 +649,20 @@ function applyFinalPrediction(seq,corePrediction=null){
     const baseBand=Math.max(policy.confidenceBand,primary.physicsConfidenceBand),baseActivation=Math.max(policy.activationEv,primary.physicsActivationEv),distance=Math.abs(finalPB-.5);
     const candidateEdge=candidate==="B"?evBanker:candidate==="P"?evPlayer:0;
     const aligned=candidate==="B"?finalPB>.5:candidate==="P"?finalPB<.5:false;
-    const basePass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=baseBand&&candidateEdge>baseActivation;
+    const basePass=entryEligibility({candidate,finalPB,noise:primary.noise,edge:candidateEdge,band:baseBand,activation:baseActivation,
+      auxDecision:auxFilter?.decision,confidence:softConfidence(candidateEdge,policy),minConfidence:policy.minConfidence});
 
     executionOrder.push("volume_guard");
     const guard=volumeGuardState(roundIndex,finalPB,policy);
     const effectiveBand=Math.max(policy.bandMinimum,baseBand-guard.bandRelief-(policy.finalBandRelief??LOW_SKIP_FINAL_BAND_RELIEF)),effectiveActivationEv=Math.max(0,baseActivation-guard.evRelief);
-    const guardedPass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=effectiveBand&&candidateEdge>effectiveActivationEv;
+    const guardedPass=entryEligibility({candidate,finalPB,noise:primary.noise,edge:candidateEdge,band:effectiveBand,activation:effectiveActivationEv,
+      auxDecision:auxFilter?.decision,confidence:softConfidence(candidateEdge,{...policy,activationEv:effectiveActivationEv}),minConfidence:policy.minConfidence});
     // Freeze eligibility from the original EV/noise/confidence + Volume Guard path.
     // A pattern can annotate a qualified bet; it never creates eligibility.
     const baseEligible=basePass||guardedPass;
     const patternBonus=patternSoftBonus(seq,{baseEligible,finalPB,noise:primary.noise,
       confidence:baseEligible?softConfidence(candidateEdge,{...policy,activationEv:effectiveActivationEv}):0,edge:candidateEdge},
-      final56Bundle?.decision_policy?.pattern_soft_bonus||{});
+      activePolicyConfig().pattern_soft_bonus||{});
     const direction=baseEligible?candidate:"Skip";
     const entryTier=direction==="Skip"?"skip":distance>=effectiveBand+policy.strongMargin?"strong":"weak";
     evDecision={
@@ -729,7 +762,7 @@ function syncMacro(history){
   let common=0;
   while(common<Math.min(events.length,history.length)&&events[common]?.outcome===history[common])common++;
   if(!macroState||common<events.length){
-    events.splice(common);macroState=MACRO.createState(shoeId);
+    events.splice(common);macroState=MACRO.createState(shoeId,macroConfig());
     for(let i=0;i<events.length;i++){
       try{events[i]=MACRO.normalizeHand(events[i]);}catch(_){events[i]=MACRO.normalizeHand({outcome:history[i]});}
       MACRO.update(macroState,events[i]);
@@ -816,7 +849,12 @@ function downloadMacroObservations(){const blob=new Blob([exportMacroObservation
 async function fetchBundle(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(url+":HTTP"+r.status);return await r.json();}
 async function loadModels(){
   status={physics:false,final56:false,errors:[]};
-  const rs=await Promise.allSettled([fetchBundle(PHYSICS_URL),fetchBundle(FINAL56_URL)]);
+  const rs=await Promise.allSettled([fetchBundle(PHYSICS_URL),fetchBundle(FINAL56_URL),fetchBundle("cardcount_profiles.json")]);
+  runtimeProfiles=rs[2].status==="fulfilled"&&rs[2].value?.schema_version===1?rs[2].value:{};
+  if(!entryProfileExplicit)selectedEntryProfile=runtimeProfiles.default_entry_profile||"production";
+  if(!macroProfileExplicit)selectedMacroProfile=runtimeProfiles.default_macro_profile||"responsive_v1";
+  if(selectedEntryProfile!=="production"&&!runtimeProfiles.entry_profiles?.[selectedEntryProfile]){status.errors.push("entry_profile_unavailable");selectedEntryProfile="production";}
+  macroState=null;
   if(rs[0].status==="fulfilled"&&rs[0].value?.model_type==="baccarat_physics_multitask_mlp"){physicsBundle=rs[0].value;status.physics=!!physicsBundle.trained;}else status.errors.push("physics_model");
   if(rs[1].status==="fulfilled"&&rs[1].value?.model_type==="xgb_final_probability_classifier"&&rs[1].value?.feature_names?.length===FEATURE_DIM){final56Bundle=rs[1].value;status.final56=!!final56Bundle.trained;}else{final56Bundle=null;status.errors.push("final57_model");}
   if(status.physics&&status.final56&&!modelSemanticsCompatible()){status.final56=false;status.errors.push("feature_semantics_mismatch");}
@@ -901,7 +939,7 @@ function installUI(){
   const observations=document.getElementById("btnExportObservations");if(observations)observations.addEventListener("click",downloadMacroObservations);
   syncMacro(readHistory());
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,patternLabel,patternSoftBonus,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,setEntryProfile,setMacroProfile,getRuntimeProfiles:()=>runtimeProfiles,getActiveProfiles:()=>({entry:selectedEntryProfile,macro:selectedMacroProfile}),entryEligibility,patternLabel,patternSoftBonus,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
   registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,
   getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 if(typeof window?.addEventListener==="function")window.addEventListener("storage",event=>{if(event.key===MACRO_KEY||event.key===SHOE_KEY){macroJournal=null;macroState=null;}});

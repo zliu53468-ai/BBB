@@ -10,6 +10,9 @@ Output features are BEFORE the row's outcome, suitable for next-hand training.
 import argparse
 import json
 import math
+from pathlib import Path
+
+PROFILES=json.loads(Path(__file__).with_name("cardcount_profiles.json").read_text(encoding="utf-8"))["macro_profiles"]
 
 NAMES = ("Six_Card", "Low_Score", "Point_Diff")
 
@@ -51,8 +54,25 @@ def raw_features(hand):
     }
 
 
+def resolve_config(profile="responsive_v1", config=None):
+    config=config or {};profile=config.get("profile",profile)
+    if profile not in PROFILES:raise ValueError("unknown Macro EMA profile")
+    out={"enabled":True,**PROFILES[profile],**config,"profile":profile}
+    bounds={"short_alpha":(.01,1),"long_alpha":(.001,1),"max_delta":(0,.045),"min_observations":(1,100),"max_age":(0,100),"progress_start":(0,.99),"progress_power":(1,4),"noise_low":(0,.99),"noise_high":(.001,1)}
+    for key,(lo,hi) in bounds.items():
+        value=out[key]
+        out[key]=min(hi,max(lo,value)) if isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) else PROFILES[profile][key]
+    if profile=="responsive_v1":
+        for key,(lo,hi) in {"short_alpha":(.30,.35),"long_alpha":(.10,.12),"min_observations":(6,8),"max_age":(4,5),"progress_start":(.20,.25),"progress_power":(1.5,1.8)}.items():out[key]=min(hi,max(lo,out[key]))
+    for key in ("min_observations","max_age"):out[key]=int(out[key])
+    if out["noise_high"]<=out["noise_low"]:
+        out["noise_low"],out["noise_high"]=PROFILES[profile]["noise_low"],PROFILES[profile]["noise_high"]
+    return out
+
+
 class MacroEMA:
-    def __init__(self, shoe_id=""):
+    def __init__(self, shoe_id="", profile="responsive_v1", config=None):
+        self.config=resolve_config(profile,config)
         self.shoe_id, self.rounds = str(shoe_id), 0
         self.ema = {name: dict(short=None, long=None, count=0, last_round=0) for name in NAMES}
 
@@ -72,14 +92,14 @@ class MacroEMA:
             if value is None:
                 continue
             e = self.ema[key]
-            e["short"] = .20 * value + .80 * e["short"] if e["count"] else value
-            e["long"] = .05 * value + .95 * e["long"] if e["count"] else value
+            e["short"] = self.config["short_alpha"] * value + (1-self.config["short_alpha"]) * e["short"] if e["count"] else value
+            e["long"] = self.config["long_alpha"] * value + (1-self.config["long_alpha"]) * e["long"] if e["count"] else value
             e["count"] += 1
             e["last_round"] = self.rounds
         return self.snapshot()
 
 
-def build_features(rows, estimated_total_hands=60):
+def build_features(rows, estimated_total_hands=60, profile="responsive_v1"):
     """Rows must contain every completed hand, including unpredicted hands/ties.
 
     Strict sequential indices prevent silently treating sparse prediction logs
@@ -93,7 +113,7 @@ def build_features(rows, estimated_total_hands=60):
         if row.get("shoe_id") is None:
             raise ValueError("shoe_id required")
         shoe = str(row["shoe_id"])
-        state = states.setdefault(shoe, MacroEMA(shoe))
+        state = states.setdefault(shoe, MacroEMA(shoe,profile))
         index = integer(row.get("round_index"), "round_index", 1, 1000000)
         if index != state.rounds + 1:
             raise ValueError(f"{shoe}: expected consecutive round_index {state.rounds + 1}")
@@ -111,11 +131,12 @@ def main():
     parser.add_argument("input")
     parser.add_argument("output")
     parser.add_argument("--estimated-total-hands", type=float, default=60)
+    parser.add_argument("--profile",choices=tuple(PROFILES),default="responsive_v1")
     args = parser.parse_args()
     with open(args.input, encoding="utf-8") as handle:
         payload = json.load(handle)
     rows = payload.get("rows", []) if isinstance(payload, dict) else payload
-    result = {"feature_timing": "before_current_outcome", "rows": build_features(rows, args.estimated_total_hands)}
+    result = {"feature_timing": "before_current_outcome", "rows": build_features(rows, args.estimated_total_hands,args.profile)}
     with open(args.output, "w", encoding="utf-8") as handle:
         json.dump(result, handle, ensure_ascii=False, indent=2, allow_nan=False)
 

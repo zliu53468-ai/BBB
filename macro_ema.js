@@ -5,6 +5,22 @@
   if(root)root.__BGS_MACRO_EMA__=api;
 })(typeof window!=="undefined"?window:globalThis,function(){
   "use strict";
+  const PROFILES={"conservative":{"short_alpha":0.2,"long_alpha":0.05,"max_delta":0.03,"min_observations":12,"max_age":3,"progress_start":0.3,"progress_power":2.0,"noise_low":0.6,"noise_high":0.75},"responsive_v1":{"short_alpha":0.32,"long_alpha":0.11,"max_delta":0.04,"min_observations":7,"max_age":5,"progress_start":0.22,"progress_power":1.6,"noise_low":0.55,"noise_high":0.72},"aggressive":{"short_alpha":0.35,"long_alpha":0.12,"max_delta":0.045,"min_observations":6,"max_age":5,"progress_start":0.2,"progress_power":1.5,"noise_low":0.55,"noise_high":0.72}};
+  function resolveConfig(config={}){
+    if(typeof config==="string")config={profile:config};
+    const profile=config.profile||"responsive_v1";
+    if(!Object.hasOwn(PROFILES,profile))throw Error("unknown Macro EMA profile: "+profile);
+    const out={enabled:true,...PROFILES[profile],...config,profile};
+    for(const [key,lo,hi] of [["short_alpha",.01,1],["long_alpha",.001,1],["max_delta",0,.045],["min_observations",1,100],["max_age",0,100],["progress_start",0,.99],["progress_power",1,4],["noise_low",0,.99],["noise_high",.001,1]]){
+      const v=out[key];out[key]=typeof v==="number"&&Number.isFinite(v)?Math.max(lo,Math.min(hi,v)):PROFILES[profile][key];
+    }
+    if(profile==="responsive_v1"){
+      for(const [key,lo,hi] of [["short_alpha",.30,.35],["long_alpha",.10,.12],["min_observations",6,8],["max_age",4,5],["progress_start",.20,.25],["progress_power",1.5,1.8]])out[key]=Math.max(lo,Math.min(hi,out[key]));
+    }
+    out.min_observations=Math.floor(out.min_observations);out.max_age=Math.floor(out.max_age);
+    if(out.noise_high<=out.noise_low){out.noise_low=PROFILES[profile].noise_low;out.noise_high=PROFILES[profile].noise_high;}
+    return out;
+  }
   const NAMES=["Six_Card","Low_Score","Point_Diff"];
   const clamp=(x,lo=0,hi=1)=>Math.max(lo,Math.min(hi,x));
   function integer(value,name,lo,hi){
@@ -26,8 +42,8 @@
     }
     return {outcome,card_count,player_score,banker_score};
   }
-  function createState(shoeId=""){
-    return {shoe_id:String(shoeId),rounds:0,ema:Object.fromEntries(NAMES.map(k=>[k,{short:null,long:null,count:0,last_round:0}]))};
+  function createState(shoeId="",config={}){
+    return {shoe_id:String(shoeId),rounds:0,config:resolveConfig(config),ema:Object.fromEntries(NAMES.map(k=>[k,{short:null,long:null,count:0,last_round:0}]))};
   }
   function values(hand){
     const h=normalizeHand(hand),winner=h.outcome==="B"?h.banker_score:h.player_score;
@@ -50,10 +66,11 @@
   function update(state,hand){
     const raw=values(hand); // Validate everything before mutating any EMA.
     state.rounds++;
+    const config=state.config||resolveConfig();
     for(const key of NAMES){
       const x=raw[key],e=state.ema[key];if(x===null)continue;
-      e.short=e.count?.20*x+.80*e.short:x;
-      e.long=e.count?.05*x+.95*e.long:x;
+      e.short=e.count?config.short_alpha*x+(1-config.short_alpha)*e.short:x;
+      e.long=e.count?config.long_alpha*x+(1-config.long_alpha)*e.long:x;
       e.count++;e.last_round=state.rounds;
     }
     return snapshot(state);
@@ -63,6 +80,7 @@
     return clamp((high-n)/Math.max(1e-9,high-low));
   }
   function adjustment(probabilityB,features,progress,noise,config={}){
+    config=resolveConfig(config);
     const p=clamp(probabilityB),result={input:p,value:p,delta:0,signal:0,ready:false,reason:"disabled"};
     if(config.enabled!==true)return result;
     const number=(key,fallback)=>typeof config[key]==="number"&&Number.isFinite(config[key])?config[key]:fallback;
@@ -92,14 +110,14 @@
     // three macro coefficients at zero, so this module must return delta=0.
     const availability={available_features:available,active_features:active,
       ignored_configured_features:ignored,feature_ready:readiness,
-      configured_coefficient_count:configured,all_coefficients_zero:configured===0};
+      configured_coefficient_count:configured,all_coefficients_zero:configured===0,observations_ready:available.length>0};
     if(!active.length)return {...result,...availability,
       reason:configured?"insufficient_observations":"zero_coefficients_or_signal"};
     const start=clamp(number("progress_start",.30),0,.99),power=clamp(number("progress_power",2),1,4);
-    const weight=clamp((progress-start)/(1-start))**power,cap=clamp(number("max_delta",.03),0,.05);
+    const weight=clamp((progress-start)/(1-start))**power,cap=clamp(number("max_delta",.03),0,.045);
     // v2 coefficients are literal probability-point sensitivities per normalized spread.
     // Legacy bundles retain their prior cap*tanh(signal) interpretation.
-    const gate=noiseGate(noise),probabilityUnits=config.coefficient_units==="probability_delta";
+    const gate=noiseGate(noise,config.noise_low,config.noise_high),probabilityUnits=config.coefficient_units==="probability_delta";
     const boundedSignal=clamp(signal,-cap,cap);
     const delta=(probabilityUnits?boundedSignal:cap*Math.tanh(signal))*weight*gate;
     // B/P EV preference boundary: .95*p-(1-p) = (1-p)-p.
@@ -108,5 +126,5 @@
     return {...result,...availability,value,delta:value-p,signal,ready:true,progress_weight:weight,noise_gate:gate,max_delta:cap,
       reason:signal===0?"zero_coefficients_or_signal":gate===0?"high_noise":"applied"};
   }
-  return {NAMES,createState,normalizeHand,values,update,snapshot,noiseGate,adjustment};
+  return {PROFILES,resolveConfig,NAMES,createState,normalizeHand,values,update,snapshot,noiseGate,adjustment};
 });

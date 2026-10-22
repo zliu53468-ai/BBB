@@ -1,0 +1,24 @@
+{
+  "passed": false,
+  "failures": [
+    "requires real_holdout_observations; synthetic/unknown data cannot establish quality",
+    "insufficient holdout shoes",
+    "all: insufficient bets",
+    "all: hit rate declined",
+    "all: realized EV declined",
+    "early: insufficient bets",
+    "early: hit rate declined",
+    "early: realized EV declined",
+    "middle: insufficient bets",
+    "middle: hit rate declined",
+    "middle: realized EV declined",
+    "late: insufficient bets",
+    "late: hit rate declined",
+    "late: realized EV declined"
+  ],
+  "minimumShoes": 100,
+  "minimumBets": 500,
+  "minSkipReduction": 0,
+  "maxSkipIncrease": 0.05,
+  "limitation": "Observed non-regression only; data provenance and an untouched holdout must be independently verified. No future-performance guarantee."
+}

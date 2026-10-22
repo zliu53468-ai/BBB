@@ -61,7 +61,7 @@ MIN_PRIMARY_GAIN = 1e-6
 STAGE_PROGRESS_VERSION = 4
 EARLY35_VERSION = 1
 SHOE_ERROR_CORRECTION_VERSION = 0
-SHOE_ERROR_CORRECTION_POLICY = "disabled_without_particle_filter"
+SHOE_ERROR_CORRECTION_POLICY = "disabled_direct_physics_only"
 PHYSICS_DIRECT_VERSION = 1
 PHYSICS_PRIMARY_VERSION = 13
 ESTIMATED_TOTAL_HANDS_MIN = 50.0
@@ -109,16 +109,17 @@ DECISION_POLICY_PROFILES: dict[str, dict[str, Any]] = {
         },
     },
 }
+RUNTIME_PROFILES=json.loads(Path(__file__).with_name("cardcount_profiles.json").read_text(encoding="utf-8"))
+DECISION_POLICY_PROFILES.update(RUNTIME_PROFILES["entry_profiles"])
+EMA_PROFILES["responsive_v1"]=RUNTIME_PROFILES["final_smoothing"]
 LEGACY_XGB_PARAMETERS = {"n_estimators": 320, "max_depth": 3, "learning_rate": 0.025, "min_child_weight": 12, "subsample": 0.85, "colsample_bytree": 0.82, "reg_alpha": 0.35, "reg_lambda": 12.0}
 XGB_TUNING_CANDIDATES: tuple[dict[str, Any], ...] = (
-    LEGACY_XGB_PARAMETERS,
-    {"n_estimators": 420, "max_depth": 2, "learning_rate": 0.020, "min_child_weight": 18, "subsample": 0.80, "colsample_bytree": 0.75, "reg_alpha": 0.50, "reg_lambda": 16.0},
-    {"n_estimators": 600, "max_depth": 2, "learning_rate": 0.012, "min_child_weight": 12, "subsample": 0.85, "colsample_bytree": 0.85, "reg_alpha": 0.25, "reg_lambda": 12.0},
-    {"n_estimators": 520, "max_depth": 2, "learning_rate": 0.015, "min_child_weight": 24, "subsample": 0.90, "colsample_bytree": 0.70, "reg_alpha": 0.75, "reg_lambda": 20.0},
-    {"n_estimators": 360, "max_depth": 3, "learning_rate": 0.020, "min_child_weight": 18, "subsample": 0.80, "colsample_bytree": 0.75, "reg_alpha": 0.75, "reg_lambda": 18.0},
-    {"n_estimators": 480, "max_depth": 3, "learning_rate": 0.015, "min_child_weight": 24, "subsample": 0.90, "colsample_bytree": 0.80, "reg_alpha": 1.00, "reg_lambda": 24.0},
-    {"n_estimators": 700, "max_depth": 1, "learning_rate": 0.015, "min_child_weight": 10, "subsample": 0.90, "colsample_bytree": 0.90, "reg_alpha": 0.25, "reg_lambda": 12.0},
-    {"n_estimators": 640, "max_depth": 3, "learning_rate": 0.018, "min_child_weight": 16, "subsample": 0.85, "colsample_bytree": 0.85, "reg_alpha": 0.75, "reg_lambda": 16.0},
+    LEGACY_XGB_PARAMETERS,  # Comparison baseline, not a new search-range candidate.
+    {"n_estimators":400,"max_depth":2,"learning_rate":.025,"min_child_weight":16,"subsample":.90,"colsample_bytree":.85,"reg_alpha":.30,"reg_lambda":14},
+    {"n_estimators":520,"max_depth":3,"learning_rate":.020,"min_child_weight":12,"subsample":.90,"colsample_bytree":.85,"reg_alpha":.40,"reg_lambda":16},
+    {"n_estimators":650,"max_depth":3,"learning_rate":.015,"min_child_weight":10,"subsample":.95,"colsample_bytree":.90,"reg_alpha":.20,"reg_lambda":12},
+    {"n_estimators":800,"max_depth":4,"learning_rate":.015,"min_child_weight":16,"subsample":.85,"colsample_bytree":.75,"reg_alpha":.60,"reg_lambda":18},
+    {"n_estimators":600,"max_depth":2,"learning_rate":.030,"min_child_weight":6,"subsample":.90,"colsample_bytree":.95,"reg_alpha":.10,"reg_lambda":8},
 )
 ORIGINAL_7D_FEATURE_NAMES = (
     "core_p_b",
@@ -841,36 +842,16 @@ def balanced_sample_weights(
         mask=labels==label
         if np.any(mask): weights[mask]*=len(labels)/(2.0*float(np.sum(mask)))
 
-    progress=np.cbrt(np.clip(features[:,1],0.0,1.0))
-    stage_factor=np.interp(
-        progress,
-        [0.00,.25,.40,.55,.70,.80,.90,1.00],
-        [.95,1.00,1.05,1.12,1.22,1.30,1.38,1.42],
-    )
+    stage_factor=np.interp(rounds,[1,40,41,50,51,70],[1,1,1.05,1.10,1.20,1.30])
     physics_uncertainty=np.clip(features[:,8+_PHYSICS_INDEX["particle_uncertainty"]],0.0,1.0)
     quality=1.0-physics_uncertainty
-    reliability=.75+.25*quality
-    early35=(rounds>=1.0)&(rounds<=35.0)
-    early35_stage=np.select(
-        [rounds<=5.0,rounds<=10.0,rounds<=15.0,rounds<=20.0,rounds<=25.0,rounds<=30.0],
-        [1.25,1.35,1.35,1.30,1.28,1.22],
-        default=1.15,
-    )
-    early35_reliability=.80+.20*quality
-    stage_factor=np.where(early35,early35_stage,stage_factor)
-    reliability=np.where(early35,early35_reliability,reliability)
-
-    physical_b=features[:,8+_PHYSICS_INDEX["physical_ev_banker"]]
-    physical_p=features[:,8+_PHYSICS_INDEX["physical_ev_player"]]
-    physical_edge=np.maximum(np.maximum(physical_b,physical_p),0.0)
-    physical_actionability=physical_edge*(1.0-physics_uncertainty)
-    normalized_actionability=np.clip(physical_actionability/.05,0.0,1.0)
-    action_factor=1.0+.08*normalized_actionability
-
+    reliability=1+.18*quality
+    # All actionability inputs are pre-hand model outputs; never use current labels.
+    physical_edge=np.maximum(np.maximum(features[:,8+_PHYSICS_INDEX["physical_ev_banker"]],features[:,8+_PHYSICS_INDEX["physical_ev_player"]]),0)
+    action_factor=1+.02*np.clip(physical_edge/.05,0,1)*quality
     multiplier=stage_factor*reliability*action_factor
-    multiplier=np.where(early35,np.minimum(multiplier,1.50),multiplier)
-    if not np.isfinite(pattern_weight) or not 0 <= pattern_weight <= .15:
-        raise ValueError("pattern_weight must be finite and between 0 and 0.15")
+    if not np.isfinite(pattern_weight) or not 0 <= pattern_weight <= .10:
+        raise ValueError("pattern_weight must be finite and between 0 and 0.10")
     # Existing 57D causal S/X Markov feature; symmetric for repeat/alternate.
     # No labels, future hands, new columns, or changes to Frozen Core.
     strength=np.clip(2*np.abs(features[:,5]-.5),0,1)
@@ -878,7 +859,13 @@ def balanced_sample_weights(
     pattern_quality=np.where(physics_uncertainty<=.60,quality,0.0)
     multiplier*=1+pattern_weight*strength*evidence*pattern_quality
     weights*=multiplier
-    return np.clip(weights/np.mean(weights),0.35,1.50).astype(np.float32)
+    # Normalize under the existing bounds without losing mean=1 after clipping.
+    normalized=weights/np.mean(weights);lo,hi=0.0,1/max(1e-12,float(np.min(normalized)))
+    for _ in range(40):
+        scale=(lo+hi)/2
+        if np.mean(np.clip(normalized*scale,.35,1.50))<1:lo=scale
+        else:hi=scale
+    return np.clip(normalized*(lo+hi)/2,.35,1.50).astype(np.float32)
 
 def recalibrate_noise_feature(
     x: np.ndarray,
@@ -962,7 +949,7 @@ def fit_probability_calibration(
         def calibration_score(values: np.ndarray) -> tuple[float,float,float]:
             overall=_brier(values,probe_labels)
             late=_brier(values[late_mask],probe_labels[late_mask]) if late_rows>=25 else overall
-            return overall,late,.70*overall+.30*late
+            return overall,late,overall
 
         identity_overall,identity_late,identity_score=calibration_score(probe_probability)
         platt_overall,platt_late,platt_score=calibration_score(platt_probability)
@@ -993,7 +980,7 @@ def fit_probability_calibration(
             "selected_method": method,
             "minimum_brier_improvement": CALIBRATION_MIN_BRIER_IMPROVEMENT,
             "isotonic_allowed": isotonic_allowed,
-            "selection_objective": "0.70*overall_brier+0.30*effective_progress_ge_70_brier",
+            "selection_objective": "overall_brier_first_tail_brier_report",
         })
     if method == "identity":
         return {"method": "identity", "slope": 1.0, "intercept": 0.0, "selection": selection}
@@ -1068,7 +1055,8 @@ def decision_policy_arrays(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Apply the selected browser-deployable EV/noise policy without changing 57D features."""
     rounds = np.asarray(rounds, dtype=np.float64)
-    base = _stage_min_ev(rounds, thresholds)
+    config=dict(policy_config or {})
+    base = _stage_min_ev(rounds, config.get("ev_thresholds",thresholds))
     if not enabled:
         return base, base.copy(), np.zeros(len(rounds), dtype=np.float64)
     config = dict(policy_config or {})
@@ -1078,7 +1066,7 @@ def decision_policy_arrays(
     late_relief = max(0.0, float(config.get("late_relief", LATE_EV_RELIEF)))
     middle_soft_band = max(0.0, float(config.get("middle_soft_band", MIDDLE_SOFT_BAND)))
     late_soft_band = max(0.0, float(config.get("late_soft_band", LATE_SOFT_BAND)))
-    noise = np.full(len(rounds), 0.5) if noise_scores is None else np.clip(np.asarray(noise_scores, dtype=np.float64), 0.0, 1.0)
+    noise = np.full(len(rounds), 0.5) if noise_scores is None else np.nan_to_num(np.clip(np.asarray(noise_scores, dtype=np.float64), 0.0, 1.0),nan=1.0)
     if len(noise) != len(rounds):
         raise ValueError("noise_scores and rounds must be aligned")
     low_noise = noise <= noise_threshold
@@ -1086,9 +1074,15 @@ def decision_policy_arrays(
     relief = np.zeros(len(rounds), dtype=np.float64)
     relief[middle & low_noise] = middle_relief; relief[late & low_noise] = late_relief
     penalty = np.minimum(max_noise_penalty, np.maximum(0.0, noise - noise_threshold) * (max_noise_penalty / max(1e-9, 1.0 - noise_threshold)))
-    min_ev = np.maximum(0.0, base - relief + penalty)
+    dynamic=config.get("dynamic_band") or {}
+    gate=np.ones(len(rounds))
+    if dynamic.get("enabled"):
+        low=float(dynamic.get("low_noise",.60));high=float(dynamic.get("high_noise",.75))
+        gate=np.clip((high-noise)/max(1e-9,high-low),0,1)
+    min_ev = np.maximum(0.0, base - relief*gate + penalty)
     soft_band = np.zeros(len(rounds), dtype=np.float64)
     soft_band[middle & low_noise] = middle_soft_band; soft_band[late & low_noise] = late_soft_band
+    soft_band*=gate
     return min_ev, np.maximum(0.0, min_ev - soft_band), soft_band
 
 
@@ -1125,7 +1119,7 @@ def confidence_band_arrays(
     config = dict(policy_config or {}); band_config = dict(config.get("confidence_band") or {})
     if not band_config or not bool(config.get("enabled", False)):
         return np.zeros(len(rounds), dtype=np.float64), np.zeros(len(rounds), dtype=np.float64)
-    noise = np.full(len(rounds), 0.5) if noise_scores is None else np.clip(np.asarray(noise_scores, dtype=np.float64), 0.0, 1.0)
+    noise = np.full(len(rounds), 0.5) if noise_scores is None else np.nan_to_num(np.clip(np.asarray(noise_scores, dtype=np.float64), 0.0, 1.0),nan=1.0)
     stage = np.where(rounds <= 40, "early", np.where(rounds <= 50, "middle", "late"))
     base = np.asarray([float(band_config.get(str(name), 0.0)) for name in stage], dtype=np.float64)
     strong_config = dict(band_config.get("strong_margin") or {})
@@ -1137,6 +1131,17 @@ def confidence_band_arrays(
     band[clean_late] -= max(0.0, float(band_config.get("clean_late_relief", 0.0)))
     minimum = max(0.0, float(band_config.get("minimum", 0.0)))
     maximum = max(minimum, float(band_config.get("maximum", 0.50)))
+    dynamic=config.get("dynamic_band") or {}
+    if dynamic.get("enabled"):
+        progress=np.clip(rounds/float(config.get("estimated_total_hands",60)),0,1)
+        low=float(dynamic.get("low_noise",.60));high=float(dynamic.get("high_noise",.75))
+        gate=np.clip((high-noise)/max(1e-9,high-low),0,1)
+        progress_relief=np.clip(float(dynamic.get("progress_relief",.4)),0,.4)*progress*gate
+        penalty=np.maximum(0,noise-float(dynamic.get("noise_reference",.55)))*max(0,float(dynamic.get("noise_gain",.015)))
+        extra=np.where((progress>float(dynamic.get("extra_progress",.65)))&(noise<low),max(0,float(dynamic.get("extra_relief",.0005))),0)
+        minima=dynamic.get("minimum_by_stage") or {}
+        minimum=np.asarray([max(0,float(minima.get(str(k),minimum))) for k in stage])
+        band=base*(1-progress_relief)+penalty-extra
     return np.clip(band, minimum, maximum), np.maximum(0.0, strong)
 
 
@@ -1186,7 +1191,14 @@ def decision_returns(
                 expected=sum(item[1] for item in prior); baseline=sum(item[2] for item in prior)
                 target=_stage_value(rounds[index],rates,0.0)
                 if actions < target or (baseline>0.0 and expected+1e-12 < floor*baseline):
-                    relaxed_band=max(band_floor,band[index]-band_relief); relaxed_ev=max(0.0,activation_ev[index]-ev_relief)
+                    dynamic=config.get("dynamic_band") or {}
+                    fraction=_clip(float(volume.get("max_relief_fraction",.25))) if dynamic.get("enabled") else 1.0
+                    n=.5 if noise_scores is None else float(noise_scores[index])
+                    scale=_clip((float(dynamic.get("high_noise",.75))-n)/max(1e-9,float(dynamic.get("high_noise",.75))-float(dynamic.get("low_noise",.60)))) if dynamic.get("enabled") else 1.0
+                    br=min(band_relief,band[index]*fraction)*scale if dynamic.get("enabled") else band_relief
+                    er=min(ev_relief,activation_ev[index]*fraction)*scale if dynamic.get("enabled") else ev_relief
+                    floor_here=_stage_value(rounds[index],dynamic.get("minimum_by_stage") or {},band_floor)
+                    relaxed_band=max(floor_here,band[index]-br); relaxed_ev=max(0.0,activation_ev[index]-er)
                     banker[index]=(ev_banker[index]>relaxed_ev and ev_banker[index]>ev_player[index] and distance[index]>=relaxed_band)
                     player[index]=(ev_player[index]>relaxed_ev and ev_player[index]>ev_banker[index] and distance[index]>=relaxed_band)
             base_action=(ev_banker[index]>activation_ev[index] and ev_banker[index]>ev_player[index]) or (ev_player[index]>activation_ev[index] and ev_player[index]>ev_banker[index])
@@ -1194,6 +1206,10 @@ def decision_returns(
             baseline=max(probability_b[index],probability_p[index]) if base_action else 0.0
             prior.append((action,expected,baseline))
             if len(prior)>window: del prior[0]
+    if config.get("profile")=="aggressive_entry_v2":
+        noise=np.ones(len(rounds)) if noise_scores is None else np.nan_to_num(np.asarray(noise_scores,dtype=float),nan=1.0)
+        eligible=(noise<.90)&(distance>=.002)
+        banker&=eligible;player&=eligible
     wagered = banker | player
     realised = np.zeros(len(probability_b), dtype=np.float64)
     realised[banker] = np.where(actual_b[banker] == 1, 0.95, -1.0)
@@ -1431,6 +1447,8 @@ def dynamic_ema_alpha(
     if diagnostics:
         direct_uncertainty=_clip(float(diagnostics.get("physics_uncertainty",diagnostics.get("posterior_uncertainty",.5))))
         adjustment-=.04*max(0.0,direct_uncertainty-.50)/.50
+    if noise<.60 and float(diagnostics.get("physics_uncertainty",1))<.45 and float(diagnostics.get("signal_distance",0))>=.03:
+        adjustment+=_clip(float(config.get("clear_signal_boost",0)),0,.10)
     return _clip(base+adjustment,.35,.75)
 
 
@@ -1448,7 +1466,7 @@ def dynamic_ema_by_shoe(
     output=np.empty_like(values);previous:dict[str,float]={}
     for index,(current,row,shoe_id) in enumerate(zip(values,features,shoes)):
         lo,hi=dynamic_probability_bounds(float(row[2]),float(row[-1]),float(row[1]));current=_clip(float(current),lo,hi)
-        alpha=dynamic_ema_alpha(float(row[2]),float(row[-1]),smoothing,float(row[1]))
+        alpha=dynamic_ema_alpha(float(row[2]),float(row[-1]),smoothing,float(row[1]),{"physics_uncertainty":float(row[50]),"signal_distance":abs(current-.5)})
         smoothed=current if shoe_id not in previous else alpha*current+(1.0-alpha)*previous[shoe_id]
         output[index]=previous[shoe_id]=_clip(smoothed,lo,hi)
     return output
@@ -1578,6 +1596,7 @@ def evaluate(
             pattern_segments[label]={"rows":int(mask.sum()),**decision_metrics(realised[mask],wagered[mask])}
     return {
         "pattern_segments_report_only": pattern_segments,
+        "effective_progress_tail_report": decision_metrics(realised[np.cbrt(np.clip(x[:,1],0,1))>=.70],wagered[np.cbrt(np.clip(x[:,1],0,1))>=.70]),
         "samples": float(len(y)),
         "uncalibrated_brier": _brier(uncalibrated, y),
         "raw_accuracy": _accuracy(raw, y),
@@ -1644,7 +1663,7 @@ def pattern_label(history: Sequence[str]) -> str:
 
 def counting_selection_key(brier: float, metrics: Mapping[str, float], skip_delta: float) -> tuple[float, ...]:
     return (float(brier), -float(metrics["hit_rate"]), -float(metrics["realized_ev_per_bet"]),
-            -float(metrics["realized_ev_per_row"]), float(skip_delta))
+            float(skip_delta))
 
 
 def select_xgboost_model(
@@ -1760,11 +1779,12 @@ def export_browser_bundle(
 
     bundle = {
         "schema_version": 2,
+        "runtime_config_schema": 1,
         "early35_version": EARLY35_VERSION,
         "shoe_error_correction_version": SHOE_ERROR_CORRECTION_VERSION,
         "physics_direct_version": PHYSICS_DIRECT_VERSION,
         "physics_primary_version": PHYSICS_PRIMARY_VERSION,
-        "particle_filter_version": 1,
+        "particle_filter_version": 0,
         "particle_filter_enabled": False,
         "model_type": MODEL_TYPE,
         "trained": True,
@@ -1794,7 +1814,7 @@ def export_browser_bundle(
             "early35_version": EARLY35_VERSION,
             "shoe_error_correction_version": SHOE_ERROR_CORRECTION_VERSION,
             "shoe_error_correction_policy": SHOE_ERROR_CORRECTION_POLICY,
-            "particle_filter_version": 1,
+            "particle_filter_version": 0,
             "particle_filter_enabled": False,
             "physics_pipeline": "direct_physics_then_physical_ev_candidate_then_physics_ema_then_core_xgb_aux_filter_then_final_ev_guard",
             "stage_progress_policy": "relative_estimated_total_hands_plus_direct_physics_consumption_v4",
@@ -1991,7 +2011,7 @@ def train_command(args: argparse.Namespace) -> int:
     final_model.bbb_decision_policy_ = decision_policy
     final_model.bbb_physics_noise_calibration_ = physics_noise_calibration
     final_model.bbb_shoe_error_correction_version_ = SHOE_ERROR_CORRECTION_VERSION
-    final_model.bbb_particle_filter_version_ = 1
+    final_model.bbb_particle_filter_version_ = 0
     final_model.bbb_physics_direct_version_ = PHYSICS_DIRECT_VERSION
     if args.joblib_output:
         joblib.dump(final_model, args.joblib_output)
@@ -2016,7 +2036,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train")
     train.add_argument("--min-skip-reduction", type=float, default=0.0, help="Optional Skip reduction target; 0 allows decreases or an increase of at most 5pp")
-    train.add_argument("--pattern-weight", type=float, default=0.05, help="Soft causal structure sample emphasis in [0,0.15], gated by Physics quality; 0 restores baseline")
+    train.add_argument("--pattern-weight", type=float, default=0.05, help="Soft causal structure sample emphasis in [0,0.10], gated by Physics quality; 0 restores baseline")
     train.add_argument("--input", required=True)
     train.add_argument("--physics-model", default="")
     train.add_argument("--output", default="final_probability_model.json")

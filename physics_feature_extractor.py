@@ -63,9 +63,9 @@ DEFAULT_PHYSICS_SHOES = 5000
 # secondary because production observes B/P/T only.
 # Architecture remains fixed at 213D input -> ReLU MLP -> 48D output.
 PHYSICS_LOSS_WEIGHTS = np.asarray(
-    [1.55]*3 +          # 4/5/6-card distribution
-    [1.35]*20 +         # Player / Banker final-point distributions
-    [3.25]*3 +          # winner P(B/P/T): primary directional head
+    [1.30]*3 +          # 4/5/6-card distribution
+    [1.20]*20 +         # Player / Banker final-point distributions
+    [2.80]*3 +          # winner P(B/P/T): primary directional head
     [.55]*13 +          # conditional A-K expected consumption
     [2.10,2.10,1.80,1.10] +  # Physical EV B/P/gap + Physics uncertainty
     [.45]*5,            # consumed / density / point-diff auxiliaries

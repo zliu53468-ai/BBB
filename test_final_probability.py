@@ -412,7 +412,7 @@ class FinalProbabilityTests(unittest.TestCase):
         labels=(probability>.5).astype(np.int8)
         calibration=final.fit_probability_calibration(VectorClassifier(),features,labels,shoe_ids=[f"shoe-{index//20}" for index in range(len(labels))])
         self.assertIn(calibration["method"],{"platt","isotonic"})
-        self.assertEqual(calibration["selection"]["selection_objective"],"0.70*overall_brier+0.30*effective_progress_ge_70_brier")
+        self.assertEqual(calibration["selection"]["selection_objective"],"overall_brier_first_tail_brier_report")
         self.assertGreater(calibration["selection"]["effective_progress_ge_70_rows"],0)
         output=final.apply_probability_calibration(probability,calibration)
         self.assertTrue(np.all(np.isfinite(output)))

@@ -15,6 +15,12 @@ on:
       - "test_physics_feature_extractor.py"
       - "test_final_probability.py"
       - "requirements-xgb.txt"
+      - "cardcount_profiles.json"
+      - "macro_ema.js"
+      - "macro_ema_features.py"
+      - "test_responsive_upgrade.py"
+      - "test_responsive_upgrade.js"
+      - "tools/verify_candidate_promotion.js"
   pull_request:
     branches:
       - main
@@ -27,6 +33,12 @@ on:
       - "test_physics_feature_extractor.py"
       - "test_final_probability.py"
       - "requirements-xgb.txt"
+      - "cardcount_profiles.json"
+      - "macro_ema.js"
+      - "macro_ema_features.py"
+      - "test_responsive_upgrade.py"
+      - "test_responsive_upgrade.js"
+      - "tools/verify_candidate_promotion.js"
   workflow_dispatch:
 
 permissions:
@@ -58,7 +70,7 @@ jobs:
         run: python -m pip install --upgrade pip && pip install -r requirements-xgb.txt
 
       - name: Python unit tests
-        run: python -m unittest -v test_physics_feature_extractor.py test_final_probability.py test_no_pf_training.py test_macro_ema.py
+        run: python -m unittest -v test_physics_feature_extractor.py test_final_probability.py test_no_pf_training.py test_macro_ema.py test_responsive_upgrade.py
 
       - name: Browser runtime preflight
         run: |
@@ -66,6 +78,13 @@ jobs:
           node test_final_probability_runtime.js
           node test_macro_runtime.js
           node test_counting_acceptance.js
+          node test_responsive_upgrade.js
+          node test_candidate_promotion.js
+
+      - name: Save current production model fingerprints
+        run: |
+          cp final_probability_model.json /tmp/bbb-production-final.json
+          cp physics_multitask_model.json /tmp/bbb-production-physics.json
 
       - name: Train browser physics multi-task model
         run: |
@@ -112,13 +131,18 @@ jobs:
             echo "Retraining success gate not met; smoke artifacts will not be promoted."
             exit 0
           fi
+          if [ ! -f validation/production_runtime_holdout.json ]; then
+            echo "缺少真實 chronological whole-shoe 的 production 對照報告；不替換模型。"
+            exit 0
+          fi
+          node tools/verify_candidate_promotion.js validation/production_runtime_holdout.json final_probability_model.json physics_multitask_model.json /tmp/bbb-production-final.json /tmp/bbb-production-physics.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add physics_multitask_model.json final_probability_model.json physics_multitask_model.joblib
           if git diff --cached --quiet; then
             echo "No generated model changes"
           else
-            git commit -m "Build 56D final-probability model bundle [skip ci]"
+            git commit -m "算牌優先規律 soft｜通過獨立驗證後更新 57D 模型 [skip ci]"
             git pull --rebase origin "$GITHUB_REF_NAME"
             git push
           fi

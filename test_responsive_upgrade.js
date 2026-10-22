@@ -1,0 +1,42 @@
+"use strict";
+const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
+const M=require("./macro_ema.js"),profiles=require("./cardcount_profiles.json");
+assert.deepEqual(M.PROFILES,profiles.macro_profiles);
+const fast=M.createState("fast"),slow=M.createState("slow","conservative");
+for(let i=0;i<12;i++)for(const s of [fast,slow])M.update(s,{outcome:"B",card_count:4,banker_score:9,player_score:0});
+for(let i=0;i<3;i++)for(const s of [fast,slow])M.update(s,{outcome:i%2?"B":"P",card_count:6,banker_score:i%2?2:0,player_score:i%2?0:2});
+assert(fast.ema.Six_Card.short>slow.ema.Six_Card.short,"short EMA must react faster after a structural switch");
+assert(fast.ema.Six_Card.long>slow.ema.Six_Card.long,"long EMA must retain a responsive memory");
+const ready=M.createState("ready");
+for(let i=0;i<7;i++)M.update(ready,{outcome:"B",card_count:i<3?4:6});
+const coefficients={six_card:.02};
+assert(M.adjustment(.6,M.snapshot(ready),1,.6,{coefficients}).observations_ready);
+assert(!M.adjustment(.6,M.snapshot(ready),1,.6,{profile:"conservative",coefficients}).observations_ready);
+assert(M.adjustment(.6,M.snapshot(ready),1,.6,{coefficients}).noise_gate>0);
+assert.equal(M.adjustment(.6,M.snapshot(ready),1,.72,{coefficients}).delta,0);
+assert.equal(M.adjustment(.6,M.snapshot(ready),1,.2,{}).delta,0,"unfitted coefficients must stay zero");
+const before=ready.ema.Six_Card.short;M.update(ready,{outcome:"T"});
+assert.equal(ready.ema.Six_Card.short,before);assert.equal(ready.ema.Low_Score.short,0);
+assert.equal(M.snapshot(M.createState("new")).Six_Card_Short,null);
+const sandbox={console,document:{getElementById:()=>null},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},fetch:async f=>({ok:true,json:async()=>JSON.parse(fs.readFileSync(f,"utf8"))})};
+sandbox.window=sandbox;vm.createContext(sandbox);
+for(const f of ["app256forward.js","app256continuation.js","macro_ema.js","final_probability_runtime.js"])vm.runInContext(fs.readFileSync(f,"utf8"),sandbox,{filename:f});
+(async()=>{
+  const a=sandbox.__BGS_FINAL56__;await a.loadModels();
+  assert.equal(a.getActiveProfiles().macro,"responsive_v1");assert.equal(a.getActiveProfiles().entry,"production");
+  a.setEntryProfile("aggressive_entry_v2");
+  const policy=a.decisionPolicy(25,.3);
+  const signal={candidate:"P",finalPB:.4905,noise:.3,edge:.019,band:policy.confidenceBand,activation:policy.activationEv,auxDecision:"keep"};
+  assert(a.entryEligibility(signal));
+  assert(!a.entryEligibility({...signal,activation:.02,band:.028},"strict_selective_entry_v1"));
+  assert(!a.entryEligibility({...signal,finalPB:.5001,band:0,activation:0}));
+  assert(!a.entryEligibility({...signal,noise:.99,edge:.5,activation:0,band:0}));
+  assert.equal(a.patternSoftBonus(["B","B","B","B"],{baseEligible:false,finalPB:.7,noise:.2,confidence:.2,edge:.3},{enabled:true,ev_relief:.005}).ev_relief,0);
+  assert.equal(a.getRuntimeProfiles().entry_profiles.aggressive_entry_v2.pattern_only_if_base_eligible,true);
+  const out=[];
+  for(const round of [20,45,60])for(const noise of [.2,.6,.8,1]){
+    const p=a.decisionPolicy(round,noise);out.push({round,noise,min:p.minEv,activation:p.activationEv,soft:p.softBand,band:p.confidenceBand,alpha:a.dynamicEmaAlpha(round,noise,profiles.final_smoothing,.125,{physics_uncertainty:.2,signal_distance:.06})});
+  }
+  if(process.argv.includes("--parity"))console.log(JSON.stringify(out));
+  else console.log("responsive upgrade: early readiness, faster tracking, no PF, guarded entry and pattern safety passed");
+})().catch(e=>{console.error(e);process.exitCode=1;});

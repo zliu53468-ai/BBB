@@ -12,19 +12,19 @@ class PatternTrainingTests(unittest.TestCase):
         x[:,5]=[.5,.5,.5,.5,.95,.95,.05,.05]
         y=np.array([0,1]*4)
         original=balanced_sample_weights(y,x,pattern_weight=0)
-        weighted=balanced_sample_weights(y,x,pattern_weight=.15)
+        weighted=balanced_sample_weights(y,x,pattern_weight=.10)
         self.assertGreater(weighted[4],weighted[0])
         self.assertEqual(weighted[4],weighted[6])
         self.assertTrue(np.all(np.isfinite(weighted)))
         x[:,2]=3
-        np.testing.assert_array_equal(balanced_sample_weights(y,x,pattern_weight=.15),balanced_sample_weights(y,x,pattern_weight=0))
+        np.testing.assert_array_equal(balanced_sample_weights(y,x,pattern_weight=.10),balanced_sample_weights(y,x,pattern_weight=0))
         for value in [-1,.16,2,float('nan')]:
             with self.assertRaises(ValueError):balanced_sample_weights(y,x,pattern_weight=value)
 
     def test_quality_disables_pattern_weight(self):
         x=np.zeros((4,57));x[:,2]=60;x[:,5]=[.5,.95,.05,.5];x[:,50]=1
         y=np.array([0,1,0,1])
-        np.testing.assert_array_equal(balanced_sample_weights(y,x,pattern_weight=.15),balanced_sample_weights(y,x,pattern_weight=0))
+        np.testing.assert_array_equal(balanced_sample_weights(y,x,pattern_weight=.10),balanced_sample_weights(y,x,pattern_weight=0))
 
     def test_brier_has_strict_priority(self):
         poor={"hit_rate":.1,"realized_ev_per_bet":-1,"realized_ev_per_row":-1}
@@ -52,7 +52,7 @@ class PatternTrainingTests(unittest.TestCase):
     def test_counting_emphasis_preserves_topology_and_rank(self):
         np.testing.assert_array_equal(counting_loss_weights(),PHYSICS_LOSS_WEIGHTS)
         weights=counting_loss_weights(1.05,1.02,1.02)
-        self.assertAlmostEqual(float(weights[23]),3.25*1.05,places=6)
+        self.assertAlmostEqual(float(weights[23]),2.80*1.05,places=6)
         np.testing.assert_array_equal(weights[26:],PHYSICS_LOSS_WEIGHTS[26:])
         model=PhysicsFeatureExtractor(winner_scale=1.05)
         self.assertEqual(model.model.hidden_layer_sizes,(64,32))

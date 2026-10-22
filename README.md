@@ -1,3 +1,5 @@
+> **更敢出手｜平滑跟牌｜重訓尖銳｜再降觀望｜算牌優先規律 soft**：最新規格與啟用／回滾見 [CARDCOUNT_AGGRESSIVE_SMOOTH_SKIP.md](CARDCOUNT_AGGRESSIVE_SMOOTH_SKIP.md)。Macro 預設 responsive_v1；aggressive_entry_v2 可切換，未以真實 holdout 證實前不替換 production 權重。
+
 > 2026-10-22 算牌優先修正版：現行規格見 [COUNTING_PRIORITY_REVIEW.md](COUNTING_PRIORITY_REVIEW.md) 與 [PF_REMOVAL.md](PF_REMOVAL.md)。舊版規律權重與 Skip 門檻已被取代。
 
 > 2026-10-22：PF 移除候選與規律重訓參數見 [NO_PF_UPGRADE.md](NO_PF_UPGRADE.md)。品質驗收尚未通過，未宣稱全部改造目標達成。

@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "default_macro_profile": "responsive_v1",
+  "default_entry_profile": "production",
+  "macro_profiles": {
+    "conservative": {
+      "short_alpha": 0.2,
+      "long_alpha": 0.05,
+      "max_delta": 0.03,
+      "min_observations": 12,
+      "max_age": 3,
+      "progress_start": 0.3,
+      "progress_power": 2.0,
+      "noise_low": 0.6,
+      "noise_high": 0.75
+    },
+    "responsive_v1": {
+      "short_alpha": 0.32,
+      "long_alpha": 0.11,
+      "max_delta": 0.04,
+      "min_observations": 7,
+      "max_age": 5,
+      "progress_start": 0.22,
+      "progress_power": 1.6,
+      "noise_low": 0.55,
+      "noise_high": 0.72
+    },
+    "aggressive": {
+      "short_alpha": 0.35,
+      "long_alpha": 0.12,
+      "max_delta": 0.045,
+      "min_observations": 6,
+      "max_age": 5,
+      "progress_start": 0.2,
+      "progress_power": 1.5,
+      "noise_low": 0.55,
+      "noise_high": 0.72
+    }
+  },
+  "entry_profiles": {
+    "aggressive_entry_v2": {
+      "profile": "aggressive_entry_v2",
+      "enabled": true,
+      "ev_thresholds": {
+        "early": 0,
+        "middle": 0,
+        "late": 0
+      },
+      "ev_reduction": {
+        "early": 0.008,
+        "middle": 0.006,
+        "late": 0.005
+      },
+      "middle_relief": 0.0035,
+      "late_relief": 0.004,
+      "middle_soft_band": 0.003,
+      "late_soft_band": 0.004,
+      "noise_threshold": 0.75,
+      "max_noise_ev_penalty": 0.0035,
+      "min_confidence": 0.0001,
+      "extreme_noise_threshold": 0.9,
+      "minimum_distance": 0.002,
+      "pattern_soft_enabled": true,
+      "pattern_only_if_base_eligible": true,
+      "pattern_extra_ev_relief": 0.003,
+      "pattern_soft_bonus": {
+        "enabled": true,
+        "ev_relief": 0.003,
+        "band_relief": 0.001
+      },
+      "confidence_band": {
+        "early": 0.005,
+        "middle": 0.004,
+        "late": 0.003,
+        "noise_reference": 0.5,
+        "noise_gain": 0.005,
+        "clean_late_relief": 0.002,
+        "minimum": 0.0015,
+        "maximum": 0.02,
+        "strong_margin": {
+          "early": 0.002,
+          "middle": 0.002,
+          "late": 0.001
+        }
+      },
+      "volume_guard": {
+        "enabled": true,
+        "window": 12,
+        "min_history": 5,
+        "target_action_rate": {
+          "early": 0.6,
+          "middle": 0.62,
+          "late": 0.68
+        },
+        "expected_correct_floor": 0.93,
+        "band_relief": 0.01,
+        "ev_relief": 0.006,
+        "max_relief_fraction": 0.25
+      },
+      "reference_production_ev_thresholds": {
+        "early": 0.002,
+        "middle": 0.002,
+        "late": 0
+      },
+      "dynamic_band": {
+        "enabled": true,
+        "progress_relief": 0.4,
+        "noise_reference": 0.55,
+        "noise_gain": 0.015,
+        "low_noise": 0.6,
+        "high_noise": 0.75,
+        "extra_progress": 0.65,
+        "extra_relief": 0.00075,
+        "minimum_by_stage": {
+          "early": 0.0025,
+          "middle": 0.0015,
+          "late": 0.0015
+        },
+        "final_band_relief": {
+          "early": 0.006,
+          "middle": 0.0015,
+          "late": 0.001
+        }
+      }
+    }
+  },
+  "final_smoothing": {
+    "method": "dynamic_post_clip_ema",
+    "profile": "responsive_v1",
+    "enabled": true,
+    "progress_alpha_anchors": [
+      [
+        0,
+        0.52
+      ],
+      [
+        0.2,
+        0.55
+      ],
+      [
+        0.35,
+        0.6
+      ],
+      [
+        0.5,
+        0.65
+      ],
+      [
+        0.65,
+        0.7
+      ],
+      [
+        0.8,
+        0.73
+      ],
+      [
+        1,
+        0.75
+      ]
+    ],
+    "clear_signal_boost": 0.06
+  }
+}

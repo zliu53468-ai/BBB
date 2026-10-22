@@ -3,7 +3,7 @@ const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("nod
 const M=require("./macro_ema.js"),model=JSON.parse(fs.readFileSync("final_probability_model.json"));
 const state=M.createState("bounded");
 for(let i=0;i<20;i++)M.update(state,{outcome:"B",card_count:i<10?4:6,banker_score:i<10?9:3,player_score:0});
-const features=M.snapshot(state),config={enabled:true,min_observations:12,max_delta:99,coefficients:{six_card:10,low_score:10,point_diff:10}};
+const features=M.snapshot(state),config={profile:"conservative",enabled:true,min_observations:12,max_delta:99,coefficients:{six_card:10,low_score:10,point_diff:10}};
 for(const p of [0,.01,.49,.506,.52,.99,1])for(const progress of [0,.3,.7,1])for(const noise of [.2,.6,.75,1]){
   const out=M.adjustment(p,features,progress,noise,config);
   assert(Math.abs(out.delta)<=.05+1e-12,"hard adjustment cap");
@@ -38,7 +38,7 @@ assert.equal(so.Six_Card_Spread,null);
 assert.equal(so.counts.Low_Score,24);
 assert.equal(so.counts.Point_Diff,24);
 assert(so.Low_Score_Spread>0&&so.Point_Diff_Spread<0);
-const scorePolicy={enabled:true,coefficient_units:"probability_delta",max_delta:.03,
+const scorePolicy={profile:"conservative",enabled:true,coefficient_units:"probability_delta",max_delta:.03,
   min_observations:12,progress_start:.3,progress_power:2,max_age:3,
   coefficients:{six_card:.02,low_score:.015,point_diff:-.01}};
 const scoreAdjusted=M.adjustment(.65,so,1,.2,scorePolicy);
@@ -156,10 +156,11 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
   // Real runtime integration: a score-only shoe needs no Six_Card observations.
   const scoreBasedModel=JSON.parse(JSON.stringify(model));
   scoreBasedModel.decision_policy.macro_ema.coefficients={six_card:.02,low_score:.015,point_diff:-.01};
+  for(let i=0;i<2;i++)M.update(scoreOnly,{outcome:"P"});
   const scoreBased=context(new Map(),false,scoreBasedModel);
   await scoreBased.api.loadModels();
   const scoreOnlyRuntime=scoreBased.api.directPhysicsPrimary(physics,60,M.snapshot(scoreOnly));
-  // The scoreOnly state has had four missing-score rounds; only a fresh snapshot can adjust.
+  // The scoreOnly state has had six missing-score rounds; only a fresh snapshot can adjust.
   const freshScore=M.createState("real_ui_scores");
   for(let i=0;i<24;i++)M.update(freshScore,{outcome:"B",banker_score:i<12?9:2,player_score:0});
   const scoreResult=scoreBased.api.directPhysicsPrimary(physics,60,M.snapshot(freshScore));
