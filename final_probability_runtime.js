@@ -800,22 +800,35 @@ async function loadModels(){
   return status;
 }
 function saveSelection(direction){try{const old=JSON.parse(localStorage.getItem(STORAGE_KEY)||"null")||{},streak=old.last_selected===direction?Math.max(1,(+old.selection_streak||0)+1):1;localStorage.setItem(STORAGE_KEY,JSON.stringify({last_selected:direction,selection_streak:streak}));}catch(_){}}
+// UI-only continuous test: never register a wager or override production guards.
+let noSkipTestActive=false;
+function noSkipTestDirection(f){
+  return f?.available===true?(f.directional.B>=f.directional.P?"B":"P"):null;
+}
 function renderPrediction(p,n){
   const el=id=>document.getElementById(id),orb=el("directionOrb");if(!orb)return;
-  const f=p.next_hand_forecast,ready=f?.available===true,isB=f?.direction==="B",isP=f?.direction==="P";
+  const f=p.next_hand_forecast,ready=f?.available===true,shownDirection=noSkipTestActive?noSkipTestDirection(f):f?.direction,isB=shownDirection==="B",isP=shownDirection==="P";
   el("directionText").textContent=!ready?"未就緒":isB?"莊":isP?"閒":"均衡";
   el("directionCode").textContent=!ready?"UNAVAILABLE":isB?"BANKER":isP?"PLAYER":"BALANCED";
   el("confidence").textContent=ready?"莊 "+(f.directional.B*100).toFixed(2)+"% / 閒 "+(f.directional.P*100).toFixed(2)+"%":"—";
-  el("regime").textContent=!ready?"模型未就緒":p.direction==="Skip"?"下注觀望（仍有機率方向）":p.direction==="B"?"下注條件：莊":"下注條件：閒";
+  el("regime").textContent=!ready?"模型未就緒":noSkipTestActive?"測試方向（不列入正式下注）":p.direction==="Skip"?"下注觀望（仍有機率方向）":p.direction==="B"?"下注條件：莊":"下注條件：閒";
   el("strength").textContent=ready?(f.probabilities.T*100).toFixed(2)+"%":"—";
   orb.className="direction-orb "+(!ready||!isB&&!isP?"":isB?"banker":"player");
-  if(el("modePill"))el("modePill").textContent=ready?"Direct Physics 機率方向":"模型未就緒";
+  if(el("modePill"))el("modePill").textContent=noSkipTestActive?"全程不觀望測試":ready?"Direct Physics 機率方向":"模型未就緒";
   if(el("roundCount"))el("roundCount").textContent=n;
   if(el("message"))el("message").textContent="第 "+(n+1)+" 局分析完成"+(ready?(f.weak_signal?"；莊閒接近五五波":"；莊閒百分比已排除和局，和局另列")+(f.uncertainty>=.85?"；模型不確定性偏高":""):"");
+  if(noSkipTestActive&&el("message"))el("message").textContent=ready?"不觀望測試：每次報結果後自動更新下一局；不列入正式下注"+(f.directional.B===f.directional.P?"；五五波固定以莊作測試方向，無機率優勢":""):"不觀望測試：模型未就緒，暫無測試方向";
 }
 function installUI(){
   if(typeof document==="undefined")return;const old=document.getElementById("btnStart");if(!old)return;const btn=old.cloneNode(true);old.replaceWith(btn);
-  btn.addEventListener("click",()=>{const history=readHistory();if(!history.length){const m=document.getElementById("message");if(m)m.textContent="請先輸入牌局紀錄";return;}
+  const testButton=document.getElementById("btnNoSkipTest");
+  const setTestMode=active=>{
+    noSkipTestActive=active;
+    if(testButton){testButton.textContent=active?"停止不觀望測試":"全程不觀望測試";testButton.setAttribute("aria-pressed",String(active));}
+  };
+  const refreshTest=()=>{const h=readHistory();renderPrediction(applyFinalPrediction(h),h.length);};
+  if(testButton)testButton.addEventListener("click",()=>{setTestMode(!noSkipTestActive);refreshTest();});
+  btn.addEventListener("click",()=>{setTestMode(false);const history=readHistory();if(!history.length){const m=document.getElementById("message");if(m)m.textContent="請先輸入牌局紀錄";return;}
     const p=applyFinalPrediction(history);saveSelection(p.direction);registerPrediction(history,p);renderPrediction(p,history.length);});
   const fieldIds=["macroCardCount","macroPlayerScore","macroBankerScore"];
   const clearFields=()=>{for(const id of fieldIds){const e=document.getElementById(id);if(e)e.value="";}};
@@ -870,6 +883,7 @@ function installUI(){
       try{recordCompletedHand(history,observed||{});}
       catch(error){observationError=observationError||"分析附加紀錄異常："+String(error?.message||error);}
       clearFields();
+      if(noSkipTestActive)refreshTest();
       const message=document.getElementById("message");
       if(message&&observationError){
         message.textContent="已記錄第 "+history.length+" 局；選填張數／點數已忽略："+observationError;
@@ -877,14 +891,14 @@ function installUI(){
       }
     });
   }
-  const back=document.getElementById("btnBack");if(back)back.addEventListener("click",()=>{undoRuntimeHistory();clearFields();});
+  const back=document.getElementById("btnBack");if(back)back.addEventListener("click",()=>{undoRuntimeHistory();clearFields();if(noSkipTestActive)refreshTest();});
   const end=document.getElementById("btnEnd");if(end)end.addEventListener("click",rotateShoeId);
-  if(end)end.addEventListener("click",clearFields);
+  if(end)end.addEventListener("click",()=>{clearFields();setTestMode(false);});
   const training=document.getElementById("btnExportTraining");if(training)training.addEventListener("click",downloadTrainingData);
   const observations=document.getElementById("btnExportObservations");if(observations)observations.addEventListener("click",downloadMacroObservations);
   syncMacro(readHistory());
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
   registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,
   getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 if(typeof window?.addEventListener==="function")window.addEventListener("storage",event=>{if(event.key===MACRO_KEY||event.key===SHOE_KEY){macroJournal=null;macroState=null;}});

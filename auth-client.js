@@ -12,7 +12,7 @@ const scripts=[
   "app256forward.js",
   "app256continuation.js",
   "macro_ema.js?v=20261013-score-ema-independent",
-  "final_probability_runtime.js?v=20261022-physics-forecast-first",
+  "final_probability_runtime.js?v=20261022-no-skip-test",
   "bbb-screenshot-road.js?v=20261018-button-only",
   "bbb-desktop-capture.js?v=20261013-desktop-snip-v1"
 ];

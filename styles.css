@@ -109,7 +109,7 @@ button{font:inherit}
 .result-btn:active{transform:scale(.985)}
 .result-btn strong{display:block;position:relative;font-size:30px}.result-btn small{display:block;position:relative;margin-top:4px;font-size:9px;letter-spacing:.10em;color:var(--muted)}
 .result-btn.banker strong{color:#ff83ac}.result-btn.player strong{color:#83d1ff}.result-btn.tie strong{color:#68edbc}
-.action-buttons{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:9px;margin-top:10px}
+.action-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:10px}
 .action-btn{
   min-height:46px;border-radius:13px;border:1px solid rgba(206,180,255,.18);cursor:pointer;
   background:rgba(39,28,69,.66);color:#ded6f0;font-weight:800;transition:.16s ease;
