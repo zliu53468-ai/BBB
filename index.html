@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
   <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
-  <link rel="stylesheet" href="styles.css?v=10ce55b-license-gate">
+  <link rel="stylesheet" href="styles.css?v=20261022-no-skip-test">
   <style>
     .bbb-scan-block,.bbb-results-block{padding:18px;border:1px solid rgba(164,128,246,.26);border-radius:16px;background:rgba(32,20,55,.45);margin-bottom:16px}
     /* Desktop live snip: a new optional control. Mobile image/video workflows remain untouched. */
@@ -97,9 +97,9 @@
       <div class="prediction-layout">
         <div class="direction-orb idle" id="directionOrb"><span id="directionText">—</span><small id="directionCode">等待分析</small></div>
         <div class="metrics">
-          <div class="metric"><span>模型信心</span><strong id="confidence">—</strong></div>
-          <div class="metric"><span>牌型狀態</span><strong id="regime">—</strong></div>
-          <div class="metric"><span>結構強度</span><strong id="strength">—</strong></div>
+          <div class="metric"><span>莊／閒機率（排除和局）</span><strong id="confidence">—</strong></div>
+          <div class="metric"><span>下注狀態</span><strong id="regime">—</strong></div>
+          <div class="metric"><span>和局機率</span><strong id="strength">—</strong></div>
           <div class="metric"><span>分析局數</span><strong><b id="roundCount">0</b> 局</strong></div>
         </div>
       </div>
@@ -162,6 +162,7 @@
       </div>
       <div class="action-buttons">
         <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
+        <button class="action-btn" id="btnNoSkipTest" type="button" aria-pressed="false">全程不觀望測試</button>
         <button class="action-btn" id="btnBack" type="button">返回上一局</button>
         <button class="action-btn danger" id="btnEnd" type="button">結束分析</button>
       </div>
@@ -178,7 +179,7 @@
   </main>
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
-  <script src="auth-client.js?v=20261019-rollback-v1"></script>
+  <script src="auth-client.js?v=20261022-no-skip-test"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

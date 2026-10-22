@@ -23,6 +23,7 @@ storage.set(HISTORY,JSON.stringify({history:baseHistory,last_selected:"",selecti
 class Element{
   constructor(id){this.id=id;this.listeners=[];this.value="";this.textContent="";this.innerHTML="";this.hidden=false;this.className="";this.dataset={};
     this.classList={add:()=>{},remove:()=>{},toggle:()=>{}};}
+  setAttribute(name,value){this[name]=value;}
   addEventListener(type,callback,capture=false){this.listeners.push({type,callback,capture:capture===true});}
   cloneNode(){return new Element(this.id);}
   replaceWith(next){elements.set(this.id,next);}
@@ -33,7 +34,7 @@ class Element{
     for(const handler of handlers){if(event.immediateStopped)break;handler.callback(event);}
   }
 }
-const ids=["btnB","btnP","btnT","btnStart","btnBack","btnEnd","btnExportTraining","btnExportObservations",
+const ids=["btnB","btnP","btnT","btnStart","btnNoSkipTest","btnBack","btnEnd","btnExportTraining","btnExportObservations",
  "roundCount","roundPill","modePill","message","historyTrack","directionText","directionCode","confidence",
  "regime","strength","directionOrb","macroCardCount","macroPlayerScore","macroBankerScore"];
 const elements=new Map(ids.map(id=>[id,new Element(id)]));
@@ -44,7 +45,7 @@ global.URL={createObjectURL:()=>"",revokeObjectURL:()=>{}};
 global.Blob=function(){};
 require("./app256forward.js");
 require("./app256continuation.js");
-require("./particle_filter_runtime.js");
+
 require("./macro_ema.js");
 require("./final_probability_runtime.js");
 const el=id=>elements.get(id),stored=()=>JSON.parse(storage.get(HISTORY)).history;
@@ -56,4 +57,27 @@ const report=(id)=>el(id).click();
 for(const id of ["macroCardCount","macroPlayerScore","macroBankerScore"])elements.delete(id);
 for(const outcome of ["B","P","T"]){report("btn"+outcome);assert.equal(stored().at(-1),outcome);}
 assert.equal(stored().length,26);
-(async()=>{await global.__BGS_FINAL56__.loadModels();report("btnStart");assert.match(el("message").textContent,/分析完成/);report("btnBack");assert.equal(stored().length,25);console.log("button-only UI: B/P/T, analysis and undo without score fields passed");})().catch(e=>{console.error(e);process.exitCode=1;});
+(async()=>{await global.__BGS_FINAL56__.loadModels();report("btnStart");assert.match(el("message").textContent,/分析完成/);report("btnBack");assert.equal(stored().length,25);
+report("btnNoSkipTest");assert.equal(el("btnNoSkipTest")["aria-pressed"],"true");
+assert.equal(el("directionText").textContent,"未就緒");
+assert.match(el("message").textContent,/模型未就緒/);
+const fs=require("node:fs");global.fetch=async file=>({ok:true,json:async()=>JSON.parse(fs.readFileSync(file,"utf8"))});
+await global.__BGS_FINAL56__.loadModels();
+const api=global.__BGS_FINAL56__,tie={available:true,directional:{B:.5,P:.5}};
+assert.equal(api.noSkipTestDirection(tie),"B");assert.equal(api.noSkipTestDirection({available:false}),null);
+assert.equal(api.noSkipTestDirection({available:true,directional:{B:.49,P:.51}}),"P");
+const rowCount=api.getTrainingCount();
+for(const side of ["B","P","T","P"]){
+ report("btn"+side);
+ const expected=api.noSkipTestDirection(api.applyFinalPrediction(stored()).next_hand_forecast);
+ assert.equal(el("directionText").textContent,expected==="B"?"莊":"閒");
+ assert.match(el("regime").textContent,/不列入正式下注/);
+ assert.equal(storage.has("bgs_xgb_final_pending_v5"),false,"test must not register bets");
+}
+assert.equal(api.getTrainingCount(),rowCount,"test must not add wager training rows");
+report("btnBack");assert.equal(Number(el("roundCount").textContent),stored().length);
+report("btnNoSkipTest");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
+report("btnNoSkipTest");report("btnStart");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
+report("btnNoSkipTest");report("btnEnd");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
+console.log("continuous test mode, no wager registration, undo, stop and unavailable model passed");
+console.log("button-only UI: B/P/T, analysis and undo without score fields passed");})().catch(e=>{console.error(e);process.exitCode=1;});

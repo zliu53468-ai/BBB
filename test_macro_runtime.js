@@ -70,7 +70,7 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
     document:{getElementById:()=>null},fetch:async url=>({ok:true,json:async()=>finalOverride&&url==="final_probability_model.json"?finalOverride:JSON.parse(fs.readFileSync(url,"utf8"))})};
   sandbox.window=sandbox;
   vm.createContext(sandbox);
-  for(const f of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","final_probability_runtime.js"]){
+  for(const f of ["app256forward.js","app256continuation.js","macro_ema.js","final_probability_runtime.js"]){
     if(withoutParticle&&f==="particle_filter_runtime.js")continue;
     vm.runInContext(fs.readFileSync(f,"utf8"),sandbox,{filename:f});
   }
@@ -109,8 +109,8 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
     const history=Array.from({length:n},(_,i)=>["B","P","B","T","P"][i%5]);
     const result=api.applyFinalPrediction(history),r=result.finalProbability;
     assert.equal(r.error,"");assert.equal(r.physics.length,48);assert.equal(r.extended.length,57);
-    assert.equal(r.particle_count,500);assert.equal(r.particle_persistent_state,false);
-    assert.equal(r.xgb_role,"auxiliary_filter_no_flip");assert.equal(r.flipped_from_physics,false);
+    assert(!r.execution_order.includes("particle_filter"));
+    assert.equal(r.xgb_role,"advisory_only_no_veto_no_flip");assert.equal(r.flipped_from_physics,false);
     assert(result.direction==="Skip"||result.direction===r.primary_candidate);
     if(result.direction!=="Skip")assert((result.direction==="B"?result.ev_banker:result.ev_player)>0,"negative EV forced action");
     assert.equal(r.macro_adjustment.delta,0,"unfitted coefficients must stay neutral");
@@ -118,7 +118,7 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
   api.rotateShoeId();assert.equal(api.getMacroFeatures([]).rounds,0);assert.equal(api.getMacroFeatures([]).Six_Card_Spread,null);
   const unavailable=context(new Map(),true);await unavailable.api.loadModels();
   const refused=unavailable.api.applyFinalPrediction(["B","P"]);
-  assert.equal(refused.direction,"Skip","Core must not take over when Particle/Physics unavailable");assert.equal(refused.probabilities.B,.5);
+  assert.equal(refused.finalProbability.mode,"physics_primary","absence of PF must not block inference");assert(refused.next_hand_forecast.available);
   const tuned=JSON.parse(JSON.stringify(model));tuned.decision_policy.macro_ema.coefficients={six_card:1,low_score:1,point_diff:0};
   const controlled=context(new Map(),false,tuned);await controlled.api.loadModels();
   const physics=Array(48).fill(0);physics[0]=1;physics[3]=1;physics[16]=1;physics[23]=.6;physics[24]=.3;physics[25]=.1;

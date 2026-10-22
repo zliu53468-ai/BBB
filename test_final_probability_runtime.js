@@ -39,7 +39,7 @@ global.fetch=async function(url){
 
 require("./app256forward.js");
 require("./app256continuation.js");
-require("./particle_filter_runtime.js");
+
 require("./macro_ema.js");
 require("./final_probability_runtime.js");
 
@@ -62,18 +62,15 @@ require("./final_probability_runtime.js");
   if(!Number.isFinite(diag.physics_distance)||!Number.isFinite(diag.physics_band))throw new Error("V15 lacks auditable Physics thresholds");
 
   if(r?.mode!=="physics_primary")throw new Error("Physics-primary inference path was not used");
-  if(r.primary_source!=="direct_physics_particle500_physical_ev"||r.xgb_role!=="auxiliary_filter_no_flip")throw new Error("primary/filter roles are incorrect");
+  if(r.primary_source!=="direct_physics_physical_ev"||r.xgb_role!=="advisory_only_no_veto_no_flip")throw new Error("primary/filter roles are incorrect");
   if(r.physics?.length!==48||r.extended?.length!==57)throw new Error("48D/57D contract changed");
   if(!r.physicsForecast||!r.physicsForecast.physicalEv)throw new Error("missing pre-Core Physical EV");
   if(!Number.isFinite(r.physics_raw_p_b)||!Number.isFinite(r.physics_smoothed_p_b)||!Number.isFinite(r.xgb_aux_p_b))throw new Error("primary/aux probabilities missing");
-  if(!r.particleDiagnostics||r.physicsDiagnostics?.particle_filter_enabled!==true)throw new Error("Particle500 was not active");
-  if(r.particleDiagnostics.particle_count!==500||r.particleDiagnostics.persistent_state!==false||r.particleDiagnostics.rebuild_from_scratch!==true)throw new Error("Particle500 stateless policy mismatch");
-  if(r.particleDiagnostics.history_fingerprint!==history.join(""))throw new Error("Particle500 did not rebuild from current history");
   if(Math.abs((r.low_skip_policy?.confidence_scale??0)-.75)>1e-12||
      Math.abs((r.low_skip_policy?.ev_relief??0)-.006)>1e-12||
      Math.abs((r.low_skip_policy?.final_band_relief??0)-.006)>1e-12)throw new Error("V14.6 inherited Low-Skip policy mismatch");
 
-  const expectedOrder=["direct_physics","particle_filter","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"];
+  const expectedOrder=["direct_physics","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"];
   if(JSON.stringify(r.execution_order)!==JSON.stringify(expectedOrder))throw new Error("production execution order mismatch");
 
   const candidate=r.primary_candidate;
@@ -86,7 +83,7 @@ require("./final_probability_runtime.js");
   const hardP=api.auxiliaryCandidateFilter("P",.80,.90);
   const softB=api.auxiliaryCandidateFilter("B",.44,.44);
   const xgbOnlyWeak=api.auxiliaryCandidateFilter("B",.60,.34);
-  if(hardB.decision!=="skip"||hardP.decision!=="skip")throw new Error("severe joint Core/XGB conflict was not filtered");
+  if(hardB.decision!=="keep"||hardP.decision!=="keep"||!hardB.advisoryOnly)throw new Error("auxiliary road conflict must remain advisory");
   if(softB.decision!=="keep"||softB.shrink!==1)throw new Error("light auxiliary keep policy mismatch");
   if(xgbOnlyWeak.decision==="skip")throw new Error("XGB alone must not veto a Physics candidate");
   if(api.preserveCandidateDirection("B",.40)<.5||api.preserveCandidateDirection("P",.60)>.5)throw new Error("candidate-direction preservation failed");
@@ -119,15 +116,8 @@ require("./final_probability_runtime.js");
   if(snapshot.schema_version!==7||snapshot.actual_b!==1)throw new Error("invalid snapshot metadata");
   if(snapshot.physics_48d?.length!==48||snapshot.features_57d?.length!==57||snapshot.physics_direct_48d?.length!==48)throw new Error("snapshot feature dimensions changed");
   if(!Number.isFinite(snapshot.physics_smoothed_p_b)||!snapshot.physics_direct)throw new Error("Physics-primary EMA snapshot missing");
-  if(!snapshot.particle_physics||snapshot.particle_physics.particle_count!==500||snapshot.particle_physics.persistent_state!==false)throw new Error("Particle500 snapshot missing");
   if(JSON.stringify(snapshot.execution_order)!==JSON.stringify(expectedOrder))throw new Error("snapshot execution order mismatch");
   if(snapshot.primary_candidate!==candidate)throw new Error("snapshot primary candidate mismatch");
-
-  // Same B/P/T history must rebuild the same 500-particle posterior from scratch;
-  // no previous particle state may leak into the next prediction.
-  const repeat=api.applyFinalPrediction(history).finalProbability;
-  if(repeat.particleDiagnostics?.history_fingerprint!==r.particleDiagnostics?.history_fingerprint)throw new Error("Particle500 history rebuild mismatch");
-  if(Math.abs((repeat.particleDiagnostics?.corrected_directional_pb??0)-(r.particleDiagnostics?.corrected_directional_pb??0))>1e-12)throw new Error("Particle500 leaked mutable state across predictions");
 
   // EMA now smooths only the Physics-primary signal. XGB base margin may change,
   // but it cannot become the EMA source or flip the candidate direction.
