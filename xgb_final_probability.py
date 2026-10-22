@@ -831,6 +831,7 @@ def balanced_sample_weights(
     y: np.ndarray,
     x: np.ndarray,
     physics_records: Sequence[Mapping[str, Any]] | None = None,
+    pattern_weight: float = 0.0,
 ) -> np.ndarray:
     """Keep existing class/stage weighting, using direct Physics uncertainty only."""
     labels=np.asarray(y,dtype=np.int8).reshape(-1);features=np.asarray(x,dtype=np.float64)
@@ -867,6 +868,13 @@ def balanced_sample_weights(
 
     multiplier=stage_factor*reliability*action_factor
     multiplier=np.where(early35,np.minimum(multiplier,1.50),multiplier)
+    if not np.isfinite(pattern_weight) or not 0 <= pattern_weight <= 1:
+        raise ValueError("pattern_weight must be finite and between 0 and 1")
+    # Existing 57D causal S/X Markov feature; symmetric for repeat/alternate.
+    # No labels, future hands, new columns, or changes to Frozen Core.
+    strength=np.clip(2*np.abs(features[:,5]-.5),0,1)
+    evidence=np.clip((rounds-8)/16,0,1)
+    multiplier*=1+pattern_weight*strength*evidence
     weights*=multiplier
     return np.clip(weights/np.mean(weights),0.35,1.50).astype(np.float32)
 
@@ -1404,10 +1412,17 @@ def dynamic_ema_alpha(
     physics_diagnostics: Mapping[str, Any] | None = None,
 ) -> float:
     progress=_effective_progress(round_index,progress_weight)
-    base=float(np.interp(progress,
-        [0.00,.20,.35,.50,.65,.75,.85,.95,1.00],
-        [.38,.41,.46,.53,.59,.63,.67,.70,.72],
-    ))
+    anchors=config.get("progress_alpha_anchors")
+    valid=(isinstance(anchors,list) and len(anchors)>=2)
+    if valid:
+        valid=all(isinstance(a,list) and len(a)==2 and
+                  all(isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v) for v in a)
+                  and .35<=a[1]<=.75 for a in anchors)
+    if valid:
+        valid=anchors[0][0]==0 and anchors[-1][0]==1 and all(a[0]<b[0] for a,b in zip(anchors,anchors[1:]))
+    if not valid:
+        anchors=[[0,.38],[.20,.41],[.35,.46],[.50,.53],[.65,.59],[.75,.63],[.85,.67],[.95,.70],[1,.72]]
+    base=float(np.interp(progress,[a[0] for a in anchors],[a[1] for a in anchors]))
     noise=_clip(noise_score,0.0,1.0)
     adjustment=.03*max(0.0,.50-noise)/.50-.05*max(0.0,noise-.50)/.50
     diagnostics=physics_diagnostics or {}
@@ -1612,6 +1627,7 @@ def select_xgboost_model(
     records: Sequence[Mapping[str, Any]] | None = None,
     trials: int = len(XGB_TUNING_CANDIDATES),
     random_state: int = RANDOM_STATE,
+    pattern_weight: float = 0.0,
 ) -> tuple[Any, dict[str, Any], list[dict[str, Any]]]:
     """Primary search: bet hit-rate + EV + Brier, with a hard +5% Skip ceiling."""
     limit = max(1, min(int(trials), len(XGB_TUNING_CANDIDATES)))
@@ -1619,7 +1635,7 @@ def select_xgboost_model(
     best: tuple[float, Any, dict[str, Any]] | None = None
     baseline_metrics: dict[str, float] | None = None
     train_records=[record for record,selected in zip(records or (),train) if selected] if records is not None else None
-    weights = balanced_sample_weights(y[train], x[train], train_records)
+    weights = balanced_sample_weights(y[train], x[train], train_records, pattern_weight)
     rounds = np.asarray(x[validation, 2], dtype=np.float64)
     for index, parameters in enumerate(XGB_TUNING_CANDIDATES[:limit]):
         model = build_xgboost_classifier(random_state=random_state + index, overrides=parameters)
@@ -1751,12 +1767,12 @@ def export_browser_bundle(
             "shoe_error_correction_policy": SHOE_ERROR_CORRECTION_POLICY,
             "particle_filter_version": 1,
             "particle_filter_enabled": False,
-            "physics_pipeline": "direct_physics_then_stateless_particle500_then_physical_ev_candidate_then_physics_ema_then_core_xgb_aux_filter_then_final_ev_guard",
+            "physics_pipeline": "direct_physics_then_physical_ev_candidate_then_physics_ema_then_core_xgb_aux_filter_then_final_ev_guard",
             "stage_progress_policy": "relative_estimated_total_hands_plus_direct_physics_consumption_v4",
             "probability_bounds_policy": "smooth_effective_progress",
             "calibration_selection_policy": "overall_plus_effective_progress_ge_70_weighted_brier",
             "physics_input": "B/P/T only",
-            "execution_order": ["direct_physics","particle_filter","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"],
+            "execution_order": ["direct_physics","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"],
             "physics_noise_calibration": dict(physics_noise_calibration or {"method":"identity","x_thresholds":[0.0,1.0],"y_thresholds":[0.0,1.0]}),
             "skip_guardrail": {"preferred_max_increase": PREFERRED_SKIP_RATE_INCREASE, "hard_max_increase": MAX_SKIP_RATE_INCREASE},
             "feature_snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
@@ -1801,12 +1817,13 @@ def train_command(args: argparse.Namespace) -> int:
         search_train,
         tuning_rows,
         records=training_records,
+        pattern_weight=args.pattern_weight,
         trials=args.tune_trials,
         random_state=args.random_state,
     )
     model = build_xgboost_classifier(random_state=args.random_state, overrides=best_parameters)
     train_records=[record for record,selected in zip(training_records,train) if selected]
-    model.fit(x[train], y[train], sample_weight=balanced_sample_weights(y[train], x[train],train_records))
+    model.fit(x[train], y[train], sample_weight=balanced_sample_weights(y[train], x[train],train_records,args.pattern_weight))
     calibration = fit_probability_calibration(
         model,
         x[probability_calibration_rows],
@@ -1860,9 +1877,11 @@ def train_command(args: argparse.Namespace) -> int:
     deployment_smoothing_passed=bool(metrics["smoothing"]["guardrail_passed"])
     deployment_policy_passed=bool(metrics["decision_policy"]["guardrail_passed"])
     deployment_upgrade_passed=bool(metrics["upgrade_comparison"]["guardrail_passed"])
-    deployment_skip_passed=bool(deployment_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12)
+    if not np.isfinite(args.min_skip_reduction) or not 0 < args.min_skip_reduction <= 1:
+        raise ValueError("min_skip_reduction must be in (0,1]")
+    deployment_skip_passed=bool(deployment_skip_delta<=-args.min_skip_reduction+1e-12)
     deployment_min_skip_increase=max(0.0,float(decision_policy.get("min_skip_increase",0.0))) if decision_policy_enabled else 0.0
-    deployment_skip_clear_passed=bool(deployment_skip_delta+1e-12>=deployment_min_skip_increase)
+    deployment_skip_clear_passed=deployment_skip_passed
     deployment_absolute_correct_passed=bool(metrics["absolute_correct_bets"]+1e-12>=.95*legacy_decision["absolute_correct_bets"])
     retraining_success=bool(deployment_quality_passed and deployment_skip_passed and deployment_skip_clear_passed and deployment_absolute_correct_passed and deployment_smoothing_passed and deployment_policy_passed and deployment_upgrade_passed)
     metrics.update({
@@ -1877,6 +1896,7 @@ def train_command(args: argparse.Namespace) -> int:
         "recommended_min_ev": ev_tuning,
         "selected_decision_policy": decision_policy,
         "smoothing_selection": smoothing_tuning,
+        "pattern_training": {"weight": args.pattern_weight, "feature": "original7_sx_markov_p_same", "minimum_history": 8, "full_evidence_history": 24},
         "hyperparameter_search": search_report,
         "selected_parameters": best_parameters,
         "feature_importance": feature_importance_report(model, x[calibration_rows]),
@@ -1964,6 +1984,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train the direct 57D final-probability XGBoost model")
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train")
+    train.add_argument("--min-skip-reduction", type=float, default=0.01, help="Required absolute Skip reduction for promotion; default 1 percentage point")
+    train.add_argument("--pattern-weight", type=float, default=0.35, help="Causal S/X structure sample emphasis in [0,1]; 0 restores baseline")
     train.add_argument("--input", required=True)
     train.add_argument("--physics-model", default="")
     train.add_argument("--output", default="final_probability_model.json")

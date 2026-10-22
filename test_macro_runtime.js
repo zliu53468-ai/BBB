@@ -70,7 +70,7 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
     document:{getElementById:()=>null},fetch:async url=>({ok:true,json:async()=>finalOverride&&url==="final_probability_model.json"?finalOverride:JSON.parse(fs.readFileSync(url,"utf8"))})};
   sandbox.window=sandbox;
   vm.createContext(sandbox);
-  for(const f of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","final_probability_runtime.js"]){
+  for(const f of ["app256forward.js","app256continuation.js","macro_ema.js","final_probability_runtime.js"]){
     if(withoutParticle&&f==="particle_filter_runtime.js")continue;
     vm.runInContext(fs.readFileSync(f,"utf8"),sandbox,{filename:f});
   }
@@ -78,6 +78,18 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
 }
 (async()=>{
   const {api,store}=context();await api.loadModels();
+  const alphaConfig={progress_alpha_anchors:[[0,.6],[1,.6]]};
+  assert.equal(api.dynamicEmaAlpha(30,.5,alphaConfig,.125,{physics_uncertainty:.5}),.6);
+  const alphaDefault=api.dynamicEmaAlpha(30,.5,{},.125,{physics_uncertainty:.5});
+  assert.equal(api.dynamicEmaAlpha(30,.5,{progress_alpha_anchors:[[0,0],[1,1]]},.125,{physics_uncertainty:.5}),alphaDefault);
+  const poison=context();
+  Object.defineProperty(poison.sandbox,"__BGS_PARTICLE500__",{get(){throw Error("PF accessed");}});
+  await poison.api.loadModels();
+  assert.equal(poison.api.applyFinalPrediction(["B","P"]).finalProbability.mode,"physics_primary");
+  const absentModel=JSON.parse(JSON.stringify(model));absentModel.trained=false;
+  const missing=context(new Map(),true,absentModel);await missing.api.loadModels();
+  const unavailableModel=missing.api.applyFinalPrediction(["B","P"]);
+  assert.equal(unavailableModel.direction,"Skip");assert.equal(unavailableModel.probabilities.B,.5);
   const seq=[];
   for(let i=0;i<16;i++){seq.push(i%2?"P":"B");api.recordCompletedHand(seq,{card_count:i%3?6:4,player_score:i%2?8:1,banker_score:i%2?0:3});}
   const original=JSON.stringify(api.getMacroFeatures(seq));
@@ -109,7 +121,7 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
     const history=Array.from({length:n},(_,i)=>["B","P","B","T","P"][i%5]);
     const result=api.applyFinalPrediction(history),r=result.finalProbability;
     assert.equal(r.error,"");assert.equal(r.physics.length,48);assert.equal(r.extended.length,57);
-    assert.equal(r.particle_count,500);assert.equal(r.particle_persistent_state,false);
+    assert(!r.execution_order.includes("particle_filter"));
     assert.equal(r.xgb_role,"auxiliary_filter_no_flip");assert.equal(r.flipped_from_physics,false);
     assert(result.direction==="Skip"||result.direction===r.primary_candidate);
     if(result.direction!=="Skip")assert((result.direction==="B"?result.ev_banker:result.ev_player)>0,"negative EV forced action");
@@ -118,7 +130,7 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
   api.rotateShoeId();assert.equal(api.getMacroFeatures([]).rounds,0);assert.equal(api.getMacroFeatures([]).Six_Card_Spread,null);
   const unavailable=context(new Map(),true);await unavailable.api.loadModels();
   const refused=unavailable.api.applyFinalPrediction(["B","P"]);
-  assert.equal(refused.direction,"Skip","Core must not take over when Particle/Physics unavailable");assert.equal(refused.probabilities.B,.5);
+  assert.equal(refused.finalProbability.mode,"physics_primary","PF absence must not block inference");
   const tuned=JSON.parse(JSON.stringify(model));tuned.decision_policy.macro_ema.coefficients={six_card:1,low_score:1,point_diff:0};
   const controlled=context(new Map(),false,tuned);await controlled.api.loadModels();
   const physics=Array(48).fill(0);physics[0]=1;physics[3]=1;physics[16]=1;physics[23]=.6;physics[24]=.3;physics[25]=.1;

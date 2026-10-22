@@ -104,7 +104,7 @@ async function runtime(config){
       return model;
     }})};
   ctx.window=ctx;vm.createContext(ctx);
-  for(const name of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","final_probability_runtime.js"]){
+  for(const name of ["app256forward.js","app256continuation.js","macro_ema.js","final_probability_runtime.js"]){
     vm.runInContext(fs.readFileSync(path.join(__dirname,name),"utf8"),ctx,{filename:name});
   }
   const api=ctx.__BGS_FINAL56__;await api.loadModels();

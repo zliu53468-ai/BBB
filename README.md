@@ -1,3 +1,5 @@
+> 2026-10-22：PF 移除候選與規律重訓參數見 [NO_PF_UPGRADE.md](NO_PF_UPGRADE.md)。品質驗收尚未通過，未宣稱全部改造目標達成。
+
 > 2026-10-09：Physics-primary 巨觀 EMA 與動態門檻更新，完整程式碼、參數、驗證結果與回滾方式見 [MACRO_EMA_UPGRADE.md](MACRO_EMA_UPGRADE.md)。EMA 方向係數尚未校準，預設零偏移；下方保留歷史架構說明。
 
 # BGS 256D（128D＋128D）Frozen Direct 測試面板

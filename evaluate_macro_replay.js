@@ -58,7 +58,7 @@ async function runtime(directory,coefficients=null){
       return bundle;
     }})};
   ctx.window=ctx;vm.createContext(ctx);
-  for(const filename of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","final_probability_runtime.js"]){
+  for(const filename of ["app256forward.js","app256continuation.js",...(path.resolve(directory)!==path.resolve(__dirname)?["particle_filter_runtime.js"]:[]),"macro_ema.js","final_probability_runtime.js"]){
     const file=path.join(directory,filename);if(fs.existsSync(file))vm.runInContext(fs.readFileSync(file,"utf8"),ctx,{filename});
   }
   const api=ctx.__BGS_FINAL56__;await api.loadModels();return {api,store};
