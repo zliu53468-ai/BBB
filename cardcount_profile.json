@@ -224,5 +224,16 @@
         "reg_lambda": 16
       }
     ]
+  },
+  "local_calibration": {
+    "enabled": true,
+    "min_samples": 24,
+    "min_validation": 16,
+    "prior_strength": 100,
+    "max_delta": 0.005,
+    "validation_window": 32,
+    "min_brier_gain": 5e-05,
+    "noise_start": 0.55,
+    "noise_stop": 0.85
   }
 }

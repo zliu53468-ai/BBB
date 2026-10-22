@@ -60,3 +60,6 @@ python xgb_final_probability.py train --training-profile aggressive_cardcount --
 設定 JSON `enabled:false`，重新整理即可回到之前的平滑、PF quality 混合與無顯示差距門檻；模型權重與觀望切換保留。CLI 繼續不帶新 profile 即使用原訓練設定；完整回滾可還原本次提交。
 
 測試涵蓋 51%／49% 邊界、反向與五五波、頁面閾值切換、不觀望模式、Python／JS anchors 一致、噪音抑制、Macro 回放／返回／缺測、PF 500 粒子獨立重建與階段上限、原 48D／57D 契約、候選不可覆寫正式檔與既有回歸。測試通過是行為驗證，不能作為實際命中率、EV 或獲利提升的證據。
+
+
+後續新增的本機逐局校準另由 `local_calibration.enabled` 控制；最外層 `enabled:false` 不會停用本機校準。詳見 [BROWSER_LOCAL_CALIBRATION.md](BROWSER_LOCAL_CALIBRATION.md)。

@@ -97,8 +97,11 @@ async function idle(){await new Promise(r=>setTimeout(r,30));}
   await idle();
   assert(!raw.has("bgs_xgb_final_training_v5"),"large model snapshots must be stored in IDB, not quota-limited localStorage");
   assert.equal(a.localStorage.getItem("bgs256d_frozen_6x15_forward_v18"),aHand);
+  a.localStorage.setItem("bgs_browser_calibration_v1",JSON.stringify({test:"local A"}));await idle();
   const b=tab();await b.storage.start(uuidB,0);
+  assert.equal(b.localStorage.getItem("bgs_browser_calibration_v1"),null,"calibration must not cross licenses");
   assert.equal(b.localStorage.getItem("bgs256d_frozen_6x15_forward_v18"),null,"B may not read A");
+  b.localStorage.setItem("bgs_browser_calibration_v1",JSON.stringify({test:"local B"}));
   const bHand=JSON.stringify({history:["B","B","P"]});
   b.localStorage.setItem("bgs256d_frozen_6x15_forward_v18",bHand);
   await idle();
@@ -110,6 +113,7 @@ async function idle(){await new Promise(r=>setTimeout(r,30));}
   const aNew=tab();await aNew.storage.start(uuidA,0);
   assert.equal(aNew.localStorage.getItem("bgs256d_frozen_6x15_forward_v18"),null,"end left no A history");
   assert.equal(aNew.localStorage.getItem("bgs_xgb_final_training_v5"),null,"end left no A snapshots");
+  assert.equal(aNew.localStorage.getItem("bgs_browser_calibration_v1"),null,"end purges local calibration");
   assert.equal(aNew.storage.status().pending_remote_end,true,"pending remote reset persists across reloads");
   await aNew.storage.acknowledgeRemoteEnd(uuidA,1);
   assert.equal(aNew.storage.status().pending_remote_end,false,"signed server acknowledgement clears durable retry");
@@ -117,6 +121,7 @@ async function idle(){await new Promise(r=>setTimeout(r,30));}
   assert.equal(aAck.storage.status().pending_remote_end,false,"successful reset must not keep retrying after reload");
   const bReload=tab();await bReload.storage.start(uuidB,0);
   assert.equal(bReload.localStorage.getItem("bgs256d_frozen_6x15_forward_v18"),bHand,"purging A leaves B scoped data untouched");
+  assert.equal(bReload.localStorage.getItem("bgs_browser_calibration_v1"),JSON.stringify({test:"local B"}),"A reset must not alter B calibration");
   await bReload.storage.syncGeneration(1);
   assert.equal(bReload.messages.includes("reloaded"),true,"new server epoch forces remote browser reload");
   const bAgain=tab();await bAgain.storage.start(uuidB,1);

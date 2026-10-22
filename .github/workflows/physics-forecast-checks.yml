@@ -22,3 +22,4 @@ jobs:
       - run: node test_macro_runtime.js
       - run: node test_bbb_button_only.js
       - run: node test_cardcount_profile.js
+      - run: node --check browser_calibration.js && node test_browser_calibration.js
