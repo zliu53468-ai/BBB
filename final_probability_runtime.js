@@ -12,10 +12,25 @@ const VERSION=EV_CONSISTENCY_V1
   ?"PHYSICS_57D_V14_8_FORECAST_FIRST_EVC1"
   :"PHYSICS_57D_V14_8_FORECAST_FIRST";
 const PHYSICS_URL="physics_multitask_model.json";
+let cardcountProfile=null,displayGapOverride=null;
+function profileValue(key,roundIndex){
+  if(!cardcountProfile?.enabled)return null;
+  return interpAnchors(clip(roundIndex,1,70),cardcountProfile.anchors[key]);
+}
+function displayDirection(f){
+  if(!f?.available)return null;
+  const gap=displayGapOverride??(cardcountProfile?.enabled?cardcountProfile.display_gap:0);
+  if(Math.abs(f.directional.B-f.directional.P)+1e-12<gap)return "Skip";
+  return f.direction;
+}
+function macroUpdate(state,hand){
+  const r=state.rounds+1;
+  return MACRO.update(state,hand,cardcountProfile?.enabled?{short_alpha:profileValue("macro_short",r),long_alpha:profileValue("macro_long",r)}:{});
+}
 const FINAL56_URL="final_probability_model.json";
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
 // Keep the trained 48D/57D ABI: legacy particle_uncertainty at slot 42
-// contains Direct Physics uncertainty; no particle computation is performed.
+// contains Physics uncertainty; feature order stays unchanged.
 const PHYSICS_NAMES=[
 "cards_p4","cards_p5","cards_p6",
 ...Array.from({length:10},(_,i)=>"player_point_p"+i),
@@ -264,6 +279,10 @@ function applyProbabilityBounds(rawPB,roundIndex,noiseScore,progressWeight=null)
   return {value:clip(rawPB,low,high),low,high};
 }
 function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null,physicsDiagnostics=null){
+  if(cardcountProfile?.enabled){
+    const noise=clip(noiseScore),u=clip(physicsDiagnostics?.physics_uncertainty??.5);
+    return clip(profileValue("decision_alpha",roundIndex)-.04*Math.max(0,noise-.55)/.45-.03*Math.max(0,u-.5)/.5,.35,.75);
+  }
   if(!adaptiveStageEnabled()){
     const stage=roundIndex<=40?"early":roundIndex>50?"late":"middle",range=stage==="early"?[.35,.45]:stage==="middle"?[.50,.60]:[.65,.75];
     const base=Number.isFinite(+config[stage+"_alpha"])?+config[stage+"_alpha"]:(range[0]+range[1])/2,gain=Math.max(0,Number.isFinite(+config.noise_gain)?+config.noise_gain:.05);
@@ -295,10 +314,10 @@ function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWe
   for(let i=rows.length-1;i>=0;i--){const row=rows[i];if(row?.shoe_id!==shoeId||+row.round_index>=roundIndex)continue;
     const value=Number.isFinite(+row.physics_smoothed_p_b)?+row.physics_smoothed_p_b:(Number.isFinite(+row.primary_smoothed_p_b)?+row.primary_smoothed_p_b:NaN);
     if(Number.isFinite(value)){previous=value;break;}}
-  if(previous===null)return {value:clippedPB,alpha:1,strength:0,profile:config.profile||"first_round",applied:false};
+  if(previous===null)return {value:clippedPB,alpha:1,strength:0,profile:cardcountProfile?.enabled?cardcountProfile.name:config.profile||"first_round",applied:false};
   const alpha=dynamic?dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight,lastPhysicsDiagnostics):1-clip(+config.strength||0,0,.15);
   const value=clip(alpha*clippedPB+(1-alpha)*previous,bounds.low,bounds.high);
-  return {value,alpha,strength:1-alpha,profile:config.profile||(legacy?"legacy":"custom"),applied:true};
+  return {value,alpha,strength:1-alpha,profile:cardcountProfile?.enabled?cardcountProfile.name:config.profile||(legacy?"legacy":"custom"),applied:true};
 }
 function dynamicBand(roundIndex,noiseScore,bandConfig,config){
   const stage=roundIndex<=40?"early":roundIndex<=50?"middle":"late";
@@ -433,7 +452,7 @@ function directPhysicsPrimary(physics,roundIndex,macroFeatures=null){
   const policy=decisionPolicy(roundIndex,noise);
   // Primary EV is computed only from the Direct Physics winner head.
   const baseEvBanker=pB*.95-pP,baseEvPlayer=pP-pB;
-  const macro=MACRO?MACRO.adjustment(calibratedPB,macroFeatures,clip(roundIndex/getEstimatedTotalHands()),noise,final56Bundle?.decision_policy?.macro_ema||{}):{value:calibratedPB,delta:0,reason:"module_unavailable"};
+  const macro=MACRO?MACRO.adjustment(calibratedPB,macroFeatures,clip(roundIndex/getEstimatedTotalHands()),noise,{...(final56Bundle?.decision_policy?.macro_ema||{}),...(cardcountProfile?.enabled?cardcountProfile.macro:{})}):{value:calibratedPB,delta:0,reason:"module_unavailable"};
   const directionalPB=macro.value,distance=Math.abs(directionalPB-.5);
   // Soft correction of Physics EV only; tie mass and Direct MLP 48D stay fixed.
   const evBanker=baseEvBanker+1.95*directionalMass*macro.delta,evPlayer=baseEvPlayer-2*directionalMass*macro.delta;
@@ -537,7 +556,7 @@ function applyFinalPrediction(seq,corePrediction=null){
       // Keep Direct Physics as a safe fallback if the optional particle layer fails.
       if(PARTICLE500&&typeof PARTICLE500.estimate==="function"){
         try{
-          const estimate=PARTICLE500.estimate(seq,physicsDirect,"quality");
+          const estimate=PARTICLE500.estimate(seq,physicsDirect,"quality",cardcountProfile?.enabled?{...cardcountProfile.pf,max_blend:profileValue("pf_max",seq.length+1)}:{});
           if(!Array.isArray(estimate?.physics)||estimate.physics.length!==PHYSICS_DIM||!estimate.physics.every(Number.isFinite))throw new Error("invalid particle physics");
           physics=estimate.physics;particleDiagnostics=estimate.diagnostics;
           executionOrder.push("particle_filter");
@@ -722,11 +741,11 @@ function syncMacro(history){
     events.splice(common);macroState=MACRO.createState(shoeId);
     for(let i=0;i<events.length;i++){
       try{events[i]=MACRO.normalizeHand(events[i]);}catch(_){events[i]=MACRO.normalizeHand({outcome:history[i]});}
-      MACRO.update(macroState,events[i]);
+      macroUpdate(macroState,events[i]);
     }
   }
   for(let i=events.length;i<history.length;i++){
-    const observed=MACRO.normalizeHand({outcome:history[i]});events.push(observed);MACRO.update(macroState,observed);
+    const observed=MACRO.normalizeHand({outcome:history[i]});events.push(observed);macroUpdate(macroState,observed);
   }
   saveMacroJournal();return MACRO.snapshot(macroState);
 }
@@ -739,7 +758,7 @@ function recordCompletedHand(history,observation={}){
   // Replaying a replacement/duplicate last hand yields the same state, not a
   // second EMA update; unknown older B/P/T events have null measurements.
   syncMacro(history.slice(0,-1));
-  macroJournal.events.push(observed);MACRO.update(macroState,observed);saveMacroJournal();
+  macroJournal.events.push(observed);macroUpdate(macroState,observed);saveMacroJournal();
   return MACRO.snapshot(macroState);
 }
 function undoRuntimeHistory(){
@@ -806,9 +825,18 @@ function downloadMacroObservations(){const blob=new Blob([exportMacroObservation
 async function fetchBundle(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(url+":HTTP"+r.status);return await r.json();}
 async function loadModels(){
   status={physics:false,final56:false,errors:[]};
-  const rs=await Promise.allSettled([fetchBundle(PHYSICS_URL),fetchBundle(FINAL56_URL)]);
+  const rs=await Promise.allSettled([fetchBundle(PHYSICS_URL),fetchBundle(FINAL56_URL),fetchBundle("cardcount_profile.json")]);
   if(rs[0].status==="fulfilled"&&rs[0].value?.model_type==="baccarat_physics_multitask_mlp"){physicsBundle=rs[0].value;status.physics=!!physicsBundle.trained;}else status.errors.push("physics_model");
   if(rs[1].status==="fulfilled"&&rs[1].value?.model_type==="xgb_final_probability_classifier"&&rs[1].value?.feature_names?.length===FEATURE_DIM){final56Bundle=rs[1].value;status.final56=!!final56Bundle.trained;}else{final56Bundle=null;status.errors.push("final57_model");}
+  const candidate=rs[2].status==="fulfilled"?rs[2].value:null;
+  const keys=["decision_alpha","macro_short","macro_long","pf_max","training_weight"];
+  const valid=candidate?.schema_version===1&&typeof candidate.enabled==="boolean"&&typeof candidate.display_gap==="number"&&candidate.display_gap>=0&&candidate.display_gap<=.10&&keys.every(k=>Array.isArray(candidate.anchors?.[k])&&candidate.anchors[k].length>=2&&candidate.anchors[k].every((v,i,a)=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)&&v[0]>=1&&v[0]<=70&&v[1]>0&&v[1]<=2&&(!i||v[0]>a[i-1][0])));
+  const next=valid?candidate:null;
+  if(JSON.stringify(next)!==JSON.stringify(cardcountProfile))macroState=null;
+  cardcountProfile=next;
+  const gapControl=typeof document!=="undefined"?document.getElementById("forecastGap"):null;
+  if(gapControl){gapControl.disabled=!cardcountProfile?.enabled;if(displayGapOverride===null)gapControl.value=String(cardcountProfile?.enabled?cardcountProfile.display_gap:0);}
+  if(!valid)status.errors.push("cardcount_profile_fallback");
   if(status.physics&&status.final56&&!modelSemanticsCompatible()){status.final56=false;status.errors.push("feature_semantics_mismatch");}
   return status;
 }
@@ -820,9 +848,9 @@ function noSkipTestDirection(f){
 }
 function renderPrediction(p,n){
   const el=id=>document.getElementById(id),orb=el("directionOrb");if(!orb)return;
-  const f=p.next_hand_forecast,ready=f?.available===true,shownDirection=noSkipTestActive?noSkipTestDirection(f):f?.direction,isB=shownDirection==="B",isP=shownDirection==="P";
-  el("directionText").textContent=!ready?"未就緒":isB?"莊":isP?"閒":"均衡";
-  el("directionCode").textContent=!ready?"UNAVAILABLE":isB?"BANKER":isP?"PLAYER":"BALANCED";
+  const f=p.next_hand_forecast,ready=f?.available===true,shownDirection=noSkipTestActive?noSkipTestDirection(f):displayDirection(f),isB=shownDirection==="B",isP=shownDirection==="P";
+  el("directionText").textContent=!ready?"未就緒":isB?"莊":isP?"閒":shownDirection==="Skip"?"觀望":"均衡";
+  el("directionCode").textContent=!ready?"UNAVAILABLE":isB?"BANKER":isP?"PLAYER":shownDirection==="Skip"?"SKIP":"BALANCED";
   el("confidence").textContent=ready?"莊 "+(f.directional.B*100).toFixed(2)+"% / 閒 "+(f.directional.P*100).toFixed(2)+"%":"—";
   el("regime").textContent=!ready?"模型未就緒":noSkipTestActive?"測試方向（不列入正式下注）":p.direction==="Skip"?"下注觀望（仍有機率方向）":p.direction==="B"?"下注條件：莊":"下注條件：閒";
   el("strength").textContent=ready?(f.probabilities.T*100).toFixed(2)+"%":"—";
@@ -830,6 +858,7 @@ function renderPrediction(p,n){
   if(el("modePill"))el("modePill").textContent=noSkipTestActive?"全程不觀望測試":ready?(f.source==="direct_physics_particle500_winner_head"?"Physics＋PF500 機率方向":"Direct Physics 機率方向"):"模型未就緒";
   if(el("roundCount"))el("roundCount").textContent=n;
   if(el("message"))el("message").textContent="第 "+(n+1)+" 局分析完成"+(ready?(f.weak_signal?"；莊閒接近五五波":"；莊閒百分比已排除和局，和局另列")+(f.uncertainty>=.85?"；模型不確定性偏高":""):"");
+  if(!noSkipTestActive&&ready&&shownDirection==="Skip"&&el("message"))el("message").textContent+="；機率差未達 "+((displayGapOverride??cardcountProfile.display_gap)*100).toFixed(1)+" 個百分點，方向觀望";
   if(noSkipTestActive&&el("message"))el("message").textContent=ready?"不觀望測試：每次報結果後自動更新下一局；不列入正式下注"+(f.directional.B===f.directional.P?"；五五波固定以莊作測試方向，無機率優勢":""):"不觀望測試：模型未就緒，暫無測試方向";
 }
 function installUI(){
@@ -843,6 +872,11 @@ function installUI(){
   if(testButton)testButton.addEventListener("click",()=>{setTestMode(!noSkipTestActive);refreshTest();});
   btn.addEventListener("click",()=>{setTestMode(false);const history=readHistory();if(!history.length){const m=document.getElementById("message");if(m)m.textContent="請先輸入牌局紀錄";return;}
     const p=applyFinalPrediction(history);saveSelection(p.direction);registerPrediction(history,p);renderPrediction(p,history.length);});
+  const gapControl=document.getElementById("forecastGap");
+  if(gapControl)gapControl.addEventListener("change",()=>{
+    const value=Number(gapControl.value);
+    if([.01,.02,.03].includes(value)){displayGapOverride=value;refreshTest();}
+  });
   const fieldIds=["macroCardCount","macroPlayerScore","macroBankerScore"];
   const clearFields=()=>{for(const id of fieldIds){const e=document.getElementById(id);if(e)e.value="";}};
   // Result buttons are authoritative; optional card/point telemetry must never
@@ -911,7 +945,7 @@ function installUI(){
   const observations=document.getElementById("btnExportObservations");if(observations)observations.addEventListener("click",downloadMacroObservations);
   syncMacro(readHistory());
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,displayDirection,profileValue,getCardcountProfile:()=>cardcountProfile,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
   registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,
   getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 if(typeof window?.addEventListener==="function")window.addEventListener("storage",event=>{if(event.key===MACRO_KEY||event.key===SHOE_KEY){macroJournal=null;macroState=null;}});

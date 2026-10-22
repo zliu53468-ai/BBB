@@ -159,3 +159,5 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
 .license-message[data-status=error]{color:#ff91aa}
 .license-detail{font-size:12px;line-height:1.7;color:#9789b4;margin:16px 0 0}
 @media(max-width:430px){.license-shell{padding:28px 20px 24px}}
+
+#forecastGap{width:100%;padding:10px;margin:7px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font:inherit}

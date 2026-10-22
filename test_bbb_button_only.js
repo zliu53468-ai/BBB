@@ -34,7 +34,7 @@ class Element{
     for(const handler of handlers){if(event.immediateStopped)break;handler.callback(event);}
   }
 }
-const ids=["btnB","btnP","btnT","btnStart","btnNoSkipTest","btnBack","btnEnd","btnExportTraining","btnExportObservations",
+const ids=["btnB","btnP","btnT","btnStart","btnNoSkipTest","forecastGap","btnBack","btnEnd","btnExportTraining","btnExportObservations",
  "roundCount","roundPill","modePill","message","historyTrack","directionText","directionCode","confidence",
  "regime","strength","directionOrb","macroCardCount","macroPlayerScore","macroBankerScore"];
 const elements=new Map(ids.map(id=>[id,new Element(id)]));
@@ -67,6 +67,14 @@ await global.__BGS_FINAL56__.loadModels();
 const api=global.__BGS_FINAL56__,tie={available:true,directional:{B:.5,P:.5}};
 assert.equal(api.noSkipTestDirection(tie),"B");assert.equal(api.noSkipTestDirection({available:false}),null);
 assert.equal(api.noSkipTestDirection({available:true,directional:{B:.49,P:.51}}),"P");
+report("btnNoSkipTest"); // Back to moderate display for threshold control checks.
+const sampleForecast={available:true,direction:"B",directional:{B:.51,P:.49},probabilities:{B:.459,P:.441,T:.1}};
+const changeGap=value=>{el("forecastGap").value=value;for(const h of el("forecastGap").listeners.filter(x=>x.type==="change"))h.callback();};
+changeGap("0.03");api.renderPrediction({next_hand_forecast:sampleForecast,direction:"Skip"},stored().length);
+assert.equal(el("directionText").textContent,"觀望");
+changeGap("0.01");api.renderPrediction({next_hand_forecast:sampleForecast,direction:"Skip"},stored().length);
+assert.equal(el("directionText").textContent,"莊");
+changeGap("0.02");report("btnNoSkipTest");
 const rowCount=api.getTrainingCount();
 for(const side of ["B","P","T","P"]){
  report("btn"+side);

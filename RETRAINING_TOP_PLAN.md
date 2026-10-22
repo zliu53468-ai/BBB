@@ -1,3 +1,11 @@
+# 新增：算牌優先的激進重訓候選
+
+新 CLI：兩個 trainer 均可用 `--training-profile aggressive_cardcount`，必須輸出到獨立候選檔。未帶參數仍使用原 production 設定。完整參數、命令、獨立驗證與回滾見 [CARDCOUNT_MODERATE_PROFILE.md](CARDCOUNT_MODERATE_PROFILE.md)，共享參數為 `cardcount_profile.json`。
+
+Physics 建議 6,000 靴、validation 0.20、calibration 0.10、augment 0.25；Winner 3.50、點數 1.45、張數 1.65、Rank 0.55。57D 仍是直接二元分類及 chronological whole-shoe，新增正則化候選 depth 2～4、500～750 trees、learning rate 0.015～0.025。階段樣本比重 1.10／1.15／1.25、低 uncertainty 最多 +18%、物理 actionability 最多 +8%、規律 +0%，類別平衡及正規化後硬限 0.35～1.50。
+
+排序以 Brier、bet hit、EV/bet、Skip 為先；現有 holdout gate 保留，且必須另與目前 production＋PF＋Guard 完整回放比較才可換權重。此方案目前只新增程式設定，尚未用完整訓練資料執行重訓，沒有準確率或 EV 提升結論。以下保留原 production 計畫。
+
 # BBB Top Retraining Plan (57D architecture locked)
 
 This plan intentionally keeps the production architecture unchanged:
