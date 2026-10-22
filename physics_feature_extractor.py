@@ -71,6 +71,18 @@ PHYSICS_LOSS_WEIGHTS = np.asarray(
     [.45]*5,            # consumed / density / point-diff auxiliaries
     dtype=np.float32,
 )
+def counting_loss_weights(winner_scale: float=1.0, points_scale: float=1.0, cards_scale: float=1.0) -> np.ndarray:
+    """Training emphasis only; unchanged 213/64/32/48 topology and rank weights."""
+    values=(winner_scale,points_scale,cards_scale)
+    if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or not 1<=v<=1.10 for v in values):
+        raise ValueError("Counting loss scales must be finite in [1,1.10]")
+    weights=PHYSICS_LOSS_WEIGHTS.copy()
+    weights[0:3]*=cards_scale
+    weights[3:23]*=points_scale
+    weights[23:26]*=winner_scale
+    return weights
+
+
 PROBABILITY_BLOCKS = {"card_count":slice(0,3),"player_points":slice(3,13),"banker_points":slice(13,23),"winner":slice(23,26)}
 AFFINE_OUTPUT_INDICES = tuple(range(26,48))
 assert PHYSICS_LOSS_WEIGHTS.size == PHYSICS_DIM
@@ -518,13 +530,14 @@ def sanitize_physics_prediction(raw: Sequence[float],temperatures: dict[str,floa
 
 class PhysicsFeatureExtractor:
     """輕量 multi-task MLP：一個模型一次輸出完整 48D，適合 browser export。"""
-    def __init__(self, *, random_state: int=DEFAULT_RANDOM_STATE):
+    def __init__(self, *, random_state: int=DEFAULT_RANDOM_STATE, winner_scale: float=1.0, points_scale: float=1.0, cards_scale: float=1.0):
         self.random_state=int(random_state)
         self.scaler=StandardScaler()
         # 中文：48D target 同時包含 0~1 機率與 0~416 張數，必須做 target scaling，
         # 否則 MLP loss 會被 consumed-card 維度支配。
         self.target_scaler=StandardScaler()
-        self.loss_scale=np.sqrt(PHYSICS_LOSS_WEIGHTS).astype(np.float32)
+        self.loss_weights=counting_loss_weights(winner_scale,points_scale,cards_scale)
+        self.loss_scale=np.sqrt(self.loss_weights).astype(np.float32)
         self.auxiliary_target_scaler=StandardScaler()
         self.auxiliary_loss_scale=AUXILIARY_LOSS_SCALE.copy()
         self.auxiliary_enabled=False
@@ -648,7 +661,7 @@ class PhysicsFeatureExtractor:
         }
         self.metadata={**metrics,"n_shoes":int(n_shoes),"cut_cards":int(cut_cards),
                        "split":{"train_shoes":len(train_ids),"calibration_shoes":len(calibration_ids),"holdout_shoes":int(len(unique)-holdout_at)},
-                       "augment_ratio":float(augment_ratio),"loss_weights":PHYSICS_LOSS_WEIGHTS.tolist(),"calibration_temperatures":self.calibration_temperatures,
+                       "augment_ratio":float(augment_ratio),"loss_weights":self.loss_weights.tolist(),"calibration_temperatures":self.calibration_temperatures,
                        "uncertainty_calibration":self.uncertainty_calibration,
                        "output_calibration":{"slope":self.output_slope.tolist(),"intercept":self.output_intercept.tolist()},
                        "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
@@ -777,6 +790,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--output",default=DEFAULT_MODEL_PATH); t.add_argument("--browser-output",default=DEFAULT_BROWSER_BUNDLE)
     t.add_argument("--validation-fraction",type=float,default=.20); t.add_argument("--calibration-fraction",type=float,default=.10)
     t.add_argument("--augment-ratio",type=float,default=.25); t.add_argument("--bootstrap-samples",type=int,default=1000)
+    t.add_argument("--winner-scale",type=float,default=1.0)
+    t.add_argument("--points-scale",type=float,default=1.0)
+    t.add_argument("--cards-scale",type=float,default=1.0)
     t.add_argument("--random-state",type=int,default=DEFAULT_RANDOM_STATE)
     s=sub.add_parser("simulate"); s.add_argument("--shoes",type=int,default=100); s.add_argument("--cut-cards",type=int,default=60)
     s.add_argument("--output",default="physics_simulation_dataset.npz"); s.add_argument("--rows-output",default="")
@@ -794,7 +810,7 @@ def main() -> int:
             Path(a.rows_output).write_text(json.dumps({"rows":rows},separators=(",",":")),encoding="utf-8")
         print(json.dumps({"rows":len(d.x),"output":a.output}))
         return 0
-    m=PhysicsFeatureExtractor(random_state=a.random_state)
+    m=PhysicsFeatureExtractor(random_state=a.random_state,winner_scale=a.winner_scale,points_scale=a.points_scale,cards_scale=a.cards_scale)
     metrics=m.train_from_simulation(n_shoes=a.shoes,cut_cards=a.cut_cards,validation_fraction=a.validation_fraction,
                                     calibration_fraction=a.calibration_fraction,augment_ratio=a.augment_ratio,bootstrap_samples=a.bootstrap_samples)
     m.save(a.output); m.export_browser_bundle(a.browser_output)

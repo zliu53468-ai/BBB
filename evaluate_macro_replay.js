@@ -34,9 +34,10 @@ for(const row of rows){
   if(row.round_index!==group.length+1)throw new Error("Each shoe needs consecutive round_index, including ties/skipped hands");
   group.push(M.normalizeHand(row));shoes.set(key,group);
 }
-function empty(){return {eligible_hands:0,bets:0,non_tie_bets:0,tie_pushes:0,wins:0,losses:0,unit_profit:0,skips:0};}
-function record(m,action,actual){
+function empty(){return {eligible_hands:0,bets:0,non_tie_bets:0,tie_pushes:0,wins:0,losses:0,unit_profit:0,skips:0,brier_sum:0,brier_rows:0};}
+function record(m,action,actual,probabilityB){
   m.eligible_hands++;
+  if(actual!=="T"&&Number.isFinite(probabilityB)){m.brier_sum+=(probabilityB-Number(actual==="B"))**2;m.brier_rows++;}
   if(action==="Skip"){m.skips++;return;}
   m.bets++;if(actual==="T"){m.tie_pushes++;return;}
   m.non_tie_bets++;
@@ -44,6 +45,7 @@ function record(m,action,actual){
   else{m.losses++;m.unit_profit--;}
 }
 function metrics(m){return {...m,unit_profit:+m.unit_profit.toFixed(10),
+  brier:m.brier_rows?m.brier_sum/m.brier_rows:null,
   hit_rate_on_bets:m.non_tie_bets?m.wins/m.non_tie_bets:null,
   realized_ev_per_bet:m.bets?m.unit_profit/m.bets:null,
   skip_rate:m.eligible_hands?m.skips/m.eligible_hands:null};}
@@ -65,7 +67,7 @@ async function runtime(directory,coefficients=null){
 }
 async function replay(directory,coefficients=null){
   const {api,store}=await runtime(directory,coefficients),totals=Object.fromEntries(["all","early","middle","late"].map(k=>[k,empty()]));
-  let maxMacroDelta=0,unfitted=0,flips=0;
+  let maxMacroDelta=0,unfitted=0,flips=0;const patternTotals={};
   for(const [shoe,events] of shoes){
     store.clear();store.set("bgs_xgb_final_shoe_id_v5",shoe);const history=[];
     for(let i=0;i<events.length;i++){
@@ -76,13 +78,15 @@ async function replay(directory,coefficients=null){
         if(prediction.direction!=="Skip"&&prediction.direction!==r.primary_candidate)flips++;
         maxMacroDelta=Math.max(maxMacroDelta,Math.abs(r.macro_adjustment?.delta||0));
         if(r.macro_adjustment?.reason==="zero_coefficients_or_signal")unfitted++;
-        record(totals.all,prediction.direction,actual.outcome);record(totals[stage],prediction.direction,actual.outcome);
+        record(totals.all,prediction.direction,actual.outcome,prediction.probabilities.B);record(totals[stage],prediction.direction,actual.outcome,prediction.probabilities.B);
+        const label=r.pattern_soft_bonus?.label||api.patternLabel?.(history)||"unavailable_in_baseline";
+        patternTotals[label]??=empty();record(patternTotals[label],prediction.direction,actual.outcome,prediction.probabilities.B);
         api.registerPrediction(history,prediction);api.settlePending(actual.outcome,actual,history);
       }
       history.push(actual.outcome);if(api.recordCompletedHand)api.recordCompletedHand(history,actual);
     }
   }
-  return {version:api.version,metrics:Object.fromEntries(Object.entries(totals).map(([k,v])=>[k,metrics(v)])),no_flip_violations:flips,max_macro_delta:maxMacroDelta,zero_coefficient_or_signal_predictions:unfitted};
+  return {version:api.version,pattern_segments_report_only:Object.fromEntries(Object.entries(patternTotals).map(([k,v])=>[k,metrics(v)])),metrics:Object.fromEntries(Object.entries(totals).map(([k,v])=>[k,metrics(v)])),no_flip_violations:flips,max_macro_delta:maxMacroDelta,zero_coefficient_or_signal_predictions:unfitted};
 }
 (async()=>{
   const started=Date.now(),report={input:path.basename(input),data_kind:payload.data_kind||"user_supplied_observations",shoes:shoes.size,completed_hands:rows.length,

@@ -512,6 +512,28 @@ function preserveCandidateDirection(candidate,probabilityB){
   return .5;
 }
 
+function patternLabel(seq){
+  const a=bp(seq),tail=a.slice(-8);
+  let run=0;for(let i=a.length-1;i>=0&&a[i]===a.at(-1);i--)run++;
+  if(run>=4)return "long_run";
+  if(tail.length>=6&&tail.slice(-6).every((v,i,b)=>!i||v!==b[i-1]))return "single_alternation";
+  if(tail.length===8&&tail.every((v,i)=>v===tail[Math.floor(i/2)%2*2])&&tail[0]!==tail[2])return "double_alternation";
+  if(a.length>=4&&run===1&&a.at(-2)===a.at(-3)&&a.at(-3)===a.at(-4))return "turn";
+  return "other";
+}
+function patternSoftBonus(seq,signal,config={}){
+  const out={label:patternLabel(seq),base_eligible:signal.baseEligible===true,active:false,ev_relief:0,band_relief:0,reason:"disabled"};
+  if(config.enabled!==true)return out;
+  const {finalPB,noise,confidence,edge}=signal;
+  if(signal.baseEligible!==true||![finalPB,noise,confidence,edge].every(Number.isFinite)||
+     noise<0||noise>.60||Math.abs(finalPB-.5)<.02||confidence<=0||edge<=0){out.reason="counting_gate_closed";return out;}
+  if(out.label==="other"){out.reason="no_pattern";return out;}
+  const amount=(key,cap)=>typeof config[key]==="number"&&Number.isFinite(config[key])?clip(config[key],0,cap):0;
+  out.ev_relief=amount("ev_relief",.004);out.band_relief=amount("band_relief",.002);
+  out.active=out.ev_relief>0||out.band_relief>0;out.reason=out.active?"eligible_counting_signal":"zero_bonus";
+  return out;
+}
+
 function applyFinalPrediction(seq,corePrediction=null){
   // B/P/T -> Direct Physics -> Physical EV -> Clip/EMA -> Core/XGB -> EV/Volume guards.
   let physics=null,physicsDirect=null,physicsForecast=null,physicsIntegrityReport=null,physicalEv=null,error="";
@@ -602,7 +624,13 @@ function applyFinalPrediction(seq,corePrediction=null){
     const guard=volumeGuardState(roundIndex,finalPB,policy);
     const effectiveBand=Math.max(policy.bandMinimum,baseBand-guard.bandRelief-(policy.finalBandRelief??LOW_SKIP_FINAL_BAND_RELIEF)),effectiveActivationEv=Math.max(0,baseActivation-guard.evRelief);
     const guardedPass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=effectiveBand&&candidateEdge>effectiveActivationEv;
-    const direction=basePass||guardedPass?candidate:"Skip";
+    // Freeze eligibility from the original EV/noise/confidence + Volume Guard path.
+    // A pattern can annotate a qualified bet; it never creates eligibility.
+    const baseEligible=basePass||guardedPass;
+    const patternBonus=patternSoftBonus(seq,{baseEligible,finalPB,noise:primary.noise,
+      confidence:baseEligible?softConfidence(candidateEdge,{...policy,activationEv:effectiveActivationEv}):0,edge:candidateEdge},
+      final56Bundle?.decision_policy?.pattern_soft_bonus||{});
+    const direction=baseEligible?candidate:"Skip";
     const entryTier=direction==="Skip"?"skip":distance>=effectiveBand+policy.strongMargin?"strong":"weak";
     evDecision={
       pTie:primary.pT,pPlayer,evBanker,evPlayer,
@@ -613,7 +641,7 @@ function applyFinalPrediction(seq,corePrediction=null){
       policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
       finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",
       confidence:direction==="Skip"?0:softConfidence(candidateEdge,{...policy,activationEv:effectiveActivationEv}),
-      basePass,guardedPass,candidate,
+      basePass,guardedPass,baseEligible,patternBonus,candidate,
       v15Trace:{roundIndex,distance,baseBand,baseActivation,candidateEdge,aligned,
         effectiveBand,effectiveActivationEv,guardBandRelief:guard.bandRelief,guardEvRelief:guard.evRelief}
     };
@@ -641,6 +669,9 @@ function applyFinalPrediction(seq,corePrediction=null){
     regime:mode==="physics_primary"?(direction==="Skip"?"Physics觀望":auxFilter?.decision==="downgrade"?"Physics / XGB降權":"Physics / XGB篩選"):"模型未就緒／觀望",
     finalProbability:{version:VERSION,active:mode==="physics_primary",mode,
       skip_diagnostics:skipDiagnostics,
+      base_eligible:evDecision?.baseEligible??false,pattern_soft_bonus:evDecision?.patternBonus??patternSoftBonus(seq,{baseEligible:false}),
+      pattern_soft_activation_ev:evDecision?Math.max(0,evDecision.effectiveActivationEv-evDecision.patternBonus.ev_relief):null,
+      pattern_soft_confidence_band:evDecision?Math.max(0,evDecision.effectiveConfidenceBand-evDecision.patternBonus.band_relief):null,
       primary_source:"direct_physics_physical_ev",primary_candidate:primary?.candidate??"Skip",
       macro_ema:primary?.macroFeatures??null,macro_adjustment:primary?.macro??null,
       decision_stage:primary?.policy?.stage??(seq.length<40?"early":seq.length<50?"middle":"late"),decision_progress:clip((seq.length+1)/getEstimatedTotalHands()),dynamic_band:primary?.policy?.dynamicBand??null,
@@ -744,7 +775,7 @@ function registerPrediction(seq,prediction){
     features_57d:cloneFiniteVector(r.extended,FEATURE_DIM),shoe_progress_weight:Number.isFinite(+r.extended?.[1])?+r.extended[1]:null,physics_noise_score:Number.isFinite(+r.extended?.at(-1))?+r.extended.at(-1):null,
     raw_p_b:Number.isFinite(+r.physics_raw_p_b)?+r.physics_raw_p_b:null,clipped_p_b:Number.isFinite(+r.physics_clipped_p_b)?+r.physics_clipped_p_b:null,smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,
     primary_raw_p_b:Number.isFinite(+r.physics_raw_p_b)?+r.physics_raw_p_b:null,primary_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,physics_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,
-    primary_candidate:r.primary_candidate||"Skip",skip_diagnostics:r.skip_diagnostics||null,xgb_aux_p_b:Number.isFinite(+r.xgb_aux_p_b)?+r.xgb_aux_p_b:null,core_aux_p_b:Number.isFinite(+r.core_aux_p_b)?+r.core_aux_p_b:null,aux_filter:r.aux_filter||null,
+    primary_candidate:r.primary_candidate||"Skip",base_eligible:r.base_eligible===true,pattern_soft_bonus:r.pattern_soft_bonus||null,skip_diagnostics:r.skip_diagnostics||null,xgb_aux_p_b:Number.isFinite(+r.xgb_aux_p_b)?+r.xgb_aux_p_b:null,core_aux_p_b:Number.isFinite(+r.core_aux_p_b)?+r.core_aux_p_b:null,aux_filter:r.aux_filter||null,
     macro_schema_version:1,macro_ema:r.macro_ema??null,macro_adjustment:r.macro_adjustment??null,
     decision_stage:r.decision_stage,decision_progress:r.decision_progress,dynamic_band:r.dynamic_band??null,runtime_version:VERSION,
     smoothing_alpha:Number.isFinite(+r.smoothingAlpha)?+r.smoothingAlpha:1,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,smoothing_profile:r.smoothingProfile||"off",final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
@@ -870,7 +901,7 @@ function installUI(){
   const observations=document.getElementById("btnExportObservations");if(observations)observations.addEventListener("click",downloadMacroObservations);
   syncMacro(readHistory());
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,patternLabel,patternSoftBonus,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
   registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,
   getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 if(typeof window?.addEventListener==="function")window.addEventListener("storage",event=>{if(event.key===MACRO_KEY||event.key===SHOE_KEY){macroJournal=null;macroState=null;}});

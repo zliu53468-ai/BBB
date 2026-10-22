@@ -58,17 +58,19 @@ jobs:
         run: python -m pip install --upgrade pip && pip install -r requirements-xgb.txt
 
       - name: Python unit tests
-        run: python -m unittest -v test_physics_feature_extractor.py test_final_probability.py
+        run: python -m unittest -v test_physics_feature_extractor.py test_final_probability.py test_no_pf_training.py test_macro_ema.py
 
       - name: Browser runtime preflight
         run: |
           node --check final_probability_runtime.js
           node test_final_probability_runtime.js
+          node test_macro_runtime.js
+          node test_counting_acceptance.js
 
       - name: Train browser physics multi-task model
         run: |
           python physics_feature_extractor.py train \
-            --shoes 2500 \
+            --shoes 5000 \
             --cut-cards 60 \
             --output physics_multitask_model.joblib \
             --browser-output physics_multitask_model.json

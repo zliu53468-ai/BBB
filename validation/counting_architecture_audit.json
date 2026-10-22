@@ -1,0 +1,38 @@
+{
+  "baseline": "0bbd1f7db966be5c67f00809fa4db1822386ac21",
+  "protected_files": {
+    "app256forward.js": {
+      "unchanged": true,
+      "sha256": "79d43e0be7b23f77e631909cd7c6808fc668df488df0171fe5cc4722e8597064"
+    },
+    "app256continuation.js": {
+      "unchanged": true,
+      "sha256": "d3302c7d09db8932f7ab9ea7c722f394c6aa566d0654962e79bba751f30bf006"
+    },
+    "physics_multitask_model.json": {
+      "unchanged": true,
+      "sha256": "3ec0d60251cb5b3fcb40bd67fec1334cb64d37becebbe0b040efbae871071138"
+    },
+    "physics_multitask_model.joblib": {
+      "unchanged": true,
+      "sha256": "7eb7fc9b9fdfee00455385278805f09f2a405a0383c5cf76c0eb8516055ef554"
+    },
+    "final_probability_model.json": {
+      "unchanged": true,
+      "sha256": "862347a6937b30ac9a8a3ece8f0eb9927569c97dee799e53cbb418e6c10be2f9"
+    }
+  },
+  "xgb_final_probability.py": {
+    "feature_contracts_unchanged": [
+      "ORIGINAL_7D_FEATURE_NAMES",
+      "FEATURE_NAMES"
+    ]
+  },
+  "physics_feature_extractor.py": {
+    "feature_contracts_unchanged": [
+      "PHYSICS_FEATURE_NAMES",
+      "HISTORY_INPUT_DIM",
+      "PHYSICS_DIM"
+    ]
+  }
+}

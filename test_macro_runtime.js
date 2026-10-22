@@ -90,6 +90,22 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
   const missing=context(new Map(),true,absentModel);await missing.api.loadModels();
   const unavailableModel=missing.api.applyFinalPrediction(["B","P"]);
   assert.equal(unavailableModel.direction,"Skip");assert.equal(unavailableModel.probabilities.B,.5);
+  const softConfig={enabled:true,ev_relief:.004,band_relief:.002};
+  const eligible={baseEligible:true,finalPB:.58,noise:.2,confidence:.03,edge:.13};
+  assert.equal(api.patternSoftBonus(["B","B","B","B"],eligible,softConfig).active,true);
+  for(const changes of [{baseEligible:false},{finalPB:.501},{noise:.9},{noise:NaN},{confidence:0},{edge:-.01}]){
+    const result=api.patternSoftBonus(["B","B","B","B"],{...eligible,...changes},softConfig);
+    assert.equal(result.ev_relief,0);assert.equal(result.band_relief,0);
+  }
+  const bonusModel=JSON.parse(JSON.stringify(model));bonusModel.decision_policy.pattern_soft_bonus=softConfig;
+  const withBonus=context(new Map(),true,bonusModel);await withBonus.api.loadModels();
+  for(const history of ["BBBBBBBB","BPBPBPBP","BBPPBBPP","BBBBP","PPPPPPPP","BTPBPBTPBP"]){
+    const plain=api.applyFinalPrediction(history.split("")),soft=withBonus.api.applyFinalPrediction(history.split(""));
+    assert.equal(soft.direction,plain.direction,"pattern changed entry decision");
+    assert.equal(soft.probabilities.B,plain.probabilities.B,"pattern changed final probability");
+    assert.equal(soft.stake_multiplier,plain.stake_multiplier,"pattern changed sizing");
+    if(!soft.finalProbability.base_eligible)assert.equal(soft.finalProbability.pattern_soft_bonus.ev_relief,0);
+  }
   const seq=[];
   for(let i=0;i<16;i++){seq.push(i%2?"P":"B");api.recordCompletedHand(seq,{card_count:i%3?6:4,player_score:i%2?8:1,banker_score:i%2?0:3});}
   const original=JSON.stringify(api.getMacroFeatures(seq));

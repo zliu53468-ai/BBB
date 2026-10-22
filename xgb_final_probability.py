@@ -118,6 +118,7 @@ XGB_TUNING_CANDIDATES: tuple[dict[str, Any], ...] = (
     {"n_estimators": 360, "max_depth": 3, "learning_rate": 0.020, "min_child_weight": 18, "subsample": 0.80, "colsample_bytree": 0.75, "reg_alpha": 0.75, "reg_lambda": 18.0},
     {"n_estimators": 480, "max_depth": 3, "learning_rate": 0.015, "min_child_weight": 24, "subsample": 0.90, "colsample_bytree": 0.80, "reg_alpha": 1.00, "reg_lambda": 24.0},
     {"n_estimators": 700, "max_depth": 1, "learning_rate": 0.015, "min_child_weight": 10, "subsample": 0.90, "colsample_bytree": 0.90, "reg_alpha": 0.25, "reg_lambda": 12.0},
+    {"n_estimators": 640, "max_depth": 3, "learning_rate": 0.018, "min_child_weight": 16, "subsample": 0.85, "colsample_bytree": 0.85, "reg_alpha": 0.75, "reg_lambda": 16.0},
 )
 ORIGINAL_7D_FEATURE_NAMES = (
     "core_p_b",
@@ -868,13 +869,14 @@ def balanced_sample_weights(
 
     multiplier=stage_factor*reliability*action_factor
     multiplier=np.where(early35,np.minimum(multiplier,1.50),multiplier)
-    if not np.isfinite(pattern_weight) or not 0 <= pattern_weight <= 1:
-        raise ValueError("pattern_weight must be finite and between 0 and 1")
+    if not np.isfinite(pattern_weight) or not 0 <= pattern_weight <= .15:
+        raise ValueError("pattern_weight must be finite and between 0 and 0.15")
     # Existing 57D causal S/X Markov feature; symmetric for repeat/alternate.
     # No labels, future hands, new columns, or changes to Frozen Core.
     strength=np.clip(2*np.abs(features[:,5]-.5),0,1)
     evidence=np.clip((rounds-8)/16,0,1)
-    multiplier*=1+pattern_weight*strength*evidence
+    pattern_quality=np.where(physics_uncertainty<=.60,quality,0.0)
+    multiplier*=1+pattern_weight*strength*evidence*pattern_quality
     weights*=multiplier
     return np.clip(weights/np.mean(weights),0.35,1.50).astype(np.float32)
 
@@ -1247,7 +1249,7 @@ def optimize_ev_thresholds(
         baseline_realised,baseline_wagered=decision_returns(probability_b[mask],actual_b[mask],np.asarray(rounds)[mask],DEFAULT_MIN_EV,noise[mask],policy_enabled=policy_enabled,policy_config=policy_config,shoe_ids=None if shoes is None else shoes[mask])
         baseline=decision_metrics(baseline_realised,baseline_wagered)
         minimum_wagers=max(1,int(math.ceil(max(0.0,baseline["action_rate"]-MAX_SKIP_RATE_INCREASE)*count)))
-        best: tuple[float, float, float, float] | None = None
+        best: tuple[tuple[float, ...], float] | None = None
         candidates = sorted(set(float(value) for value in grids[stage]) | {float(DEFAULT_MIN_EV[stage])})
         for candidate in candidates:
             trial = dict(thresholds)
@@ -1259,12 +1261,12 @@ def optimize_ev_thresholds(
             metrics=decision_metrics(realised,wagered); skip_delta=metrics["skip_rate"]-baseline["skip_rate"]
             if skip_delta > MAX_SKIP_RATE_INCREASE + 1e-12: continue
             if metrics["hit_rate"] + 1e-12 < baseline["hit_rate"] or metrics["realized_ev_per_bet"] + 1e-12 < baseline["realized_ev_per_bet"] or metrics["absolute_correct_bets"] + 1e-12 < .95*baseline["absolute_correct_bets"]: continue
-            score=metrics["realized_ev_per_bet"]+.25*metrics["realized_ev_per_row"]+.10*metrics["hit_rate"]
-            result=(score,metrics["realized_ev_per_bet"],metrics["realized_ev_per_row"],-candidate)
-            if best is None or result > best:
+            score=counting_selection_key(_brier(probability_b[mask],actual_b[mask]),metrics,skip_delta)
+            result=(score,candidate)
+            if best is None or result < best:
                 best = result
         if best is not None:
-            thresholds[stage] = float(-best[3])
+            thresholds[stage] = float(best[1])
         realised, wagered = decision_returns(probability_b[mask], actual_b[mask], np.asarray(rounds)[mask], thresholds, noise[mask], policy_enabled=policy_enabled, policy_config=policy_config, shoe_ids=None if shoes is None else shoes[mask])
         tuned=decision_metrics(realised,wagered)
         stages[stage] = {
@@ -1315,7 +1317,7 @@ def optimize_smoothing_and_thresholds(
     if "hard_ev" not in policies:
         raise ValueError("decision_policies must retain hard_ev as the baseline")
     reports: list[dict[str, Any]] = []; baseline: dict[str, float] | None = None
-    best: tuple[float, dict[str, Any], dict[str, Any], dict[str, Any]] | None = None
+    best: tuple[tuple[float, ...], dict[str, Any], dict[str, Any], dict[str, Any]] | None = None
     for name in candidates:
         smoothing=dict(EMA_PROFILES[name])
         final=dynamic_ema_by_shoe(clipped,features,shoe_ids,smoothing)
@@ -1330,11 +1332,11 @@ def optimize_smoothing_and_thresholds(
             hit_delta=metrics["hit_rate"]-baseline["hit_rate"]
             absolute_delta=metrics["absolute_correct_bets"]-baseline["absolute_correct_bets"]
             brier_delta=brier-baseline["brier"]
-            min_skip_increase=max(0.0,float(policy.get("min_skip_increase",0.0)))
+            min_skip_increase=0.0  # Retired: allow Skip reductions.
             absolute_passed=metrics["absolute_correct_bets"]+1e-12>=.95*baseline["absolute_correct_bets"]
-            eligible=(skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and skip_delta+1e-12>=min_skip_increase and
+            eligible=(skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and
                       ev_delta>=-1e-12 and hit_delta>=-1e-12 and absolute_passed and brier_delta<=MAX_SMOOTHING_BRIER_INCREASE)
-            score=brier-.02*metrics["realized_ev_per_bet"]-.01*metrics["hit_rate"]-.05*metrics["realized_ev_per_row"]+.05*metrics["skip_rate"]
+            score=counting_selection_key(brier,metrics,skip_delta)
             report={"profile":name,"smoothing":smoothing,"decision_policy_profile":policy_name,"decision_policy":policy,"decision_policy_enabled":policy_enabled,"score":score,"brier":brier,**metrics,
                     "skip_rate_delta":skip_delta,"ev_per_bet_delta":ev_delta,"hit_rate_delta":hit_delta,"absolute_correct_bets_delta":absolute_delta,"absolute_correct_bets_constraint_passed":absolute_passed,"minimum_skip_increase":min_skip_increase,"brier_delta":brier_delta,
                     "guardrail_passed":eligible,"ev_thresholds":tuning["thresholds"]}
@@ -1486,6 +1488,7 @@ def evaluate(
     decision_policy_config: Mapping[str, Any] | None = None,
     shoe_ids: Sequence[str] | None = None,
     bootstrap_samples: int = 1000,
+    histories: Sequence[Sequence[str]] | None = None,
 ) -> dict[str, Any]:
     shoe_ids = list(shoe_ids) if shoe_ids is not None else [str(index) for index in range(len(y))]
     uncalibrated,raw,unsmoothed=bounded_probabilities(model,x,calibration)
@@ -1508,8 +1511,8 @@ def evaluate(
     policy_hit_delta=decision["hit_rate"]-hard["hit_rate"]
     policy_absolute_delta=decision["absolute_correct_bets"]-hard["absolute_correct_bets"]
     policy_absolute_passed=decision["absolute_correct_bets"]+1e-12>=.95*hard["absolute_correct_bets"]
-    minimum_policy_skip=max(0.0,float((decision_policy_config or {}).get("min_skip_increase",0.0))) if decision_policy_enabled else 0.0
-    policy_guard=(policy_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and policy_skip_delta+1e-12>=minimum_policy_skip and
+    minimum_policy_skip=0.0  # Retired: pattern-free reductions need no Skip floor.
+    policy_guard=(policy_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and
                   policy_ev_delta>=-1e-12 and policy_hit_delta>=-1e-12 and policy_absolute_passed)
     correct = ((final > 0.50) == (y > 0)).astype(np.float64)
     pre_correct = ((unsmoothed > 0.50) == (y > 0)).astype(np.float64)
@@ -1517,7 +1520,7 @@ def evaluate(
     smoothing_ev_delta=decision["realized_ev_per_bet"]-pre["realized_ev_per_bet"]
     smoothing_hit_delta=decision["hit_rate"]-pre["hit_rate"]
     smoothing_brier_delta=_brier(final,y)-_brier(unsmoothed,y)
-    smoothing_guard=(smoothing_skip_delta<=1e-12 and smoothing_ev_delta>=-1e-12 and smoothing_hit_delta>=-1e-12 and smoothing_brier_delta<=MAX_SMOOTHING_BRIER_INCREASE)
+    smoothing_guard=(smoothing_skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12 and smoothing_ev_delta>=-1e-12 and smoothing_hit_delta>=-1e-12 and smoothing_brier_delta<=MAX_SMOOTHING_BRIER_INCREASE)
     upgrade_delta={"realized_ev_per_bet":decision["realized_ev_per_bet"]-current["realized_ev_per_bet"],
                    "hit_rate":decision["hit_rate"]-current["hit_rate"],"skip_rate":decision["skip_rate"]-current["skip_rate"],
                    "absolute_correct_bets":decision["absolute_correct_bets"]-current["absolute_correct_bets"]}
@@ -1566,7 +1569,15 @@ def evaluate(
                              "mean_effective_progress_round":float(np.mean(70.0*effective_progress[mask])) if stage_rows else None,
                              "mean_physics_uncertainty":float(np.mean(x[mask,8+_PHYSICS_INDEX["particle_uncertainty"]])) if stage_rows else None,
                              "mean_physical_ev_edge":float(np.mean(np.maximum(x[mask,8+_PHYSICS_INDEX["physical_ev_banker"]],x[mask,8+_PHYSICS_INDEX["physical_ev_player"]]))) if stage_rows else None}
+    pattern_segments={}
+    if histories is not None:
+        if len(histories)!=len(y):raise ValueError("histories must align with holdout rows")
+        labels=np.asarray([pattern_label(h) for h in histories])
+        for label in ("long_run","single_alternation","double_alternation","turn","other"):
+            mask=labels==label
+            pattern_segments[label]={"rows":int(mask.sum()),**decision_metrics(realised[mask],wagered[mask])}
     return {
+        "pattern_segments_report_only": pattern_segments,
         "samples": float(len(y)),
         "uncalibrated_brier": _brier(uncalibrated, y),
         "raw_accuracy": _accuracy(raw, y),
@@ -1618,6 +1629,24 @@ def evaluate(
     }
 
 
+def pattern_label(history: Sequence[str]) -> str:
+    a=[v for v in history if v in ("B","P")];tail=a[-8:]
+    run=0
+    for value in reversed(a):
+        if value!=a[-1]:break
+        run+=1
+    if run>=4:return "long_run"
+    if len(tail)>=6 and all(x!=y for x,y in zip(tail[-6:],tail[-5:])):return "single_alternation"
+    if len(tail)==8 and tail[0]!=tail[2] and all(v==tail[(i//2)%2*2] for i,v in enumerate(tail)):return "double_alternation"
+    if len(a)>=4 and run==1 and a[-2]==a[-3]==a[-4]:return "turn"
+    return "other"
+
+
+def counting_selection_key(brier: float, metrics: Mapping[str, float], skip_delta: float) -> tuple[float, ...]:
+    return (float(brier), -float(metrics["hit_rate"]), -float(metrics["realized_ev_per_bet"]),
+            -float(metrics["realized_ev_per_row"]), float(skip_delta))
+
+
 def select_xgboost_model(
     x: np.ndarray,
     y: np.ndarray,
@@ -1629,10 +1658,10 @@ def select_xgboost_model(
     random_state: int = RANDOM_STATE,
     pattern_weight: float = 0.0,
 ) -> tuple[Any, dict[str, Any], list[dict[str, Any]]]:
-    """Primary search: bet hit-rate + EV + Brier, with a hard +5% Skip ceiling."""
+    """Brier first, then hit/bet-EV/row-EV/Skip; pattern reports never gate promotion."""
     limit = max(1, min(int(trials), len(XGB_TUNING_CANDIDATES)))
     reports: list[dict[str, Any]] = []
-    best: tuple[float, Any, dict[str, Any]] | None = None
+    best: tuple[tuple[float, ...], Any, dict[str, Any]] | None = None
     baseline_metrics: dict[str, float] | None = None
     train_records=[record for record,selected in zip(records or (),train) if selected] if records is not None else None
     weights = balanced_sample_weights(y[train], x[train], train_records, pattern_weight)
@@ -1652,7 +1681,7 @@ def select_xgboost_model(
                         metrics["realized_ev_per_bet"]+1e-12>=baseline_metrics["realized_ev_per_bet"] and brier_passed)
         skip_passed=skip_delta<=MAX_SKIP_RATE_INCREASE+1e-12
         eligible=skip_passed and quality_passed
-        score=brier-.04*metrics["realized_ev_per_bet"]-.02*metrics["hit_rate"]-.05*metrics["realized_ev_per_row"]+.02*max(0.0,skip_delta)
+        score=counting_selection_key(brier,metrics,skip_delta)
         report = {
             "candidate": index,
             "score": score,
@@ -1858,6 +1887,7 @@ def train_command(args: argparse.Namespace) -> int:
         decision_policy_config=decision_policy,
         shoe_ids=[str(record["shoe_id"]) for record in holdout_records],
         bootstrap_samples=args.bootstrap_samples,
+        histories=[_history(record) for record in holdout_records],
     )
     legacy_x=legacy_feature_matrix(x)
     legacy_model=build_xgboost_classifier(random_state=args.random_state,overrides=LEGACY_XGB_PARAMETERS)
@@ -1877,10 +1907,11 @@ def train_command(args: argparse.Namespace) -> int:
     deployment_smoothing_passed=bool(metrics["smoothing"]["guardrail_passed"])
     deployment_policy_passed=bool(metrics["decision_policy"]["guardrail_passed"])
     deployment_upgrade_passed=bool(metrics["upgrade_comparison"]["guardrail_passed"])
-    if not np.isfinite(args.min_skip_reduction) or not 0 < args.min_skip_reduction <= 1:
-        raise ValueError("min_skip_reduction must be in (0,1]")
-    deployment_skip_passed=bool(deployment_skip_delta<=-args.min_skip_reduction+1e-12)
-    deployment_min_skip_increase=max(0.0,float(decision_policy.get("min_skip_increase",0.0))) if decision_policy_enabled else 0.0
+    if not np.isfinite(args.min_skip_reduction) or not 0 <= args.min_skip_reduction <= 1:
+        raise ValueError("min_skip_reduction must be in [0,1]")
+    deployment_skip_ceiling=-args.min_skip_reduction if args.min_skip_reduction>0 else MAX_SKIP_RATE_INCREASE
+    deployment_skip_passed=bool(deployment_skip_delta<=deployment_skip_ceiling+1e-12)
+    deployment_min_skip_increase=0.0  # Retired: Skip reductions are permitted.
     deployment_skip_clear_passed=deployment_skip_passed
     deployment_absolute_correct_passed=bool(metrics["absolute_correct_bets"]+1e-12>=.95*legacy_decision["absolute_correct_bets"])
     retraining_success=bool(deployment_quality_passed and deployment_skip_passed and deployment_skip_clear_passed and deployment_absolute_correct_passed and deployment_smoothing_passed and deployment_policy_passed and deployment_upgrade_passed)
@@ -1896,7 +1927,7 @@ def train_command(args: argparse.Namespace) -> int:
         "recommended_min_ev": ev_tuning,
         "selected_decision_policy": decision_policy,
         "smoothing_selection": smoothing_tuning,
-        "pattern_training": {"weight": args.pattern_weight, "feature": "original7_sx_markov_p_same", "minimum_history": 8, "full_evidence_history": 24},
+        "pattern_training": {"weight": args.pattern_weight, "feature": "original7_sx_markov_p_same", "minimum_history": 8, "full_evidence_history": 24, "max_multiplier": 1+args.pattern_weight, "physics_quality_gated": True, "report_only_segments": True},
         "hyperparameter_search": search_report,
         "selected_parameters": best_parameters,
         "feature_importance": feature_importance_report(model, x[calibration_rows]),
@@ -1928,7 +1959,7 @@ def train_command(args: argparse.Namespace) -> int:
     if not metrics["deployment_skip_constraint_passed"]:
         deployment_failures.append(f"holdout Skip increased by {deployment_skip_delta:.4f} (> {MAX_SKIP_RATE_INCREASE:.4f})")
     if not metrics["deployment_skip_clear_constraint_passed"]:
-        deployment_failures.append(f"holdout Skip increased by {deployment_skip_delta:.4f} (< required {deployment_min_skip_increase:.4f})")
+        deployment_failures.append(f"holdout Skip delta {deployment_skip_delta:.4f} exceeds configured ceiling {deployment_skip_ceiling:.4f}")
     if not metrics["deployment_absolute_correct_bets_constraint_passed"]:
         deployment_failures.append("holdout absolute correct bets fell below 95% of the legacy baseline")
     if not metrics["deployment_quality_constraint_passed"]:
@@ -1984,8 +2015,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train the direct 57D final-probability XGBoost model")
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train")
-    train.add_argument("--min-skip-reduction", type=float, default=0.01, help="Required absolute Skip reduction for promotion; default 1 percentage point")
-    train.add_argument("--pattern-weight", type=float, default=0.35, help="Causal S/X structure sample emphasis in [0,1]; 0 restores baseline")
+    train.add_argument("--min-skip-reduction", type=float, default=0.0, help="Optional Skip reduction target; 0 allows decreases or an increase of at most 5pp")
+    train.add_argument("--pattern-weight", type=float, default=0.05, help="Soft causal structure sample emphasis in [0,0.15], gated by Physics quality; 0 restores baseline")
     train.add_argument("--input", required=True)
     train.add_argument("--physics-model", default="")
     train.add_argument("--output", default="final_probability_model.json")

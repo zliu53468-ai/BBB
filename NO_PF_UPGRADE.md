@@ -1,3 +1,5 @@
+> 2026-10-22 算牌優先修正版：現行規格見 [COUNTING_PRIORITY_REVIEW.md](COUNTING_PRIORITY_REVIEW.md) 與 [PF_REMOVAL.md](PF_REMOVAL.md)。舊版規律權重與 Skip 門檻已被取代。
+
 # PF 移除與規律重訓候選（2026-10-22）
 
 基準 main：`0bbd1f7db966be5c67f00809fa4db1822386ac21`。本文件取代舊文件中的 PF 流程敘述。

@@ -1,3 +1,5 @@
+> 2026-10-22 算牌優先修正版：現行規格見 [COUNTING_PRIORITY_REVIEW.md](COUNTING_PRIORITY_REVIEW.md) 與 [PF_REMOVAL.md](PF_REMOVAL.md)。舊版規律權重與 Skip 門檻已被取代。
+
 > 2026-10-22：PF 已從目前候選流程移除，現行流程與驗收限制見 [NO_PF_UPGRADE.md](NO_PF_UPGRADE.md)。下列內容為歷史版本。
 
 # BBB 巨觀 EMA 與動態門檻升級
