@@ -36,7 +36,7 @@ class Element{
 }
 const ids=["btnB","btnP","btnT","btnStart","btnNoSkipTest","forecastGap","btnBack","btnEnd","btnExportTraining","btnExportObservations",
  "roundCount","roundPill","modePill","message","historyTrack","directionText","directionCode","confidence",
- "regime","strength","directionOrb","macroCardCount","macroPlayerScore","macroBankerScore"];
+ "regime","strength","directionOrb","localCalibrationStatus","macroCardCount","macroPlayerScore","macroBankerScore"];
 const elements=new Map(ids.map(id=>[id,new Element(id)]));
 global.document={getElementById:id=>elements.get(id)||null,createElement:()=>new Element("temp"),
   body:{appendChild:()=>{}}};
@@ -48,6 +48,7 @@ require("./app256continuation.js");
 
 require("./particle_filter_runtime.js");
 require("./macro_ema.js");
+require("./browser_calibration.js");
 require("./final_probability_runtime.js");
 const el=id=>elements.get(id),stored=()=>JSON.parse(storage.get(HISTORY)).history;
 assert.equal(el("roundCount").textContent,23,"Frozen Core initially loaded 23 results");
@@ -84,9 +85,18 @@ for(const side of ["B","P","T","P"]){
  assert.equal(storage.has("bgs_xgb_final_pending_v5"),false,"test must not register bets");
 }
 assert.equal(api.getTrainingCount(),rowCount,"test must not add wager training rows");
-report("btnBack");assert.equal(Number(el("roundCount").textContent),stored().length);
+assert.equal(api.getLocalCalibrationStatus().seen,4,"each completed result updates local journal even in no-skip mode");
+assert.equal(api.getLocalCalibrationStatus().directional_samples,3,"tie must not be labelled P");
+assert.match(el("localCalibrationStatus").textContent,/非完整重訓/);
+const localBefore=JSON.stringify(api.getLocalCalibrationStatus());
+api.applyFinalPrediction(stored());api.applyFinalPrediction(stored());
+assert.equal(JSON.stringify(api.getLocalCalibrationStatus()),localBefore,"re-analysis must not train again");
+report("btnBack");assert.equal(Number(el("roundCount").textContent),stored().length);assert.equal(api.getLocalCalibrationStatus().directional_samples,2);
 report("btnNoSkipTest");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
+report("btnP");assert.equal(api.getLocalCalibrationStatus().directional_samples,3,"normal mode learns automatically too");
+assert.equal(Number(el("roundCount").textContent),stored().length);
 report("btnNoSkipTest");report("btnStart");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
 report("btnNoSkipTest");report("btnEnd");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
+assert.equal(storage.has("bgs_browser_calibration_v1"),false,"end clears local calibration");
 console.log("continuous test mode, no wager registration, undo, stop and unavailable model passed");
 console.log("button-only UI: B/P/T, analysis and undo without score fields passed");})().catch(e=>{console.error(e);process.exitCode=1;});
