@@ -70,7 +70,7 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
     document:{getElementById:()=>null},fetch:async url=>({ok:true,json:async()=>finalOverride&&url==="final_probability_model.json"?finalOverride:JSON.parse(fs.readFileSync(url,"utf8"))})};
   sandbox.window=sandbox;
   vm.createContext(sandbox);
-  for(const f of ["app256forward.js","app256continuation.js","macro_ema.js","final_probability_runtime.js"]){
+  for(const f of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","final_probability_runtime.js"]){
     if(withoutParticle&&f==="particle_filter_runtime.js")continue;
     vm.runInContext(fs.readFileSync(f,"utf8"),sandbox,{filename:f});
   }
@@ -109,7 +109,7 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
     const history=Array.from({length:n},(_,i)=>["B","P","B","T","P"][i%5]);
     const result=api.applyFinalPrediction(history),r=result.finalProbability;
     assert.equal(r.error,"");assert.equal(r.physics.length,48);assert.equal(r.extended.length,57);
-    assert(!r.execution_order.includes("particle_filter"));
+    assert(r.execution_order.includes("particle_filter"));
     assert.equal(r.xgb_role,"advisory_only_no_veto_no_flip");assert.equal(r.flipped_from_physics,false);
     assert(result.direction==="Skip"||result.direction===r.primary_candidate);
     if(result.direction!=="Skip")assert((result.direction==="B"?result.ev_banker:result.ev_player)>0,"negative EV forced action");

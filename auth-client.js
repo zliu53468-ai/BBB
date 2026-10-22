@@ -11,8 +11,9 @@ const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu5346
 const scripts=[
   "app256forward.js",
   "app256continuation.js",
+  "particle_filter_runtime.js?v=20261022-stateless-pf500",
   "macro_ema.js?v=20261013-score-ema-independent",
-  "final_probability_runtime.js?v=20261022-no-skip-test",
+  "final_probability_runtime.js?v=20261022-stateless-pf500",
   "bbb-screenshot-road.js?v=20261018-button-only",
   "bbb-desktop-capture.js?v=20261013-desktop-snip-v1"
 ];
