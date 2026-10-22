@@ -40,6 +40,7 @@ global.fetch=async function(url){
 require("./app256forward.js");
 require("./app256continuation.js");
 
+require("./particle_filter_runtime.js");
 require("./macro_ema.js");
 require("./final_probability_runtime.js");
 
@@ -62,7 +63,7 @@ require("./final_probability_runtime.js");
   if(!Number.isFinite(diag.physics_distance)||!Number.isFinite(diag.physics_band))throw new Error("V15 lacks auditable Physics thresholds");
 
   if(r?.mode!=="physics_primary")throw new Error("Physics-primary inference path was not used");
-  if(r.primary_source!=="direct_physics_physical_ev"||r.xgb_role!=="advisory_only_no_veto_no_flip")throw new Error("primary/filter roles are incorrect");
+  if(r.primary_source!=="direct_physics_particle500_physical_ev"||r.xgb_role!=="advisory_only_no_veto_no_flip")throw new Error("primary/filter roles are incorrect");
   if(r.physics?.length!==48||r.extended?.length!==57)throw new Error("48D/57D contract changed");
   if(!r.physicsForecast||!r.physicsForecast.physicalEv)throw new Error("missing pre-Core Physical EV");
   if(!Number.isFinite(r.physics_raw_p_b)||!Number.isFinite(r.physics_smoothed_p_b)||!Number.isFinite(r.xgb_aux_p_b))throw new Error("primary/aux probabilities missing");
@@ -70,7 +71,7 @@ require("./final_probability_runtime.js");
      Math.abs((r.low_skip_policy?.ev_relief??0)-.006)>1e-12||
      Math.abs((r.low_skip_policy?.final_band_relief??0)-.006)>1e-12)throw new Error("V14.6 inherited Low-Skip policy mismatch");
 
-  const expectedOrder=["direct_physics","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"];
+  const expectedOrder=["direct_physics","particle_filter","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"];
   if(JSON.stringify(r.execution_order)!==JSON.stringify(expectedOrder))throw new Error("production execution order mismatch");
 
   const candidate=r.primary_candidate;
