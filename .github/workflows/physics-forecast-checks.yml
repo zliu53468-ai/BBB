@@ -1,0 +1,23 @@
+name: 算牌機率方向與輔助權限檢查
+on:
+  push:
+    branches: [main, codex/physics-forecast-first]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check final_probability_runtime.js && node --check auth-client.js
+      - run: node test_physics_forecast_first.js
+      - run: node test_final_probability_runtime.js
+      - run: node test_macro_runtime.js
+      - run: node test_bbb_button_only.js

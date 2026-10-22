@@ -1,0 +1,70 @@
+# 算牌機率優先｜莊閒方向獨立顯示｜牌路規律只作輔助
+
+## 修改建議與本次落地
+
+以目前 main 為基準，最適合先修正的不是繼續壓低所有 EV 門檻，而是分開「下一局機率方向」與「是否值得下注」。前者要清楚顯示；後者仍須保留風險保護，不能把有方向誤稱為一定值得下注。
+
+檢查發現 main 原本有兩條容易造成觀望過多或看不出機率的路徑：
+
+1. Core 與 XGB 同時反對 Physics，會直接 veto 成 Skip。Core／XGB 都含歷史結構資訊，不能把這種衝突當成獨立的真實剩牌證據。
+2. Physics candidate 為 Skip 時，`preserveCandidateDirection("Skip", ...)` 會把最後機率改成 .5；輔助層 Skip 也會把機率歸成 .5。畫面因此只剩觀望，原本的模型傾向被藏住。
+
+本次已修改：
+
+- PF 不載入、不呼叫，正式路徑只用 Direct Physics，沒有無 PF 強制 Skip。
+- 新增 `next_hand_forecast`，直接取已校準 Physics 48D 的 winner head（位置 23／24／25），不接受 Core、XGB、長龍、單跳或雙跳的方向覆蓋。
+- Core 與 57D XGB 繼續計算，但衝突只留下 `advisoryOnly` 提醒；不能 veto、翻向或收縮主機率。
+- 保留原本已計算的平滑機率，不再因下注 Skip 把它改成 .5。
+- 畫面主區顯示下一局 Physics 傾向與莊／閒百分比，下注資格放在另一個欄位；缺模型顯示未就緒，不編出 50／50。
+- 不另外放寬 EV／noise／confidence、三階段門檻或 Volume Guard，不放大機率，不重訓或替換權重。
+
+## 百分比定義
+
+`next_hand_forecast.probabilities` 是含和局的 B/P/T 三項機率，合計 100%。
+
+畫面主欄採 `next_hand_forecast.directional`：
+
+```
+莊% = pB / (pB + pP)
+閒% = pP / (pB + pP)
+```
+
+兩者合計 100%，標籤明示「排除和局」；和局機率另列。例：模型為莊 46%、閒 44%、和 10%，畫面顯示莊 51.11%、閒 48.89%，和局另顯示 10.00%。沒有把和局機率當成額外優勢。
+
+方向取較大的莊／閒條件機率；完全相同則顯示「均衡」，不把均衡誤作下一局會開和。接近五五波仍可顯示微弱傾向，但會註明訊號接近均衡。
+
+這是保留原模型的預測，不是新校準，也不是命中率保證。莊抽水等 EV 條件可能令「機率稍高」仍不值得下注。
+
+## 決策、結算與相容性
+
+- `forecast_direction`／`next_hand_forecast`：供下一局方向與機率展示。
+- `direction`／`bet_direction`：仍為原 B/P/Skip 下注資格。
+- `predicted_direction`、stake multiplier 與結算／Volume Guard 統計繼續記錄下注結果；不把畫面有方向的觀望手算成已下注。
+- 觀望的 snapshot 新增預測機率與方向欄位，舊 48D／57D 欄位維持。
+
+若需要進一步降低實際下注 Skip，應先用完整真實牌靴回放診斷是 Physics EV、confidence、噪音還是平滑造成。只在獨立資料中命中率與 EV 可接受時，才調整該環節；本次不以畫面方向覆蓋下注保護。
+
+## 算牌的實際限制
+
+目前輸入主要是 B/P/T 歷史。Direct Physics 是條件期望模型，不能從這些結果還原未提供的真實牌值或精確剩牌。刪除牌路 veto 可以移除外部規則的主導，不能讓既有模型突然擁有真實牌值資訊。
+
+如果未來要驗證真正剩牌資訊的價值，需另外取得真實牌值／張數等觀測並設計獨立評估；不能用推測牌值當成已知事實。這次保留原架構與權重，不做這項資料或模型擴充。
+
+## 修改範圍與驗證
+
+正式程式修改 `auth-client.js`、`final_probability_runtime.js`、`index.html`。Frozen Core 兩支程式、Physics 213→48 拓撲、57D 特徵順序與定義、XGB P=0／B=1 目標、Macro EMA 數學、模型 JSON／joblib 不修改。開通碼驗證、登入、授權後端與會員資料隔離不修改；auth-client 只調整載入清單與版本號。
+
+測試包含：
+
+- 280 次模型推論，強制相反 Core 與 XGB 不能改變 Physics forecast，也不能獨立 veto 下注。
+- PF 全域物件一讀取就報錯，仍能推論。
+- 48D／57D 合約、正 EV 下注、Physics candidate 不翻向。
+- 觀望保留機率；含和／排除和的機率定義；均衡與模型未就緒顯示。
+- 預測與下注結算欄位分離；UI、結果按鈕、Macro、復原及既有 runtime 回歸。
+- 原有 48 項 Python 測試通過。
+
+280 次控制測試中有 195 次下注 Skip 仍能顯示 Physics 預測；這是顯示與權限測試，不是實際出手率或準確率提升的證據。尚無真實獨立 holdout 成效結論。
+
+## 回滾
+
+本分支直接從已核對 main 基準建立，不混入前一版 responsive_v1／aggressive_entry_v2 或重訓參數。回滾本次提交會回到原 main；原 main 仍包含 PF，因此若只想保留 PF 移除、撤回畫面與 advisory 變更，使用先前的 PF-only 補丁即可。部署時保持 runtime、HTML 與載入器版本一致。

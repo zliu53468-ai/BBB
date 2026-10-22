@@ -1,3 +1,5 @@
+> 本次修改：算牌機率優先、莊閒方向獨立顯示、牌路規律僅輔助。詳見 [PHYSICS_FORECAST_FIRST.md](PHYSICS_FORECAST_FIRST.md)。模型與開通碼邏輯未更換；預測方向與下注資格分開。
+
 > 2026-10-09：Physics-primary 巨觀 EMA 與動態門檻更新，完整程式碼、參數、驗證結果與回滾方式見 [MACRO_EMA_UPGRADE.md](MACRO_EMA_UPGRADE.md)。EMA 方向係數尚未校準，預設零偏移；下方保留歷史架構說明。
 
 # BGS 256D（128D＋128D）Frozen Direct 測試面板
