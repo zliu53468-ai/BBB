@@ -1,0 +1,19 @@
+name: 分段參數與重訓設定檢查
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  training:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements-xgb.txt
+      - run: python -m unittest test_cardcount_profile test_physics_feature_extractor test_final_probability test_macro_ema

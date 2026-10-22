@@ -1,3 +1,5 @@
+> 最新：新增分段平滑、PF 同向品質閘門、2 個百分點適中觀望與激進重訓候選。詳見 [CARDCOUNT_MODERATE_PROFILE.md](CARDCOUNT_MODERATE_PROFILE.md)。正式模型權重未更換。
+
 > 最新：PF500 已回復，每次分析獨立重建 500 粒子；保留觀望切換。見 [PF500_RESTORED.md](PF500_RESTORED.md)。
 
 > 本次修改：算牌機率優先、莊閒方向獨立顯示、牌路規律僅輔助。詳見 [PHYSICS_FORECAST_FIRST.md](PHYSICS_FORECAST_FIRST.md)。模型與開通碼邏輯未更換；預測方向與下注資格分開。

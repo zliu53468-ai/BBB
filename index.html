@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
   <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
-  <link rel="stylesheet" href="styles.css?v=20261022-stateless-pf500">
+  <link rel="stylesheet" href="styles.css?v=20261022-cardcount-moderate">
   <style>
     .bbb-scan-block,.bbb-results-block{padding:18px;border:1px solid rgba(164,128,246,.26);border-radius:16px;background:rgba(32,20,55,.45);margin-bottom:16px}
     /* Desktop live snip: a new optional control. Mobile image/video workflows remain untouched. */
@@ -160,6 +160,13 @@
           <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
         </div>
       </div>
+      <label for="forecastGap">一般方向門檻（莊閒機率差）</label>
+      <select id="forecastGap" aria-label="一般方向機率差距門檻" disabled>
+        <option value="0" disabled>舊版顯示（未啟用分段設定）</option>
+        <option value="0.01">1 個百分點（50.5%／49.5%）</option>
+        <option value="0.02" selected>2 個百分點（51%／49%）</option>
+        <option value="0.03">3 個百分點（51.5%／48.5%）</option>
+      </select>
       <div class="action-buttons">
         <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
         <button class="action-btn" id="btnNoSkipTest" type="button" aria-pressed="false">全程不觀望測試</button>
@@ -179,7 +186,7 @@
   </main>
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
-  <script src="auth-client.js?v=20261022-stateless-pf500"></script>
+  <script src="auth-client.js?v=20261022-cardcount-moderate"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

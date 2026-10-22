@@ -13,6 +13,7 @@ Target (fixed):
 """
 from __future__ import annotations
 
+from cardcount_profile import PROFILE as CARDCOUNT_PROFILE, interpolate as profile_interpolate, decision_alpha as profile_decision_alpha
 import argparse
 import csv
 import json
@@ -74,6 +75,7 @@ EMA_PROFILES: dict[str, dict[str, Any]] = {
     "balanced": {"method": "dynamic_post_clip_ema", "profile": "balanced", "enabled": True, "early_alpha": 0.40, "middle_alpha": 0.55, "late_alpha": 0.70, "noise_gain": 0.05},
     "responsive": {"method": "dynamic_post_clip_ema", "profile": "responsive", "enabled": True, "early_alpha": 0.425, "middle_alpha": 0.575, "late_alpha": 0.725, "noise_gain": 0.05},
 }
+CARDCOUNT_EMA_PROFILE={"method":"dynamic_post_clip_ema","profile":"cardcount_moderate_v1","enabled":True}
 MAX_NOISE_EV_PENALTY = 0.001
 MIDDLE_EV_RELIEF = 0.001
 LATE_EV_RELIEF = 0.001
@@ -831,6 +833,7 @@ def balanced_sample_weights(
     y: np.ndarray,
     x: np.ndarray,
     physics_records: Sequence[Mapping[str, Any]] | None = None,
+    *, training_profile: str = "production",
 ) -> np.ndarray:
     """Keep existing class/stage weighting, using direct Physics uncertainty only."""
     labels=np.asarray(y,dtype=np.int8).reshape(-1);features=np.asarray(x,dtype=np.float64)
@@ -865,6 +868,12 @@ def balanced_sample_weights(
     normalized_actionability=np.clip(physical_actionability/.05,0.0,1.0)
     action_factor=1.0+.08*normalized_actionability
 
+    if training_profile == "aggressive_cardcount":
+        stage_factor=np.array([profile_interpolate("training_weight",r) for r in rounds])
+        reliability=1.0+CARDCOUNT_PROFILE["training"]["low_uncertainty_gain"]*quality
+        action_factor=1.0+CARDCOUNT_PROFILE["training"]["actionability_gain"]*normalized_actionability
+    elif training_profile != "production":
+        raise ValueError("unknown training profile")
     multiplier=stage_factor*reliability*action_factor
     multiplier=np.where(early35,np.minimum(multiplier,1.50),multiplier)
     weights*=multiplier
@@ -1301,7 +1310,8 @@ def optimize_smoothing_and_thresholds(
     clipped=bounded_from_calibrated(calibrated_probability,features)
     candidates=["off"]+[str(value) for value in profiles if str(value)!="off"]
     candidates=list(dict.fromkeys(candidates))
-    unknown=[name for name in candidates if name not in EMA_PROFILES]
+    available_profiles={**EMA_PROFILES,"cardcount_moderate_v1":CARDCOUNT_EMA_PROFILE}
+    unknown=[name for name in candidates if name not in available_profiles]
     if unknown: raise ValueError(f"unknown EMA profiles: {unknown}")
     policies = dict(decision_policies or DECISION_POLICY_PROFILES)
     if "hard_ev" not in policies:
@@ -1309,7 +1319,7 @@ def optimize_smoothing_and_thresholds(
     reports: list[dict[str, Any]] = []; baseline: dict[str, float] | None = None
     best: tuple[float, dict[str, Any], dict[str, Any], dict[str, Any]] | None = None
     for name in candidates:
-        smoothing=dict(EMA_PROFILES[name])
+        smoothing=dict(available_profiles[name])
         final=dynamic_ema_by_shoe(clipped,features,shoe_ids,smoothing)
         for policy_name, policy_config in policies.items():
             policy=dict(policy_config); policy_enabled=bool(policy.get("enabled",False))
@@ -1403,6 +1413,9 @@ def dynamic_ema_alpha(
     progress_weight: float | None = None,
     physics_diagnostics: Mapping[str, Any] | None = None,
 ) -> float:
+    if config.get("profile")=="cardcount_moderate_v1":
+        noise=_clip(noise_score);u=_clip(float((physics_diagnostics or {}).get("physics_uncertainty",.5)))
+        return profile_decision_alpha(round_index,noise,u)
     progress=_effective_progress(round_index,progress_weight)
     base=float(np.interp(progress,
         [0.00,.20,.35,.50,.65,.75,.85,.95,1.00],
@@ -1431,7 +1444,7 @@ def dynamic_ema_by_shoe(
     output=np.empty_like(values);previous:dict[str,float]={}
     for index,(current,row,shoe_id) in enumerate(zip(values,features,shoes)):
         lo,hi=dynamic_probability_bounds(float(row[2]),float(row[-1]),float(row[1]));current=_clip(float(current),lo,hi)
-        alpha=dynamic_ema_alpha(float(row[2]),float(row[-1]),smoothing,float(row[1]))
+        alpha=dynamic_ema_alpha(float(row[2]),float(row[-1]),smoothing,float(row[1]),{"physics_uncertainty":float(row[8+_PHYSICS_INDEX["particle_uncertainty"]])} if smoothing.get("profile")=="cardcount_moderate_v1" else None)
         smoothed=current if shoe_id not in previous else alpha*current+(1.0-alpha)*previous[shoe_id]
         output[index]=previous[shoe_id]=_clip(smoothed,lo,hi)
     return output
@@ -1610,18 +1623,22 @@ def select_xgboost_model(
     validation: np.ndarray,
     *,
     records: Sequence[Mapping[str, Any]] | None = None,
+    training_profile: str = "production",
     trials: int = len(XGB_TUNING_CANDIDATES),
     random_state: int = RANDOM_STATE,
 ) -> tuple[Any, dict[str, Any], list[dict[str, Any]]]:
     """Primary search: bet hit-rate + EV + Brier, with a hard +5% Skip ceiling."""
-    limit = max(1, min(int(trials), len(XGB_TUNING_CANDIDATES)))
+    candidates = list(XGB_TUNING_CANDIDATES)
+    if training_profile == "aggressive_cardcount":
+        candidates += CARDCOUNT_PROFILE["training"]["xgb_candidates"]
+    limit = max(1, min(int(trials), len(candidates)))
     reports: list[dict[str, Any]] = []
-    best: tuple[float, Any, dict[str, Any]] | None = None
+    best: tuple[Any, Any, dict[str, Any]] | None = None
     baseline_metrics: dict[str, float] | None = None
     train_records=[record for record,selected in zip(records or (),train) if selected] if records is not None else None
-    weights = balanced_sample_weights(y[train], x[train], train_records)
+    weights = balanced_sample_weights(y[train], x[train], train_records,training_profile=training_profile)
     rounds = np.asarray(x[validation, 2], dtype=np.float64)
-    for index, parameters in enumerate(XGB_TUNING_CANDIDATES[:limit]):
+    for index, parameters in enumerate(candidates[:limit]):
         model = build_xgboost_classifier(random_state=random_state + index, overrides=parameters)
         model.fit(x[train], y[train], sample_weight=weights)
         _, _, probability = bounded_probabilities(model, x[validation])
@@ -1655,8 +1672,9 @@ def select_xgboost_model(
             "parameters": dict(parameters),
         }
         reports.append(report)
-        if eligible and (best is None or score < best[0]):
-            best = (score, model, dict(parameters))
+        rank=(brier,-metrics["hit_rate"],-metrics["realized_ev_per_bet"],metrics["skip_rate"]) if training_profile=="aggressive_cardcount" else score
+        if eligible and (best is None or rank < best[0]):
+            best = (rank, model, dict(parameters))
     assert best is not None
     return best[1], best[2], reports
 
@@ -1768,6 +1786,9 @@ def export_browser_bundle(
 
 
 def train_command(args: argparse.Namespace) -> int:
+    profile=getattr(args,"training_profile","production")
+    if profile=="aggressive_cardcount" and Path(args.output).name=="final_probability_model.json":
+        raise SystemExit("aggressive training requires a separate candidate --output; production weights are protected")
     extractor = PhysicsFeatureExtractor.load(args.physics_model) if args.physics_model else None
     records = load_training_records(Path(args.input))
     x, y, training_records = make_training_dataset(records, physics_extractor=extractor)
@@ -1801,12 +1822,13 @@ def train_command(args: argparse.Namespace) -> int:
         search_train,
         tuning_rows,
         records=training_records,
-        trials=args.tune_trials,
+        training_profile=profile,
+        trials=(len(XGB_TUNING_CANDIDATES)+len(CARDCOUNT_PROFILE["training"]["xgb_candidates"]) if profile=="aggressive_cardcount" and args.tune_trials==len(XGB_TUNING_CANDIDATES) else args.tune_trials),
         random_state=args.random_state,
     )
     model = build_xgboost_classifier(random_state=args.random_state, overrides=best_parameters)
     train_records=[record for record,selected in zip(training_records,train) if selected]
-    model.fit(x[train], y[train], sample_weight=balanced_sample_weights(y[train], x[train],train_records))
+    model.fit(x[train], y[train], sample_weight=balanced_sample_weights(y[train], x[train],train_records,training_profile=profile))
     calibration = fit_probability_calibration(
         model,
         x[probability_calibration_rows],
@@ -1821,7 +1843,7 @@ def train_command(args: argparse.Namespace) -> int:
     ev_tuning_shoe_ids=[str(record["shoe_id"]) for record,selected in zip(training_records,ev_tuning_rows) if selected]
     smoothing_tuning=optimize_smoothing_and_thresholds(
         calibration_probability,y[ev_tuning_rows],x[ev_tuning_rows],ev_tuning_shoe_ids,
-        profiles=args.smoothing_profiles,
+        profiles=([*args.smoothing_profiles,"cardcount_moderate_v1"] if profile=="aggressive_cardcount" else args.smoothing_profiles),
         decision_policies={name: DECISION_POLICY_PROFILES[name] for name in args.decision_policy_profiles},
     )
     ev_tuning=smoothing_tuning["ev_tuning"]
@@ -1921,6 +1943,9 @@ def train_command(args: argparse.Namespace) -> int:
         deployment_failures.append("combined upgrade reduced holdout hit-rate/EV or increased Skip")
     metrics["deployment_blocked"] = bool(deployment_failures)
     metrics["deployment_block_reasons"] = deployment_failures
+    metrics["training_profile"]=profile
+    metrics["candidate_only"]=profile=="aggressive_cardcount"
+    metrics["production_comparison_required"]=profile=="aggressive_cardcount"
     report_payload={"holdout":metrics}
     print(json.dumps(report_payload, ensure_ascii=False, indent=2))
     if args.report_output:
@@ -1964,6 +1989,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train the direct 57D final-probability XGBoost model")
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train")
+    train.add_argument("--training-profile",choices=("production","aggressive_cardcount"),default="production")
     train.add_argument("--input", required=True)
     train.add_argument("--physics-model", default="")
     train.add_argument("--output", default="final_probability_model.json")
@@ -1975,7 +2001,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--calibration-fraction", type=float, default=0.15)
     train.add_argument("--tuning-fraction", type=float, default=0.15)
     train.add_argument("--ev-tuning-fraction", type=float, default=0.30)
-    train.add_argument("--smoothing-profiles",nargs="+",choices=tuple(EMA_PROFILES),default=list(EMA_PROFILES))
+    train.add_argument("--smoothing-profiles",nargs="+",choices=(*EMA_PROFILES,"cardcount_moderate_v1"),default=list(EMA_PROFILES))
     train.add_argument("--decision-policy-profiles", nargs="+", choices=tuple(DECISION_POLICY_PROFILES), default=list(DECISION_POLICY_PROFILES))
     train.add_argument("--bootstrap-samples", type=int, default=1000)
     train.add_argument("--tune-trials", type=int, default=len(XGB_TUNING_CANDIDATES))

@@ -87,7 +87,7 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
   const short=seq.slice(0,-1);api.getMacroFeatures(short);
   api.recordCompletedHand(seq,{card_count:4,player_score:8,banker_score:0});
   const recomputed=M.createState();
-  for(let i=0;i<seq.length;i++)M.update(recomputed,{outcome:seq[i],card_count:i===15?4:i%3?6:4,player_score:i%2?8:1,banker_score:i%2?0:3});
+  for(let i=0;i<seq.length;i++)M.update(recomputed,{outcome:seq[i],card_count:i===15?4:i%3?6:4,player_score:i%2?8:1,banker_score:i%2?0:3},{short_alpha:api.profileValue("macro_short",i+1),long_alpha:api.profileValue("macro_long",i+1)});
   assert.equal(api.getMacroFeatures(seq).Six_Card_Spread,M.snapshot(recomputed).Six_Card_Spread,"undo replacement");
   const bands=model.decision_policy.confidence_band,dyn=model.decision_policy.dynamic_band;
   const clean=api.dynamicBand(60,.4,bands,dyn),dirty=api.dynamicBand(60,.95,bands,dyn);
@@ -130,8 +130,9 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
   scoreBasedModel.decision_policy.macro_ema.coefficients={six_card:.02,low_score:.015,point_diff:-.01};
   const scoreBased=context(new Map(),false,scoreBasedModel);
   await scoreBased.api.loadModels();
+  for(let i=0;i<2;i++)M.update(scoreOnly,{outcome:"B"}); // Six missing rounds exceed profile max_age=5.
   const scoreOnlyRuntime=scoreBased.api.directPhysicsPrimary(physics,60,M.snapshot(scoreOnly));
-  // The scoreOnly state has had four missing-score rounds; only a fresh snapshot can adjust.
+  // The scoreOnly state has had six missing-score rounds; only a fresh snapshot can adjust.
   const freshScore=M.createState("real_ui_scores");
   for(let i=0;i<24;i++)M.update(freshScore,{outcome:"B",banker_score:i<12?9:2,player_score:0});
   const scoreResult=scoreBased.api.directPhysicsPrimary(physics,60,M.snapshot(freshScore));

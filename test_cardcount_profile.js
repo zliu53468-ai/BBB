@@ -1,0 +1,42 @@
+"use strict";
+const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm"),cp=require("node:child_process");
+const profile=JSON.parse(fs.readFileSync("cardcount_profile.json","utf8"));
+function make(enabled=true){
+  const store=new Map(),ctx={console,document:{getElementById:()=>null},localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},fetch:async file=>({ok:true,json:async()=>file==="cardcount_profile.json"?{...profile,enabled}:JSON.parse(fs.readFileSync(file,"utf8"))})};
+  ctx.window=ctx;vm.createContext(ctx);
+  for(const file of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","final_probability_runtime.js"])vm.runInContext(fs.readFileSync(file,"utf8"),ctx,{filename:file});
+  return {ctx,api:ctx.__BGS_FINAL56__};
+}
+(async()=>{
+  const {api,ctx}=make();await api.loadModels();
+  const f=b=>({available:true,direction:b===.5?"Balanced":b>.5?"B":"P",directional:{B:b,P:1-b},probabilities:{B:b*.9,P:(1-b)*.9,T:.1}});
+  assert.equal(api.displayDirection(f(.5099)),"Skip");assert.equal(api.displayDirection(f(.51)),"B");
+  assert.equal(api.displayDirection(f(.49)),"P");assert.equal(api.displayDirection(f(.5)),"Skip");
+  assert.equal(api.noSkipTestDirection(f(.5)),"B");assert.equal(api.displayDirection({available:false}),null);
+  const ids=["directionOrb","directionText","directionCode","confidence","regime","strength","modePill","roundCount","message"];
+  const nodes=Object.fromEntries(ids.map(id=>[id,{textContent:"",className:""}]));ctx.document.getElementById=id=>nodes[id]||null;
+  api.renderPrediction({next_hand_forecast:f(.5099),direction:"Skip"},10);
+  assert.equal(nodes.directionText.textContent,"觀望");assert.match(nodes.confidence.textContent,/50.99/);
+  api.renderPrediction({next_hand_forecast:f(.51),direction:"Skip"},10);assert.equal(nodes.directionText.textContent,"莊");
+  const rounds=[1,18,20,21,23,43,45,46,48,70];
+  const keys=Object.keys(profile.anchors);
+  const js=rounds.map(r=>keys.map(k=>api.profileValue(k,r)));
+  const py=JSON.parse(cp.execFileSync("python",["-c","import json;from cardcount_profile import interpolate;print(json.dumps([[interpolate(k,r) for k in "+JSON.stringify(keys)+"] for r in "+JSON.stringify(rounds)+"]))"],{encoding:"utf8"}));
+  js.forEach((row,i)=>row.forEach((v,j)=>assert(Math.abs(v-py[i][j])<1e-12,"Python/browser schedule mismatch")));
+  const emaPy=JSON.parse(cp.execFileSync("python",["-c","import json;from cardcount_profile import decision_alpha;print(json.dumps([decision_alpha(r,.8,.7) for r in "+JSON.stringify(rounds)+"]))"],{encoding:"utf8"}));
+  rounds.forEach((r,i)=>assert(Math.abs(api.dynamicEmaAlpha(r,.8,{},null,{physics_uncertainty:.7})-emaPy[i])<1e-12,"Python/browser alpha mismatch"));
+  assert(api.dynamicEmaAlpha(15,.4,{},null,{physics_uncertainty:.2})<api.dynamicEmaAlpha(55,.4,{},null,{physics_uncertainty:.2}));
+  assert(api.dynamicEmaAlpha(55,.95,{},null,{physics_uncertainty:.9})<api.dynamicEmaAlpha(55,.4,{},null,{physics_uncertainty:.2}));
+  const h="BBBBPBPPTBP".split(""),prediction=api.applyFinalPrediction(h),diag=prediction.finalProbability.particleDiagnostics;
+  assert.equal(diag.particle_count,500);assert.equal(diag.forecast_draws,3);assert(diag.blend_weight>=.06&&diag.blend_weight<=.10);
+  assert.equal(diag.persistent_state,false);assert.equal(diag.rebuild_from_scratch,true);
+  const physics=prediction.finalProbability.physicsDirect.slice();const directCopy=JSON.stringify(physics);
+  const original=ctx.__BGS_PARTICLE500__.estimate(h,physics,"quality");
+  const gated=ctx.__BGS_PARTICLE500__.estimate(h,physics,"quality",{min_blend:.06,max_blend:.10,signal_gate:true,forecast_draws:3});
+  assert.equal(JSON.stringify(physics),directCopy,"PF mutated Direct Physics training features");
+  if(!gated.diagnostics.same_direction)assert.equal(gated.diagnostics.blend_weight,.06);
+  const legacy=make(false);await legacy.api.loadModels();assert.equal(legacy.api.displayDirection(f(.501)),"B");
+  assert.equal(legacy.api.applyFinalPrediction(h).finalProbability.particleDiagnostics.forecast_draws,1);
+  assert(original.diagnostics.blend_weight<=.16);
+  console.log("cardcount profile: gap boundaries, UI, Python parity, noise, PF gate, statelessness and rollback passed");
+})().catch(e=>{console.error(e);process.exitCode=1;});

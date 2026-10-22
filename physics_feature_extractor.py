@@ -13,6 +13,7 @@ an offline-simulation-trained conditional expectation, not a real card counter.
 """
 from __future__ import annotations
 
+from cardcount_profile import PROFILE as CARDCOUNT_PROFILE
 import argparse
 import json
 import math
@@ -518,13 +519,20 @@ def sanitize_physics_prediction(raw: Sequence[float],temperatures: dict[str,floa
 
 class PhysicsFeatureExtractor:
     """輕量 multi-task MLP：一個模型一次輸出完整 48D，適合 browser export。"""
-    def __init__(self, *, random_state: int=DEFAULT_RANDOM_STATE):
+    def __init__(self, *, random_state: int=DEFAULT_RANDOM_STATE, training_profile: str="production"):
         self.random_state=int(random_state)
         self.scaler=StandardScaler()
         # 中文：48D target 同時包含 0~1 機率與 0~416 張數，必須做 target scaling，
         # 否則 MLP loss 會被 consumed-card 維度支配。
         self.target_scaler=StandardScaler()
-        self.loss_scale=np.sqrt(PHYSICS_LOSS_WEIGHTS).astype(np.float32)
+        weights=PHYSICS_LOSS_WEIGHTS.copy()
+        if training_profile=="aggressive_cardcount":
+            cfg=CARDCOUNT_PROFILE["training"]["physics_weights"]
+            weights[:3]=cfg["card_count"];weights[3:23]=cfg["points"];weights[23:26]=cfg["winner"];weights[26:39]=cfg["rank"]
+        elif training_profile!="production":
+            raise ValueError("unknown training profile")
+        self.loss_scale=np.sqrt(weights).astype(np.float32)
+        self.training_profile=training_profile
         self.auxiliary_target_scaler=StandardScaler()
         self.auxiliary_loss_scale=AUXILIARY_LOSS_SCALE.copy()
         self.auxiliary_enabled=False
@@ -648,7 +656,7 @@ class PhysicsFeatureExtractor:
         }
         self.metadata={**metrics,"n_shoes":int(n_shoes),"cut_cards":int(cut_cards),
                        "split":{"train_shoes":len(train_ids),"calibration_shoes":len(calibration_ids),"holdout_shoes":int(len(unique)-holdout_at)},
-                       "augment_ratio":float(augment_ratio),"loss_weights":PHYSICS_LOSS_WEIGHTS.tolist(),"calibration_temperatures":self.calibration_temperatures,
+                       "augment_ratio":float(augment_ratio),"training_profile":getattr(self,"training_profile","production"),"loss_weights":(self.loss_scale**2).tolist(),"calibration_temperatures":self.calibration_temperatures,
                        "uncertainty_calibration":self.uncertainty_calibration,
                        "output_calibration":{"slope":self.output_slope.tolist(),"intercept":self.output_intercept.tolist()},
                        "history_input_dim":HISTORY_INPUT_DIM,"physics_dim":PHYSICS_DIM,
@@ -777,6 +785,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--output",default=DEFAULT_MODEL_PATH); t.add_argument("--browser-output",default=DEFAULT_BROWSER_BUNDLE)
     t.add_argument("--validation-fraction",type=float,default=.20); t.add_argument("--calibration-fraction",type=float,default=.10)
     t.add_argument("--augment-ratio",type=float,default=.25); t.add_argument("--bootstrap-samples",type=int,default=1000)
+    t.add_argument("--training-profile",choices=("production","aggressive_cardcount"),default="production")
     t.add_argument("--random-state",type=int,default=DEFAULT_RANDOM_STATE)
     s=sub.add_parser("simulate"); s.add_argument("--shoes",type=int,default=100); s.add_argument("--cut-cards",type=int,default=60)
     s.add_argument("--output",default="physics_simulation_dataset.npz"); s.add_argument("--rows-output",default="")
@@ -794,7 +803,9 @@ def main() -> int:
             Path(a.rows_output).write_text(json.dumps({"rows":rows},separators=(",",":")),encoding="utf-8")
         print(json.dumps({"rows":len(d.x),"output":a.output}))
         return 0
-    m=PhysicsFeatureExtractor(random_state=a.random_state)
+    if a.training_profile=="aggressive_cardcount" and (Path(a.output).name==Path(DEFAULT_MODEL_PATH).name or Path(a.browser_output).name==Path(DEFAULT_BROWSER_BUNDLE).name):
+        raise SystemExit("aggressive training requires separate candidate --output and --browser-output")
+    m=PhysicsFeatureExtractor(random_state=a.random_state,training_profile=a.training_profile)
     metrics=m.train_from_simulation(n_shoes=a.shoes,cut_cards=a.cut_cards,validation_fraction=a.validation_fraction,
                                     calibration_fraction=a.calibration_fraction,augment_ratio=a.augment_ratio,bootstrap_samples=a.bootstrap_samples)
     m.save(a.output); m.export_browser_bundle(a.browser_output)

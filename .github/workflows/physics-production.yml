@@ -39,7 +39,7 @@ concurrency:
 jobs:
   build-and-verify:
     # Browser-only policy experiments do not require rebuilding trained models.
-    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip model-training]') }}
+    if: ${{ (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip model-training]')) && (github.event_name != 'pull_request' || !contains(github.event.pull_request.title, '[skip model-training]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
