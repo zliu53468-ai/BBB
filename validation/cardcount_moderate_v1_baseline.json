@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "name": "cardcount_moderate_v1",
+  "enabled": true,
+  "display_gap": 0.02,
+  "stages": [
+    {
+      "name": "early",
+      "start": 1,
+      "end": 20
+    },
+    {
+      "name": "middle",
+      "start": 21,
+      "end": 45
+    },
+    {
+      "name": "late",
+      "start": 46,
+      "end": 70
+    }
+  ],
+  "anchors": {
+    "decision_alpha": [
+      [
+        1,
+        0.45
+      ],
+      [
+        18,
+        0.45
+      ],
+      [
+        23,
+        0.55
+      ],
+      [
+        43,
+        0.55
+      ],
+      [
+        48,
+        0.65
+      ],
+      [
+        70,
+        0.65
+      ]
+    ],
+    "macro_short": [
+      [
+        1,
+        0.28
+      ],
+      [
+        18,
+        0.28
+      ],
+      [
+        23,
+        0.3
+      ],
+      [
+        43,
+        0.3
+      ],
+      [
+        48,
+        0.32
+      ],
+      [
+        70,
+        0.32
+      ]
+    ],
+    "macro_long": [
+      [
+        1,
+        0.08
+      ],
+      [
+        18,
+        0.08
+      ],
+      [
+        23,
+        0.1
+      ],
+      [
+        43,
+        0.1
+      ],
+      [
+        48,
+        0.11
+      ],
+      [
+        70,
+        0.11
+      ]
+    ],
+    "pf_max": [
+      [
+        1,
+        0.1
+      ],
+      [
+        18,
+        0.1
+      ],
+      [
+        23,
+        0.14
+      ],
+      [
+        43,
+        0.14
+      ],
+      [
+        48,
+        0.16
+      ],
+      [
+        70,
+        0.16
+      ]
+    ],
+    "training_weight": [
+      [
+        1,
+        1.1
+      ],
+      [
+        18,
+        1.1
+      ],
+      [
+        23,
+        1.15
+      ],
+      [
+        43,
+        1.15
+      ],
+      [
+        48,
+        1.25
+      ],
+      [
+        70,
+        1.25
+      ]
+    ]
+  },
+  "macro": {
+    "min_observations": 7,
+    "max_age": 5,
+    "max_delta": 0.04,
+    "progress_start": 0.22,
+    "progress_power": 1.6,
+    "noise_low": 0.55,
+    "noise_high": 0.72
+  },
+  "pf": {
+    "min_blend": 0.06,
+    "signal_gate": true,
+    "forecast_draws": 3
+  },
+  "training": {
+    "name": "aggressive_cardcount",
+    "shoes": 6000,
+    "validation_fraction": 0.2,
+    "calibration_fraction": 0.1,
+    "augment_ratio": 0.25,
+    "physics_weights": {
+      "winner": 3.5,
+      "points": 1.45,
+      "card_count": 1.65,
+      "rank": 0.55
+    },
+    "low_uncertainty_gain": 0.18,
+    "actionability_gain": 0.08,
+    "pattern_gain": 0.0,
+    "weight_cap": 1.5,
+    "xgb_candidates": [
+      {
+        "max_depth": 2,
+        "n_estimators": 500,
+        "learning_rate": 0.025,
+        "min_child_weight": 12,
+        "subsample": 0.9,
+        "colsample_bytree": 0.85,
+        "reg_alpha": 0.3,
+        "reg_lambda": 14
+      },
+      {
+        "max_depth": 3,
+        "n_estimators": 600,
+        "learning_rate": 0.02,
+        "min_child_weight": 10,
+        "subsample": 0.9,
+        "colsample_bytree": 0.85,
+        "reg_alpha": 0.3,
+        "reg_lambda": 12
+      },
+      {
+        "max_depth": 3,
+        "n_estimators": 750,
+        "learning_rate": 0.018,
+        "min_child_weight": 8,
+        "subsample": 0.9,
+        "colsample_bytree": 0.85,
+        "reg_alpha": 0.2,
+        "reg_lambda": 10
+      },
+      {
+        "max_depth": 4,
+        "n_estimators": 650,
+        "learning_rate": 0.015,
+        "min_child_weight": 12,
+        "subsample": 0.9,
+        "colsample_bytree": 0.85,
+        "reg_alpha": 0.5,
+        "reg_lambda": 16
+      }
+    ]
+  },
+  "local_calibration": {
+    "enabled": true,
+    "min_samples": 24,
+    "min_validation": 16,
+    "prior_strength": 100,
+    "max_delta": 0.005,
+    "validation_window": 32,
+    "min_brier_gain": 5e-05,
+    "noise_start": 0.55,
+    "noise_stop": 0.85
+  }
+}

@@ -11,10 +11,10 @@ const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu5346
 const scripts=[
   "app256forward.js",
   "app256continuation.js",
-  "particle_filter_runtime.js?v=20261022-browser-calibration",
-  "macro_ema.js?v=20261022-browser-calibration",
-  "browser_calibration.js?v=20261022-browser-calibration",
-  "final_probability_runtime.js?v=20261022-browser-calibration",
+  "particle_filter_runtime.js?v=20261023-middle-late-v2",
+  "macro_ema.js?v=20261023-middle-late-v2",
+  "browser_calibration.js?v=20261023-middle-late-v2",
+  "final_probability_runtime.js?v=20261023-middle-late-v2",
   "bbb-screenshot-road.js?v=20261018-button-only",
   "bbb-desktop-capture.js?v=20261013-desktop-snip-v1"
 ];

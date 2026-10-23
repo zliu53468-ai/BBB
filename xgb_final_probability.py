@@ -868,8 +868,9 @@ def balanced_sample_weights(
     normalized_actionability=np.clip(physical_actionability/.05,0.0,1.0)
     action_factor=1.0+.08*normalized_actionability
 
-    if training_profile == "aggressive_cardcount":
-        stage_factor=np.array([profile_interpolate("training_weight",r) for r in rounds])
+    if training_profile in ("aggressive_cardcount","middle_late_focus"):
+        weight_key=CARDCOUNT_PROFILE["training"]["middle_late_focus"]["weight_key"] if training_profile=="middle_late_focus" else "training_weight"
+        stage_factor=np.array([profile_interpolate(weight_key,r) for r in rounds])
         reliability=1.0+CARDCOUNT_PROFILE["training"]["low_uncertainty_gain"]*quality
         action_factor=1.0+CARDCOUNT_PROFILE["training"]["actionability_gain"]*normalized_actionability
     elif training_profile != "production":
@@ -1310,7 +1311,7 @@ def optimize_smoothing_and_thresholds(
     clipped=bounded_from_calibrated(calibrated_probability,features)
     candidates=["off"]+[str(value) for value in profiles if str(value)!="off"]
     candidates=list(dict.fromkeys(candidates))
-    available_profiles={**EMA_PROFILES,"cardcount_moderate_v1":CARDCOUNT_EMA_PROFILE}
+    available_profiles={**EMA_PROFILES,"cardcount_moderate_v1":CARDCOUNT_EMA_PROFILE,"cardcount_middle_late_v2":{**CARDCOUNT_EMA_PROFILE,"profile":"cardcount_middle_late_v2"}}
     unknown=[name for name in candidates if name not in available_profiles]
     if unknown: raise ValueError(f"unknown EMA profiles: {unknown}")
     policies = dict(decision_policies or DECISION_POLICY_PROFILES)
@@ -1413,7 +1414,7 @@ def dynamic_ema_alpha(
     progress_weight: float | None = None,
     physics_diagnostics: Mapping[str, Any] | None = None,
 ) -> float:
-    if config.get("profile")=="cardcount_moderate_v1":
+    if config.get("profile") in ("cardcount_moderate_v1","cardcount_middle_late_v2"):
         noise=_clip(noise_score);u=_clip(float((physics_diagnostics or {}).get("physics_uncertainty",.5)))
         return profile_decision_alpha(round_index,noise,u)
     progress=_effective_progress(round_index,progress_weight)
@@ -1444,7 +1445,7 @@ def dynamic_ema_by_shoe(
     output=np.empty_like(values);previous:dict[str,float]={}
     for index,(current,row,shoe_id) in enumerate(zip(values,features,shoes)):
         lo,hi=dynamic_probability_bounds(float(row[2]),float(row[-1]),float(row[1]));current=_clip(float(current),lo,hi)
-        alpha=dynamic_ema_alpha(float(row[2]),float(row[-1]),smoothing,float(row[1]),{"physics_uncertainty":float(row[8+_PHYSICS_INDEX["particle_uncertainty"]])} if smoothing.get("profile")=="cardcount_moderate_v1" else None)
+        alpha=dynamic_ema_alpha(float(row[2]),float(row[-1]),smoothing,float(row[1]),{"physics_uncertainty":float(row[8+_PHYSICS_INDEX["particle_uncertainty"]])} if smoothing.get("profile") in ("cardcount_moderate_v1","cardcount_middle_late_v2") else None)
         smoothed=current if shoe_id not in previous else alpha*current+(1.0-alpha)*previous[shoe_id]
         output[index]=previous[shoe_id]=_clip(smoothed,lo,hi)
     return output
@@ -1521,6 +1522,10 @@ def evaluate(
                    "absolute_correct_bets":decision["absolute_correct_bets"]-current["absolute_correct_bets"]}
     upgrade_guard=(upgrade_delta["realized_ev_per_bet"]>=-1e-12 and upgrade_delta["hit_rate"]>=-1e-12 and
                    upgrade_delta["skip_rate"]<=MAX_SKIP_RATE_INCREASE+1e-12 and decision["absolute_correct_bets"]+1e-12>=.95*current["absolute_correct_bets"])
+    focus_report={}
+    for name,low,high in [("early_1_20",1,20),("middle_21_45",21,45),("late_46_70",46,70)]:
+        mask=(rounds>=low)&(rounds<=high)
+        focus_report[name]={**decision_metrics(realised[mask],wagered[mask]),"brier":_brier(final[mask],y[mask]) if np.any(mask) else None}
     effective_progress=np.cbrt(np.clip(x[:,1],0.0,1.0))
     stage_masks={
         "early":rounds<=40,
@@ -1589,7 +1594,7 @@ def evaluate(
         "skip_rate_delta_vs_default": skip_delta,
         "skip_constraint_passed": bool(skip_delta <= MAX_SKIP_RATE_INCREASE + 1e-12),
         "baseline_realized_ev_per_bet": baseline["realized_ev_per_bet"],
-        "stage_decision_metrics": stage_report,
+        "stage_decision_metrics": stage_report,"focus_stage_metrics":focus_report,
         "evaluated_min_ev": thresholds,
         "upgrade_comparison": {"guardrail_passed":bool(upgrade_guard),"before":current,"after":decision,"delta":upgrade_delta,
                                "absolute_correct_bets_constraint_passed":bool(decision["absolute_correct_bets"]+1e-12>=.95*current["absolute_correct_bets"])},
@@ -1616,6 +1621,17 @@ def evaluate(
     }
 
 
+def training_search_candidates(training_profile: str) -> list[dict[str, Any]]:
+    if training_profile not in ("production","aggressive_cardcount","middle_late_focus"):
+        raise ValueError("unknown training profile")
+    candidates = list(XGB_TUNING_CANDIDATES)
+    if training_profile in ("aggressive_cardcount","middle_late_focus"):
+        candidates += CARDCOUNT_PROFILE["training"]["xgb_candidates"]
+    if training_profile=="middle_late_focus":
+        candidates += CARDCOUNT_PROFILE["training"]["middle_late_focus"]["candidates"]
+    return candidates
+
+
 def select_xgboost_model(
     x: np.ndarray,
     y: np.ndarray,
@@ -1628,9 +1644,7 @@ def select_xgboost_model(
     random_state: int = RANDOM_STATE,
 ) -> tuple[Any, dict[str, Any], list[dict[str, Any]]]:
     """Primary search: bet hit-rate + EV + Brier, with a hard +5% Skip ceiling."""
-    candidates = list(XGB_TUNING_CANDIDATES)
-    if training_profile == "aggressive_cardcount":
-        candidates += CARDCOUNT_PROFILE["training"]["xgb_candidates"]
+    candidates=training_search_candidates(training_profile)
     limit = max(1, min(int(trials), len(candidates)))
     reports: list[dict[str, Any]] = []
     best: tuple[Any, Any, dict[str, Any]] | None = None
@@ -1672,7 +1686,7 @@ def select_xgboost_model(
             "parameters": dict(parameters),
         }
         reports.append(report)
-        rank=(brier,-metrics["hit_rate"],-metrics["realized_ev_per_bet"],metrics["skip_rate"]) if training_profile=="aggressive_cardcount" else score
+        rank=(brier,-metrics["hit_rate"],-metrics["realized_ev_per_bet"],metrics["skip_rate"]) if training_profile in ("aggressive_cardcount","middle_late_focus") else score
         if eligible and (best is None or rank < best[0]):
             best = (rank, model, dict(parameters))
     assert best is not None
@@ -1787,7 +1801,7 @@ def export_browser_bundle(
 
 def train_command(args: argparse.Namespace) -> int:
     profile=getattr(args,"training_profile","production")
-    if profile=="aggressive_cardcount" and Path(args.output).name=="final_probability_model.json":
+    if profile in ("aggressive_cardcount","middle_late_focus") and Path(args.output).name=="final_probability_model.json":
         raise SystemExit("aggressive training requires a separate candidate --output; production weights are protected")
     extractor = PhysicsFeatureExtractor.load(args.physics_model) if args.physics_model else None
     records = load_training_records(Path(args.input))
@@ -1816,6 +1830,9 @@ def train_command(args: argparse.Namespace) -> int:
         calibration_rows,
         fraction=args.ev_tuning_fraction,
     )
+    search_trials=args.tune_trials
+    if profile!="production" and search_trials==len(XGB_TUNING_CANDIDATES):
+        search_trials=len(training_search_candidates(profile))
     _, best_parameters, search_report = select_xgboost_model(
         x,
         y,
@@ -1823,7 +1840,7 @@ def train_command(args: argparse.Namespace) -> int:
         tuning_rows,
         records=training_records,
         training_profile=profile,
-        trials=(len(XGB_TUNING_CANDIDATES)+len(CARDCOUNT_PROFILE["training"]["xgb_candidates"]) if profile=="aggressive_cardcount" and args.tune_trials==len(XGB_TUNING_CANDIDATES) else args.tune_trials),
+        trials=search_trials,
         random_state=args.random_state,
     )
     model = build_xgboost_classifier(random_state=args.random_state, overrides=best_parameters)
@@ -1843,7 +1860,7 @@ def train_command(args: argparse.Namespace) -> int:
     ev_tuning_shoe_ids=[str(record["shoe_id"]) for record,selected in zip(training_records,ev_tuning_rows) if selected]
     smoothing_tuning=optimize_smoothing_and_thresholds(
         calibration_probability,y[ev_tuning_rows],x[ev_tuning_rows],ev_tuning_shoe_ids,
-        profiles=([*args.smoothing_profiles,"cardcount_moderate_v1"] if profile=="aggressive_cardcount" else args.smoothing_profiles),
+        profiles=([*args.smoothing_profiles,"cardcount_middle_late_v2" if profile=="middle_late_focus" else "cardcount_moderate_v1"] if profile in ("aggressive_cardcount","middle_late_focus") else args.smoothing_profiles),
         decision_policies={name: DECISION_POLICY_PROFILES[name] for name in args.decision_policy_profiles},
     )
     ev_tuning=smoothing_tuning["ev_tuning"]
@@ -1944,8 +1961,8 @@ def train_command(args: argparse.Namespace) -> int:
     metrics["deployment_blocked"] = bool(deployment_failures)
     metrics["deployment_block_reasons"] = deployment_failures
     metrics["training_profile"]=profile
-    metrics["candidate_only"]=profile=="aggressive_cardcount"
-    metrics["production_comparison_required"]=profile=="aggressive_cardcount"
+    metrics["candidate_only"]=profile in ("aggressive_cardcount","middle_late_focus")
+    metrics["production_comparison_required"]=profile in ("aggressive_cardcount","middle_late_focus")
     report_payload={"holdout":metrics}
     print(json.dumps(report_payload, ensure_ascii=False, indent=2))
     if args.report_output:
@@ -1989,7 +2006,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train the direct 57D final-probability XGBoost model")
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train")
-    train.add_argument("--training-profile",choices=("production","aggressive_cardcount"),default="production")
+    train.add_argument("--training-profile",choices=("production","aggressive_cardcount","middle_late_focus"),default="production")
     train.add_argument("--input", required=True)
     train.add_argument("--physics-model", default="")
     train.add_argument("--output", default="final_probability_model.json")
@@ -2001,7 +2018,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--calibration-fraction", type=float, default=0.15)
     train.add_argument("--tuning-fraction", type=float, default=0.15)
     train.add_argument("--ev-tuning-fraction", type=float, default=0.30)
-    train.add_argument("--smoothing-profiles",nargs="+",choices=(*EMA_PROFILES,"cardcount_moderate_v1"),default=list(EMA_PROFILES))
+    train.add_argument("--smoothing-profiles",nargs="+",choices=(*EMA_PROFILES,"cardcount_moderate_v1","cardcount_middle_late_v2"),default=list(EMA_PROFILES))
     train.add_argument("--decision-policy-profiles", nargs="+", choices=tuple(DECISION_POLICY_PROFILES), default=list(DECISION_POLICY_PROFILES))
     train.add_argument("--bootstrap-samples", type=int, default=1000)
     train.add_argument("--tune-trials", type=int, default=len(XGB_TUNING_CANDIDATES))

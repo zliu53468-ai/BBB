@@ -560,7 +560,7 @@ function applyFinalPrediction(seq,corePrediction=null){
       // Keep Direct Physics as a safe fallback if the optional particle layer fails.
       if(PARTICLE500&&typeof PARTICLE500.estimate==="function"){
         try{
-          const estimate=PARTICLE500.estimate(seq,physicsDirect,"quality",cardcountProfile?.enabled?{...cardcountProfile.pf,max_blend:profileValue("pf_max",seq.length+1)}:{});
+          const estimate=PARTICLE500.estimate(seq,physicsDirect,"quality",cardcountProfile?.enabled?{...cardcountProfile.pf,max_blend:profileValue("pf_max",seq.length+1),forecast_draws:cardcountProfile.anchors?.pf_draws?profileValue("pf_draws",seq.length+1):cardcountProfile.pf.forecast_draws}:{});
           if(!Array.isArray(estimate?.physics)||estimate.physics.length!==PHYSICS_DIM||!estimate.physics.every(Number.isFinite))throw new Error("invalid particle physics");
           physics=estimate.physics;particleDiagnostics=estimate.diagnostics;
           executionOrder.push("particle_filter");
@@ -838,7 +838,9 @@ async function loadModels(){
   if(rs[1].status==="fulfilled"&&rs[1].value?.model_type==="xgb_final_probability_classifier"&&rs[1].value?.feature_names?.length===FEATURE_DIM){final56Bundle=rs[1].value;status.final56=!!final56Bundle.trained;}else{final56Bundle=null;status.errors.push("final57_model");}
   const candidate=rs[2].status==="fulfilled"?rs[2].value:null;
   const keys=["decision_alpha","macro_short","macro_long","pf_max","training_weight"];
-  const valid=candidate?.schema_version===1&&typeof candidate.enabled==="boolean"&&typeof candidate.display_gap==="number"&&candidate.display_gap>=0&&candidate.display_gap<=.10&&keys.every(k=>Array.isArray(candidate.anchors?.[k])&&candidate.anchors[k].length>=2&&candidate.anchors[k].every((v,i,a)=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)&&v[0]>=1&&v[0]<=70&&v[1]>0&&v[1]<=2&&(!i||v[0]>a[i-1][0])));
+  const draws=candidate?.anchors?.pf_draws;
+  const validDraws=draws===undefined||(Array.isArray(draws)&&draws.length>=2&&draws.every((v,i,a)=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)&&v[0]>=1&&v[0]<=70&&v[1]>=1&&v[1]<=5&&(!i||v[0]>a[i-1][0])));
+  const valid=validDraws&&candidate?.schema_version===1&&typeof candidate.enabled==="boolean"&&typeof candidate.display_gap==="number"&&candidate.display_gap>=0&&candidate.display_gap<=.10&&keys.every(k=>Array.isArray(candidate.anchors?.[k])&&candidate.anchors[k].length>=2&&candidate.anchors[k].every((v,i,a)=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)&&v[0]>=1&&v[0]<=70&&v[1]>0&&v[1]<=2&&(!i||v[0]>a[i-1][0])));
   const next=valid?candidate:null;
   if(JSON.stringify(next)!==JSON.stringify(cardcountProfile))macroState=null;
   cardcountProfile=next;
