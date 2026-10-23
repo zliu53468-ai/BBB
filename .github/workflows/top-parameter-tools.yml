@@ -1,0 +1,25 @@
+name: 參數候選與驗證工具檢查
+on:
+  pull_request:
+    branches: [main]
+    paths: ['tools/top_parameters/**', 'docs/TOP_PARAMETER_PLAN.md', '.github/workflows/top-parameter-tools.yml']
+  push:
+    branches: [main]
+    paths: ['tools/top_parameters/**', 'docs/TOP_PARAMETER_PLAN.md', '.github/workflows/top-parameter-tools.yml']
+permissions:
+  contents: read
+jobs:
+  parameter-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: python tools/top_parameters/test_gate.py
+      - run: node --check tools/top_parameters/replay.js
+      - run: python tools/top_parameters/prepare.py . ../BBB-top-check
