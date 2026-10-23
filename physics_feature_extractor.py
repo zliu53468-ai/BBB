@@ -13,7 +13,7 @@ an offline-simulation-trained conditional expectation, not a real card counter.
 """
 from __future__ import annotations
 
-from cardcount_profile import PROFILE as CARDCOUNT_PROFILE
+from cardcount_profile import PROFILE as CARDCOUNT_PROFILE, focus_resample_indices
 import argparse
 import json
 import math
@@ -526,7 +526,7 @@ class PhysicsFeatureExtractor:
         # 否則 MLP loss 會被 consumed-card 維度支配。
         self.target_scaler=StandardScaler()
         weights=PHYSICS_LOSS_WEIGHTS.copy()
-        if training_profile=="aggressive_cardcount":
+        if training_profile in ("aggressive_cardcount","middle_late_focus"):
             cfg=CARDCOUNT_PROFILE["training"]["physics_weights"]
             weights[:3]=cfg["card_count"];weights[3:23]=cfg["points"];weights[23:26]=cfg["winner"];weights[26:39]=cfg["rank"]
         elif training_profile!="production":
@@ -595,8 +595,17 @@ class PhysicsFeatureExtractor:
         calibration_at=max(1,len(unique)-holdout_count-calibration_count); holdout_at=len(unique)-holdout_count
         train_ids=set(int(x) for x in unique[:calibration_at]); calibration_ids=set(int(x) for x in unique[calibration_at:holdout_at])
         train=np.asarray([int(s) in train_ids for s in data.shoe_ids]); calibration=np.asarray([int(s) in calibration_ids for s in data.shoe_ids]); valid=~(train|calibration)
-        train_x,train_y,train_aux=augment_213d(data.x[train],data.y[train],ratio=augment_ratio,random_state=self.random_state,
-                                                auxiliary_targets=data.auxiliary_targets[train])
+        base_x,base_y,base_aux=data.x[train],data.y[train],data.auxiliary_targets[train]
+        focus_report={"enabled":False,"base_rows":len(base_x),"focused_rows":len(base_x)}
+        if self.training_profile=="middle_late_focus":
+            rounds=[len(data.histories[int(i)])+1 for i in np.flatnonzero(train)]
+            selected=focus_resample_indices(rounds,self.random_state)
+            focus_report={"enabled":True,"base_rows":len(base_x),"focused_rows":len(selected),
+                          "middle_extra":sum(21<=rounds[i]<=45 for i in selected[len(base_x):]),
+                          "late_extra":sum(46<=rounds[i]<=70 for i in selected[len(base_x):])}
+            base_x,base_y,base_aux=base_x[selected],base_y[selected],base_aux[selected]
+        train_x,train_y,train_aux=augment_213d(base_x,base_y,ratio=augment_ratio,random_state=self.random_state,
+                                                auxiliary_targets=base_aux)
         self.fit(train_x,train_y,auxiliary_targets=train_aux)
         calibration_scaled=self.model.predict(self.scaler.transform(data.x[calibration]))
         calibration_raw=self._decode_scaled(calibration_scaled)
@@ -654,7 +663,7 @@ class PhysicsFeatureExtractor:
             "training_rows":float(train.sum()),"augmented_training_rows":float(len(train_x)),"calibration_rows":float(calibration.sum()),"validation_rows":float(valid.sum()),
             **auxiliary_metrics,
         }
-        self.metadata={**metrics,"n_shoes":int(n_shoes),"cut_cards":int(cut_cards),
+        self.metadata={**metrics,"middle_late_sampling":focus_report,"n_shoes":int(n_shoes),"cut_cards":int(cut_cards),
                        "split":{"train_shoes":len(train_ids),"calibration_shoes":len(calibration_ids),"holdout_shoes":int(len(unique)-holdout_at)},
                        "augment_ratio":float(augment_ratio),"training_profile":getattr(self,"training_profile","production"),"loss_weights":(self.loss_scale**2).tolist(),"calibration_temperatures":self.calibration_temperatures,
                        "uncertainty_calibration":self.uncertainty_calibration,
@@ -785,7 +794,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--output",default=DEFAULT_MODEL_PATH); t.add_argument("--browser-output",default=DEFAULT_BROWSER_BUNDLE)
     t.add_argument("--validation-fraction",type=float,default=.20); t.add_argument("--calibration-fraction",type=float,default=.10)
     t.add_argument("--augment-ratio",type=float,default=.25); t.add_argument("--bootstrap-samples",type=int,default=1000)
-    t.add_argument("--training-profile",choices=("production","aggressive_cardcount"),default="production")
+    t.add_argument("--training-profile",choices=("production","aggressive_cardcount","middle_late_focus"),default="production")
     t.add_argument("--random-state",type=int,default=DEFAULT_RANDOM_STATE)
     s=sub.add_parser("simulate"); s.add_argument("--shoes",type=int,default=100); s.add_argument("--cut-cards",type=int,default=60)
     s.add_argument("--output",default="physics_simulation_dataset.npz"); s.add_argument("--rows-output",default="")
@@ -803,7 +812,7 @@ def main() -> int:
             Path(a.rows_output).write_text(json.dumps({"rows":rows},separators=(",",":")),encoding="utf-8")
         print(json.dumps({"rows":len(d.x),"output":a.output}))
         return 0
-    if a.training_profile=="aggressive_cardcount" and (Path(a.output).name==Path(DEFAULT_MODEL_PATH).name or Path(a.browser_output).name==Path(DEFAULT_BROWSER_BUNDLE).name):
+    if a.training_profile in ("aggressive_cardcount","middle_late_focus") and (Path(a.output).name==Path(DEFAULT_MODEL_PATH).name or Path(a.browser_output).name==Path(DEFAULT_BROWSER_BUNDLE).name):
         raise SystemExit("aggressive training requires separate candidate --output and --browser-output")
     m=PhysicsFeatureExtractor(random_state=a.random_state,training_profile=a.training_profile)
     metrics=m.train_from_simulation(n_shoes=a.shoes,cut_cards=a.cut_cards,validation_fraction=a.validation_fraction,

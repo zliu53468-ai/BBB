@@ -1,3 +1,5 @@
+> 2026-10-23：新增 middle_late_focus，訓練集內只加強中後段取樣，保留前段與架構。完整參數、命令、分段報告與候選晉升限制見 [MIDDLE_LATE_UPGRADE.md](MIDDLE_LATE_UPGRADE.md)。以下保留先前方案。
+
 # 新增：算牌優先的激進重訓候選
 
 新 CLI：兩個 trainer 均可用 `--training-profile aggressive_cardcount`，必須輸出到獨立候選檔。未帶參數仍使用原 production 設定。完整參數、命令、獨立驗證與回滾見 [CARDCOUNT_MODERATE_PROFILE.md](CARDCOUNT_MODERATE_PROFILE.md)，共享參數為 `cardcount_profile.json`。

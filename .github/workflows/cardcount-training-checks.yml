@@ -16,4 +16,4 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements-xgb.txt
-      - run: python -m unittest test_cardcount_profile test_physics_feature_extractor test_final_probability test_macro_ema
+      - run: python -m unittest test_middle_late_upgrade test_cardcount_profile test_physics_feature_extractor test_final_probability test_macro_ema

@@ -1,3 +1,5 @@
+> 2026-10-23：目前預設已升級為 cardcount_middle_late_v2，中後段數值以 [MIDDLE_LATE_UPGRADE.md](MIDDLE_LATE_UPGRADE.md) 為準；下方保留 v1 基準供回滾與對照。
+
 # 分段跟牌｜適中觀望｜激進重訓候選｜算牌優先
 
 ## 畫面方向與下注資格
