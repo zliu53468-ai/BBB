@@ -4,6 +4,8 @@
 
 完整診斷、參數表、重訓命令、晉升門檻與回滾：[TOP_PARAMETER_PLAN.md](../../docs/TOP_PARAMETER_PLAN.md)。
 
+完整 middle_late_focus 重訓與獨立 holdout 執行流程：[MIDDLE_LATE_RETRAIN_EXECUTION.md](../../docs/MIDDLE_LATE_RETRAIN_EXECUTION.md)。`run_middle_late.py` 沿用 production 的 1.10/1.25/1.35 及 10%/20% 取樣，**不會套用這個目錄之前的較保守 retrain_profile.json**。資料或依賴不足時會寫入阻擋報告，不會啟動訓練。
+
 在倉庫根目錄執行（Python 3.10+、Node.js 18+）：
 
 ```powershell

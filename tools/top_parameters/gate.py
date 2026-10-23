@@ -27,7 +27,7 @@ fail=[];report={}
 for name,predicate in stages.items():
     x,y=[metrics([r for r in data['rows'] if predicate(r['round_index'])]) for data in (b,c)]
     report[name]={'baseline':x,'candidate':y}
-    if name not in ('all','1-20','<=40','21-45','46-70'):continue
+    if name not in ('all','1-20','<=40','21-45','46-70','>50','50-70'):continue
     if any(z[k] is None for z in (x,y) for k in ('hit_rate','ev_per_bet','brier','skip')):fail.append(name+': insufficient observations/bets');continue
     if y['hit_rate']+1e-12<x['hit_rate']:fail.append(name+': hit regressed')
     if y['ev_per_bet']+1e-12<x['ev_per_bet']:fail.append(name+': EV regressed')
@@ -37,7 +37,7 @@ for name,predicate in stages.items():
         if y['absolute_correct_bets']+.000000001<.95*x['absolute_correct_bets']:fail.append('all: correct bets <95% baseline')
         delta=y['skip']-x['skip']
         if delta>.05+1e-12 or (a.strict and delta<.02-1e-12):fail.append('all: Skip constraint failed')
-    if name in ('21-45','46-70') and not (y['hit_rate']>x['hit_rate']+1e-12 or y['ev_per_bet']>x['ev_per_bet']+1e-12):fail.append(name+': no observed bet quality benefit')
+    if name in ('21-45','46-70','>50','50-70') and not (y['hit_rate']>x['hit_rate']+1e-12 or y['ev_per_bet']>x['ev_per_bet']+1e-12):fail.append(name+': no observed bet quality benefit')
 shoes=len({r['shoe_id'] for r in b['rows']})
 if shoes<max(1,a.min_shoes):fail.append('Insufficient holdout shoes')
 if 'real' not in str(b.get('data_kind','')).lower() or 'synthetic' in str(b.get('data_kind','')).lower():fail.append('Real independent holdout provenance required')
