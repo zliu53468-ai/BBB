@@ -17,4 +17,8 @@ with tempfile.TemporaryDirectory() as tmp:
     synthetic=copy.deepcopy(good);base['data_kind']='synthetic';result,out=run(synthetic);assert result.returncode==2
     base=fixture();bad=copy.deepcopy(good);bad['runtime_sha256']['particle_filter_runtime.js']='changed';result,out=run(bad);assert result.returncode==2
     bad=copy.deepcopy(good);bad['rows'][0]['outcome']='P';result,out=run(bad);assert result.returncode!=0
-print('6 gate contract checks passed; fixtures are not performance evidence')
+    bad=copy.deepcopy(good)
+    for row in bad['rows']:
+        if row['round_index']>50:row['direction']='P'
+    result,out=run(bad);assert result.returncode==2 and any(f.startswith('>50:') for f in out['failures']) and any(f.startswith('50-70:') for f in out['failures'])
+print('7 gate contract checks passed; fixtures are not performance evidence')

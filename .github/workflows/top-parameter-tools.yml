@@ -2,10 +2,10 @@ name: 參數候選與驗證工具檢查
 on:
   pull_request:
     branches: [main]
-    paths: ['tools/top_parameters/**', 'docs/TOP_PARAMETER_PLAN.md', '.github/workflows/top-parameter-tools.yml']
+    paths: ['tools/top_parameters/**', 'docs/TOP_PARAMETER_PLAN.md', 'docs/MIDDLE_LATE_RETRAIN_EXECUTION.md', '.github/workflows/top-parameter-tools.yml']
   push:
     branches: [main]
-    paths: ['tools/top_parameters/**', 'docs/TOP_PARAMETER_PLAN.md', '.github/workflows/top-parameter-tools.yml']
+    paths: ['tools/top_parameters/**', 'docs/TOP_PARAMETER_PLAN.md', 'docs/MIDDLE_LATE_RETRAIN_EXECUTION.md', '.github/workflows/top-parameter-tools.yml']
 permissions:
   contents: read
 jobs:
@@ -21,5 +21,7 @@ jobs:
         with:
           node-version: '20'
       - run: python tools/top_parameters/test_gate.py
+      - run: python tools/top_parameters/test_middle_late_workflow.py
       - run: node --check tools/top_parameters/replay.js
+      - run: node --check tools/top_parameters/build_core_rows.js
       - run: python tools/top_parameters/prepare.py . ../BBB-top-check
