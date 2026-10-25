@@ -25,3 +25,4 @@ jobs:
       - run: node --check browser_calibration.js && node test_browser_calibration.js
 
       - run: node test_middle_late_upgrade.js
+      - run: node test_independent_inference.js

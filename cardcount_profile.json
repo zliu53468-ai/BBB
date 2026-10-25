@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "name": "cardcount_middle_late_v2",
+  "name": "cardcount_independent_inference_v1",
   "enabled": true,
   "display_gap": 0.02,
   "stages": [
@@ -414,5 +414,9 @@
         ]
       ]
     }
+  },
+  "inference": {
+    "mode": "independent_v1",
+    "version": 1
   }
 }

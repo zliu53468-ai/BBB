@@ -55,7 +55,7 @@ const status=poor.inspect(bad,shoe,model);assert(status.validation_count>=16);as
 const before=poorStore.getItem(M.KEY);for(let i=0;i<5;i++)poor.apply(f,bad,shoe,model);assert.equal(poorStore.getItem(M.KEY),before);
 
 (async()=>{
-  const backing=storage(),ctx={console,localStorage:backing,document:{getElementById:()=>null},fetch:async file=>({ok:true,json:async()=>JSON.parse(fs.readFileSync(file,"utf8"))})};ctx.window=ctx;vm.createContext(ctx);
+  const backing=storage(),ctx={console,localStorage:backing,document:{getElementById:()=>null},fetch:async file=>({ok:true,json:async()=>file==="cardcount_profile.json"?{...JSON.parse(fs.readFileSync(file,"utf8")),inference:{mode:"legacy_stateful"}}:JSON.parse(fs.readFileSync(file,"utf8"))})};ctx.window=ctx;vm.createContext(ctx);
   for(const file of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","browser_calibration.js","final_probability_runtime.js"])vm.runInContext(fs.readFileSync(file,"utf8"),ctx,{filename:file});
   const api=ctx.__BGS_FINAL56__;await api.loadModels();const h=Array(50).fill("B"),baseline=api.applyFinalPrediction(h);
   const local=ctx.__BBB_BROWSER_CALIBRATION__.createClient(backing),shoeId=backing.getItem("bgs_xgb_final_shoe_id_v5");

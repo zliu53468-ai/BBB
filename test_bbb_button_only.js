@@ -85,15 +85,15 @@ for(const side of ["B","P","T","P"]){
  assert.equal(storage.has("bgs_xgb_final_pending_v5"),false,"test must not register bets");
 }
 assert.equal(api.getTrainingCount(),rowCount,"test must not add wager training rows");
-assert.equal(api.getLocalCalibrationStatus().seen,4,"each completed result updates local journal even in no-skip mode");
-assert.equal(api.getLocalCalibrationStatus().directional_samples,3,"tie must not be labelled P");
-assert.match(el("localCalibrationStatus").textContent,/非完整重訓/);
+assert.equal(api.getLocalCalibrationStatus().seen,0,"independent mode does not train a local journal");
+assert.equal(api.getLocalCalibrationStatus().directional_samples,0,"independent mode does not reuse directional calibration");
+assert.match(el("localCalibrationStatus").textContent,/不是重訓/);
 const localBefore=JSON.stringify(api.getLocalCalibrationStatus());
 api.applyFinalPrediction(stored());api.applyFinalPrediction(stored());
 assert.equal(JSON.stringify(api.getLocalCalibrationStatus()),localBefore,"re-analysis must not train again");
-report("btnBack");assert.equal(Number(el("roundCount").textContent),stored().length);assert.equal(api.getLocalCalibrationStatus().directional_samples,2);
+report("btnBack");assert.equal(Number(el("roundCount").textContent),stored().length);assert.equal(api.getLocalCalibrationStatus().directional_samples,0);
 report("btnNoSkipTest");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
-report("btnP");assert.equal(api.getLocalCalibrationStatus().directional_samples,3,"normal mode learns automatically too");
+report("btnP");assert.equal(api.getLocalCalibrationStatus().directional_samples,0,"independent mode stays uncalibrated in normal display");
 assert.equal(Number(el("roundCount").textContent),stored().length);
 report("btnNoSkipTest");report("btnStart");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
 report("btnNoSkipTest");report("btnEnd");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
