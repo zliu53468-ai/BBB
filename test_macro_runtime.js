@@ -67,7 +67,7 @@ assert.equal(stale.reason,"insufficient_observations");
 
 function context(store=new Map(),withoutParticle=false,finalOverride=null){
   const sandbox={console,setTimeout,clearTimeout,localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},
-    document:{getElementById:()=>null},fetch:async url=>({ok:true,json:async()=>finalOverride&&url==="final_probability_model.json"?finalOverride:JSON.parse(fs.readFileSync(url,"utf8"))})};
+    document:{getElementById:()=>null},fetch:async url=>({ok:true,json:async()=>url==="cardcount_profile.json"?{...JSON.parse(fs.readFileSync(url,"utf8")),inference:{mode:"legacy_stateful"}}:finalOverride&&url==="final_probability_model.json"?finalOverride:JSON.parse(fs.readFileSync(url,"utf8"))})};
   sandbox.window=sandbox;
   vm.createContext(sandbox);
   for(const f of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","final_probability_runtime.js"]){

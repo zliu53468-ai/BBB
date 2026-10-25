@@ -25,6 +25,8 @@ global.fetch=async function(url){
   const name=String(url).replace(/^\.\//,"");
   try{
     const payload=JSON.parse(fs.readFileSync(name,"utf8"));
+    // This suite also exercises the legacy EMA path; independent mode has its own suite.
+    if(name==="cardcount_profile.json")payload.inference={mode:"legacy_stateful"};
     if(name==="physics_multitask_model.json"&&!useGeneratedBundle){
       // Preflight runs before retraining, so reinterpret the checked-in legacy
       // 48D bundle as a direct-Physics ABI fixture only for runtime mechanics.

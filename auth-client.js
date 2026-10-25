@@ -14,7 +14,7 @@ const scripts=[
   "particle_filter_runtime.js?v=20261023-middle-late-v2",
   "macro_ema.js?v=20261023-middle-late-v2",
   "browser_calibration.js?v=20261023-middle-late-v2",
-  "final_probability_runtime.js?v=20261023-middle-late-v2",
+  "final_probability_runtime.js?v=20261025-independent-v1",
   "bbb-screenshot-road.js?v=20261018-button-only",
   "bbb-desktop-capture.js?v=20261013-desktop-snip-v1"
 ];
