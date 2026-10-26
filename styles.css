@@ -161,3 +161,12 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
 @media(max-width:430px){.license-shell{padding:28px 20px 24px}}
 
 #forecastGap{width:100%;padding:10px;margin:7px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font:inherit}
+
+/* Full-viewport decorative backdrop: no layout space and no input interception. */
+.app-shell{position:relative;isolation:isolate;z-index:0}
+.brand-hero{position:fixed;inset:0;z-index:-1;height:auto;margin:0;border:0;border-radius:0;box-shadow:none;pointer-events:none;user-select:none}
+.hero-art{object-position:center;opacity:.72}
+.hero-vignette{background:linear-gradient(180deg,rgba(8,5,17,.48),rgba(8,5,17,.70)),linear-gradient(90deg,rgba(8,5,17,.28),transparent 50%,rgba(8,5,17,.28))}
+.hero-scan{opacity:.16;animation:page-hero-sweep 9s ease-in-out infinite}
+.hero-particles{opacity:.18}
+@keyframes page-hero-sweep{0%,22%{left:-28%;opacity:0}30%{opacity:.16}47%,100%{left:118%;opacity:0}}
