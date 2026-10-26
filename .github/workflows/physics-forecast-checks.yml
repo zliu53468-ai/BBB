@@ -29,6 +29,7 @@ jobs:
 
       - run: node test_middle_late_upgrade.js
       - run: node test_post_draw_ev.js
+      - run: node test_pf_per_hand_update.js
       - run: node test_adaptive_smoothing.js
       - run: node test_ev_led_direction.js
       - run: python -m unittest -v test_post_draw_report

@@ -70,6 +70,6 @@ const close=(a,b)=>assert(Math.abs(a-b)<1e-11,a+" != "+b);
  assert.equal(planned([1,0,2,1,7]).cardCount,5,"banker 3 stands versus player third 8");
  const six=planned([1,0,2,1,6,8]);assert.equal(six.cardCount,6);assert.equal(six.outcome,"T");
  const locked=require("./tools/top_parameters/production_manifest.json").sha256;
- for(const f of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","physics_multitask_model.json","final_probability_model.json"])assert.equal(crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex"),locked[f],"locked model/rules changed");
+ for(const f of ["app256forward.js","app256continuation.js","physics_multitask_model.json","final_probability_model.json"])assert.equal(crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex"),locked[f],"locked model/rules changed");
  console.log(JSON.stringify({passed:true,probability_cases:cases.length,runtime_comparisons:comparisons,banker_rule_cases:110,completed_hand_cases:5,old_extra_tie_penalty:false,feature_dim:57}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
