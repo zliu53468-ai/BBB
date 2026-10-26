@@ -14,7 +14,7 @@ const EV_CONSISTENCY_V1=false; // Shadow gate failed; set true only after holdou
 const EARLY_TIE_PENALTY=.15;
 const VERSION=EV_CONSISTENCY_V1
   ?"PHYSICS_57D_V14_8_FORECAST_FIRST_EVC1"
-  :"PHYSICS_57D_V14_8_EV_LED_DIRECTION";
+  :"PHYSICS_57D_V14_8_EV_LED_DIRECTION_SMOOTH1";
 const PHYSICS_URL="physics_multitask_model.json";
 let cardcountProfile=null,displayGapOverride=null;
 
@@ -370,6 +370,19 @@ function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null,physic
   const diagnostics=physicsDiagnostics||lastPhysicsDiagnostics||{},directUncertainty=clip(diagnostics.physics_uncertainty??.5),physicsAdjustment=-.04*Math.max(0,directUncertainty-.50)/.50;
   return clip(base+gain*(.5-clip(+noiseScore||0))+physicsAdjustment,.35,.75);
 }
+// Smoothing only: trust a clear current signal faster; never inspect its future outcome.
+function adaptiveSmoothingAlpha(base,current,previous,roundIndex,noise,uncertainty){
+  const c=cardcountProfile?.enabled?cardcountProfile.adaptive_smoothing:null;
+  if(!c?.enabled)return base;
+  const keys=["start_round","full_round","edge_start","edge_full","noise_low","noise_high","uncertainty_low","uncertainty_high","max_alpha_boost","max_alpha"];
+  if(c.schema_version!==1||!keys.every(k=>typeof c[k]==="number"&&Number.isFinite(c[k]))||c.start_round<21||c.full_round<=c.start_round||c.edge_start<0||c.edge_full<=c.edge_start||c.noise_low<0||c.noise_high<=c.noise_low||c.noise_high>1||c.uncertainty_low<0||c.uncertainty_high<=c.uncertainty_low||c.uncertainty_high>1||c.max_alpha_boost<0||c.max_alpha_boost>.15||c.max_alpha<base||c.max_alpha>.90)return base;
+  if(![base,current,previous,roundIndex,noise,uncertainty].every(Number.isFinite)||roundIndex<c.start_round)return base;
+  const stage=clip((roundIndex-c.start_round+1)/(c.full_round-c.start_round+1));
+  const signal=clip((Math.abs(current-.5)-c.edge_start)/(c.edge_full-c.edge_start));
+  const clean=clip((c.noise_high-noise)/(c.noise_high-c.noise_low))*clip((c.uncertainty_high-uncertainty)/(c.uncertainty_high-c.uncertainty_low));
+  // Only reduce historical drag; no directional offset or probability sharpening.
+  return Math.min(c.max_alpha,base+c.max_alpha_boost*stage*signal*clean);
+}
 function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWeight=null){
   const configured=final56Bundle?.smoothing||{};
   // Physics Primary V13: EMA is part of the primary Physics path, not an
@@ -382,10 +395,11 @@ function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWe
   const legacy=config.method==="causal_ema"&&(+config.strength||0)>0;
   const shoeId=getShoeId(),rows=readRows();let previous=null;
   for(let i=rows.length-1;i>=0;i--){const row=rows[i];if(row?.shoe_id!==shoeId||+row.round_index>=roundIndex)continue;
-    const value=Number.isFinite(+row.physics_smoothed_p_b)?+row.physics_smoothed_p_b:(Number.isFinite(+row.primary_smoothed_p_b)?+row.primary_smoothed_p_b:NaN);
+    const value=typeof row.physics_smoothed_p_b==="number"&&Number.isFinite(row.physics_smoothed_p_b)?row.physics_smoothed_p_b:(typeof row.primary_smoothed_p_b==="number"&&Number.isFinite(row.primary_smoothed_p_b)?row.primary_smoothed_p_b:NaN);
     if(Number.isFinite(value)){previous=value;break;}}
   if(previous===null)return {value:clippedPB,alpha:1,strength:0,profile:cardcountProfile?.enabled?cardcountProfile.name:config.profile||"first_round",applied:false};
-  const alpha=dynamic?dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight,lastPhysicsDiagnostics):1-clip(+config.strength||0,0,.15);
+  const baseAlpha=dynamic?dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight,lastPhysicsDiagnostics):1-clip(+config.strength||0,0,.15);
+  const alpha=dynamic?adaptiveSmoothingAlpha(baseAlpha,clippedPB,previous,roundIndex,noiseScore,lastPhysicsDiagnostics?.physics_uncertainty??1):baseAlpha;
   const value=clip(alpha*clippedPB+(1-alpha)*previous,bounds.low,bounds.high);
   return {value,alpha,strength:1-alpha,profile:cardcountProfile?.enabled?cardcountProfile.name:config.profile||(legacy?"legacy":"custom"),applied:true};
 }
@@ -1062,7 +1076,7 @@ function installUI(){
   const observations=document.getElementById("btnExportObservations");if(observations)observations.addEventListener("click",downloadMacroObservations);
   syncMacro(readHistory());
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,directionSelectionPolicy,selectEvDirection,evDirectionForecast,settlementPolicy,settledOutcomeEv,conditionalSettlement,drawCountDistribution,getLocalCalibrationStatus:(history=readHistory())=>LOCAL_CALIBRATION?.inspect(history,getShoeId(),browserCalibrationTag,localCalibrationConfig())||null,displayDirection,profileValue,getCardcountProfile:()=>cardcountProfile,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,adaptiveSmoothingAlpha,applyDynamicSmoothing,directionSelectionPolicy,selectEvDirection,evDirectionForecast,settlementPolicy,settledOutcomeEv,conditionalSettlement,drawCountDistribution,getLocalCalibrationStatus:(history=readHistory())=>LOCAL_CALIBRATION?.inspect(history,getShoeId(),browserCalibrationTag,localCalibrationConfig())||null,displayDirection,profileValue,getCardcountProfile:()=>cardcountProfile,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
   registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,
   getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 if(typeof window?.addEventListener==="function")window.addEventListener("storage",event=>{if(event.key===MACRO_KEY||event.key===SHOE_KEY){macroJournal=null;macroState=null;}});
