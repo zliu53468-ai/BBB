@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "data_kind": "synthetic_mechanics_only_seed_20261026",
+  "production_accuracy_claim": false,
+  "stages": {
+    "all": {
+      "baseline": {
+        "rows": 274,
+        "wagers": 115,
+        "hit_rate": 0.4857142857142857,
+        "ev_per_bet": -0.03739130434782609,
+        "skip_rate": 0.5802919708029197,
+        "brier": 0.2510451384393229
+      },
+      "candidate": {
+        "rows": 274,
+        "wagers": 116,
+        "hit_rate": 0.49056603773584906,
+        "ev_per_bet": -0.028879310344827568,
+        "skip_rate": 0.5766423357664234,
+        "brier": 0.25120303831490975
+      }
+    },
+    "1-20": {
+      "baseline": {
+        "rows": 76,
+        "wagers": 19,
+        "hit_rate": 0.6111111111111112,
+        "ev_per_bet": 0.21052631578947367,
+        "skip_rate": 0.75,
+        "brier": 0.24939729336108363
+      },
+      "candidate": {
+        "rows": 76,
+        "wagers": 19,
+        "hit_rate": 0.6111111111111112,
+        "ev_per_bet": 0.21052631578947367,
+        "skip_rate": 0.75,
+        "brier": 0.24939729336108363
+      }
+    },
+    "21-45": {
+      "baseline": {
+        "rows": 100,
+        "wagers": 51,
+        "hit_rate": 0.5217391304347826,
+        "ev_per_bet": 0.022549019607843158,
+        "skip_rate": 0.49,
+        "brier": 0.25081451657209974
+      },
+      "candidate": {
+        "rows": 100,
+        "wagers": 51,
+        "hit_rate": 0.5217391304347826,
+        "ev_per_bet": 0.022549019607843158,
+        "skip_rate": 0.49,
+        "brier": 0.2508777542687912
+      }
+    },
+    "46-70": {
+      "baseline": {
+        "rows": 98,
+        "wagers": 45,
+        "hit_rate": 0.3902439024390244,
+        "ev_per_bet": -0.21,
+        "skip_rate": 0.5408163265306123,
+        "brier": 0.25265009746863965
+      },
+      "candidate": {
+        "rows": 98,
+        "wagers": 46,
+        "hit_rate": 0.40476190476190477,
+        "ev_per_bet": -0.18478260869565216,
+        "skip_rate": 0.5306122448979591,
+        "brier": 0.25303768756631545
+      }
+    }
+  },
+  "max_probability_change": 0.010376130486049684,
+  "changed_actions": 1,
+  "early_max_probability_change": 0.0
+}
