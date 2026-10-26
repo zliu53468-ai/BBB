@@ -1,0 +1,652 @@
+{
+  "schema_version": 1,
+  "data_kind": "synthetic_mechanics_only_seed_20261026",
+  "card_count_order": [
+    4,
+    5,
+    6
+  ],
+  "probability_basis": "completed_hand_after_third_card_rules; unconditional B/P/T for EV",
+  "stages": {
+    "all": {
+      "rows": 274,
+      "draw_counts": {
+        "direct_physics": {
+          "forecast_rows": 274,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3566675678948971,
+            0.3179464390805842,
+            0.3253859930245183
+          ],
+          "measured_card_count_rows": 274,
+          "matched_forecast_mean": [
+            0.3566675678948971,
+            0.3179464390805842,
+            0.3253859930245183
+          ],
+          "actual_proportions": [
+            0.3613138686131387,
+            0.28102189781021897,
+            0.35766423357664234
+          ],
+          "multiclass_brier": 0.6726150655688515,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "pf_posterior": {
+          "forecast_rows": 274,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3776992536821607,
+            0.304425479465807,
+            0.3178752668520322
+          ],
+          "measured_card_count_rows": 274,
+          "matched_forecast_mean": [
+            0.3776992536821607,
+            0.304425479465807,
+            0.3178752668520322
+          ],
+          "actual_proportions": [
+            0.3613138686131387,
+            0.28102189781021897,
+            0.35766423357664234
+          ],
+          "multiclass_brier": 0.6631642192268877,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "mixed": {
+          "forecast_rows": 274,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3581757189306628,
+            0.3169691692349225,
+            0.32485511183441496
+          ],
+          "measured_card_count_rows": 274,
+          "matched_forecast_mean": [
+            0.3581757189306628,
+            0.3169691692349225,
+            0.32485511183441496
+          ],
+          "actual_proportions": [
+            0.3613138686131387,
+            0.28102189781021897,
+            0.35766423357664234
+          ],
+          "multiclass_brier": 0.671414853802085,
+          "calibration_status": "measured_diagnostic_only"
+        }
+      },
+      "settlement_audit_rows": 274,
+      "maximum_ev_formula_error": 0.0,
+      "ev_formula_consistent": true,
+      "placed_bets": 83,
+      "hit_rate_on_bets": 0.44155844155844154,
+      "realized_ev_per_bet": -0.11987951807228915
+    },
+    "1-20": {
+      "rows": 76,
+      "draw_counts": {
+        "direct_physics": {
+          "forecast_rows": 76,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.35948231704231065,
+            0.3133954613234892,
+            0.3271222216342001
+          ],
+          "measured_card_count_rows": 76,
+          "matched_forecast_mean": [
+            0.35948231704231065,
+            0.3133954613234892,
+            0.3271222216342001
+          ],
+          "actual_proportions": [
+            0.34210526315789475,
+            0.21052631578947367,
+            0.4473684210526316
+          ],
+          "multiclass_brier": 0.6622189311061724,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "pf_posterior": {
+          "forecast_rows": 76,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3746045165516281,
+            0.3069736879956616,
+            0.3184217954527103
+          ],
+          "measured_card_count_rows": 76,
+          "matched_forecast_mean": [
+            0.3746045165516281,
+            0.3069736879956616,
+            0.3184217954527103
+          ],
+          "actual_proportions": [
+            0.34210526315789475,
+            0.21052631578947367,
+            0.4473684210526316
+          ],
+          "multiclass_brier": 0.6654906558011139,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "mixed": {
+          "forecast_rows": 76,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3605099863540914,
+            0.31296833942565494,
+            0.32652167422025363
+          ],
+          "measured_card_count_rows": 76,
+          "matched_forecast_mean": [
+            0.3605099863540914,
+            0.31296833942565494,
+            0.32652167422025363
+          ],
+          "actual_proportions": [
+            0.34210526315789475,
+            0.21052631578947367,
+            0.4473684210526316
+          ],
+          "multiclass_brier": 0.6623141828941957,
+          "calibration_status": "measured_diagnostic_only"
+        }
+      },
+      "settlement_audit_rows": 76,
+      "maximum_ev_formula_error": 0.0,
+      "ev_formula_consistent": true,
+      "placed_bets": 11,
+      "hit_rate_on_bets": 0.6363636363636364,
+      "realized_ev_per_bet": 0.2727272727272727
+    },
+    "21-45": {
+      "rows": 100,
+      "draw_counts": {
+        "direct_physics": {
+          "forecast_rows": 100,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.35691599667065504,
+            0.31949363162331407,
+            0.32359037170603067
+          ],
+          "measured_card_count_rows": 100,
+          "matched_forecast_mean": [
+            0.35691599667065504,
+            0.31949363162331407,
+            0.32359037170603067
+          ],
+          "actual_proportions": [
+            0.32,
+            0.39,
+            0.29
+          ],
+          "multiclass_brier": 0.6761300116119479,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "pf_posterior": {
+          "forecast_rows": 100,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.37767981594380473,
+            0.30382012352961046,
+            0.3185000605265851
+          ],
+          "measured_card_count_rows": 100,
+          "matched_forecast_mean": [
+            0.37767981594380473,
+            0.30382012352961046,
+            0.3185000605265851
+          ],
+          "actual_proportions": [
+            0.32,
+            0.39,
+            0.29
+          ],
+          "multiclass_brier": 0.668805191308711,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "mixed": {
+          "forecast_rows": 100,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3584612339400205,
+            0.31836839189284666,
+            0.3231703741671329
+          ],
+          "measured_card_count_rows": 100,
+          "matched_forecast_mean": [
+            0.3584612339400205,
+            0.31836839189284666,
+            0.3231703741671329
+          ],
+          "actual_proportions": [
+            0.32,
+            0.39,
+            0.29
+          ],
+          "multiclass_brier": 0.6752554239140507,
+          "calibration_status": "measured_diagnostic_only"
+        }
+      },
+      "settlement_audit_rows": 100,
+      "maximum_ev_formula_error": 0.0,
+      "ev_formula_consistent": true,
+      "placed_bets": 39,
+      "hit_rate_on_bets": 0.5,
+      "realized_ev_per_bet": -0.016666666666666663
+    },
+    "46-70": {
+      "rows": 98,
+      "draw_counts": {
+        "direct_physics": {
+          "forecast_rows": 98,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.354231202458375,
+            0.3198970008690159,
+            0.325871796672609
+          ],
+          "measured_card_count_rows": 98,
+          "matched_forecast_mean": [
+            0.354231202458375,
+            0.3198970008690159,
+            0.325871796672609
+          ],
+          "actual_proportions": [
+            0.41836734693877553,
+            0.22448979591836735,
+            0.35714285714285715
+          ],
+          "multiclass_brier": 0.6770906942918495,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "pf_posterior": {
+          "forecast_rows": 98,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3801190883327333,
+            0.3030670278877531,
+            0.3168138837795137
+          ],
+          "measured_card_count_rows": 98,
+          "matched_forecast_mean": [
+            0.3801190883327333,
+            0.3030670278877531,
+            0.3168138837795137
+          ],
+          "actual_proportions": [
+            0.41836734693877553,
+            0.22448979591836735,
+            0.35714285714285715
+          ],
+          "multiclass_brier": 0.6556039499633826,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "mixed": {
+          "forecast_rows": 98,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.35607412887845546,
+            0.3186440753544309,
+            0.32528179576711347
+          ],
+          "measured_card_count_rows": 98,
+          "matched_forecast_mean": [
+            0.35607412887845546,
+            0.3186440753544309,
+            0.32528179576711347
+          ],
+          "actual_proportions": [
+            0.41836734693877553,
+            0.22448979591836735,
+            0.35714285714285715
+          ],
+          "multiclass_brier": 0.6745535678612987,
+          "calibration_status": "measured_diagnostic_only"
+        }
+      },
+      "settlement_audit_rows": 98,
+      "maximum_ev_formula_error": 0.0,
+      "ev_formula_consistent": true,
+      "placed_bets": 33,
+      "hit_rate_on_bets": 0.3,
+      "realized_ev_per_bet": -0.37272727272727274
+    },
+    "<=40": {
+      "rows": 156,
+      "draw_counts": {
+        "direct_physics": {
+          "forecast_rows": 156,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3575539415540256,
+            0.3160217894308415,
+            0.32642426901513305
+          ],
+          "measured_card_count_rows": 156,
+          "matched_forecast_mean": [
+            0.3575539415540256,
+            0.3160217894308415,
+            0.32642426901513305
+          ],
+          "actual_proportions": [
+            0.33974358974358976,
+            0.2948717948717949,
+            0.36538461538461536
+          ],
+          "multiclass_brier": 0.6709460135702773,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "pf_posterior": {
+          "forecast_rows": 156,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3756356845249086,
+            0.305600388954286,
+            0.31876392652080543
+          ],
+          "measured_card_count_rows": 156,
+          "matched_forecast_mean": [
+            0.3756356845249086,
+            0.305600388954286,
+            0.31876392652080543
+          ],
+          "actual_proportions": [
+            0.33974358974358976,
+            0.2948717948717949,
+            0.36538461538461536
+          ],
+          "multiclass_brier": 0.6652262062052918,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "mixed": {
+          "forecast_rows": 156,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.35885252293146397,
+            0.31529659585792136,
+            0.3258508812106148
+          ],
+          "measured_card_count_rows": 156,
+          "matched_forecast_mean": [
+            0.35885252293146397,
+            0.31529659585792136,
+            0.3258508812106148
+          ],
+          "actual_proportions": [
+            0.33974358974358976,
+            0.2948717948717949,
+            0.36538461538461536
+          ],
+          "multiclass_brier": 0.6703109884908219,
+          "calibration_status": "measured_diagnostic_only"
+        }
+      },
+      "settlement_audit_rows": 156,
+      "maximum_ev_formula_error": 0.0,
+      "ev_formula_consistent": true,
+      "placed_bets": 42,
+      "hit_rate_on_bets": 0.55,
+      "realized_ev_per_bet": 0.08214285714285713
+    },
+    "41-50": {
+      "rows": 40,
+      "draw_counts": {
+        "direct_physics": {
+          "forecast_rows": 40,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3555929329018928,
+            0.3219964265547999,
+            0.3224106405433074
+          ],
+          "measured_card_count_rows": 40,
+          "matched_forecast_mean": [
+            0.3555929329018928,
+            0.3219964265547999,
+            0.3224106405433074
+          ],
+          "actual_proportions": [
+            0.325,
+            0.35,
+            0.325
+          ],
+          "multiclass_brier": 0.6619337428007434,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "pf_posterior": {
+          "forecast_rows": 40,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.38169090416857143,
+            0.30144495916067704,
+            0.3168641366707515
+          ],
+          "measured_card_count_rows": 40,
+          "matched_forecast_mean": [
+            0.38169090416857143,
+            0.30144495916067704,
+            0.3168641366707515
+          ],
+          "actual_proportions": [
+            0.325,
+            0.35,
+            0.325
+          ],
+          "multiclass_brier": 0.6701557401187365,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "mixed": {
+          "forecast_rows": 40,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3576116224039738,
+            0.3204241243784906,
+            0.3219642532175355
+          ],
+          "measured_card_count_rows": 40,
+          "matched_forecast_mean": [
+            0.3576116224039738,
+            0.3204241243784906,
+            0.3219642532175355
+          ],
+          "actual_proportions": [
+            0.325,
+            0.35,
+            0.325
+          ],
+          "multiclass_brier": 0.6619047214353329,
+          "calibration_status": "measured_diagnostic_only"
+        }
+      },
+      "settlement_audit_rows": 40,
+      "maximum_ev_formula_error": 0.0,
+      "ev_formula_consistent": true,
+      "placed_bets": 16,
+      "hit_rate_on_bets": 0.5333333333333333,
+      "realized_ev_per_bet": 0.04374999999999998
+    },
+    ">50": {
+      "rows": 78,
+      "draw_counts": {
+        "direct_physics": {
+          "forecast_rows": 78,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3554459154448484,
+            0.319718821726627,
+            0.3248352628285245
+          ],
+          "measured_card_count_rows": 78,
+          "matched_forecast_mean": [
+            0.3554459154448484,
+            0.319718821726627,
+            0.3248352628285245
+          ],
+          "actual_proportions": [
+            0.4230769230769231,
+            0.21794871794871795,
+            0.358974358974359
+          ],
+          "multiclass_brier": 0.6814307709855413,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "pf_posterior": {
+          "forecast_rows": 78,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.37977939174722386,
+            0.30360413244019757,
+            0.31661647581257857
+          ],
+          "measured_card_count_rows": 78,
+          "matched_forecast_mean": [
+            0.37977939174722386,
+            0.30360413244019757,
+            0.31661647581257857
+          ],
+          "actual_proportions": [
+            0.4230769230769231,
+            0.21794871794871795,
+            0.358974358974359
+          ],
+          "multiclass_brier": 0.655454849940925,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "mixed": {
+          "forecast_rows": 78,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.35711139119915797,
+            0.3185425441204269,
+            0.324346064680415
+          ],
+          "measured_card_count_rows": 78,
+          "matched_forecast_mean": [
+            0.35711139119915797,
+            0.3185425441204269,
+            0.324346064680415
+          ],
+          "actual_proportions": [
+            0.4230769230769231,
+            0.21794871794871795,
+            0.358974358974359
+          ],
+          "multiclass_brier": 0.6784995753819191,
+          "calibration_status": "measured_diagnostic_only"
+        }
+      },
+      "settlement_audit_rows": 78,
+      "maximum_ev_formula_error": 0.0,
+      "ev_formula_consistent": true,
+      "placed_bets": 25,
+      "hit_rate_on_bets": 0.18181818181818182,
+      "realized_ev_per_bet": -0.5640000000000001
+    },
+    "50-70": {
+      "rows": 82,
+      "draw_counts": {
+        "direct_physics": {
+          "forecast_rows": 82,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3555772206229099,
+            0.3201160550072729,
+            0.32430672436981706
+          ],
+          "measured_card_count_rows": 82,
+          "matched_forecast_mean": [
+            0.3555772206229099,
+            0.3201160550072729,
+            0.32430672436981706
+          ],
+          "actual_proportions": [
+            0.43902439024390244,
+            0.2073170731707317,
+            0.35365853658536583
+          ],
+          "multiclass_brier": 0.6791404751483178,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "pf_posterior": {
+          "forecast_rows": 82,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3800112655762449,
+            0.3030551131055393,
+            0.31693362131821573
+          ],
+          "measured_card_count_rows": 82,
+          "matched_forecast_mean": [
+            0.3800112655762449,
+            0.3030551131055393,
+            0.31693362131821573
+          ],
+          "actual_proportions": [
+            0.43902439024390244,
+            0.2073170731707317,
+            0.35365853658536583
+          ],
+          "multiclass_brier": 0.6522237526324384,
+          "calibration_status": "measured_diagnostic_only"
+        },
+        "mixed": {
+          "forecast_rows": 82,
+          "invalid_or_renormalized_rows": 0,
+          "forecast_mean": [
+            0.3572785769109271,
+            0.3188544253039162,
+            0.32386699778515643
+          ],
+          "measured_card_count_rows": 82,
+          "matched_forecast_mean": [
+            0.3572785769109271,
+            0.3188544253039162,
+            0.32386699778515643
+          ],
+          "actual_proportions": [
+            0.43902439024390244,
+            0.2073170731707317,
+            0.35365853658536583
+          ],
+          "multiclass_brier": 0.6761400136966964,
+          "calibration_status": "measured_diagnostic_only"
+        }
+      },
+      "settlement_audit_rows": 82,
+      "maximum_ev_formula_error": 0.0,
+      "ev_formula_consistent": true,
+      "placed_bets": 26,
+      "hit_rate_on_bets": 0.17391304347826086,
+      "realized_ev_per_bet": -0.5807692307692308
+    }
+  },
+  "warning": "Calibration diagnostics require observed physical card_count. B/P/T alone cannot validate draw-count calibration. Synthetic data is mechanics evidence only.",
+  "production_promotion_allowed": false,
+  "comparison": {
+    "data_kind": "synthetic_mechanics_only_seed_20261026",
+    "shoes": 4,
+    "predictions": 274,
+    "baseline": {
+      "wagers": 83,
+      "hit_rate_on_bets": 0.44155844155844154,
+      "realized_ev_per_bet": -0.11987951807228915,
+      "skip_rate": 0.6970802919708029
+    },
+    "post_draw_ev": {
+      "wagers": 83,
+      "hit_rate_on_bets": 0.44155844155844154,
+      "realized_ev_per_bet": -0.11987951807228915,
+      "skip_rate": 0.6970802919708029
+    },
+    "max_probability_change": 0.0,
+    "changes_in_action": 0,
+    "real_holdout": false,
+    "accuracy_improvement_claim": false
+  },
+  "baseline_commit": "e11b52424d0641aeaa16437a15e744808848dfba"
+}

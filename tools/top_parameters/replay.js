@@ -25,7 +25,7 @@ for(const f of ['app256forward.js','app256continuation.js','particle_filter_runt
   }
   const observed=M.normalizeHand(row);
   if(prediction){const r=prediction.finalProbability;
-   outputRows.push({shoe_id:shoe,round_index:row.round_index,outcome:observed.outcome,p_b:r.finalPB,direction:prediction.direction});
+   outputRows.push({shoe_id:shoe,round_index:row.round_index,outcome:observed.outcome,p_b:r.finalPB,direction:prediction.direction,draw_report:r.draw_report,settlement_audit:r.settlement_audit,observed_hand:observed});
    api.settlePending(observed.outcome,observed,history);
   }
   history.push(observed.outcome);api.recordCompletedHand(history,observed);

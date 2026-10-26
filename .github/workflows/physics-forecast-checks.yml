@@ -13,6 +13,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -25,3 +28,5 @@ jobs:
       - run: node --check browser_calibration.js && node test_browser_calibration.js
 
       - run: node test_middle_late_upgrade.js
+      - run: node test_post_draw_ev.js
+      - run: python -m unittest -v test_post_draw_report

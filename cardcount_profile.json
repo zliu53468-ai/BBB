@@ -414,5 +414,12 @@
         ]
       ]
     }
+  },
+  "settlement": {
+    "schema_version": 1,
+    "mode": "post_draw_unconditional_v1",
+    "banker_commission": 0.05,
+    "player_commission": 0,
+    "tie_settlement": "push"
   }
 }
