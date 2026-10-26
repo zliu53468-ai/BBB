@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "data_kind": "synthetic_mechanics_only_seed_20261026",
+  "production_accuracy_claim": false,
+  "baseline": {
+    "rows": 274,
+    "wagers": 83,
+    "correct_bets": 34,
+    "hit_rate_on_bets": 0.44155844155844154,
+    "realized_ev_per_bet": -0.11987951807228915,
+    "skip_rate": 0.6970802919708029
+  },
+  "candidate": {
+    "rows": 274,
+    "wagers": 115,
+    "correct_bets": 51,
+    "hit_rate_on_bets": 0.4857142857142857,
+    "realized_ev_per_bet": -0.03739130434782609,
+    "skip_rate": 0.5802919708029197
+  },
+  "maximum_probability_change": 0.0,
+  "changed_actions": 32,
+  "formal_ev_argmax_mismatches": 0,
+  "negative_ev_wagers": 0
+}
