@@ -153,6 +153,8 @@ function estimate(history,directPhysics,mode="quality",config={}){
   const seq=(Array.isArray(history)?history:[]).map(x=>String(x||"").toUpperCase()).filter(x=>OUTCOMES.has(x));
   if(!Array.isArray(directPhysics)||directPhysics.length!==48)throw new Error("particle500 requires Direct Physics 48D");
   const blendMode=normalizeBlendMode(mode);
+  const likelihoodDraws=Math.round(clip(config.likelihood_draws??LIKELIHOOD_DRAWS,2,8));
+  const fallbackDraws=Math.round(clip(config.fallback_draws??FALLBACK_DRAWS,2,8));
   if(blendMode==="off")return {
     physics:directPhysics.map(v=>+v||0),posterior:null,
     diagnostics:{version:VERSION,enabled:false,particle_filter_enabled:false,particle_count:0,
@@ -168,11 +170,11 @@ function estimate(history,directPhysics,mode="quality",config={}){
     const next=Array(PARTICLE_COUNT),nextConsumed=Array(PARTICLE_COUNT),rawWeights=Array(PARTICLE_COUNT);
     for(let i=0;i<PARTICLE_COUNT;i++){
       const base=particles[i],proposals=[],matches=[];
-      for(let d=0;d<LIKELIHOOD_DRAWS;d++){const hand=deal(base,rng);proposals.push(hand);if(hand.outcome===actual)matches.push(hand);}
+      for(let d=0;d<likelihoodDraws;d++){const hand=deal(base,rng);proposals.push(hand);if(hand.outcome===actual)matches.push(hand);}
       const matchCount=matches.length;
-      let likelihood=(matchCount+.20)/(LIKELIHOOD_DRAWS+.60);
+      let likelihood=(matchCount+.20)/(likelihoodDraws+.60);
       if(!matches.length){
-        for(let d=0;d<FALLBACK_DRAWS;d++){const hand=deal(base,rng);if(hand.outcome===actual){matches.push(hand);break;}}
+        for(let d=0;d<fallbackDraws;d++){const hand=deal(base,rng);if(hand.outcome===actual){matches.push(hand);break;}}
       }
       const chosen=matches.length?matches[Math.floor(rng()*matches.length)]:proposals[Math.floor(rng()*proposals.length)];
       if(!matches.length)likelihood=Math.max(likelihood,.015);
@@ -228,8 +230,9 @@ function estimate(history,directPhysics,mode="quality",config={}){
     diagnostics:{
       version:VERSION,enabled:true,particle_filter_enabled:true,particle_count:PARTICLE_COUNT,
       policy:"stateless_rebuild_each_prediction",persistent_state:false,rebuild_from_scratch:true,
-      history_rounds:seq.length,history_fingerprint:seq.join(""),likelihood_draws:LIKELIHOOD_DRAWS,
-      fallback_draws:FALLBACK_DRAWS,forecast_draws:forecastDraws,ess_resample_threshold:ESS_RESAMPLE_THRESHOLD,
+      history_rounds:seq.length,history_fingerprint:seq.join(""),likelihood_draws:likelihoodDraws,
+      fallback_draws:fallbackDraws,forecast_draws:forecastDraws,ess_resample_threshold:ESS_RESAMPLE_THRESHOLD,
+      posterior_update_method:"observed_bpt_likelihood_and_resampling",observations_processed:seq.length,
       resampling_count:resamplingCount,recent_ess_ratio:lastEssRatio,posterior_uncertainty:posteriorUncertainty,
       particle_quality:quality,signal_gate:signalGate,same_direction:sameSide,blend_min:minimum,blend_max:maximum,blend_weight:blendWeight,quality_blend_weight:qualityBlendWeight,particle_blend_mode:blendMode,
       tie_soft_update:true,tie_likelihood_influence:TIE_LIKELIHOOD_INFLUENCE,

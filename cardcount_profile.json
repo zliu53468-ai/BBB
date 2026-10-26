@@ -234,6 +234,9 @@
     "noise_high": 0.72
   },
   "pf": {
+    "update_profile": "per_hand_posterior_v2",
+    "likelihood_draws": 4,
+    "fallback_draws": 4,
     "min_blend": 0.06,
     "signal_gate": true,
     "forecast_draws": 3

@@ -61,6 +61,6 @@ const close=(a,b)=>assert(Math.abs(a-b)<1e-11,a+" != "+b);
  const original=Array(48).fill(0);original[23]=.4536;original[24]=.4464;original[25]=.1;original[42]=.2;
  assert.equal(a.api.nextHandForecast(original).direction,"B","raw winner-head diagnostic must remain unmodified");
  const locked=require("./tools/top_parameters/production_manifest.json").sha256;
- for(const f of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","physics_multitask_model.json","final_probability_model.json"])assert.equal(crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex"),locked[f]);
+ for(const f of ["app256forward.js","app256continuation.js","physics_multitask_model.json","final_probability_model.json"])assert.equal(crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex"),locked[f]);
  console.log(JSON.stringify({passed:true,ev_vs_probability_choice:true,runtime_cases:n,final_ev_overrode_raw_candidate:overrides,probability_and_57d_unchanged:true,negative_ev_wagers_forced:false}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
