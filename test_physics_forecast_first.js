@@ -4,6 +4,8 @@ function make(missing=false,opposed=false){
   const store=new Map(),nodes=new Map();
   const ctx={console,document:{getElementById:()=>null},localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},fetch:async file=>({ok:true,json:async()=>{
     const m=JSON.parse(fs.readFileSync(file,"utf8"));
+    // Historical winner-head mode remains tested for rollback; EV-led mode has a dedicated suite.
+    if(file==="cardcount_profile.json")m.direction_selection={schema_version:1,mode:"physics_candidate_v1",ev_tie_tolerance:1e-12};
     if(missing&&file==="physics_multitask_model.json")m.trained=false;
     if(opposed&&file==="final_probability_model.json"){m.base_margin=Math.log(.001/.999);m.trees=[];m.calibration={method:"identity"};}
     return m;

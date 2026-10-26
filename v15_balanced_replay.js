@@ -139,7 +139,10 @@ async function replay(config,subset){
         const prediction=api.applyFinalPrediction(history),r=prediction.finalProbability;
         if(r.mode!=="physics_primary"||r.error)throw Error("Prediction failed "+shoe+"/"+round+": "+r.error);
         if(!r.skip_diagnostics||r.skip_diagnostics.final_action!==prediction.direction)throw Error("missing/inconsistent V15 diagnostic");
-        if(r.flipped_from_physics||prediction.direction!=="Skip"&&prediction.direction!==r.primary_candidate)
+        const evLed=r.direction_selection==="post_draw_ev_argmax_v1",lockedCandidate=evLed?r.direction_candidate:r.primary_candidate;
+        if(evLed&&prediction.direction!=="Skip"&&prediction.direction!==prediction.ev_direction?.direction)throw Error("EV argmax violated: "+shoe+"/"+round);
+        // EV mode may differ from raw Physics; only EV-candidate or auxiliary flips are violations.
+        if(!evLed&&r.flipped_from_physics||prediction.direction!=="Skip"&&prediction.direction!==lockedCandidate)
           throw Error("No-flip violated: "+shoe+"/"+round);
         const m=tally(prediction.direction,actual.outcome,r.skip_diagnostics);
         add(byStage.all,m);add(byStage[stageFor(round)],m);

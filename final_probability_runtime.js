@@ -14,7 +14,7 @@ const EV_CONSISTENCY_V1=false; // Shadow gate failed; set true only after holdou
 const EARLY_TIE_PENALTY=.15;
 const VERSION=EV_CONSISTENCY_V1
   ?"PHYSICS_57D_V14_8_FORECAST_FIRST_EVC1"
-  :"PHYSICS_57D_V14_8_POST_DRAW_EV";
+  :"PHYSICS_57D_V14_8_EV_LED_DIRECTION";
 const PHYSICS_URL="physics_multitask_model.json";
 let cardcountProfile=null,displayGapOverride=null;
 
@@ -58,6 +58,29 @@ function postDrawAudit(direct,posterior,mixed,primary,finalPB){
     direct_physics:evaluate(direct),pf_posterior:evaluate(posterior),mixed:evaluate(mixed),
     candidate:conditionalSettlement(primary.directionalPB,primary.pT),final:conditionalSettlement(finalPB,primary.pT),
     model_ev_head_basis:"nominal_5pct_commission_training_features_unchanged"};
+}
+
+
+function directionSelectionPolicy(){
+  const config=cardcountProfile?.direction_selection||{schema_version:1,mode:"post_draw_ev_argmax_v1",ev_tie_tolerance:1e-12};
+  if(config.schema_version!==1||!["post_draw_ev_argmax_v1","physics_candidate_v1"].includes(config.mode))throw new Error("invalid direction selection policy");
+  const epsilon=config.ev_tie_tolerance??1e-12;
+  if(typeof epsilon!=="number"||!Number.isFinite(epsilon)||epsilon<0||epsilon>1e-6)throw new Error("invalid EV tie tolerance");
+  return {...config,ev_tie_tolerance:epsilon,enabled:config.mode==="post_draw_ev_argmax_v1"&&!!settlementPolicy()};
+}
+function selectEvDirection(bankerEv,playerEv,epsilon=directionSelectionPolicy().ev_tie_tolerance){
+  if(!Number.isFinite(bankerEv)||!Number.isFinite(playerEv)||!Number.isFinite(epsilon)||epsilon<0)throw new Error("invalid directional EV");
+  const difference=bankerEv-playerEv,direction=Math.abs(difference)<=epsilon?"Balanced":difference>0?"B":"P";
+  return {direction,banker_ev:bankerEv,player_ev:playerEv,best_ev:Math.max(bankerEv,playerEv),ev_gap:Math.abs(difference),selection_method:"post_draw_ev_argmax_v1"};
+}
+function evDirectionForecast(settlement,uncertainty){
+  const unavailable={available:false,source:"post_draw_ev_final_probability",direction:null,probabilities:null,directional:null};
+  if(!settlement?.probabilities)return unavailable;
+  const p=settlement.probabilities,mass=p.B+p.P;
+  if(mass<=1e-12)return unavailable;
+  return {available:true,source:"post_draw_ev_final_probability",...selectEvDirection(settlement.banker,settlement.player),
+    probabilities:{...p},directional:{B:p.B/mass,P:p.P/mass},uncertainty,
+    weak_signal:Math.abs(p.B/mass-.5)<.005,probability_basis:"post_draw_unconditional_with_conditional_display",ev_basis:"unit_stake_net_after_commission"};
 }
 
 function profileValue(key,roundIndex){
@@ -549,12 +572,14 @@ function v15SkipDiagnostics(primary,auxFilter,decision,mode,error=""){
       failed_conditions:["physics_unavailable"],stage:null,runtime_error:String(error||""),physics_pt:null,
       ev_consistency_active:!!settlementPolicy()||!!EV_CONSISTENCY_V1,early_tie_penalty_applied:false};
   const p=primary,d=decision||{},trace=d.v15Trace||{},failed=[];
-  if(p.distance+1e-12<p.physicsConfidenceBand)failed.push("physics_confidence_band");
+  const evLed=trace.directionSelection==="post_draw_ev_argmax_v1";
+  if(!evLed&&p.distance+1e-12<p.physicsConfidenceBand)failed.push("physics_confidence_band");
   const physicsEvOk=(p.evBanker>=p.evPlayer&&p.evBanker>p.physicsActivationEv+BANKER_EV_FLOOR)||
     (p.evPlayer>p.evBanker&&p.evPlayer>p.physicsActivationEv+PLAYER_EV_FLOOR);
-  if(!physicsEvOk)failed.push("physics_ev_gate");
-  if(p.candidate==="Skip"&&failed.length===0)failed.push("physics_other");
-  if(p.candidate!=="Skip"){
+  if(!evLed&&!physicsEvOk)failed.push("physics_ev_gate");
+  if(!evLed&&p.candidate==="Skip"&&failed.length===0)failed.push("physics_other");
+  if(evLed&&trace.finalCandidate==="Skip")failed.push("ev_direction_tie");
+  if(evLed?trace.finalCandidate!=="Skip":p.candidate!=="Skip"){
     if(auxFilter?.decision==="skip")failed.push("auxiliary_joint_conflict");
     if(!trace.aligned)failed.push("final_direction_alignment");
     if(trace.distance+1e-12<trace.effectiveBand)failed.push("final_confidence_band");
@@ -562,7 +587,7 @@ function v15SkipDiagnostics(primary,auxFilter,decision,mode,error=""){
   }
   if(d.direction==="Skip"&&failed.length===0)failed.push("unclassified_skip");
   return {schema_version:1,stage:p.policy?.stage??null,round_index:trace.roundIndex??null,
-    final_action:d.direction||"Skip",primary_candidate:p.candidate,
+    final_action:d.direction||"Skip",primary_candidate:p.candidate,direction_selection:trace.directionSelection||"physics_candidate_v1",direction_candidate:trace.finalCandidate??p.candidate,
     primary_reason:d.direction!=="Skip"?"entry":failed[0],
     failed_conditions:d.direction!=="Skip"?[]:failed,
     physics_distance:p.distance,physics_band:p.physicsConfidenceBand,
@@ -688,10 +713,12 @@ function applyFinalPrediction(seq,corePrediction=null){
       evBanker=pBanker*.95-pPlayer;
       evPlayer=pPlayer-pBanker;
     }
-    const policy=primary.policy,candidate=primary.candidate;
+    const evLed=directionSelectionPolicy().enabled,evChoice=selectEvDirection(evBanker,evPlayer);
+    const policy=primary.policy,candidate=evLed?(evChoice.direction==="Balanced"?"Skip":evChoice.direction):primary.candidate;
+    if(evLed)auxFilter=auxiliaryCandidateFilter(candidate,corePB,xgbAuxPB);
     const baseBand=Math.max(policy.confidenceBand,primary.physicsConfidenceBand),baseActivation=Math.max(policy.activationEv,primary.physicsActivationEv),distance=Math.abs(finalPB-.5);
     const candidateEdge=candidate==="B"?evBanker:candidate==="P"?evPlayer:0;
-    const aligned=candidate==="B"?finalPB>.5:candidate==="P"?finalPB<.5:false;
+    const aligned=evLed?candidate===evChoice.direction:candidate==="B"?finalPB>.5:candidate==="P"?finalPB<.5:false;
     const basePass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=baseBand&&candidateEdge>baseActivation;
 
     executionOrder.push("volume_guard");
@@ -710,7 +737,7 @@ function applyFinalPrediction(seq,corePrediction=null){
       finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",
       confidence:direction==="Skip"?0:softConfidence(candidateEdge,{...policy,activationEv:effectiveActivationEv}),
       basePass,guardedPass,candidate,
-      v15Trace:{roundIndex,distance,baseBand,baseActivation,candidateEdge,aligned,
+      v15Trace:{roundIndex,distance,baseBand,baseActivation,candidateEdge,aligned,finalCandidate:candidate,directionSelection:evLed?"post_draw_ev_argmax_v1":"physics_candidate_v1",evChoice,
         effectiveBand,effectiveActivationEv,guardBandRelief:guard.bandRelief,guardEvRelief:guard.evRelief}
     };
     mode="physics_primary";
@@ -732,8 +759,11 @@ function applyFinalPrediction(seq,corePrediction=null){
   const rawForecast=nextHandForecast(physics);
   if(rawForecast.available&&particleDiagnostics)rawForecast.source="direct_physics_particle500_winner_head";
   const calibrated=LOCAL_CALIBRATION?.apply(rawForecast,seq,getShoeId(),browserCalibrationTag,localCalibrationConfig());
-  const forecast=calibrated?.forecast||rawForecast;
-  return {...resolvedCore,settlement_audit:settlementAudit,draw_report:drawReport,raw_next_hand_forecast:rawForecast,browser_calibration:calibrated?.status||null,next_hand_forecast:forecast,forecast_direction:forecast.direction,bet_direction:direction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
+  const evForecast=evDirectionForecast(settlementAudit?.final,rawForecast.uncertainty);
+  const useEvDirection=directionSelectionPolicy().enabled;
+  const forecast=useEvDirection?evForecast:calibrated?.forecast||rawForecast;
+  const calibrationStatus=useEvDirection?{...calibrated?.status,shadow_applied:calibrated?.status?.applied===true,applied:false,used_for_direction:false}:calibrated?.status||null;
+  return {...resolvedCore,settlement_audit:settlementAudit,draw_report:drawReport,raw_next_hand_forecast:rawForecast,browser_calibration:calibrationStatus,ev_direction:useEvDirection&&evForecast.available?selectEvDirection(evForecast.banker_ev,evForecast.player_ev):null,next_hand_forecast:forecast,forecast_direction:forecast.direction,bet_direction:direction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
     ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,
     physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,
     min_ev:evDecision?.minEv??null,activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,
@@ -741,7 +771,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"skip",stake_multiplier:evDecision?.stakeMultiplier??0,
     decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
     regime:mode==="physics_primary"?(direction==="Skip"?"Direct Physics觀望":auxFilter?.decision==="downgrade"?"Direct Physics / XGB降權":"Direct Physics / XGB輔助提醒"):"模型未就緒／觀望",
-    finalProbability:{version:VERSION,settlement_audit:settlementAudit,draw_report:drawReport,active:mode==="physics_primary",mode,
+    finalProbability:{version:VERSION,direction_selection:evDecision?.v15Trace?.directionSelection||"physics_candidate_v1",direction_candidate:evDecision?.candidate??"Skip",settlement_audit:settlementAudit,draw_report:drawReport,active:mode==="physics_primary",mode,
       skip_diagnostics:skipDiagnostics,
       particleDiagnostics,primary_source:particleDiagnostics?"direct_physics_particle500_physical_ev":"direct_physics_physical_ev",primary_candidate:primary?.candidate??"Skip",
       macro_ema:primary?.macroFeatures??null,macro_adjustment:primary?.macro??null,
@@ -840,7 +870,7 @@ function cloneFiniteVector(values,dimension){return Array.isArray(values)&&value
 function registerPrediction(seq,prediction){
   const r=prediction.finalProbability||{},f=r.original7||buildOriginal7(seq,prediction);
   const createdAt=Date.now(),shoeId=getShoeId(),quality=r.dataQuality||dataQuality(seq),errorCorrectionSnapshot=null;
-  const pending={settlement_audit:r.settlement_audit||null,draw_report:r.draw_report||null,raw_next_hand_forecast:prediction.raw_next_hand_forecast||null,browser_calibration:prediction.browser_calibration||null,next_hand_forecast:prediction.next_hand_forecast||null,forecast_direction:prediction.forecast_direction||null,bet_direction:prediction.direction||"Skip",schema_version:SNAPSHOT_SCHEMA_VERSION,prediction_id:`${shoeId}:${createdAt}:${seq.join("")}`,shoe_id:shoeId,created_at:createdAt,
+  const pending={direction_selection:r.direction_selection||"physics_candidate_v1",direction_candidate:r.direction_candidate||"Skip",ev_direction:prediction.ev_direction||null,settlement_audit:r.settlement_audit||null,draw_report:r.draw_report||null,raw_next_hand_forecast:prediction.raw_next_hand_forecast||null,browser_calibration:prediction.browser_calibration||null,next_hand_forecast:prediction.next_hand_forecast||null,forecast_direction:prediction.forecast_direction||null,bet_direction:prediction.direction||"Skip",schema_version:SNAPSHOT_SCHEMA_VERSION,prediction_id:`${shoeId}:${createdAt}:${seq.join("")}`,shoe_id:shoeId,created_at:createdAt,
     history_fingerprint:seq.join(""),history_event_count:seq.length,directional_round_count:quality.directionalRounds,data_stage:quality.stage,
     entry_eligible:quality.entryEligible,preferred_entry:quality.preferredEntry,mode:r.mode||"core",model_versions:{final_probability:final56Bundle?.schema_version??null,physics:physicsBundle?.schema_version??null},
     core_p_b:f.core_p_b,round_index:f.round_index,estimated_total_hands:f.estimated_total_hands,remaining_ratio:f.remaining_ratio,
@@ -912,11 +942,14 @@ function saveSelection(direction){try{const old=JSON.parse(localStorage.getItem(
 // UI-only continuous test: never register a wager or override production guards.
 let noSkipTestActive=false;
 function noSkipTestDirection(f){
-  return f?.available===true?(f.directional.B>=f.directional.P?"B":"P"):null;
+  if(f?.available!==true)return null;
+  if(f.selection_method==="post_draw_ev_argmax_v1")return selectEvDirection(f.banker_ev,f.player_ev).direction==="P"?"P":"B";
+  return f.directional.B>=f.directional.P?"B":"P";
 }
 function renderLocalCalibrationStatus(history,calibration=null){
   if(typeof document==="undefined")return;
   const el=document.getElementById("localCalibrationStatus");if(!el)return;
+  if(directionSelectionPolicy().enabled){el.textContent="EV選向採補牌後機率；本機校準僅供診斷（非完整重訓）";return;}
   if(!LOCAL_CALIBRATION){el.textContent="本機逐局校準未載入";return;}
   if(browserCalibrationTag==="unready"){el.textContent="本機校準：等待模型就緒";return;}
   const state=calibration||LOCAL_CALIBRATION.inspect(history,getShoeId(),browserCalibrationTag,localCalibrationConfig());
@@ -931,13 +964,14 @@ function renderPrediction(p,n){
   el("directionCode").textContent=!ready?"UNAVAILABLE":isB?"BANKER":isP?"PLAYER":shownDirection==="Skip"?"SKIP":"BALANCED";
   el("confidence").textContent=ready?"莊 "+(f.directional.B*100).toFixed(2)+"% / 閒 "+(f.directional.P*100).toFixed(2)+"%":"—";
   el("regime").textContent=!ready?"模型未就緒":noSkipTestActive?"測試方向（不列入正式下注）":p.direction==="Skip"?"下注觀望（仍有機率方向）":p.direction==="B"?"下注條件：莊":"下注條件：閒";
+  if(ready&&f.selection_method==="post_draw_ev_argmax_v1")el("regime").textContent+="；EV選向：莊 "+(f.banker_ev>=0?"+":"")+f.banker_ev.toFixed(4)+" / 閒 "+(f.player_ev>=0?"+":"")+f.player_ev.toFixed(4);
   el("strength").textContent=ready?(f.probabilities.T*100).toFixed(2)+"%":"—";
   orb.className="direction-orb "+(!ready||!isB&&!isP?"":isB?"banker":"player");
   if(el("modePill"))el("modePill").textContent=noSkipTestActive?"全程不觀望測試":ready?(f.source==="direct_physics_particle500_winner_head"?"Physics＋PF500 機率方向":"Direct Physics 機率方向"):"模型未就緒";
   if(el("roundCount"))el("roundCount").textContent=n;
   if(el("message"))el("message").textContent="第 "+(n+1)+" 局分析完成"+(ready?(f.weak_signal?"；莊閒接近五五波":"；莊閒百分比已排除和局，和局另列")+(f.uncertainty>=.85?"；模型不確定性偏高":""):"");
   if(!noSkipTestActive&&ready&&shownDirection==="Skip"&&el("message"))el("message").textContent+="；機率差未達 "+((displayGapOverride??cardcountProfile.display_gap)*100).toFixed(1)+" 個百分點，方向觀望";
-  if(noSkipTestActive&&el("message"))el("message").textContent=ready?"不觀望測試：每次報結果後自動更新下一局；不列入正式下注"+(f.directional.B===f.directional.P?"；五五波固定以莊作測試方向，無機率優勢":""):"不觀望測試：模型未就緒，暫無測試方向";
+  if(noSkipTestActive&&el("message"))el("message").textContent=ready?"不觀望測試：每次報結果後自動更新下一局；不列入正式下注"+(f.selection_method==="post_draw_ev_argmax_v1"?(Math.abs(f.banker_ev-f.player_ev)<=directionSelectionPolicy().ev_tie_tolerance?"；EV相同時以莊作測試方向":"；依EV較高方顯示，不代表EV為正"):(f.directional.B===f.directional.P?"；五五波固定以莊作測試方向，無機率優勢":"")):"不觀望測試：模型未就緒，暫無測試方向";
 }
 function installUI(){
   if(typeof document==="undefined")return;const old=document.getElementById("btnStart");if(!old)return;const btn=old.cloneNode(true);old.replaceWith(btn);
@@ -1028,7 +1062,7 @@ function installUI(){
   const observations=document.getElementById("btnExportObservations");if(observations)observations.addEventListener("click",downloadMacroObservations);
   syncMacro(readHistory());
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,settlementPolicy,settledOutcomeEv,conditionalSettlement,drawCountDistribution,getLocalCalibrationStatus:(history=readHistory())=>LOCAL_CALIBRATION?.inspect(history,getShoeId(),browserCalibrationTag,localCalibrationConfig())||null,displayDirection,profileValue,getCardcountProfile:()=>cardcountProfile,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,directionSelectionPolicy,selectEvDirection,evDirectionForecast,settlementPolicy,settledOutcomeEv,conditionalSettlement,drawCountDistribution,getLocalCalibrationStatus:(history=readHistory())=>LOCAL_CALIBRATION?.inspect(history,getShoeId(),browserCalibrationTag,localCalibrationConfig())||null,displayDirection,profileValue,getCardcountProfile:()=>cardcountProfile,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
   registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,
   getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 if(typeof window?.addEventListener==="function")window.addEventListener("storage",event=>{if(event.key===MACRO_KEY||event.key===SHOE_KEY){macroJournal=null;macroState=null;}});
