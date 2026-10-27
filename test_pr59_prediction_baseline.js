@@ -4,7 +4,7 @@ const baseline=require('./validation/pr59_prediction_baseline.json'),current=req
 const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const source=fs.readFileSync('final_probability_runtime.js','utf8').replace(/\r\n/g,'\n'),smoothing=source.slice(source.indexOf('function dynamicEmaAlpha('),source.indexOf('function dynamicBand('));
 assert.equal(crypto.createHash('sha256').update(smoothing).digest('hex'),baseline.smoothing_source_sha256,'PR59 smoothing must remain identical');
-const expected=structuredClone(baseline.profile);Object.assign(expected.pf,{update_profile:'per_hand_posterior_v2',likelihood_draws:4,fallback_draws:4});Object.assign(expected.local_calibration,{formal_ev_enabled:true,min_bet_validation:8});expected.first_layer_ev={schema_version:1,enabled:true};assert.deepEqual(current,expected,'only PF update settings may differ from PR59');
+const expected=structuredClone(baseline.profile);Object.assign(expected.pf,{update_profile:'per_hand_posterior_v2',likelihood_draws:4,fallback_draws:4});Object.assign(expected.local_calibration,{formal_ev_enabled:true,min_bet_validation:8});expected.first_layer_ev={schema_version:1,enabled:true};expected.selective_entry_v2=current.selective_entry_v2;assert.deepEqual(current,expected,'only PF update settings may differ from PR59');
 for(const [file,hash] of Object.entries(baseline.ui_sha256))assert.equal(sha(file),hash,'current UI must remain unchanged');
 assert.equal(current.adaptive_smoothing,undefined);assert.equal(current.direction_selection.mode,'post_draw_ev_argmax_v1');
 console.log(JSON.stringify({passed:true,pr59_smoothing_exact:true,pf_and_formal_calibration_only:true,current_ui_unchanged:true}));

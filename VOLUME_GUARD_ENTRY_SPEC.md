@@ -124,3 +124,8 @@ Block deployment unless all of these hold on hold-out:
   }
 }
 ```
+
+
+## 2026-10-27：目前瀏覽器 selective_entry_v2
+
+新增政策與舊版規格有差異：現行模型實際window=12、min_history=5、expected_correct_floor=0.93，本次全部保留；僅將目標率由0.58/0.60/0.66降為0.25/0.31/0.37。最終機率主路徑現為Physics＋PF、平滑與有效逐局校準，XGB僅輔助診斷。方向一致性與新增EV門檻不可由Guard放寬。完整設定、診斷及回滾見SELECTIVE_ENTRY_V2.md。
