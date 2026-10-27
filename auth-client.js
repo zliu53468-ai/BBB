@@ -115,27 +115,49 @@ async function injectScript(src){
     document.body.appendChild(el);
   });
 }
+// Bound optional remote reset only; local deletion must complete successfully.
+async function boundedEndSync(task,ms=4000){
+  let timer;
+  try{return await Promise.race([task,new Promise((_,reject)=>{
+    timer=setTimeout(()=>reject(new Error("end_sync_timeout")),ms);
+  })]);}finally{clearTimeout(timer);}
+}
+function reloadAfterAnalysisEnd(){
+  // A fresh navigation also discards in-memory PF/EMA/calibration caches.
+  const url=new URL(window.location.href);
+  url.searchParams.set("analysis_reset",String(Date.now()));
+  window.location.replace(url.href);
+}
 async function onEndAnalysis(){
   if(!authorized||endBusy)return;
   endBusy=true;busy=true;
   const storage=window.__BBB_LICENSE_STORAGE__;
   const msg=document.getElementById("message");
-  if(msg)msg.textContent="正在完整清除本次牌靴的分析資料…";
+  const controls=Array.from(panel.querySelectorAll("button,input,select"));
+  const disabledBefore=controls.map(el=>el.disabled);
+  controls.forEach(el=>{el.disabled=true;});
+  panel.setAttribute("aria-busy","true");
+  if(msg)msg.textContent="正在清除分析資料，完成後將自動重新載入，請稍候…";
   try{
     if(!await storage.end())throw Error("local_analysis_delete_failed");
+    authorized=false; // No more predictions or duplicate resets before navigation.
     // Physical deletion is local. Server epoch invalidates stale copies when
     // another authorized page verifies again (requires updated Worker).
     let remoteError="";
     try{
-      const result=await signedChallenge(activeCode,"/api/session/end");
-      if(!result.ok||!Number.isInteger(result.generation))throw Error("invalid_end_response");
-      await storage.acknowledgeRemoteEnd(activeLicenseId,result.generation);
+      await boundedEndSync((async()=>{
+        const result=await signedChallenge(activeCode,"/api/session/end");
+        if(!result.ok||!Number.isInteger(result.generation))throw Error("invalid_end_response");
+        await storage.acknowledgeRemoteEnd(activeLicenseId,result.generation);
+      })());
     }catch(error){remoteError=error?.message||"remote_sync_unavailable";}
     if(remoteError){
       try{sessionStorage.setItem("bbb-analysis-sync-warning","本機紀錄已清空；跨裝置同步尚未完成："+remoteError+"。請更新 Cloudflare Worker 並確認連線。");}catch(_){}
     }
-    window.location.reload();
+    reloadAfterAnalysisEnd();
   }catch(error){
+    controls.forEach((el,i)=>{el.disabled=disabledBefore[i];});
+    panel.removeAttribute("aria-busy");
     if(msg){msg.textContent="無法完整刪除本次分析紀錄，請先保留目前頁面並檢查儲存空間："+String(error?.message||error);msg.classList.add("warning");}
   }finally{endBusy=false;busy=false;}
 }
