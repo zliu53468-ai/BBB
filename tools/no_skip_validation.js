@@ -45,6 +45,15 @@ function bootstrap(rows,key,samples=2000,seed=880142){
  const interval=a=>{if(a.length!==samples)return null;a.sort((a,b)=>a-b);const q=p=>{const x=p*(a.length-1),i=Math.floor(x);return a[i]+(x-i)*((a[i+1]??a[i])-a[i]);};return [q(.025),q(.975)];};
  return {method:'whole-shoe percentile bootstrap',shoes:shoes.length,samples,seed,hit95:interval(hits),ev95:interval(evs)};
 }
+function pairedBootstrap(candidate,baseline,samples=2000,seed=880143){
+ if(candidate.length!==baseline.length||candidate.some((r,i)=>r.shoe_id!==baseline[i].shoe_id||r.round_index!==baseline[i].round_index||r.outcome!==baseline[i].outcome))throw Error('Paired replay rows do not align');
+ const ids=[...new Set(candidate.map(r=>r.shoe_id))];
+ if(ids.length<2)return {shoes:ids.length,samples:0,hit_change95:null,ev_change95:null};
+ const c=ids.map(id=>metrics(candidate.filter(r=>r.shoe_id===id),'candidate')),b=ids.map(id=>metrics(baseline.filter(r=>r.shoe_id===id),'candidate')),random=rng(seed),hits=[],evs=[];
+ for(let i=0;i<samples;i++){const sums=[[0,0,0,0],[0,0,0,0]];for(let j=0;j<ids.length;j++){const k=Math.floor(random()*ids.length);for(const [n,m] of [[0,c[k]],[1,b[k]]]){sums[n][0]+=m.wins;sums[n][1]+=m.losses;sums[n][2]+=m.wagers;sums[n][3]+=m.profit_units;}}const [x,y]=sums;if(x[0]+x[1]&&y[0]+y[1])hits.push(x[0]/(x[0]+x[1])-y[0]/(y[0]+y[1]));if(x[2]&&y[2])evs.push(x[3]/x[2]-y[3]/y[2]);}
+ const interval=a=>{if(a.length!==samples)return null;a.sort((x,y)=>x-y);const q=p=>{const x=p*(a.length-1),i=Math.floor(x);return a[i]+(x-i)*((a[i+1]??a[i])-a[i]);};return [q(.025),q(.975)];};
+ return {method:'paired whole-shoe percentile bootstrap',shoes:ids.length,samples,seed,hit_change95:interval(hits),ev_change95:interval(evs)};
+}
 function assess(kind,summary,ci){
  const failures=[];
  if(kind!=='real_observations')failures.push('No independent real B/P/T holdout; simulation is not deployment evidence');
@@ -56,7 +65,7 @@ function assess(kind,summary,ci){
  if(!ci.ev95||ci.ev95[0]<=0)failures.push('Positive commission-adjusted EV not established');
  return {statistical_checks_passed:!failures.length,failures,production_promotion_allowed:false,source_review_required:true,remaining_required:['Verify source, chronology, complete shoes and zero holdout tuning','Review independent temporal subperiods and stage stability','Any changed policy requires a fresh holdout; never repeatedly select against this report'],note:'Even passing an interval is evidence under sampled conditions, never a guarantee of future hit rate'};
 }
-async function audit(payload,{onProgress=()=>{}}={}){
+async function audit(payload,{onProgress=()=>{},onForecast=null}={}){
  const frozen=Object.fromEntries(RUNTIME.map(n=>[n,sha(fs.readFileSync(path.join(ROOT,n)))]));
  const rows=validateRows(payload),store=new Map(),storage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)};
  const ctx={console,document:{getElementById:()=>null},localStorage:storage,fetch:async f=>({ok:true,json:async()=>JSON.parse(fs.readFileSync(path.join(ROOT,String(f).split('?')[0]),'utf8'))})};ctx.window=ctx;vm.createContext(ctx);
@@ -69,6 +78,11 @@ async function audit(payload,{onProgress=()=>{}}={}){
   // Predict before reading the current outcome; point/card-count columns were discarded.
   const p=api.applyFinalPrediction(history),f=p.next_hand_forecast;
   if(!f?.available||!['B','P','T'].every(k=>Number.isFinite(f.probabilities[k])&&f.probabilities[k]>=0&&f.probabilities[k]<=1)||Math.abs(Object.values(f.probabilities).reduce((a,b)=>a+b,0)-1)>1e-6)throw Error('Model unavailable or invalid probabilities; never invent a direction');
+  if(onForecast){
+   const pf=p.finalProbability.physics.slice(),base=p.hitrate_max?.physics_pf;
+   if(base)[pf[23],pf[24],pf[25]]=[base.B,base.P,base.T];
+   onForecast(JSON.parse(JSON.stringify({shoe_id:shoe,round_index:row.round_index,direct:api.nextHandForecast(p.finalProbability.physicsDirect),pf:api.nextHandForecast(pf),raw:p.raw_next_hand_forecast,markov_prior:p.hitrate_max?.markov?.probabilities,markov_weight:p.hitrate_max?.markov?.weight||0})));
+  }
   const current=api.noSkipTestDirection(f);
   // Offline candidate ONLY: zero edge is explicitly reported; no fabricated >50% confidence.
   const candidate=current==='Balanced'?'B':current;
@@ -90,5 +104,5 @@ async function main(args){
  const report=await audit(payload,{onProgress:n=>console.log(n+' prequential hands validated')});fs.mkdirSync(path.dirname(path.resolve(output)),{recursive:true});fs.writeFileSync(output,JSON.stringify(report,null,2)+'\n',{flag:'wx'});
  console.log(JSON.stringify({output,summary:report.stages.all,ci:report.whole_shoe_bootstrap,gate:report.gate},null,2));return report.gate.statistical_checks_passed?0:2;
 }
-module.exports={validateRows,wilson,metrics,bootstrap,assess,audit};
+module.exports={validateRows,wilson,metrics,bootstrap,pairedBootstrap,assess,audit};
 if(require.main===module)main(process.argv.slice(2)).then(code=>{process.exitCode=code}).catch(e=>{console.error(e);process.exitCode=1});
