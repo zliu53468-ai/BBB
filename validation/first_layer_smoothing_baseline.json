@@ -516,7 +516,7 @@
     "render": {
       "start": "function renderPrediction(",
       "end": "function installUI(",
-      "sha256": "e7f4a0fc5804e9eb49b3eaa47ae9caf0b05453c099dd132d9a3bfa7efdaf573e"
+      "sha256": "849561bcad88a719a573c5f585be0aa618d36ea172215778277baa8c33018159"
     },
     "clip": {
       "start": "function applyProbabilityBounds(",

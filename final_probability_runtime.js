@@ -1183,7 +1183,7 @@ function renderPrediction(p,n){
   const pointActive=particle?.posterior_update_method==="ten_class_score_pair_likelihood_and_conditional_hand_sampling";
   el("directionText").textContent=!ready?"未就緒":isB?"莊":isP?"閒":shownDirection==="Skip"?"觀望":"均衡";
   el("directionCode").textContent=!ready?"UNAVAILABLE":isB?"BANKER":isP?"PLAYER":shownDirection==="Skip"?"SKIP":"BALANCED";
-  el("confidence").textContent=ready?"莊 "+(f.directional.B*100).toFixed(2)+"% / 閒 "+(f.directional.P*100).toFixed(2)+"%":"—";
+  el("confidence").textContent=ready?"莊 "+(f.directional.B*100).toFixed(pointActive?3:2)+"% / 閒 "+(f.directional.P*100).toFixed(pointActive?3:2)+"%":"—";
   el("regime").textContent=!ready?"模型未就緒":noSkipTestActive?"測試方向（不列入正式下注）":p.direction==="Skip"?(pointActive?"點數後驗觀望（仍有機率方向）":"Direct Physics觀望"):p.direction==="B"?"下注條件：莊":"下注條件：閒";
   if(ready&&f.selection_method==="post_draw_ev_argmax_v1")el("regime").textContent+="；EV選向：莊 "+(f.banker_ev>=0?"+":"")+f.banker_ev.toFixed(4)+" / 閒 "+(f.player_ev>=0?"+":"")+f.player_ev.toFixed(4);
   el("strength").textContent=ready?(f.probabilities.T*100).toFixed(2)+"%":"—";
@@ -1195,7 +1195,14 @@ function renderPrediction(p,n){
     if(pointActive){
       const compare=particle.point_vs_bpt_diagnostic,delta=compare?.max_absolute_probability_delta;
       const scope=particle.forecast_history_mode==="independent_hand"?"不累積前局牌路或點數":particle.point_history_mode==="latest_hand_only"?"僅最近一局點數，前局不累積":"整靴點數歷史";
-      posteriorStatus.textContent="獨立點數後驗："+scope+"；ESS "+(100*(particle.recent_ess_ratio||0)).toFixed(1)+"%；與 B/P/T PF 對照最大機率差 "+(Number.isFinite(delta)?(100*delta).toFixed(2)+" 個百分點":"—");
+      const latest=particle.observed_point_history?.at(-1)||{},point=compare?.point_conditioned_probabilities;
+      const mass=(+point?.B||0)+(+point?.P||0),pointDirection=mass>0
+        ?"點數PF 莊 "+(100*(+point.B||0)/mass).toFixed(3)+"%／閒 "+(100*(+point.P||0)/mass).toFixed(3)+"%"
+        :"點數PF方向機率待計算";
+      const scoreLabel=Number.isInteger(latest.player_score)&&Number.isInteger(latest.banker_score)
+        ?"已讀入閒 "+latest.player_score+"／莊 "+latest.banker_score+(Number.isInteger(latest.card_count)?"／"+latest.card_count+"張":"")
+        :"本局觀測已讀入";
+      posteriorStatus.textContent=scoreLabel+"；"+pointDirection+"；"+scope+"；ESS "+(100*(particle.recent_ess_ratio||0)).toFixed(1)+"%；相較 B/P/T PF 最大差 "+(Number.isFinite(delta)?(100*delta).toFixed(2)+" 個百分點":"—");
     }else if(cardcountProfile&&(cardcountProfile.enabled===false||cardcountProfile.point_input?.enabled===false||cardcountProfile.pf?.score_update_enabled!==true)){
       posteriorStatus.textContent="點數條件更新已由設定停用；目前回退至 B/P/T PF500。";
     }else if(particle?.score_update_fallback_reason){
