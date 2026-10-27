@@ -1,0 +1,7 @@
+data/
+reports/
+*.npz
+*.joblib
+__pycache__/
+.pytest_cache/
+*.pyc
