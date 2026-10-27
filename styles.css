@@ -184,7 +184,7 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
 .bbb-results-block .result-btn{min-height:60px;border-radius:11px}
 .bbb-results-block .result-btn strong{font-size:24px;line-height:1.15}
 .bbb-results-block .result-btn small{font-size:9px;margin-top:2px}
-.bbb-points-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(64px,.63fr);gap:7px;align-items:end}
+.bbb-points-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:end}
 .bbb-points-row label{display:grid;gap:4px;min-width:0;font-size:11px;color:#c9bee0;font-weight:700}
 .bbb-points-row select{width:100%;min-width:0;min-height:44px;padding:8px 6px;background:#181028;color:#fff;font-size:16px;border-radius:10px;border:1px solid rgba(164,135,232,.48)}
 .bbb-points-submit{min-height:44px;padding:7px 5px;border-radius:10px;border:1px solid rgba(201,160,255,.48);background:linear-gradient(135deg,#7c3ee9,#396fe9);color:white;font-size:13px;font-weight:800;cursor:pointer}
@@ -224,4 +224,15 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
   .direction-orb{width:80px;height:80px}
   .direction-orb span{font-size:29px}
   .metric strong{font-size:11px}
+}
+
+/* History-first entry: no switching tabs and no manual score submit. */
+.bbb-input-head{align-items:baseline;gap:7px}
+.bbb-input-head>small{font-size:10px;color:var(--muted);line-height:1.3;text-align:right}
+.bbb-points-row label{font-size:12px}
+.bbb-points-row select{width:100%;min-height:44px}
+@media(max-width:620px){
+  .bbb-input-head{flex-wrap:wrap;margin-bottom:7px}
+  .bbb-input-head>small{text-align:left}
+  .bbb-points-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 }
