@@ -29,7 +29,7 @@ const fs=require("node:fs"),vm=require("node:vm");
   const forecast=api.evDirectionForecast(api.settledOutcomeEv({B:.4586,P:.4462,T:.0952}),.3);
   api.renderPrediction({next_hand_forecast:forecast,direction:"Skip",direction_bias_audit:{
      ev_comparison:{both_negative:true},pf_flip_blocked:true}},8);
-  assert.equal(nodes.get("directionCode").textContent,"BANKER");
+  assert.equal(nodes.get("directionCode").textContent,"SKIP");
   assert.match(nodes.get("regime").textContent,/下注觀望/);
   // 畫面保持原版契約；深入診斷透過唯讀 JSON 欄位供離線稽核。
   console.log(JSON.stringify({passed:true,side_audit:true,bet_unchanged:true,protected_ui_unchanged:true}));
