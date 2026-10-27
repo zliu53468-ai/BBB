@@ -1,0 +1,497 @@
+{
+  "schema_version": 1,
+  "data_kind": "synthetic_only_not_real_holdout",
+  "input_sha256": "e559a94c3a4be2137431f3e9eadebf14070092b1740ea997ddcf643bfa375ac1",
+  "runtime_sha256": {
+    "app256forward.js": "79d43e0be7b23f77e631909cd7c6808fc668df488df0171fe5cc4722e8597064",
+    "app256continuation.js": "d3302c7d09db8932f7ab9ea7c722f394c6aa566d0654962e79bba751f30bf006",
+    "particle_filter_runtime.js": "4c11f9122b9474ec1798ae38e2751de6f72115167fa2537affdf2cd4ae704d18",
+    "macro_ema.js": "aef47f2b6d82f86b35cd41cf0ff98b583c665ed7fb94aae0c2268f2003815b58",
+    "browser_calibration.js": "1080ecf9af81f24fffa14035c21f633c8241eeeb1352a097f2be35aedc2b78e3",
+    "final_probability_runtime.js": "a7f181695f88a677ea8eb2455316a18b16756bb39592948728882b13b4bb1c6e",
+    "physics_multitask_model.json": "3ec0d60251cb5b3fcb40bd67fec1334cb64d37becebbe0b040efbae871071138",
+    "final_probability_model.json": "862347a6937b30ac9a8a3ece8f0eb9927569c97dee799e53cbb418e6c10be2f9",
+    "cardcount_profile.json": "a911ca7f620e544e78fa89aaeab06a56f69b0b3997a34b4accbf93ceb5aee134"
+  },
+  "protocol": {
+    "first_hand_included": true,
+    "input": "past_BPT_only",
+    "learning": "same-browser causal calibration; commit only after actual result",
+    "tie_settlement": "push",
+    "banker_commission": 0.05,
+    "player_commission": 0,
+    "selection": "frozen current no-skip probabilities; offline exact-tie Banker fallback, never alternate to fake balance",
+    "full_retraining": false
+  },
+  "seed": 2026102801,
+  "stages": {
+    "all": {
+      "current": {
+        "rows": 1399,
+        "wagers": 1326,
+        "wins": 585,
+        "losses": 622,
+        "pushes": 119,
+        "not_bet": 73,
+        "coverage": 0.947819871336669,
+        "hit_rate_excluding_pushes": 0.48467274233637114,
+        "wins_per_all_hands": 0.41815582558970693,
+        "realized_ev_per_bet": -0.0423453996983405,
+        "profit_units": -56.14999999999951,
+        "wilson95_descriptive_only": [
+          0.4565718515185043,
+          0.5128708862317901
+        ],
+        "max_loss_streak": 10,
+        "brier_non_tie": 0.2500409757161242,
+        "brier_bpt": 0.576389718467044,
+        "directions": {
+          "B": 866,
+          "P": 460,
+          "Balanced": 73,
+          "unavailable": 0
+        }
+      },
+      "zero_skip_candidate": {
+        "rows": 1399,
+        "wagers": 1399,
+        "wins": 628,
+        "losses": 649,
+        "pushes": 122,
+        "not_bet": 0,
+        "coverage": 1,
+        "hit_rate_excluding_pushes": 0.4917776037588097,
+        "wins_per_all_hands": 0.44889206576125806,
+        "realized_ev_per_bet": -0.030235882773409235,
+        "profit_units": -42.29999999999952,
+        "wilson95_descriptive_only": [
+          0.4644236253291025,
+          0.5191809028852361
+        ],
+        "max_loss_streak": 8,
+        "brier_non_tie": 0.2500409757161242,
+        "brier_bpt": 0.576389718467044,
+        "directions": {
+          "B": 939,
+          "P": 460,
+          "Balanced": 0,
+          "unavailable": 0
+        }
+      }
+    },
+    "1-20": {
+      "current": {
+        "rows": 400,
+        "wagers": 384,
+        "wins": 162,
+        "losses": 189,
+        "pushes": 33,
+        "not_bet": 16,
+        "coverage": 0.96,
+        "hit_rate_excluding_pushes": 0.46153846153846156,
+        "wins_per_all_hands": 0.405,
+        "realized_ev_per_bet": -0.08372395833333342,
+        "profit_units": -32.150000000000034,
+        "wilson95_descriptive_only": [
+          0.4100836517820099,
+          0.5138260286433447
+        ],
+        "max_loss_streak": 8,
+        "brier_non_tie": 0.25092974150394687,
+        "brier_bpt": 0.575643628348296,
+        "directions": {
+          "B": 242,
+          "P": 142,
+          "Balanced": 16,
+          "unavailable": 0
+        }
+      },
+      "zero_skip_candidate": {
+        "rows": 400,
+        "wagers": 400,
+        "wins": 171,
+        "losses": 195,
+        "pushes": 34,
+        "not_bet": 0,
+        "coverage": 1,
+        "hit_rate_excluding_pushes": 0.4672131147540984,
+        "wins_per_all_hands": 0.4275,
+        "realized_ev_per_bet": -0.07400000000000014,
+        "profit_units": -29.600000000000055,
+        "wilson95_descriptive_only": [
+          0.41670444297929293,
+          0.5184028863165402
+        ],
+        "max_loss_streak": 8,
+        "brier_non_tie": 0.25092974150394687,
+        "brier_bpt": 0.575643628348296,
+        "directions": {
+          "B": 258,
+          "P": 142,
+          "Balanced": 0,
+          "unavailable": 0
+        }
+      }
+    },
+    "21-45": {
+      "current": {
+        "rows": 500,
+        "wagers": 494,
+        "wins": 223,
+        "losses": 226,
+        "pushes": 45,
+        "not_bet": 6,
+        "coverage": 0.988,
+        "hit_rate_excluding_pushes": 0.49665924276169265,
+        "wins_per_all_hands": 0.446,
+        "realized_ev_per_bet": -0.022368421052631652,
+        "profit_units": -11.050000000000036,
+        "wilson95_descriptive_only": [
+          0.45063697184744556,
+          0.5427381930329683
+        ],
+        "max_loss_streak": 7,
+        "brier_non_tie": 0.24979152645836336,
+        "brier_bpt": 0.579451659945598,
+        "directions": {
+          "B": 352,
+          "P": 142,
+          "Balanced": 6,
+          "unavailable": 0
+        }
+      },
+      "zero_skip_candidate": {
+        "rows": 500,
+        "wagers": 500,
+        "wins": 226,
+        "losses": 228,
+        "pushes": 46,
+        "not_bet": 0,
+        "coverage": 1,
+        "hit_rate_excluding_pushes": 0.4977973568281938,
+        "wins_per_all_hands": 0.452,
+        "realized_ev_per_bet": -0.020400000000000022,
+        "profit_units": -10.200000000000012,
+        "wilson95_descriptive_only": [
+          0.45201679956214597,
+          0.543614876072578
+        ],
+        "max_loss_streak": 7,
+        "brier_non_tie": 0.24979152645836336,
+        "brier_bpt": 0.579451659945598,
+        "directions": {
+          "B": 358,
+          "P": 142,
+          "Balanced": 0,
+          "unavailable": 0
+        }
+      }
+    },
+    "46-70": {
+      "current": {
+        "rows": 499,
+        "wagers": 448,
+        "wins": 200,
+        "losses": 207,
+        "pushes": 41,
+        "not_bet": 51,
+        "coverage": 0.8977955911823647,
+        "hit_rate_excluding_pushes": 0.4914004914004914,
+        "wins_per_all_hands": 0.40080160320641284,
+        "realized_ev_per_bet": -0.028906250000000102,
+        "profit_units": -12.950000000000045,
+        "wilson95_descriptive_only": [
+          0.4431397104162987,
+          0.5398220870125848
+        ],
+        "max_loss_streak": 9,
+        "brier_non_tie": 0.24957699690798416,
+        "brier_bpt": 0.5739197090646803,
+        "directions": {
+          "B": 272,
+          "P": 176,
+          "Balanced": 51,
+          "unavailable": 0
+        }
+      },
+      "zero_skip_candidate": {
+        "rows": 499,
+        "wagers": 499,
+        "wins": 231,
+        "losses": 226,
+        "pushes": 42,
+        "not_bet": 0,
+        "coverage": 1,
+        "hit_rate_excluding_pushes": 0.5054704595185996,
+        "wins_per_all_hands": 0.46292585170340683,
+        "realized_ev_per_bet": -0.005010020040080156,
+        "profit_units": -2.499999999999998,
+        "wilson95_descriptive_only": [
+          0.459777406595268,
+          0.5510723116848433
+        ],
+        "max_loss_streak": 8,
+        "brier_non_tie": 0.24957699690798416,
+        "brier_bpt": 0.5739197090646803,
+        "directions": {
+          "B": 323,
+          "P": 176,
+          "Balanced": 0,
+          "unavailable": 0
+        }
+      }
+    },
+    "<=40": {
+      "current": {
+        "rows": 800,
+        "wagers": 779,
+        "wins": 344,
+        "losses": 366,
+        "pushes": 69,
+        "not_bet": 21,
+        "coverage": 0.97375,
+        "hit_rate_excluding_pushes": 0.48450704225352115,
+        "wins_per_all_hands": 0.43,
+        "realized_ev_per_bet": -0.04293966623876752,
+        "profit_units": -33.449999999999896,
+        "wilson95_descriptive_only": [
+          0.44792895679279426,
+          0.5212518749897345
+        ],
+        "max_loss_streak": 7,
+        "brier_non_tie": 0.2503092877722763,
+        "brier_bpt": 0.5777292834291263,
+        "directions": {
+          "B": 509,
+          "P": 270,
+          "Balanced": 21,
+          "unavailable": 0
+        }
+      },
+      "zero_skip_candidate": {
+        "rows": 800,
+        "wagers": 800,
+        "wins": 355,
+        "losses": 374,
+        "pushes": 71,
+        "not_bet": 0,
+        "coverage": 1,
+        "hit_rate_excluding_pushes": 0.4869684499314129,
+        "wins_per_all_hands": 0.44375,
+        "realized_ev_per_bet": -0.03874999999999999,
+        "profit_units": -30.999999999999993,
+        "wilson95_descriptive_only": [
+          0.45084861652632136,
+          0.5232249026894512
+        ],
+        "max_loss_streak": 7,
+        "brier_non_tie": 0.2503092877722763,
+        "brier_bpt": 0.5777292834291263,
+        "directions": {
+          "B": 530,
+          "P": 270,
+          "Balanced": 0,
+          "unavailable": 0
+        }
+      }
+    },
+    "41-50": {
+      "current": {
+        "rows": 200,
+        "wagers": 198,
+        "wins": 81,
+        "losses": 98,
+        "pushes": 19,
+        "not_bet": 2,
+        "coverage": 0.99,
+        "hit_rate_excluding_pushes": 0.45251396648044695,
+        "wins_per_all_hands": 0.405,
+        "realized_ev_per_bet": -0.10378787878787886,
+        "profit_units": -20.550000000000015,
+        "wilson95_descriptive_only": [
+          0.38135857183990834,
+          0.5256647033535407
+        ],
+        "max_loss_streak": 10,
+        "brier_non_tie": 0.251583141377363,
+        "brier_bpt": 0.5844533725207297,
+        "directions": {
+          "B": 176,
+          "P": 22,
+          "Balanced": 2,
+          "unavailable": 0
+        }
+      },
+      "zero_skip_candidate": {
+        "rows": 200,
+        "wagers": 200,
+        "wins": 83,
+        "losses": 98,
+        "pushes": 19,
+        "not_bet": 0,
+        "coverage": 1,
+        "hit_rate_excluding_pushes": 0.4585635359116022,
+        "wins_per_all_hands": 0.415,
+        "realized_ev_per_bet": -0.09325000000000007,
+        "profit_units": -18.650000000000013,
+        "wilson95_descriptive_only": [
+          0.3875868725843122,
+          0.5312625019245161
+        ],
+        "max_loss_streak": 7,
+        "brier_non_tie": 0.251583141377363,
+        "brier_bpt": 0.5844533725207297,
+        "directions": {
+          "B": 178,
+          "P": 22,
+          "Balanced": 0,
+          "unavailable": 0
+        }
+      }
+    },
+    ">50": {
+      "current": {
+        "rows": 399,
+        "wagers": 349,
+        "wins": 160,
+        "losses": 158,
+        "pushes": 31,
+        "not_bet": 50,
+        "coverage": 0.87468671679198,
+        "hit_rate_excluding_pushes": 0.5031446540880503,
+        "wins_per_all_hands": 0.40100250626566414,
+        "realized_ev_per_bet": -0.006160458452722087,
+        "profit_units": -2.1500000000000083,
+        "wilson95_descriptive_only": [
+          0.4484824765610711,
+          0.5577317632305594
+        ],
+        "max_loss_streak": 8,
+        "brier_non_tie": 0.24874742946648049,
+        "brier_bpt": 0.5696619420750528,
+        "directions": {
+          "B": 181,
+          "P": 168,
+          "Balanced": 50,
+          "unavailable": 0
+        }
+      },
+      "zero_skip_candidate": {
+        "rows": 399,
+        "wagers": 399,
+        "wins": 190,
+        "losses": 177,
+        "pushes": 32,
+        "not_bet": 0,
+        "coverage": 1,
+        "hit_rate_excluding_pushes": 0.5177111716621253,
+        "wins_per_all_hands": 0.47619047619047616,
+        "realized_ev_per_bet": 0.018421052631578942,
+        "profit_units": 7.349999999999998,
+        "wilson95_descriptive_only": [
+          0.46667030675608245,
+          0.5683851049051192
+        ],
+        "max_loss_streak": 7,
+        "brier_non_tie": 0.24874742946648049,
+        "brier_bpt": 0.5696619420750528,
+        "directions": {
+          "B": 231,
+          "P": 168,
+          "Balanced": 0,
+          "unavailable": 0
+        }
+      }
+    },
+    "50-70": {
+      "current": {
+        "rows": 419,
+        "wagers": 369,
+        "wins": 166,
+        "losses": 171,
+        "pushes": 32,
+        "not_bet": 50,
+        "coverage": 0.8806682577565632,
+        "hit_rate_excluding_pushes": 0.49258160237388726,
+        "wins_per_all_hands": 0.39618138424821003,
+        "realized_ev_per_bet": -0.02547425474254748,
+        "profit_units": -9.40000000000002,
+        "wilson95_descriptive_only": [
+          0.43958964721050153,
+          0.5457407758627365
+        ],
+        "max_loss_streak": 8,
+        "brier_non_tie": 0.24939290067021802,
+        "brier_bpt": 0.5697085722569193,
+        "directions": {
+          "B": 198,
+          "P": 171,
+          "Balanced": 50,
+          "unavailable": 0
+        }
+      },
+      "zero_skip_candidate": {
+        "rows": 419,
+        "wagers": 419,
+        "wins": 196,
+        "losses": 190,
+        "pushes": 33,
+        "not_bet": 0,
+        "coverage": 1,
+        "hit_rate_excluding_pushes": 0.5077720207253886,
+        "wins_per_all_hands": 0.4677804295942721,
+        "realized_ev_per_bet": 0.00023866348448689173,
+        "profit_units": 0.10000000000000764,
+        "wilson95_descriptive_only": [
+          0.4580679668828698,
+          0.5573229051350796
+        ],
+        "max_loss_streak": 7,
+        "brier_non_tie": 0.24939290067021802,
+        "brier_bpt": 0.5697085722569193,
+        "directions": {
+          "B": 248,
+          "P": 171,
+          "Balanced": 0,
+          "unavailable": 0
+        }
+      }
+    }
+  },
+  "whole_shoe_bootstrap": {
+    "method": "whole-shoe percentile bootstrap",
+    "shoes": 20,
+    "samples": 2000,
+    "seed": 880142,
+    "hit95": [
+      0.47566551795001505,
+      0.5087729380923574
+    ],
+    "ev95": [
+      -0.058976947819871325,
+      0.0004297712651894206
+    ]
+  },
+  "gate": {
+    "statistical_checks_passed": false,
+    "failures": [
+      "No independent real B/P/T holdout; simulation is not deployment evidence",
+      "Fewer than 1000 independent whole shoes",
+      "Fewer than 10000 resolved predictions",
+      "Observed hit rate below 52%",
+      "Whole-shoe 95% lower hit bound below 52%",
+      "Positive commission-adjusted EV not established"
+    ],
+    "production_promotion_allowed": false,
+    "source_review_required": true,
+    "remaining_required": [
+      "Verify source, chronology, complete shoes and zero holdout tuning",
+      "Review independent temporal subperiods and stage stability",
+      "Any changed policy requires a fresh holdout; never repeatedly select against this report"
+    ],
+    "note": "Even passing an interval is evidence under sampled conditions, never a guarantee of future hit rate"
+  },
+  "predictions_sha256": "a5edb9088ddcf1b718a3dfd7c50b9d36d893df5ce3cef029294dbf5a46e44052",
+  "prediction_rows": 1399,
+  "publication_note": "Synthetic audit only; production prediction, UI, weights, auth and no-skip policy unchanged. Metrics re-aggregated from original causal predictions after correcting max-loss-streak accounting; no prediction or selection rule retuned."
+}

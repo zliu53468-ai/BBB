@@ -1,0 +1,21 @@
+name: 不觀望命中率驗證工具檢查
+on:
+  push:
+    branches: [main]
+    paths: ['tools/no_skip_validation.js', 'test_no_skip_validation.js', 'NO_SKIP_VALIDATION.md', 'validation/no_skip_independent_summary.json', '.github/workflows/no-skip-validation.yml']
+  pull_request:
+    branches: [main]
+    paths: ['tools/no_skip_validation.js', 'test_no_skip_validation.js', 'NO_SKIP_VALIDATION.md', 'validation/no_skip_independent_summary.json', '.github/workflows/no-skip-validation.yml']
+permissions:
+  contents: read
+jobs:
+  audit-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check tools/no_skip_validation.js
+      - run: node test_no_skip_validation.js
