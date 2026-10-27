@@ -85,14 +85,11 @@ for(const side of ["B","P","T","P"]){
  assert.equal(storage.has("bgs_xgb_final_pending_v5"),false,"test must not register bets");
 }
 assert.equal(api.getTrainingCount(),rowCount,"test must not add wager training rows");
-assert.equal(JSON.parse(storage.get("bgs_first_layer_gap_smoothing_v1")).events.length,4,"first layer commits each completed result once");
 assert.equal(api.getLocalCalibrationStatus().seen,4,"each completed result updates local journal even in no-skip mode");
 assert.equal(api.getLocalCalibrationStatus().directional_samples,3,"tie must not be labelled P");
 assert.match(el("localCalibrationStatus").textContent,/非完整重訓/);
-const firstBefore=storage.get("bgs_first_layer_gap_smoothing_v1");
 const localBefore=JSON.stringify(api.getLocalCalibrationStatus());
 api.applyFinalPrediction(stored());api.applyFinalPrediction(stored());
-assert.equal(storage.get("bgs_first_layer_gap_smoothing_v1"),firstBefore,"re-analysis cannot advance first-layer EMA");
 assert.equal(JSON.stringify(api.getLocalCalibrationStatus()),localBefore,"re-analysis must not train again");
 report("btnBack");assert.equal(Number(el("roundCount").textContent),stored().length);assert.equal(api.getLocalCalibrationStatus().directional_samples,2);
 report("btnNoSkipTest");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
@@ -100,7 +97,6 @@ report("btnP");assert.equal(api.getLocalCalibrationStatus().directional_samples,
 assert.equal(Number(el("roundCount").textContent),stored().length);
 report("btnNoSkipTest");report("btnStart");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
 report("btnNoSkipTest");report("btnEnd");assert.equal(el("btnNoSkipTest")["aria-pressed"],"false");
-assert.equal(storage.has("bgs_first_layer_gap_smoothing_v1"),false,"end clears first-layer state");
 assert.equal(storage.has("bgs_browser_calibration_v1"),false,"end clears local calibration");
 console.log("continuous test mode, no wager registration, undo, stop and unavailable model passed");
 console.log("button-only UI: B/P/T, analysis and undo without score fields passed");})().catch(e=>{console.error(e);process.exitCode=1;});

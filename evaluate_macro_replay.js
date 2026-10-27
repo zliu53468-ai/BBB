@@ -73,8 +73,7 @@ async function replay(directory,coefficients=null){
       if(history.length){ // Matches UI: no prediction before any history.
         const prediction=api.applyFinalPrediction(history),r=prediction.finalProbability;
         if(r.error||r.mode!=="physics_primary")throw new Error("Replay runtime error: "+r.error);
-        const lockedCandidate=r.direction_selection==="post_draw_ev_argmax_v1"?r.direction_candidate:r.primary_candidate;
-        if(prediction.direction!=="Skip"&&(prediction.direction!==lockedCandidate||(r.direction_selection==="post_draw_ev_argmax_v1"&&prediction.direction!==prediction.ev_direction?.direction)))flips++;
+        if(prediction.direction!=="Skip"&&prediction.direction!==r.primary_candidate)flips++;
         maxMacroDelta=Math.max(maxMacroDelta,Math.abs(r.macro_adjustment?.delta||0));
         if(r.macro_adjustment?.reason==="zero_coefficients_or_signal")unfitted++;
         record(totals.all,prediction.direction,actual.outcome);record(totals[stage],prediction.direction,actual.outcome);

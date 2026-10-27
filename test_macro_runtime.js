@@ -98,7 +98,7 @@ function context(store=new Map(),withoutParticle=false,finalOverride=null){
   assert(api.dynamicBand(65,.4,bands,dyn).confidenceBand<=api.dynamicBand(51,.4,bands,dyn).confidenceBand);
   const policy=api.decisionPolicy(60,.95);
   const shoe=api.getMacroFeatures(seq).shoe_id;
-  store.set("bgs_xgb_final_training_v5",JSON.stringify(Array.from({length:5},(_,i)=>({shoe_id:shoe,round_index:i+45,final_p_b:.49,p_tie:.1,activation_ev:.002,predicted_direction:"Skip"}))));
+  store.set("bgs_xgb_final_training_v5",JSON.stringify(Array.from({length:5},(_,i)=>({shoe_id:shoe,round_index:i+45,final_p_b:.49,activation_ev:.002,predicted_direction:"Skip"}))));
   assert.equal(api.volumeGuardState(60,.501,policy).active,false);
   const lowPolicy=api.decisionPolicy(60,.4),lowGuard=api.volumeGuardState(60,.49,lowPolicy);
   assert.equal(lowGuard.active,true);assert(lowGuard.bandRelief>0);assert(lowGuard.bandRelief<=lowPolicy.confidenceBand*.25);

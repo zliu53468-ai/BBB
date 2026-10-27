@@ -1,10 +1,6 @@
 "use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
 const current=JSON.parse(fs.readFileSync("cardcount_profile.json")),baseline=JSON.parse(fs.readFileSync("validation/cardcount_moderate_v1_baseline.json"));
-// Compare stage settings with identical PF sampling budgets.
-baseline.pf={...baseline.pf,likelihood_draws:current.pf.likelihood_draws,fallback_draws:current.pf.fallback_draws};
-// This regression isolates the historical stage upgrade; v2 selectivity is covered separately.
-current.selective_entry_v2.enabled=false;current.first_layer_smoothing.enabled=false;
 const M=require("./browser_calibration.js");
 function make(profile){
   const store=new Map(),ctx={console,localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},document:{getElementById:()=>null},fetch:async file=>({ok:true,json:async()=>file==="cardcount_profile.json"?profile:JSON.parse(fs.readFileSync(file,"utf8"))})};
@@ -40,7 +36,7 @@ function memory(){const map=new Map();return {getItem:k=>map.get(k)??null,setIte
     const h=Array.from({length:r-1},(_,i)=>"BBPPT"[i%5]),p=a.api.applyFinalPrediction(h),d=p.finalProbability.particleDiagnostics;
     assert.equal(d.forecast_draws,r<48?4:5);assert(d.blend_weight<=.16);assert.equal(d.particle_count,500);assert.equal(d.persistent_state,false);
     assert.equal(p.finalProbability.physics.length,48);assert.equal(p.finalProbability.extended.length,57);
-    assert(p.direction==="Skip"||p.direction===(p.finalProbability.direction_selection==="post_draw_ev_argmax_v1"?p.finalProbability.direction_candidate:p.finalProbability.primary_candidate));
+    assert(p.direction==="Skip"||p.direction===p.finalProbability.primary_candidate);
     if(p.direction!=="Skip")assert((p.direction==="B"?p.ev_banker:p.ev_player)>0);
   }
   const client=M.createClient(memory()),h=[],f={available:true,direction:"B",directional:{B:.55,P:.45},probabilities:{B:.495,P:.405,T:.1},uncertainty:.2};
