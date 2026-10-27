@@ -14,7 +14,7 @@ const EV_CONSISTENCY_V1=false; // Shadow gate failed; set true only after holdou
 const EARLY_TIE_PENALTY=.15;
 const VERSION=EV_CONSISTENCY_V1
   ?"PHYSICS_57D_V14_8_FORECAST_FIRST_EVC1"
-  :"PHYSICS_57D_V14_8_EV_LED_DIRECTION_PREQUENTIAL_EV1";
+  :"PHYSICS_57D_V14_8_FIRST_LAYER_EV1";
 const PHYSICS_URL="physics_multitask_model.json";
 let cardcountProfile=null,displayGapOverride=null;
 
@@ -56,7 +56,7 @@ function postDrawAudit(direct,posterior,mixed,primary,finalPB){
   const evaluate=physics=>Array.isArray(physics)?settledOutcomeEv({B:physics[23],P:physics[24],T:physics[25]}):null;
   return {schema_version:1,policy:settlementPolicy(),probability_basis:"post_draw_unconditional",pf_stage_applications:posterior?1:0,
     direct_physics:evaluate(direct),pf_posterior:evaluate(posterior),mixed:evaluate(mixed),
-    candidate:conditionalSettlement(primary.directionalPB,primary.pT),final:conditionalSettlement(finalPB,primary.pT),
+    first_layer:primary.firstLayerEv||null,candidate:conditionalSettlement(primary.directionalPB,primary.pT),final:conditionalSettlement(finalPB,primary.pT),
     model_ev_head_basis:"nominal_5pct_commission_training_features_unchanged"};
 }
 
@@ -83,6 +83,17 @@ function evDirectionForecast(settlement,uncertainty){
     weak_signal:Math.abs(p.B/mass-.5)<.005,probability_basis:"post_draw_unconditional_with_conditional_display",ev_basis:"unit_stake_net_after_commission"};
 }
 
+function firstLayerEvPolicy(){
+  const c=cardcountProfile?.first_layer_ev;
+  if(!c)return {schema_version:1,enabled:false};
+  if(c.schema_version!==1||typeof c.enabled!=="boolean")throw new Error("invalid first-layer EV policy");
+  return {...c,enabled:c.enabled&&directionSelectionPolicy().enabled};
+}
+function firstLayerEv(physics){
+  if(!firstLayerEvPolicy().enabled||!settlementPolicy()||!Array.isArray(physics))return null;
+  const settlement=settledOutcomeEv({B:physics[23],P:physics[24],T:physics[25]});
+  return {schema_version:1,source:"physics_pf_post_draw",stage:"before_macro_clip_ema_calibration",...selectEvDirection(settlement.banker,settlement.player),probabilities:settlement.probabilities,positive_ev:Math.max(settlement.banker,settlement.player)>0};
+}
 function profileValue(key,roundIndex){
   if(!cardcountProfile?.enabled)return null;
   return interpAnchors(clip(roundIndex,1,70),cardcountProfile.anchors[key]);
@@ -526,7 +537,8 @@ function directPhysicsPrimary(physics,roundIndex,macroFeatures=null){
   const calibratedPB=calibratedPhysicsDirectionalPB(rawDirectionalPB,roundIndex,uncertainty,consistency,pT);
   const progressWeight=directPhysicsProgressWeight(roundIndex,physics),noise=physicsNoiseScore(physics,roundIndex,Math.cbrt(progressWeight));
   const policy=decisionPolicy(roundIndex,noise);
-  // Primary EV is computed only from the Direct Physics winner head.
+  // First-layer EV evaluates the completed-hand Physics + PF distribution before any smoothing.
+  const firstEv=firstLayerEv(physics);
   const baseSettlement=settlementPolicy()?conditionalSettlement(calibratedPB,pT):null;
   const baseEvBanker=baseSettlement?baseSettlement.banker:pB*.95-pP,baseEvPlayer=baseSettlement?baseSettlement.player:pP-pB;
   const macro=MACRO?MACRO.adjustment(calibratedPB,macroFeatures,clip(roundIndex/getEstimatedTotalHands()),noise,{...(final56Bundle?.decision_policy?.macro_ema||{}),...(cardcountProfile?.enabled?cardcountProfile.macro:{})}):{value:calibratedPB,delta:0,reason:"module_unavailable"};
@@ -551,9 +563,11 @@ function directPhysicsPrimary(physics,roundIndex,macroFeatures=null){
     if(bankerOk)candidate="B";
     else if(playerOk)candidate="P";
   }
+  const legacyCandidate=candidate;
+  if(firstEv)candidate=firstEv.direction==="Balanced"?"Skip":firstEv.direction;
   const earlyTiePenaltyApplied=EV_CONSISTENCY_V1&&roundIndex<=40&&EARLY_TIE_PENALTY>0&&pT>0;
   return {pB,pP,pT,rawDirectionalPB,directionalPB,progressWeight,noise,policy,distance,uncertainty,consistency,precisionPenalty,earlyTiePenaltyApplied,
-    physicsActivationEv,physicsConfidenceBand,evBanker,evPlayer,baseEvBanker,baseEvPlayer,modelEvBanker,modelEvPlayer,candidate,macro};
+    physicsActivationEv,physicsConfidenceBand,evBanker,evPlayer,baseEvBanker,baseEvPlayer,modelEvBanker,modelEvPlayer,candidate,legacyCandidate,firstLayerEv:firstEv,macro};
 }
 
 function auxiliaryCandidateFilter(candidate,corePB,xgbPB){
@@ -784,7 +798,7 @@ function applyFinalPrediction(seq,corePrediction=null){
   const useEvDirection=directionSelectionPolicy().enabled;
   const forecast=useEvDirection?evForecast:calibrated?.forecast||rawForecast;
   const calibrationStatus=formalCalibration?formalCalibration.status:useEvDirection?{...calibrated?.status,shadow_applied:calibrated?.status?.applied===true,applied:false,used_for_direction:false}:calibrated?.status||null;
-  return {...resolvedCore,calibration_input_forecast:calibrationInputForecast,settlement_audit:settlementAudit,draw_report:drawReport,raw_next_hand_forecast:rawForecast,browser_calibration:calibrationStatus,ev_direction:useEvDirection&&evForecast.available?selectEvDirection(evForecast.banker_ev,evForecast.player_ev):null,next_hand_forecast:forecast,forecast_direction:forecast.direction,bet_direction:direction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
+  return {...resolvedCore,first_layer_ev:primary?.firstLayerEv||null,calibration_input_forecast:calibrationInputForecast,settlement_audit:settlementAudit,draw_report:drawReport,raw_next_hand_forecast:rawForecast,browser_calibration:calibrationStatus,ev_direction:useEvDirection&&evForecast.available?selectEvDirection(evForecast.banker_ev,evForecast.player_ev):null,next_hand_forecast:forecast,forecast_direction:forecast.direction,bet_direction:direction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
     ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,
     physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,
     min_ev:evDecision?.minEv??null,activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,
@@ -794,7 +808,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     regime:mode==="physics_primary"?(direction==="Skip"?"Direct Physics觀望":auxFilter?.decision==="downgrade"?"Direct Physics / XGB降權":"Direct Physics / XGB輔助提醒"):"模型未就緒／觀望",
     finalProbability:{version:VERSION,direction_selection:evDecision?.v15Trace?.directionSelection||"physics_candidate_v1",direction_candidate:evDecision?.candidate??"Skip",settlement_audit:settlementAudit,draw_report:drawReport,active:mode==="physics_primary",mode,
       skip_diagnostics:skipDiagnostics,
-      particleDiagnostics,primary_source:particleDiagnostics?"direct_physics_particle500_physical_ev":"direct_physics_physical_ev",primary_candidate:primary?.candidate??"Skip",
+      first_layer_ev:primary?.firstLayerEv||null,legacy_primary_candidate:primary?.legacyCandidate??"Skip",particleDiagnostics,primary_source:particleDiagnostics?"direct_physics_particle500_physical_ev":"direct_physics_physical_ev",primary_candidate:primary?.candidate??"Skip",
       macro_ema:primary?.macroFeatures??null,macro_adjustment:primary?.macro??null,
       decision_stage:primary?.policy?.stage??(seq.length<40?"early":seq.length<50?"middle":"late"),decision_progress:clip((seq.length+1)/getEstimatedTotalHands()),dynamic_band:primary?.policy?.dynamicBand??null,
       physics_raw_p_b:primary?.rawDirectionalPB??null,physics_calibrated_p_b:primary?.directionalPB??null,physics_clipped_p_b:clippedPB,physics_smoothed_p_b:smoothedPB,
@@ -891,7 +905,7 @@ function cloneFiniteVector(values,dimension){return Array.isArray(values)&&value
 function registerPrediction(seq,prediction){
   const r=prediction.finalProbability||{},f=r.original7||buildOriginal7(seq,prediction);
   const createdAt=Date.now(),shoeId=getShoeId(),quality=r.dataQuality||dataQuality(seq),errorCorrectionSnapshot=null;
-  const pending={browser_calibration:prediction.browser_calibration||null,calibration_input_forecast:prediction.calibration_input_forecast||null,direction_selection:r.direction_selection||"physics_candidate_v1",direction_candidate:r.direction_candidate||"Skip",ev_direction:prediction.ev_direction||null,settlement_audit:r.settlement_audit||null,draw_report:r.draw_report||null,raw_next_hand_forecast:prediction.raw_next_hand_forecast||null,next_hand_forecast:prediction.next_hand_forecast||null,forecast_direction:prediction.forecast_direction||null,bet_direction:prediction.direction||"Skip",schema_version:SNAPSHOT_SCHEMA_VERSION,prediction_id:`${shoeId}:${createdAt}:${seq.join("")}`,shoe_id:shoeId,created_at:createdAt,
+  const pending={first_layer_ev:prediction.first_layer_ev||null,browser_calibration:prediction.browser_calibration||null,calibration_input_forecast:prediction.calibration_input_forecast||null,direction_selection:r.direction_selection||"physics_candidate_v1",direction_candidate:r.direction_candidate||"Skip",ev_direction:prediction.ev_direction||null,settlement_audit:r.settlement_audit||null,draw_report:r.draw_report||null,raw_next_hand_forecast:prediction.raw_next_hand_forecast||null,next_hand_forecast:prediction.next_hand_forecast||null,forecast_direction:prediction.forecast_direction||null,bet_direction:prediction.direction||"Skip",schema_version:SNAPSHOT_SCHEMA_VERSION,prediction_id:`${shoeId}:${createdAt}:${seq.join("")}`,shoe_id:shoeId,created_at:createdAt,
     history_fingerprint:seq.join(""),history_event_count:seq.length,directional_round_count:quality.directionalRounds,data_stage:quality.stage,
     entry_eligible:quality.entryEligible,preferred_entry:quality.preferredEntry,mode:r.mode||"core",model_versions:{final_probability:final56Bundle?.schema_version??null,physics:physicsBundle?.schema_version??null},
     core_p_b:f.core_p_b,round_index:f.round_index,estimated_total_hands:f.estimated_total_hands,remaining_ratio:f.remaining_ratio,
@@ -1090,7 +1104,7 @@ function installUI(){
   const observations=document.getElementById("btnExportObservations");if(observations)observations.addEventListener("click",downloadMacroObservations);
   syncMacro(readHistory());
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,prepareCalibrationTicket,commitCalibrationTicket,directionSelectionPolicy,selectEvDirection,evDirectionForecast,settlementPolicy,settledOutcomeEv,conditionalSettlement,drawCountDistribution,getLocalCalibrationStatus:(history=readHistory())=>LOCAL_CALIBRATION?.inspect(history,getShoeId(),browserCalibrationTag,localCalibrationConfig())||null,displayDirection,profileValue,getCardcountProfile:()=>cardcountProfile,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,firstLayerEvPolicy,firstLayerEv,prepareCalibrationTicket,commitCalibrationTicket,directionSelectionPolicy,selectEvDirection,evDirectionForecast,settlementPolicy,settledOutcomeEv,conditionalSettlement,drawCountDistribution,getLocalCalibrationStatus:(history=readHistory())=>LOCAL_CALIBRATION?.inspect(history,getShoeId(),browserCalibrationTag,localCalibrationConfig())||null,displayDirection,profileValue,getCardcountProfile:()=>cardcountProfile,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
   registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,
   getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 if(typeof window?.addEventListener==="function")window.addEventListener("storage",event=>{if(event.key===MACRO_KEY||event.key===SHOE_KEY){macroJournal=null;macroState=null;}});

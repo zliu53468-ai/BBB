@@ -1,0 +1,19 @@
+"use strict";
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const profile=JSON.parse(fs.readFileSync('cardcount_profile.json','utf8'));
+async function make(enabled){const config=structuredClone(profile);config.first_layer_ev.enabled=enabled;const map=new Map([['bgs_xgb_final_shoe_id_v5','first-layer-test']]),ctx={console,document:{getElementById:()=>null},localStorage:{getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,String(v)),removeItem:k=>map.delete(k)},fetch:async f=>({ok:true,json:async()=>f==='cardcount_profile.json'?config:JSON.parse(fs.readFileSync(f,'utf8'))})};ctx.window=ctx;vm.createContext(ctx);for(const f of ['app256forward.js','app256continuation.js','particle_filter_runtime.js','macro_ema.js','browser_calibration.js','final_probability_runtime.js'])vm.runInContext(fs.readFileSync(f,'utf8'),ctx,{filename:f});await ctx.__BGS_FINAL56__.loadModels();return {api:ctx.__BGS_FINAL56__,map};}
+(async()=>{const a=await make(true),b=await make(false);const physics=Array(48).fill(0);physics[0]=physics[3]=physics[13]=1;physics[23]=.4536;physics[24]=.4464;physics[25]=.1;physics[42]=.2;
+ const first=a.api.firstLayerEv(physics);assert.equal(first.direction,'P','commission-aware EV must choose P despite B majority');assert(first.banker_ev<0&&first.player_ev<0&&!first.positive_ev);assert(Math.abs(first.banker_ev-(.95*.4536-.4464))<1e-12);assert.deepEqual(JSON.parse(JSON.stringify(first.probabilities)),{B:.4536,P:.4464,T:.1});
+ const primary=a.api.directPhysicsPrimary(physics,1);assert.equal(primary.candidate,'P','first layer must produce a preference before wager gates');assert.equal(primary.legacyCandidate,'Skip','preference is not entry eligibility');assert.equal(primary.firstLayerEv.direction,'P');assert.equal(b.api.firstLayerEv(physics),null);
+ const ties=physics.slice();ties[23]=ties[24]=0;ties[25]=1;assert.equal(a.api.firstLayerEv(ties).direction,'Balanced');
+ let cases=0;
+ for(const h of ['B','T','BBPPBTBP','BP'.repeat(25),'B'.repeat(60)])for(const previous of [null,.1,.9]){
+  for(const r of [a,b]){r.map.delete('bgs_xgb_final_training_v5');if(previous!==null)r.map.set('bgs_xgb_final_training_v5',JSON.stringify([{shoe_id:'first-layer-test',round_index:Math.max(1,h.length-1),physics_smoothed_p_b:previous,final_p_b:previous,p_tie:.1,predicted_direction:'Skip'}]));}
+  const x=a.api.applyFinalPrediction(h.split('')),y=b.api.applyFinalPrediction(h.split('')),r=x.finalProbability;
+  assert(x.first_layer_ev);const mixed=a.api.settledOutcomeEv({B:r.physics[23],P:r.physics[24],T:r.physics[25]});assert.equal(x.first_layer_ev.direction,a.api.selectEvDirection(mixed.banker,mixed.player).direction);assert.equal(r.primary_candidate,x.first_layer_ev.direction==='Balanced'?'Skip':x.first_layer_ev.direction);
+  assert.equal(r.finalPB,y.finalProbability.finalPB,'first EV must not rewrite probabilities');assert.equal(x.direction,y.direction,'later guards must retain original behavior');assert.equal(JSON.stringify(r.physics),JSON.stringify(y.finalProbability.physics));assert.equal(JSON.stringify(r.extended),JSON.stringify(y.finalProbability.extended));assert.equal(JSON.stringify(r.macro_adjustment),JSON.stringify(y.finalProbability.macro_adjustment));
+  if(x.direction!=='Skip'){assert.equal(x.direction,x.ev_direction.direction);assert(x.ev_direction.best_ev>0);}cases++;
+ }
+ const p=a.api.applyFinalPrediction(['B']);a.api.registerPrediction(['B'],p);a.api.settlePending('B',null,['B']);assert(a.api.getTrainingRows().at(-1).first_layer_ev,'snapshot must expose first-stage EV for testing');
+ console.log(JSON.stringify({passed:true,first_ev_before_entry_gates:true,commission_and_tie:true,runtime_cases:cases,no_draw_probability_or_final_guard_change:true}));
+})().catch(e=>{console.error(e);process.exitCode=1});
