@@ -129,8 +129,11 @@ def stage2(data="research/data",reports="research/reports",seed=SEED):
         for _ in range(1500):
             j=rng.integers(0,len(unique),len(unique))
             sims.append(float(diffs[j].sum()/hands[j].sum()))
+        ci=np.quantile(sims,[.025,.975])
         report["comparisons"]["soft_minus_"+name]={
-            "profit_per_hand_ci95":np.quantile(sims,[.025,.975]).tolist(),
+            "profit_per_hand_ci95":ci.tolist(),
+            "profit_per_hand_significant_at_95pct":bool(ci[0]>0 or ci[1]<0),
+            "profit_per_hand_improved_significantly":bool(ci[0]>0),
             "profit_per_hand_mean":float(diffs.sum()/hands.sum()),
             "log_loss_delta":report["models"]["soft_MLP"]["log_loss"]-
                              report["models"][name]["log_loss"]}
