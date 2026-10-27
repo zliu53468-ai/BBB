@@ -29,7 +29,7 @@ class TestBaccarat(unittest.TestCase):
     def test_all_zero_cards_always_tie_natural_stand(self):
         v=exact_distribution((6,0,0,0,0,0,0,0,0,0))
         self.assertAlmostEqual(v[2],1,places=10)
-        self.assertAlmostEqual(v[3],1,places=10)
+        self.assertAlmostEqual(v[5],1,places=10)
 
     def test_reproducible_shoe_and_cut(self):
         a=list(simulate_shoe(7,seed=20261027))
