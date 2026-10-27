@@ -744,7 +744,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     }
     const basePB=finalPB,baseDecision=evaluateProbability(basePB);
     if(localCalibrationConfig().formal_ev_enabled===true&&directionSelectionPolicy().enabled&&LOCAL_CALIBRATION&&browserCalibrationTag!=="unready"&&primary.pT<1-1e-12){
-      calibrationInputForecast=evDirectionForecast(conditionalSettlement(basePB,primary.pT),primary.uncertainty);
+      calibrationInputForecast=evDirectionForecast(conditionalSettlement(basePB,primary.pT),Math.max(primary.noise,primary.uncertainty));
       calibrationInputForecast.directional={B:basePB,P:1-basePB};
       calibrationInputForecast.calibration_bounds={low:bounds.low,high:bounds.high};
       formalCalibration=LOCAL_CALIBRATION.apply(calibrationInputForecast,seq,getShoeId(),browserCalibrationTag,localCalibrationConfig());
