@@ -65,12 +65,12 @@ function assess(kind,summary,ci){
  if(!ci.ev95||ci.ev95[0]<=0)failures.push('Positive commission-adjusted EV not established');
  return {statistical_checks_passed:!failures.length,failures,production_promotion_allowed:false,source_review_required:true,remaining_required:['Verify source, chronology, complete shoes and zero holdout tuning','Review independent temporal subperiods and stage stability','Any changed policy requires a fresh holdout; never repeatedly select against this report'],note:'Even passing an interval is evidence under sampled conditions, never a guarantee of future hit rate'};
 }
-async function audit(payload,{onProgress=()=>{},onForecast=null}={}){
+async function audit(payload,{onProgress=()=>{},onForecast=null,experimental=false}={}){
  const frozen=Object.fromEntries(RUNTIME.map(n=>[n,sha(fs.readFileSync(path.join(ROOT,n)))]));
  const rows=validateRows(payload),store=new Map(),storage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)};
  const ctx={console,document:{getElementById:()=>null},localStorage:storage,fetch:async f=>({ok:true,json:async()=>JSON.parse(fs.readFileSync(path.join(ROOT,String(f).split('?')[0]),'utf8'))})};ctx.window=ctx;vm.createContext(ctx);
  for(const name of RUNTIME.filter(n=>n.endsWith('.js')))vm.runInContext(fs.readFileSync(path.join(ROOT,name),'utf8'),ctx,{filename:name});
- const api=ctx.__BGS_FINAL56__;await api.loadModels();const profile=JSON.parse(fs.readFileSync(path.join(ROOT,'cardcount_profile.json'),'utf8'));
+ const api=ctx.__BGS_FINAL56__;await api.loadModels();if(experimental){if(!api.getExperimentalStatus?.([]).enabled)throw Error('Approved experimental configuration unavailable');api.setNoSkipTestMode(true);}const profile=JSON.parse(fs.readFileSync(path.join(ROOT,'cardcount_profile.json'),'utf8'));
  const tag=ctx.__BBB_BROWSER_CALIBRATION__.fingerprint(api.version,...['physics_multitask_model.json','final_probability_model.json'].map(n=>JSON.parse(fs.readFileSync(path.join(ROOT,n),'utf8'))),profile.local_calibration||{});
  const client=ctx.__BBB_BROWSER_CALIBRATION__.createClient(storage),result=[];let shoe=null,history=[];
  for(const row of rows){
@@ -86,22 +86,22 @@ async function audit(payload,{onProgress=()=>{},onForecast=null}={}){
   const current=api.noSkipTestDirection(f);
   // Offline candidate ONLY: zero edge is explicitly reported; no fabricated >50% confidence.
   const candidate=current==='Balanced'?'B':current;
-  const ticket=client.prepare(history,p.raw_next_hand_forecast,shoe,tag);
+  const ticket=experimental?api.prepareDisplayCalibrationTickets(history,p.base_raw_next_hand_forecast||p.raw_next_hand_forecast):client.prepare(history,p.raw_next_hand_forecast,shoe,tag);
   result.push({shoe_id:shoe,round_index:row.round_index,outcome:row.outcome,current,candidate,zero_edge_tie_fallback:current==='Balanced',probabilities:JSON.parse(JSON.stringify(f.probabilities)),calibration_applied:p.browser_calibration?.applied===true});
-  history.push(row.outcome);client.commit(ticket,row.outcome,history,profile.local_calibration||{});api.recordCompletedHand(history,{outcome:row.outcome});
+  history.push(row.outcome);if(experimental)api.commitDisplayCalibrationTickets(ticket,row.outcome,history);else client.commit(ticket,row.outcome,history,profile.local_calibration||{});api.recordCompletedHand(history,{outcome:row.outcome});
   if(result.length%100===0)onProgress(result.length);
  }
  const stages={};for(const [name,select] of Object.entries(STAGES)){const selected=result.filter(r=>select(r.round_index));stages[name]={current:metrics(selected,'current'),zero_skip_candidate:metrics(selected,'candidate')};}
  for(const [name,digest] of Object.entries(frozen))if(sha(fs.readFileSync(path.join(ROOT,name)))!==digest)throw Error('Runtime/model changed during replay: '+name);
  const ci=bootstrap(result,'candidate'),gate=assess(payload.data_kind,stages.all.zero_skip_candidate,ci);
- return {schema_version:1,data_kind:payload.data_kind||'unspecified',input_sha256:sha(JSON.stringify(payload)),runtime_sha256:frozen,protocol:{first_hand_included:true,input:'past_BPT_only',learning:'same-browser causal calibration; commit only after actual result',tie_settlement:'push',banker_commission:.05,player_commission:0,selection:'frozen current no-skip probabilities; offline exact-tie Banker fallback, never alternate to fake balance',full_retraining:false},seed:payload.seed??null,stages,whole_shoe_bootstrap:ci,gate,rows:result};
+ return {schema_version:1,data_kind:payload.data_kind||'unspecified',input_sha256:sha(JSON.stringify(payload)),runtime_sha256:frozen,protocol:{experimental_requested:experimental,unvalidated_experiment:experimental,first_hand_included:true,input:'past_BPT_only',learning:'same-browser causal calibration; commit only after actual result',tie_settlement:'push',banker_commission:.05,player_commission:0,selection:'frozen current no-skip probabilities; offline exact-tie Banker fallback, never alternate to fake balance',full_retraining:false},seed:payload.seed??null,stages,whole_shoe_bootstrap:ci,gate,rows:result};
 }
 async function main(args){
  const option=name=>{const i=args.indexOf(name);return i>=0?args[i+1]:null;};const output=option('--output');if(!output)throw Error('--output required');
  if(fs.existsSync(output))throw Error('Use a new report path; do not overwrite past validation evidence');
  let payload;const count=option('--synthetic'),input=option('--input');if((count!==null)===(input!==null))throw Error('Choose --input REAL.json or --synthetic SHOES');
  if(count!==null){const n=Number(count),seed=Number(option('--seed')||2026102801);if(!Number.isInteger(seed)||seed<0||seed>4294967295)throw Error('32-bit seed required');payload={data_kind:'synthetic_only_not_real_holdout',seed,rows:require(path.join(ROOT,'calibrate_macro_direction.js')).synthetic(n,seed)};}else payload=JSON.parse(fs.readFileSync(input,'utf8'));
- const report=await audit(payload,{onProgress:n=>console.log(n+' prequential hands validated')});fs.mkdirSync(path.dirname(path.resolve(output)),{recursive:true});fs.writeFileSync(output,JSON.stringify(report,null,2)+'\n',{flag:'wx'});
+ const report=await audit(payload,{experimental:args.includes('--experimental'),onProgress:n=>console.log(n+' prequential hands validated')});fs.mkdirSync(path.dirname(path.resolve(output)),{recursive:true});fs.writeFileSync(output,JSON.stringify(report,null,2)+'\n',{flag:'wx'});
  console.log(JSON.stringify({output,summary:report.stages.all,ci:report.whole_shoe_bootstrap,gate:report.gate},null,2));return report.gate.statistical_checks_passed?0:2;
 }
 module.exports={validateRows,wilson,metrics,bootstrap,pairedBootstrap,assess,audit};

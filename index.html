@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
   <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
-  <link rel="stylesheet" href="styles.css?v=20261028-pr56-compact">
+  <link rel="stylesheet" href="styles.css?v=20261028-no-skip-experiment-v1">
 
 </head>
 <body>
@@ -74,6 +74,7 @@
           <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
         </div>
       </div>
+      <p id="experimentalNoSkipStatus" class="experiment-note" role="status" aria-live="polite" hidden>未驗證實驗版｜不保證勝率；測試方向不等於正式下注資格</p>
       <p id="localCalibrationStatus" role="status" aria-live="polite">本機校準：等待模型就緒</p>
       <label for="forecastGap">一般方向門檻（莊閒機率差）</label>
       <select id="forecastGap" aria-label="一般方向機率差距門檻" disabled>
@@ -81,7 +82,7 @@
       </select>
       <div class="action-buttons">
         <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
-        <button class="action-btn" id="btnNoSkipTest" type="button" aria-pressed="false">全程不觀望測試</button>
+        <button class="action-btn" id="btnNoSkipTest" type="button" aria-pressed="false">全程不觀望實驗</button>
         <button class="action-btn" id="btnBack" type="button">返回上一局</button>
         <button class="action-btn danger" id="btnEnd" type="button">結束分析</button>
       </div>
@@ -94,7 +95,7 @@
   </main>
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
-  <script src="auth-client.js?v=20261028-hitrate-max-v1"></script>
+  <script src="auth-client.js?v=20261028-no-skip-experiment-v1"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

@@ -204,3 +204,5 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
 @media(max-width:350px){.prediction-layout{grid-template-columns:80px minmax(0,1fr)}.direction-orb{width:76px;height:76px}.metric strong{font-size:11px}}
 
 #predictionApp #localCalibrationStatus{font-size:11px;line-height:1.45;margin:6px 0;color:var(--muted)}
+
+#predictionApp .experiment-note{font-size:11px;line-height:1.45;margin:6px 0;color:#e1c7ff}#predictionApp .experiment-note[hidden]{display:none}

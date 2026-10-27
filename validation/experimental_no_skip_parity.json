@@ -1,0 +1,9 @@
+{
+  "mode": "user_accepted_unvalidated_experiment",
+  "source_holdout": "seed_2026102803",
+  "rows": 6989,
+  "direction_mismatches": 0,
+  "max_probability_error": 1.1102230246251565e-16,
+  "formal_decisions_changed": false,
+  "note": "Live bounded mapping and isolated prequential calibration checked against frozen research inference; ledger/UI lifecycle tested separately. This is engineering parity, not new performance evidence."
+}
