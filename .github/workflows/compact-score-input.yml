@@ -1,0 +1,35 @@
+name: Compact mobile score entry regression
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "styles.css"
+      - "auth-client.js"
+      - "point_input_mode.js"
+      - "test_compact_point_input.js"
+      - ".github/workflows/compact-score-input.yml"
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "styles.css"
+      - "auth-client.js"
+      - "point_input_mode.js"
+      - "test_compact_point_input.js"
+      - ".github/workflows/compact-score-input.yml"
+permissions:
+  contents: read
+jobs:
+  score-entry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --check point_input_mode.js && node --check auth-client.js
+      - run: node test_compact_point_input.js
+      - run: node test_bbb_button_only.js
+      - run: node test_pf_per_hand_update.js
