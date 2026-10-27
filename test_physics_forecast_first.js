@@ -66,4 +66,14 @@ const plain=v=>JSON.parse(JSON.stringify(v));
   a.ctx.document.getElementById=id=>a.nodes.get(id)||null;
   const sample=a.api.applyFinalPrediction("BPBPBPTBBPPBP".split(""));
   a.api.renderPrediction({...sample,direction:"Skip",next_hand_forecast:f},13);
-  assert.equal(a.nodes.get("directio
+  assert.equal(a.nodes.get("directionText").textContent,"莊");
+  assert.match(a.nodes.get("confidence").textContent,/莊 51\.11% \/ 閒 48\.89%/);
+  assert.equal(a.nodes.get("regime").textContent,"Direct Physics觀望","legacy B/P/T forecast label remains unchanged");
+  const saved={...sample,direction:"Skip",finalProbability:{...sample.finalProbability,finalDirection:"觀望 Skip"}};
+  a.api.registerPrediction(["B","P"],saved);a.api.settlePending("B",{outcome:"B"},["B","P"]);
+  const row=a.api.getTrainingRows().at(-1);assert.equal(row.bet_direction,"Skip");assert.equal(row.predicted_direction,"觀望 Skip");assert(row.next_hand_forecast);
+  const missing=make(true);await missing.api.loadModels();const unavailable=missing.api.applyFinalPrediction(["B","P"]);
+  assert.equal(unavailable.direction,"Skip");assert(!unavailable.next_hand_forecast.available);
+  a.api.renderPrediction(unavailable,2);assert.equal(a.nodes.get("confidence").textContent,"—");
+  console.log(JSON.stringify({passed:true,predictions,skipsWithForecast,checks:["stateless PF500","Physics forecast only","Core/XGB advisory only","positive-EV bets","48D/57D","forecast separated from settlement","UI probabilities and tie","missing model"]}));
+})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -298,4 +298,948 @@
           "n_estimators": 500,
           "learning_rate": 0.025,
           "min_child_weight": 12,
-          "sub
+          "subsample": 0.9,
+          "colsample_bytree": 0.85,
+          "reg_alpha": 0.3,
+          "reg_lambda": 14
+        },
+        {
+          "max_depth": 3,
+          "n_estimators": 600,
+          "learning_rate": 0.02,
+          "min_child_weight": 10,
+          "subsample": 0.9,
+          "colsample_bytree": 0.85,
+          "reg_alpha": 0.3,
+          "reg_lambda": 12
+        },
+        {
+          "max_depth": 3,
+          "n_estimators": 750,
+          "learning_rate": 0.018,
+          "min_child_weight": 8,
+          "subsample": 0.9,
+          "colsample_bytree": 0.85,
+          "reg_alpha": 0.2,
+          "reg_lambda": 10
+        },
+        {
+          "max_depth": 4,
+          "n_estimators": 650,
+          "learning_rate": 0.015,
+          "min_child_weight": 12,
+          "subsample": 0.9,
+          "colsample_bytree": 0.85,
+          "reg_alpha": 0.5,
+          "reg_lambda": 16
+        }
+      ],
+      "middle_late_focus": {
+        "middle_extra_ratio": 0.1,
+        "late_extra_ratio": 0.2,
+        "weight_key": "focus_training_weight",
+        "candidates": [
+          {
+            "max_depth": 3,
+            "n_estimators": 800,
+            "learning_rate": 0.018,
+            "min_child_weight": 12,
+            "subsample": 0.9,
+            "colsample_bytree": 0.85,
+            "reg_alpha": 0.35,
+            "reg_lambda": 14
+          },
+          {
+            "max_depth": 4,
+            "n_estimators": 750,
+            "learning_rate": 0.015,
+            "min_child_weight": 16,
+            "subsample": 0.9,
+            "colsample_bytree": 0.85,
+            "reg_alpha": 0.5,
+            "reg_lambda": 18
+          }
+        ]
+      }
+    },
+    "local_calibration": {
+      "formal_ev_enabled": true,
+      "min_bet_validation": 8,
+      "enabled": true,
+      "min_samples": 24,
+      "min_validation": 16,
+      "prior_strength": 100,
+      "max_delta": 0.005,
+      "validation_window": 32,
+      "min_brier_gain": 5e-05,
+      "noise_start": 0.55,
+      "noise_stop": 0.85,
+      "stage_anchors": {
+        "prior_strength": [
+          [
+            1,
+            100
+          ],
+          [
+            20,
+            100
+          ],
+          [
+            24,
+            90
+          ],
+          [
+            43,
+            90
+          ],
+          [
+            49,
+            80
+          ],
+          [
+            70,
+            80
+          ]
+        ],
+        "residual_decay": [
+          [
+            1,
+            1
+          ],
+          [
+            20,
+            1
+          ],
+          [
+            24,
+            0.98
+          ],
+          [
+            43,
+            0.98
+          ],
+          [
+            49,
+            0.96
+          ],
+          [
+            70,
+            0.96
+          ]
+        ],
+        "validation_window": [
+          [
+            1,
+            32
+          ],
+          [
+            20,
+            32
+          ],
+          [
+            24,
+            24
+          ],
+          [
+            43,
+            24
+          ],
+          [
+            49,
+            20
+          ],
+          [
+            70,
+            20
+          ]
+        ]
+      }
+    },
+    "settlement": {
+      "schema_version": 1,
+      "mode": "post_draw_unconditional_v1",
+      "banker_commission": 0.05,
+      "player_commission": 0,
+      "tie_settlement": "push"
+    },
+    "selective_entry_v2": {
+      "schema_version": 1,
+      "enabled": true,
+      "require_first_final_consistency": true,
+      "ev_threshold_boost": {
+        "early": 0.005,
+        "middle": 0.0035,
+        "late": 0.0025
+      },
+      "noise_threshold": 0.55,
+      "pf_quality_threshold": 0.6,
+      "noise_extra_boost": 0.004,
+      "volume_guard_target_action_rate": {
+        "early": 0.25,
+        "middle": 0.31,
+        "late": 0.37
+      },
+      "first_layer_effective_gap": {
+        "early": 0.014,
+        "middle": 0.009,
+        "late": 0.005
+      }
+    },
+    "first_layer_ev": {
+      "schema_version": 1,
+      "enabled": true
+    },
+    "direction_selection": {
+      "schema_version": 1,
+      "mode": "post_draw_ev_argmax_v1",
+      "ev_tie_tolerance": 1e-12
+    }
+  },
+  "calibration_tag": "e96278de",
+  "protected_functions": {
+    "settlement": {
+      "start": "function settlementPolicy(",
+      "end": "function drawCountDistribution(",
+      "sha256": "4db787a05eadc51580bfa1dffdff8948dcf46d905dba5e23171c24591381f7bb"
+    },
+    "display": {
+      "start": "function displayDirection(",
+      "end": "function macroUpdate(",
+      "sha256": "0e4b7405f79eb508d7586ca40af358f44c2e3667c4f7f190cb9530d78968aa50"
+    },
+    "no_skip_test": {
+      "start": "function noSkipTestDirection(",
+      "end": "function prepareCalibrationTicket(",
+      "sha256": "227f303c7ec500f38018a52ef2bfa5e9b5938c4ea4b507bfb01de7b94e6a323c"
+    },
+    "render": {
+      "start": "function renderPrediction(",
+      "end": "function installUI(",
+      "sha256": "8dd13fe9296173411bfa222f3716eae0787bc39c3b4108277387e2d46966b6ba"
+    },
+    "clip": {
+      "start": "function applyProbabilityBounds(",
+      "end": "function dynamicEmaAlpha(",
+      "sha256": "d795b7183128535c1e7cf609e58fd28f1059ef7fded7b6e6de152bf2a750a621"
+    },
+    "decision_ema": {
+      "start": "function dynamicEmaAlpha(",
+      "end": "function dynamicBand(",
+      "sha256": "0e16dc4e5f1e830c8c1d73eff1fbadc695ac8c6b9530b3ae74879fd07608fb52"
+    },
+    "decision_policy": {
+      "start": "function dynamicBand(",
+      "end": "function volumeGuardState(",
+      "sha256": "b892865e8e3fa35d5930eb1709aff26797e0d241bb75132e933ce9ad00ef662e"
+    },
+    "volume_guard": {
+      "start": "function volumeGuardState(",
+      "end": "function directPhysicsProgressWeight(",
+      "sha256": "7e7c91865ea1bd0a78d628d1da51060ffd0126cf0f91eaa9bb7473d7c798d6ab"
+    }
+  },
+  "locked_files": {
+    "app256forward.js": "79d43e0be7b23f77e631909cd7c6808fc668df488df0171fe5cc4722e8597064",
+    "app256continuation.js": "d3302c7d09db8932f7ab9ea7c722f394c6aa566d0654962e79bba751f30bf006",
+    "particle_filter_runtime.js": "5844d18f47ae6d1513976d5c131e3aceb53128ae562becaadc78286fb88e216a",
+    "macro_ema.js": "aef47f2b6d82f86b35cd41cf0ff98b583c665ed7fb94aae0c2268f2003815b58",
+    "browser_calibration.js": "1ca512b9afb6d4111a4cb609fb6ee0d89d24218ce364681b2dd3b5b172368aa2",
+    "physics_multitask_model.json": "3ec0d60251cb5b3fcb40bd67fec1334cb64d37becebbe0b040efbae871071138",
+    "final_probability_model.json": "862347a6937b30ac9a8a3ece8f0eb9927569c97dee799e53cbb418e6c10be2f9",
+    "index.html": "be069a1793dddd7f2ef2fc89005e23d66e2c5cbc5b46241999ce05a8b03f8013",
+    "styles.css": "3401b9c409e6f90146e6a44515e6fef4dcb31e86c3e20b1fbd0202b6d687ee33"
+  },
+  "cases": [
+    {
+      "history": "B",
+      "previous": null,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.5004834204278655,
+        "banker": -0.021727872032358708,
+        "player": -0.000873222184021305,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "P",
+          "banker_ev": -0.021540981186876085,
+          "player_ev": -0.0010649051024650413,
+          "best_ev": -0.0010649051024650413,
+          "ev_gap": 0.020476076084411043,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.015330746416752186,
+          "effective_gap_min": 0.014,
+          "effective_gap_stage": "early",
+          "balanced_by_effective_gap": false,
+          "physics_uncertainty": 0.3140522133499982,
+          "particle_quality": 0.715423939018271,
+          "probabilities": {
+            "B": 0.45211772578682213,
+            "P": 0.4510528206843571,
+            "T": 0.09682945352882075
+          },
+          "positive_ev": false
+        },
+        "effective_ev": 0.007,
+        "effective_band": 0.003,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.5004834204278655,
+          "base_action": "Skip",
+          "candidate_action": "Skip",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "087f1702e2b71621fc36c2651587b4ad5bbb4d64f2726c49e739c64afa3257f6",
+        "features_sha256": "a99b14677168d9a4489cf8b09cba21b03ff4be98dca301f4b1201baab3a7e9ab"
+      }
+    },
+    {
+      "history": "B",
+      "previous": 0.01,
+      "expected": {
+        "direction": "P",
+        "finalPB": 0.42,
+        "banker": -0.16347386891128352,
+        "player": 0.1445072874353887,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "P",
+          "banker_ev": -0.021540981186876085,
+          "player_ev": -0.0010649051024650413,
+          "best_ev": -0.0010649051024650413,
+          "ev_gap": 0.020476076084411043,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.015330746416752186,
+          "effective_gap_min": 0.014,
+          "effective_gap_stage": "early",
+          "balanced_by_effective_gap": false,
+          "physics_uncertainty": 0.3140522133499982,
+          "particle_quality": 0.715423939018271,
+          "probabilities": {
+            "B": 0.45211772578682213,
+            "P": 0.4510528206843571,
+            "T": 0.09682945352882075
+          },
+          "positive_ev": false
+        },
+        "effective_ev": 0.007,
+        "effective_band": 0.003,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.42,
+          "base_action": "P",
+          "candidate_action": "P",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "087f1702e2b71621fc36c2651587b4ad5bbb4d64f2726c49e739c64afa3257f6",
+        "features_sha256": "a99b14677168d9a4489cf8b09cba21b03ff4be98dca301f4b1201baab3a7e9ab"
+      }
+    },
+    {
+      "history": "B",
+      "previous": 0.99,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.58,
+        "banker": 0.11831534158772439,
+        "player": -0.1445072874353886,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "P",
+          "banker_ev": -0.021540981186876085,
+          "player_ev": -0.0010649051024650413,
+          "best_ev": -0.0010649051024650413,
+          "ev_gap": 0.020476076084411043,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.015330746416752186,
+          "effective_gap_min": 0.014,
+          "effective_gap_stage": "early",
+          "balanced_by_effective_gap": false,
+          "physics_uncertainty": 0.3140522133499982,
+          "particle_quality": 0.715423939018271,
+          "probabilities": {
+            "B": 0.45211772578682213,
+            "P": 0.4510528206843571,
+            "T": 0.09682945352882075
+          },
+          "positive_ev": false
+        },
+        "effective_ev": 0.007,
+        "effective_band": 0.003,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.58,
+          "base_action": "Skip",
+          "candidate_action": "Skip",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "087f1702e2b71621fc36c2651587b4ad5bbb4d64f2726c49e739c64afa3257f6",
+        "features_sha256": "a99b14677168d9a4489cf8b09cba21b03ff4be98dca301f4b1201baab3a7e9ab"
+      }
+    },
+    {
+      "history": "BPTBPBBP",
+      "previous": null,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.5010651005175412,
+        "banker": -0.020719436577900208,
+        "player": -0.0019254225576701423,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "Balanced",
+          "banker_ev": -0.020307349189033153,
+          "player_ev": -0.002348076289841461,
+          "best_ev": -0.002348076289841461,
+          "ev_gap": 0.01795927289919169,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.011988051607044118,
+          "effective_gap_min": 0.014,
+          "effective_gap_stage": "early",
+          "balanced_by_effective_gap": true,
+          "physics_uncertainty": 0.3465407947718096,
+          "particle_quality": 0.5351985217599865,
+          "probabilities": {
+            "B": 0.453108509577492,
+            "P": 0.45076043328765053,
+            "T": 0.09613105713485746
+          },
+          "positive_ev": false
+        },
+        "effective_ev": 0.011000000000000001,
+        "effective_band": 0.003,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.5010651005175412,
+          "base_action": "Skip",
+          "candidate_action": "Skip",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "bb5b12549f009a36c2a22483c14c6c63f0437655e08e418ada1f6016c3fe22cb",
+        "features_sha256": "ccd5158d58106a2dd72998fd758228cfaeca7a1500fb18a4591843fd5af977c3"
+      }
+    },
+    {
+      "history": "BPTBPBBP",
+      "previous": 0.01,
+      "expected": {
+        "direction": "P",
+        "finalPB": 0.42,
+        "banker": -0.16360027865859095,
+        "player": 0.14461903085842293,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "Balanced",
+          "banker_ev": -0.020307349189033153,
+          "player_ev": -0.002348076289841461,
+          "best_ev": -0.002348076289841461,
+          "ev_gap": 0.01795927289919169,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.011988051607044118,
+          "effective_gap_min": 0.014,
+          "effective_gap_stage": "early",
+          "balanced_by_effective_gap": true,
+          "physics_uncertainty": 0.3465407947718096,
+          "particle_quality": 0.5351985217599865,
+          "probabilities": {
+            "B": 0.453108509577492,
+            "P": 0.45076043328765053,
+            "T": 0.09613105713485746
+          },
+          "positive_ev": false
+        },
+        "effective_ev": 0.011000000000000001,
+        "effective_band": 0.003,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.42,
+          "base_action": "P",
+          "candidate_action": "P",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "bb5b12549f009a36c2a22483c14c6c63f0437655e08e418ada1f6016c3fe22cb",
+        "features_sha256": "ccd5158d58106a2dd72998fd758228cfaeca7a1500fb18a4591843fd5af977c3"
+      }
+    },
+    {
+      "history": "BPTBPBBP",
+      "previous": 0.99,
+      "expected": {
+        "direction": "B",
+        "finalPB": 0.58,
+        "banker": 0.1184068315153336,
+        "player": -0.14461903085842276,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "Balanced",
+          "banker_ev": -0.020307349189033153,
+          "player_ev": -0.002348076289841461,
+          "best_ev": -0.002348076289841461,
+          "ev_gap": 0.01795927289919169,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.011988051607044118,
+          "effective_gap_min": 0.014,
+          "effective_gap_stage": "early",
+          "balanced_by_effective_gap": true,
+          "physics_uncertainty": 0.3465407947718096,
+          "particle_quality": 0.5351985217599865,
+          "probabilities": {
+            "B": 0.453108509577492,
+            "P": 0.45076043328765053,
+            "T": 0.09613105713485746
+          },
+          "positive_ev": false
+        },
+        "effective_ev": 0.011000000000000001,
+        "effective_band": 0.003,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.58,
+          "base_action": "B",
+          "candidate_action": "B",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "bb5b12549f009a36c2a22483c14c6c63f0437655e08e418ada1f6016c3fe22cb",
+        "features_sha256": "ccd5158d58106a2dd72998fd758228cfaeca7a1500fb18a4591843fd5af977c3"
+      }
+    },
+    {
+      "history": "BPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBP",
+      "previous": null,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.5049224001145347,
+        "banker": -0.013931074064960247,
+        "player": -0.008904992762618247,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "Balanced",
+          "banker_ev": -0.013931074064960247,
+          "player_ev": -0.008904992762618247,
+          "best_ev": -0.008904992762618247,
+          "ev_gap": 0.005026081302342,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.0032910548928691725,
+          "effective_gap_min": 0.009,
+          "effective_gap_stage": "middle",
+          "balanced_by_effective_gap": true,
+          "physics_uncertainty": 0.352107226351413,
+          "particle_quality": 0.5068465861085789,
+          "probabilities": {
+            "B": 0.4567213365515699,
+            "P": 0.44781634378895163,
+            "T": 0.09546231965947846
+          },
+          "positive_ev": false
+        },
+        "effective_ev": 0.008189835396050067,
+        "effective_band": 0.0020666666666666667,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.5049224001145347,
+          "base_action": "Skip",
+          "candidate_action": "Skip",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "52a056e40a1741b8ab87e2b553e55fed6a169ff867c5ec07b04017d25cd15081",
+        "features_sha256": "4e2679fd7b95329c1431728125ea9df35754d357152160378bac9a3cd61b352f"
+      }
+    },
+    {
+      "history": "BPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBP",
+      "previous": 0.01,
+      "expected": {
+        "direction": "P",
+        "finalPB": 0.36991015632001284,
+        "banker": -0.25207221461291845,
+        "player": 0.23534233087631323,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "Balanced",
+          "banker_ev": -0.013931074064960247,
+          "player_ev": -0.008904992762618247,
+          "best_ev": -0.008904992762618247,
+          "ev_gap": 0.005026081302342,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.0032910548928691725,
+          "effective_gap_min": 0.009,
+          "effective_gap_stage": "middle",
+          "balanced_by_effective_gap": true,
+          "physics_uncertainty": 0.352107226351413,
+          "particle_quality": 0.5068465861085789,
+          "probabilities": {
+            "B": 0.4567213365515699,
+            "P": 0.44781634378895163,
+            "T": 0.09546231965947846
+          },
+          "positive_ev": false
+        },
+        "effective_ev": 0.008189835396050067,
+        "effective_band": 0.0020666666666666667,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.36991015632001284,
+          "base_action": "P",
+          "candidate_action": "P",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "52a056e40a1741b8ab87e2b553e55fed6a169ff867c5ec07b04017d25cd15081",
+        "features_sha256": "4e2679fd7b95329c1431728125ea9df35754d357152160378bac9a3cd61b352f"
+      }
+    },
+    {
+      "history": "BPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBP",
+      "previous": 0.99,
+      "expected": {
+        "direction": "B",
+        "finalPB": 0.6300898436799871,
+        "banker": 0.20684533059589227,
+        "player": -0.23534233087631318,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "Balanced",
+          "banker_ev": -0.013931074064960247,
+          "player_ev": -0.008904992762618247,
+          "best_ev": -0.008904992762618247,
+          "ev_gap": 0.005026081302342,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.0032910548928691725,
+          "effective_gap_min": 0.009,
+          "effective_gap_stage": "middle",
+          "balanced_by_effective_gap": true,
+          "physics_uncertainty": 0.352107226351413,
+          "particle_quality": 0.5068465861085789,
+          "probabilities": {
+            "B": 0.4567213365515699,
+            "P": 0.44781634378895163,
+            "T": 0.09546231965947846
+          },
+          "positive_ev": false
+        },
+        "effective_ev": 0.008189835396050067,
+        "effective_band": 0.0020666666666666667,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.6300898436799871,
+          "base_action": "B",
+          "candidate_action": "B",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "52a056e40a1741b8ab87e2b553e55fed6a169ff867c5ec07b04017d25cd15081",
+        "features_sha256": "4e2679fd7b95329c1431728125ea9df35754d357152160378bac9a3cd61b352f"
+      }
+    },
+    {
+      "history": "BBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPP",
+      "previous": null,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.5132456994896325,
+        "banker": 0.0007444561064324229,
+        "player": -0.023786455932805706,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "B",
+          "banker_ev": 0.0007444561064324229,
+          "player_ev": -0.023786455932805706,
+          "best_ev": 0.0007444561064324229,
+          "ev_gap": 0.02453091203923813,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "B",
+          "effective_gap": 0.017576709877677933,
+          "effective_gap_min": 0.005,
+          "effective_gap_stage": "late",
+          "balanced_by_effective_gap": false,
+          "physics_uncertainty": 0.3265152990182861,
+          "particle_quality": 0.644276364288833,
+          "probabilities": {
+            "B": 0.4608399965274651,
+            "P": 0.4370535405946594,
+            "T": 0.10210646287787553
+          },
+          "positive_ev": true
+        },
+        "effective_ev": 0.002885,
+        "effective_band": 0.0015866666666666668,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.5132456994896325,
+          "base_action": "Skip",
+          "candidate_action": "Skip",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "98267157cef4d667ec4d4131a34f1b811538fa935b0e6ad2064f1aa2d54d77c3",
+        "features_sha256": "b3b7daa74b64d23ff2580302743126f8a5cda4264f5d8da2f28cd93e58ffaa25"
+      }
+    },
+    {
+      "history": "BBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPP",
+      "previous": 0.01,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.3723369036325354,
+        "banker": -0.24597168328487667,
+        "player": 0.22925573831469082,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "B",
+          "banker_ev": 0.0007444561064324229,
+          "player_ev": -0.023786455932805706,
+          "best_ev": 0.0007444561064324229,
+          "ev_gap": 0.02453091203923813,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "B",
+          "effective_gap": 0.017576709877677933,
+          "effective_gap_min": 0.005,
+          "effective_gap_stage": "late",
+          "balanced_by_effective_gap": false,
+          "physics_uncertainty": 0.3265152990182861,
+          "particle_quality": 0.644276364288833,
+          "probabilities": {
+            "B": 0.4608399965274651,
+            "P": 0.4370535405946594,
+            "T": 0.10210646287787553
+          },
+          "positive_ev": true
+        },
+        "effective_ev": 0.002885,
+        "effective_band": 0.0015866666666666668,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.3723369036325354,
+          "base_action": "Skip",
+          "candidate_action": "Skip",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "98267157cef4d667ec4d4131a34f1b811538fa935b0e6ad2064f1aa2d54d77c3",
+        "features_sha256": "b3b7daa74b64d23ff2580302743126f8a5cda4264f5d8da2f28cd93e58ffaa25"
+      }
+    },
+    {
+      "history": "BBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPP",
+      "previous": 0.99,
+      "expected": {
+        "direction": "B",
+        "finalPB": 0.6416890991986095,
+        "banker": 0.22563502815156655,
+        "player": -0.25444345290217407,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "B",
+          "banker_ev": 0.0007444561064324229,
+          "player_ev": -0.023786455932805706,
+          "best_ev": 0.0007444561064324229,
+          "ev_gap": 0.02453091203923813,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "B",
+          "effective_gap": 0.017576709877677933,
+          "effective_gap_min": 0.005,
+          "effective_gap_stage": "late",
+          "balanced_by_effective_gap": false,
+          "physics_uncertainty": 0.3265152990182861,
+          "particle_quality": 0.644276364288833,
+          "probabilities": {
+            "B": 0.4608399965274651,
+            "P": 0.4370535405946594,
+            "T": 0.10210646287787553
+          },
+          "positive_ev": true
+        },
+        "effective_ev": 0.002885,
+        "effective_band": 0.0015866666666666668,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.6416890991986095,
+          "base_action": "B",
+          "candidate_action": "B",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "98267157cef4d667ec4d4131a34f1b811538fa935b0e6ad2064f1aa2d54d77c3",
+        "features_sha256": "b3b7daa74b64d23ff2580302743126f8a5cda4264f5d8da2f28cd93e58ffaa25"
+      }
+    },
+    {
+      "history": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "previous": null,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.49887438883959406,
+        "banker": -0.0236505010967073,
+        "player": 0.001957810258676085,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "P",
+          "banker_ev": -0.0236505010967073,
+          "player_ev": 0.001957810258676085,
+          "best_ev": 0.001957810258676085,
+          "ev_gap": 0.025608311355383384,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.019548479715445585,
+          "effective_gap_min": 0.005,
+          "effective_gap_stage": "late",
+          "balanced_by_effective_gap": false,
+          "physics_uncertainty": 0.3068516852440165,
+          "particle_quality": 0.7459097491453294,
+          "probabilities": {
+            "B": 0.4338538167606244,
+            "P": 0.4358116270193005,
+            "T": 0.13033455622007512
+          },
+          "positive_ev": true
+        },
+        "effective_ev": 0.00313,
+        "effective_band": 0.0015999999999999999,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.49887438883959406,
+          "base_action": "Skip",
+          "candidate_action": "Skip",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "85d9e1b2131376719ad132e7a07e0dbce2b0623daee0131b1520dbe98192e86d",
+        "features_sha256": "7cb3685cfa0cdaf4e5b3e27a132fb729b99381a9ef2f67800fd805c8dc4de5fe"
+      }
+    },
+    {
+      "history": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "previous": 0.01,
+      "expected": {
+        "direction": "P",
+        "finalPB": 0.3619895599645077,
+        "banker": -0.25578631172496985,
+        "player": 0.24004582115945816,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "P",
+          "banker_ev": -0.0236505010967073,
+          "player_ev": 0.001957810258676085,
+          "best_ev": 0.001957810258676085,
+          "ev_gap": 0.025608311355383384,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.019548479715445585,
+          "effective_gap_min": 0.005,
+          "effective_gap_stage": "late",
+          "balanced_by_effective_gap": false,
+          "physics_uncertainty": 0.3068516852440165,
+          "particle_quality": 0.7459097491453294,
+          "probabilities": {
+            "B": 0.4338538167606244,
+            "P": 0.4358116270193005,
+            "T": 0.13033455622007512
+          },
+          "positive_ev": true
+        },
+        "effective_ev": 0.00313,
+        "effective_band": 0.0015999999999999999,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.3619895599645077,
+          "base_action": "P",
+          "candidate_action": "P",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "85d9e1b2131376719ad132e7a07e0dbce2b0623daee0131b1520dbe98192e86d",
+        "features_sha256": "7cb3685cfa0cdaf4e5b3e27a132fb729b99381a9ef2f67800fd805c8dc4de5fe"
+      }
+    },
+    {
+      "history": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "previous": 0.99,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.6363895599645077,
+        "banker": 0.20955427393279236,
+        "player": -0.2372265743869646,
+        "first": {
+          "schema_version": 1,
+          "source": "physics_pf_post_draw",
+          "stage": "before_macro_clip_ema_calibration",
+          "direction": "P",
+          "banker_ev": -0.0236505010967073,
+          "player_ev": 0.001957810258676085,
+          "best_ev": 0.001957810258676085,
+          "ev_gap": 0.025608311355383384,
+          "selection_method": "post_draw_ev_argmax_v1",
+          "raw_direction": "P",
+          "effective_gap": -0.019548479715445585,
+          "effective_gap_min": 0.005,
+          "effective_gap_stage": "late",
+          "balanced_by_effective_gap": false,
+          "physics_uncertainty": 0.3068516852440165,
+          "particle_quality": 0.7459097491453294,
+          "probabilities": {
+            "B": 0.4338538167606244,
+            "P": 0.4358116270193005,
+            "T": 0.13033455622007512
+          },
+          "positive_ev": true
+        },
+        "effective_ev": 0.00313,
+        "effective_band": 0.0015999999999999999,
+        "guard_active": false,
+        "trial": {
+          "proposal_p": 0.6363895599645077,
+          "base_action": "Skip",
+          "candidate_action": "Skip",
+          "banker_commission": 0.05,
+          "player_commission": 0
+        },
+        "physics_sha256": "85d9e1b2131376719ad132e7a07e0dbce2b0623daee0131b1520dbe98192e86d",
+        "features_sha256": "7cb3685cfa0cdaf4e5b3e27a132fb729b99381a9ef2f67800fd805c8dc4de5fe"
+      }
+    }
+  ],
+  "scope_note": "Updated for the point-conditioned PF upgrade: input/PF/status UI, score-conditioned entry policy, and profile switches are intentional extensions; legacy output cases remain frozen."
+}

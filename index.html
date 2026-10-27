@@ -85,4 +85,77 @@
         </div>
         <div id="pointModePanel" class="bbb-mode-panel" hidden>
           <div class="bbb-points-row">
-            <label
+            <label for="macroCardCount">本局總張數（選填）
+              <select id="macroCardCount" aria-label="本局總張數（選填）"><option value="">先選張數（可略過）</option>
+                <option value="4">4 張</option><option value="5">5 張</option><option value="6">6 張</option>
+              </select>
+            </label>
+            <label for="macroPlayerScore">閒家點數
+              <select id="macroPlayerScore" aria-label="本局閒家最終點數"><option value="">閒：選擇</option>
+                <option value="0">0 點</option>
+                <option value="1">1 點</option>
+                <option value="2">2 點</option>
+                <option value="3">3 點</option>
+                <option value="4">4 點</option>
+                <option value="5">5 點</option>
+                <option value="6">6 點</option>
+                <option value="7">7 點</option>
+                <option value="8">8 點</option>
+                <option value="9">9 點</option>
+              </select>
+            </label>
+            <label for="macroBankerScore">莊家點數
+              <select id="macroBankerScore" aria-label="本局莊家最終點數"><option value="">莊：選擇</option>
+                <option value="0">0 點</option>
+                <option value="1">1 點</option>
+                <option value="2">2 點</option>
+                <option value="3">3 點</option>
+                <option value="4">4 點</option>
+                <option value="5">5 點</option>
+                <option value="6">6 點</option>
+                <option value="7">7 點</option>
+                <option value="8">8 點</option>
+                <option value="9">9 點</option>
+              </select>
+            </label>
+          </div>
+          <div class="bbb-point-hint" id="pointResultPreview" role="status" aria-live="polite">可先選總張數，再選莊、閒最終點數；兩邊都有點數時會自動記錄並分析下一局。</div>
+        </div>
+        <div class="bbb-compat-controls">
+          <button class="action-btn" id="compatModeToggle" type="button" aria-pressed="false">開啟 B/P/T 相容模式</button>
+          <small id="compatModeHint">建議使用點數輸入以啟用準算牌；舊 B/P/T 按鈕模式預設關閉。</small>
+        </div>
+      </div>
+      <p id="pointPosteriorStatus" role="status" aria-live="polite">點數條件粒子後驗：等待完整點數紀錄</p>
+      <p id="modelWeightStatus" role="status" aria-live="polite">目前使用即時粒子後驗；Physics／輔助模型權重沿用上次離線訓練版本。</p>
+      <p id="localCalibrationStatus" role="status" aria-live="polite">本機校準：等待模型就緒</p>
+      <label for="forecastGap">一般方向門檻（莊閒機率差）</label>
+      <select id="forecastGap" aria-label="一般方向機率差距門檻" disabled>
+        <option value="0" disabled>舊版顯示（未啟用分段設定）</option>
+        <option value="0.01">1 個百分點（50.5%／49.5%）</option>
+        <option value="0.02" selected>2 個百分點（51%／49%）</option>
+        <option value="0.03">3 個百分點（51.5%／48.5%）</option>
+      </select>
+      <div class="action-buttons">
+        <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
+        <button class="action-btn" id="btnNoSkipTest" type="button" aria-pressed="false">全程不觀望測試</button>
+        <button class="action-btn" id="btnBack" type="button">返回上一局</button>
+        <button class="action-btn danger" id="btnEnd" type="button">結束分析</button>
+      </div>
+      <details class="bbb-clear-details"><summary>結束分析與資料清除說明</summary><div class="clear-note">結束分析會清空此開通碼的牌路、分析快照與歷史觀測；會員裝置授權仍會保留。未連線裝置將在下次驗證時同步清空。</div></details>
+    </section>
+
+    <section class="card history-card">
+      <div class="card-title"><span>本靴紀錄</span><small>依輸入順序排列</small></div>
+      <div class="history-track" id="historyTrack"><div class="empty-history">尚未輸入牌局</div></div>
+      <div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div>
+    </section>
+
+    <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
+  </main>
+
+  <script src="auth-config.js?v=20261011-prod-gateway"></script>
+  <script src="auth-client.js?v=20261027-point-score-pf-v1"></script>
+</body>
+</html>
+<!-- deploy: Physics Primary V13 model bundle 226130f -->

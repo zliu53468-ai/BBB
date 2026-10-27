@@ -84,4 +84,116 @@ function recordPointHand(){
   const outcome=deriveOutcome(banker.value,player.value);
   if(outcome===null)return false;
   const cardValue=cardCount?.value||null;
-  const validation=window.__BGS_PARTIC
+  const validation=window.__BGS_PARTICLE500__?.validatePointObservation?.(player.value,banker.value,cardValue);
+  if(validation?.valid===false){
+    note("點數與總張數不符合百家樂補牌規則；請更正張數或點數。",true);return false;
+  }
+  const resultButton=el("btn"+outcome);
+  if(!resultButton||typeof resultButton.click!=="function"){
+    note("原本結果按鈕未就緒，沒有記錄。",true);return false;
+  }
+  submitting=true;
+  try{
+    const before=readHistory();
+    // Reuse the existing licensed result path so settlement, local isolation,
+    // per-hand telemetry, first-layer smoothing and undo stay unchanged.
+    let clickError=null;
+    try{resultButton.click();}catch(error){clickError=error;}
+    const after=readHistory();
+    if(after.length!==before.length+1||after.at(-1)!==outcome||!before.every((value,i)=>value===after[i])){
+      note("本局未確認寫入成功，請檢查上方提示；請勿重複輸入。",true);
+      return false;
+    }
+    clear();paint();
+    const success="已自動記錄第 "+after.length+" 局："+(outcome==="B"?"莊勝":outcome==="P"?"閒勝":"和局");
+    if(clickError){note(success+"；附加處理異常，請確認紀錄。",true);return true;}
+    note(success+"；正在分析下一局。");
+    try{start.click();}catch(_){note(success+"；下一局分析未完成，請按重新分析。",true);}
+    return true;
+  }catch(_){
+    note("自動紀錄失敗，請檢查歷史紀錄與上方提示。",true);
+    return false;
+  }finally{submitting=false;}
+}
+function maybeCommit(){
+  if(phase!=="points"||inputMode!=="points"||submitting)return;
+  if(deriveOutcome(banker.value,player.value)===null){
+    note("請選擇另一方點數；兩邊都有數字才會自動記錄。");
+    return;
+  }
+  recordPointHand();
+}
+if(compatibilityToggle)compatibilityToggle.addEventListener("click",()=>{
+  if(!pointInputEnabled)return;
+  inputMode=inputMode==="compatibility"?"points":"compatibility";inputModeStored=true;saveInputMode();paint();
+  if(inputMode==="compatibility"&&phase==="history"&&readHistory().length===0)setPhase("points");
+  paint();
+  note(inputMode==="compatibility"?"已切換為 B/P/T 相容模式；新點數紀錄不會用於點數條件 PF。":"已切回點數輸入；已記錄的點數會用於即時粒子後驗。");
+});
+start.addEventListener("click",()=>{
+  if(readHistory().length===0){
+    if(historySeed?.value?.trim()){
+      const result=importHistory(historySeed.value);
+      if(!result.ok){note(result.reason,true);paint();return;}
+      note("已載入 "+result.count+" 局過往牌路，正在開始分析。");
+      start.click();
+      return;
+    }
+    setPhase("points");
+    note(inputMode==="compatibility"
+      ?"尚未有牌局；可直接按莊／閒／和輸入第一局。"
+      :"尚未有牌局；請先輸入第一局閒、莊最終點數，記錄後會分析下一局。");
+    return;
+  }
+  if(phase==="history")setPhase("points");
+  else paint();
+});
+banker.addEventListener("change",maybeCommit);
+player.addEventListener("change",maybeCommit);
+for(const id of ["btnB","btnP","btnT"]){
+  const button=el(id);if(!button)continue;
+  button.addEventListener("click",()=>{
+    if(phase==="points"&&inputMode==="compatibility"&&!submitting){
+      paint();
+      // The old B/P/T mode still forecasts after each completed hand.
+      start.click();
+    }
+  });
+}
+const back=el("btnBack");if(back)back.addEventListener("click",()=>{
+  clear();
+  if(phase==="points"&&readHistory().length===0)setPhase("history");
+  paint();
+  if(phase==="points"&&inputMode==="points")note("已返回上一局；請重新輸入本局張數與雙方點數。");
+});
+const end=el("btnEnd");if(end)end.addEventListener("click",()=>{
+  clear();phase="history";
+  try{localStorage.removeItem(PHASE_KEY);}catch(_){}
+  paint();
+});
+let stored="history";
+try{stored=localStorage.getItem(PHASE_KEY)||"history";}catch(_){}
+phase=stored==="points"&&readHistory().length>0?"points":"history";
+savePhase();paint();
+if(phase==="points"){
+  note(inputMode==="compatibility"?"已恢復 B/P/T 相容輸入。":"已恢復點數輸入；雙方完成後會自動記錄。");
+  const api=typeof window!=="undefined"?window.__BGS_FINAL56__:null;
+  if(typeof api?.loadModels==="function"){
+    Promise.resolve().then(()=>api.loadModels()).then(()=>{
+      if(phase==="points"&&readHistory().length>0)start.click();
+    }).catch(()=>{note("模型未成功恢復，請按「重新分析（選用）」。",true);});
+  }
+}
+if(typeof window!=="undefined")window.__BBB_POINT_INPUT__={
+  deriveOutcome,recordPointHand,importHistory,readHistory,getPhase:()=>phase,
+  getInputMode:()=>inputMode,setInputMode:value=>{
+    inputMode=!pointInputEnabled||value==="compatibility"?"compatibility":"points";inputModeStored=true;saveInputMode();paint();return inputMode;
+  },applyProfileDefaults:config=>{
+    const pointConfig=config?.point_input||config;
+    pointInputEnabled=!!config&&config.enabled!==false&&pointConfig?.enabled!==false;
+    if(!pointInputEnabled)inputMode="compatibility";
+    else if(!inputModeStored)inputMode=pointConfig?.compatibility_mode_default===true||pointConfig?.default_mode==="compatibility"?"compatibility":"points";
+    saveInputMode();paint();return inputMode;
+  }
+};
+})();

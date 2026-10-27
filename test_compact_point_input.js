@@ -73,4 +73,50 @@ function make(initial=[],savedPhase="history",denyWrite=false){
   const n=a.observed.length;
   a.els.macroCardCount.value="5";a.els.macroCardCount.change();
   a.els.macroBankerScore.value="7";a.els.macroBankerScore.change();
-  assert.equal(a.api.readHistory().length,3,"one sco
+  assert.equal(a.api.readHistory().length,3,"one score must not auto-commit");assert.equal(a.observed.length,n);
+  a.els.macroPlayerScore.value="2";a.els.macroPlayerScore.change();
+  assert.equal(a.api.readHistory().join(""),"BPTB");assert.equal(a.predictions,2,"completed point entry starts next forecast");
+  assert.deepEqual(a.observed.at(-1),{outcome:"B",b:"7",p:"2",c:"5"});
+  assert.equal(a.els.macroBankerScore.value,"");assert.equal(a.els.macroPlayerScore.value,"");assert.equal(a.els.macroCardCount.value,"");
+  a.els.macroPlayerScore.change();assert.equal(a.api.readHistory().length,4,"cleared score prevents duplicate write");
+  a.choose("3","9");a.choose("4","4");
+  assert.equal(a.api.readHistory().join(""),"BPTBPT");assert.equal(a.predictions,4);
+  assert.deepEqual(a.observed.slice(-2),[
+    {outcome:"P",b:"3",p:"9",c:""},{outcome:"T",b:"4",p:"4",c:""}
+  ]);
+  a.els.compatModeToggle.click();
+  assert.equal(a.api.getInputMode(),"compatibility");assert.equal(a.els.resultModePanel.hidden,false);
+  assert.equal(a.els.pointModePanel.hidden,true);assert.equal(a.data.get(INPUT_MODE_KEY),"compatibility");
+  a.els.btnP.click();assert.equal(a.api.readHistory().at(-1),"P");assert.equal(a.predictions,5,"compatibility B/P/T still advances analysis");
+  a.els.compatModeToggle.click();assert.equal(a.api.getInputMode(),"points");assert.equal(a.els.pointModePanel.hidden,false);
+  const disabled=make(["B"]);disabled.api.applyProfileDefaults({enabled:true,point_input:{enabled:false,default_mode:"points"}});
+  assert.equal(disabled.api.getInputMode(),"compatibility");assert.equal(disabled.els.compatModeToggle.disabled,true);
+  disabled.els.compatModeToggle.click();assert.equal(disabled.api.getInputMode(),"compatibility","disabled setting cannot re-enable point input from the UI");
+  a.els.btnBack.click();assert.equal(a.api.getPhase(),"points");assert.equal(a.api.readHistory().at(-1),"T");
+  a.els.btnEnd.click();assert.equal(a.api.getPhase(),"history");assert.equal(a.data.has(PHASE_KEY),false);
+
+  const failed=make(["B"],"history",true);failed.els.btnStart.click();failed.choose("6","2");
+  assert.equal(failed.api.readHistory().join(""),"B","failed persistence cannot be reported as committed");
+  assert.equal(failed.predictions,1);assert.match(failed.els.pointResultPreview.textContent,/未確認寫入成功/);
+  const forecastError=make(["B"]);forecastError.els.btnStart.click();
+  forecastError.els.btnStart.addEventListener("click",()=>{throw Error("synthetic next-forecast failure");});
+  forecastError.choose("7","4");assert.equal(forecastError.api.readHistory().join(""),"BB");
+  assert.match(forecastError.els.pointResultPreview.textContent,/已自動記錄第 2 局/);
+  assert.match(forecastError.els.pointResultPreview.textContent,/下一局分析未完成/);
+  assert.equal(forecastError.els.macroBankerScore.value,"");
+  const restored=make(["B","P"],"points");assert.equal(restored.api.getPhase(),"points");
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(restored.predictions,1,"reload restores active analysis once");
+  restored.choose("8","1");assert.equal(restored.api.readHistory().join(""),"BPB");
+
+  const html=fs.readFileSync("index.html","utf8"),css=fs.readFileSync("styles.css","utf8"),auth=fs.readFileSync("auth-client.js","utf8");
+  for(const id of ids)assert(html.includes('id="'+id+'"'),"missing element "+id);
+  assert(html.includes('id="resultModePanel" class="bbb-mode-panel" hidden'));
+  assert(html.includes('id="macroCardCount"'));assert(html.includes('建議使用點數輸入以啟用準算牌'));
+  assert(!html.includes('id="btnRecordPoints"'),"score entry remains automatic");
+  assert(css.includes("grid-template-columns:repeat(3,minmax(0,1fr))"));
+  assert(auth.includes('"point_input_mode.js?v=20261027-point-input-v1"'));
+  assert(auth.indexOf('"point_input_mode.js?v=20261027-point-input-v1"')>auth.indexOf('"final_probability_runtime.js?'));
+  assert(!html.includes('<script src="point_input_mode.js"'),"point workflow must run after successful license verification");
+  console.log(JSON.stringify({passed:true,default_point_mode:true,history_seed_import:true,automatic_score_commit:true,
+    optional_card_count:true,compatibility_toggle:true,undo_and_end:true,reload:true,post_license_only:true}));
+})().catch(e=>{console.error(e);process.exitCode=1;});
