@@ -4,7 +4,7 @@ const current=JSON.parse(fs.readFileSync("cardcount_profile.json")),baseline=JSO
 // Compare stage settings with identical PF sampling budgets.
 baseline.pf={...baseline.pf,likelihood_draws:current.pf.likelihood_draws,fallback_draws:current.pf.fallback_draws};
 // This regression isolates the historical stage upgrade; v2 selectivity is covered separately.
-current.selective_entry_v2.enabled=false;
+current.selective_entry_v2.enabled=false;current.first_layer_smoothing.enabled=false;
 const M=require("./browser_calibration.js");
 function make(profile){
   const store=new Map(),ctx={console,localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},document:{getElementById:()=>null},fetch:async file=>({ok:true,json:async()=>file==="cardcount_profile.json"?profile:JSON.parse(fs.readFileSync(file,"utf8"))})};

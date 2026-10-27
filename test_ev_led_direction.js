@@ -3,7 +3,7 @@ const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("nod
 const profile=JSON.parse(fs.readFileSync("cardcount_profile.json","utf8"));
 async function make(legacy=false,commission=.05,gap=.02){
  const store=new Map([["bgs_xgb_final_shoe_id_v5","ev-direction-test"]]),nodes=new Map();
- const config={...profile,selective_entry_v2:{...profile.selective_entry_v2,enabled:false},display_gap:gap,settlement:{...profile.settlement,banker_commission:commission},direction_selection:{schema_version:1,mode:legacy?"physics_candidate_v1":"post_draw_ev_argmax_v1",ev_tie_tolerance:1e-12}};
+ const config={...profile,selective_entry_v2:{...profile.selective_entry_v2,enabled:false},first_layer_smoothing:{...profile.first_layer_smoothing,enabled:false},display_gap:gap,settlement:{...profile.settlement,banker_commission:commission},direction_selection:{schema_version:1,mode:legacy?"physics_candidate_v1":"post_draw_ev_argmax_v1",ev_tie_tolerance:1e-12}};
  const ctx={console,document:{getElementById:()=>null},localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},fetch:async f=>({ok:true,json:async()=>f==="cardcount_profile.json"?config:JSON.parse(fs.readFileSync(f,"utf8"))})};ctx.window=ctx;vm.createContext(ctx);
  for(const f of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","browser_calibration.js","final_probability_runtime.js"])vm.runInContext(fs.readFileSync(f,"utf8"),ctx,{filename:f});
  const api=ctx.__BGS_FINAL56__;await api.loadModels();return {api,ctx,store,nodes};

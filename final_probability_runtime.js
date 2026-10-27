@@ -17,6 +17,8 @@ const VERSION=EV_CONSISTENCY_V1
   :"PHYSICS_57D_V14_8_FIRST_LAYER_EV1";
 const PHYSICS_URL="physics_multitask_model.json";
 let cardcountProfile=null,displayGapOverride=null;
+const FIRST_SMOOTHING_KEY="bgs_first_layer_gap_smoothing_v1";
+let firstSmoothingModelTag="unready",firstSmoothingStorageError="";
 
 // Post-draw settlement: B/P/T are unconditional probabilities for the completed hand.
 // The display/Core/XGB probabilities remain conditional B/P; reattach tie mass once.
@@ -105,7 +107,64 @@ function directionConsistency(first,final){
   const consistent=firstDirection==="Balanced"||firstDirection===finalDirection;
   return {first_layer:firstDirection,final:finalDirection,consistent,forced_skip_by_consistency:selectiveEntryPolicy()?.require_first_final_consistency===true&&!consistent};
 }
-function firstLayerEv(physics,roundIndex=1,particleQuality=null){
+// First-layer-only EV-gap state. Never feeds Clip, decision EMA, features or final EV.
+function firstSmoothingConfig(input=cardcountProfile?.first_layer_smoothing){
+  const c=input,stages=["early","middle","late"],finite=v=>typeof v==="number"&&Number.isFinite(v);
+  if(c?.schema_version!==1||c.enabled!==true)return null;
+  if(!stages.every(k=>finite(c.alpha?.[k])&&c.alpha[k]>0&&c.alpha[k]<=1&&finite(c.min_gap?.[k])&&c.min_gap[k]>=0&&c.min_gap[k]<=2)||!finite(c.max_alpha)||c.max_alpha<=0||c.max_alpha>1)return null;
+  for(const [lo,hi] of [["noise_low","noise_high"],["quality_low","quality_high"],["uncertainty_low","uncertainty_high"]])if(!finite(c[lo])||!finite(c[hi])||c[lo]<0||c[hi]>1||c[hi]<=c[lo])return null;
+  return c;
+}
+function firstSmoothingFingerprint(...values){
+  let hash=2166136261;for(const value of values){const text=JSON.stringify(value);for(let i=0;i<text.length;i++){hash^=text.charCodeAt(i);hash=Math.imul(hash,16777619);}}return (hash>>>0).toString(16);
+}
+function firstSmoothingTag(){
+  const c=firstSmoothingConfig();return c&&firstSmoothingModelTag!=="unready"?firstSmoothingFingerprint("first_gap_v1",firstSmoothingModelTag,c,getEstimatedTotalHands()):null;
+}
+function firstSmoothingStep(rawGap,previous,roundIndex,noise,quality,uncertainty,c=firstSmoothingConfig()){
+  c=firstSmoothingConfig(c);
+  if(!c||!Number.isFinite(rawGap))return null;
+  const r=clip(roundIndex,1,70),stage=r<=20?"early":r<=45?"middle":"late";
+  const alphaBase=clip(interpAnchors(r,[[1,c.alpha.early],[18,c.alpha.early],[23,c.alpha.middle],[43,c.alpha.middle],[48,c.alpha.late],[70,c.alpha.late]]),0,Math.min(.70,c.max_alpha));
+  const noiseGate=Number.isFinite(noise)?clip((c.noise_high-noise)/(c.noise_high-c.noise_low)):0;
+  const qualityGate=Number.isFinite(quality)?clip((quality-c.quality_low)/(c.quality_high-c.quality_low)):0;
+  const uncertaintyGate=Number.isFinite(uncertainty)?clip((c.uncertainty_high-uncertainty)/(c.uncertainty_high-c.uncertainty_low)):0;
+  const alphaEffective=alphaBase*(.55+.45*noiseGate*qualityGate*uncertaintyGate),hasPrevious=typeof previous==="number"&&Number.isFinite(previous);
+  const gap=hasPrevious?alphaEffective*rawGap+(1-alphaEffective)*previous:rawGap,minGap=c.min_gap[stage];
+  const direction=Math.abs(gap)<minGap||Math.abs(gap)<=1e-12?"Balanced":gap>0?"B":"P";
+  return {gap,direction,alpha_base:alphaBase,alpha_effective:alphaEffective,noise_gate:noiseGate,quality_gate:qualityGate,uncertainty_gate:uncertaintyGate,physics_noise_score:Number.isFinite(noise)?noise:null,min_gap:minGap,stage,initialized:!hasPrevious,previous_gap:hasPrevious?previous:null};
+}
+function readFirstSmoothingJournal(history,shoe,model){
+  const empty={schema_version:1,shoe_id:shoe,model,events:[]};let saved=null;
+  try{saved=JSON.parse(localStorage.getItem(FIRST_SMOOTHING_KEY)||"null");}catch(_){firstSmoothingStorageError="read_failed";return empty;}
+  if(saved?.schema_version!==1||saved.shoe_id!==shoe||saved.model!==model||!Array.isArray(saved.events))return empty;
+  const finite=v=>typeof v==="number"&&Number.isFinite(v);
+  const events=saved.events.slice(0,500).filter(e=>Number.isInteger(e?.index)&&e.index>=0&&e.index<history.length&&e.prefix===history.slice(0,e.index).join("")&&["B","P","T"].includes(e.actual)&&e.actual===history[e.index]&&finite(e.raw_gap)&&Math.abs(e.raw_gap)<=2&&[e.noise,e.quality,e.uncertainty].every(v=>finite(v)&&v>=0&&v<=1)).sort((a,b)=>a.index-b.index);
+  return {...empty,events:events.filter((e,i)=>!i||events[i-1].index!==e.index)};
+}
+function previousFirstSmoothedGap(history){
+  const model=firstSmoothingTag();if(!model||!Array.isArray(history))return null;
+  const journal=readFirstSmoothingJournal(history,getShoeId(),model);let previous=null,lastIndex=-1;
+  for(const e of journal.events){if(e.index!==lastIndex+1)previous=null;const state=firstSmoothingStep(e.raw_gap,previous,e.index+1,e.noise,e.quality,e.uncertainty);previous=state?.gap??null;lastIndex=e.index;}
+  return !firstSmoothingStorageError&&lastIndex===history.length-1?previous:null;
+}
+function prepareFirstSmoothingTicket(history,prediction){
+  const model=firstSmoothingTag(),f=prediction?.first_layer_ev;if(!model||!f?.smoothed||!Number.isFinite(f.raw?.gap)||!Number.isFinite(f.smoothed.physics_noise_score))return null;
+  return {model,shoe_id:getShoeId(),index:history.length,prefix:history.join(""),raw_gap:f.raw.gap,noise:clip(f.smoothed.physics_noise_score),quality:clip(f.particle_quality),uncertainty:clip(f.physics_uncertainty)};
+}
+function saveFirstSmoothingJournal(journal){
+  try{localStorage.setItem(FIRST_SMOOTHING_KEY,JSON.stringify(journal));firstSmoothingStorageError="";return true;}catch(_){firstSmoothingStorageError="write_failed";return false;}
+}
+function commitFirstSmoothingTicket(ticket,actual,history){
+  if(!ticket||!Number.isFinite(ticket.raw_gap)||Math.abs(ticket.raw_gap)>2||![ticket.noise,ticket.quality,ticket.uncertainty].every(v=>typeof v==="number"&&Number.isFinite(v)&&v>=0&&v<=1)||ticket.model!==firstSmoothingTag()||ticket.shoe_id!==getShoeId()||!Array.isArray(history)||history.length!==ticket.index+1||history.at(-1)!==actual||!["B","P","T"].includes(actual)||history.slice(0,-1).join("")!==ticket.prefix)return false;
+  const journal=readFirstSmoothingJournal(history,ticket.shoe_id,ticket.model);if(journal.events.some(e=>e.index===ticket.index))return false;
+  journal.events.push({...ticket,actual});return saveFirstSmoothingJournal(journal);
+}
+function reconcileFirstSmoothing(history){
+  const model=firstSmoothingTag();if(model)saveFirstSmoothingJournal(readFirstSmoothingJournal(history,getShoeId(),model));
+}
+function clearFirstSmoothing(){try{localStorage.removeItem(FIRST_SMOOTHING_KEY);firstSmoothingStorageError="";}catch(_){firstSmoothingStorageError="clear_failed";}}
+function firstLayerEv(physics,roundIndex=1,particleQuality=null,noise=null,history=null){
   if(!firstLayerEvPolicy().enabled||!settlementPolicy()||!Array.isArray(physics))return null;
   const settlement=settledOutcomeEv({B:physics[23],P:physics[24],T:physics[25]});
   const choice=selectEvDirection(settlement.banker,settlement.player),c=selectiveEntryPolicy();
@@ -114,7 +173,14 @@ function firstLayerEv(physics,roundIndex=1,particleQuality=null){
   const effectiveGap=(settlement.banker-settlement.player)*(1-.45*uncertainty)*(.55+.45*quality);
   const threshold=c&&typeof c.first_layer_effective_gap?.[stage]==="number"&&Number.isFinite(c.first_layer_effective_gap[stage])?Math.max(0,c.first_layer_effective_gap[stage]):0;
   const balanced=!!c&&Math.abs(effectiveGap)<threshold;
-  return {schema_version:1,source:"physics_pf_post_draw",stage:"before_macro_clip_ema_calibration",...choice,direction:balanced?"Balanced":choice.direction,raw_direction:choice.direction,effective_gap:effectiveGap,effective_gap_min:threshold,effective_gap_stage:stage,balanced_by_effective_gap:balanced,physics_uncertainty:uncertainty,particle_quality:quality,probabilities:settlement.probabilities,positive_ev:Math.max(settlement.banker,settlement.player)>0};
+  const legacy={schema_version:1,source:"physics_pf_post_draw",stage:"before_macro_clip_ema_calibration",...choice,direction:balanced?"Balanced":choice.direction,raw_direction:choice.direction,effective_gap:effectiveGap,effective_gap_min:threshold,effective_gap_stage:stage,balanced_by_effective_gap:balanced,physics_uncertainty:uncertainty,particle_quality:quality,probabilities:settlement.probabilities,positive_ev:Math.max(settlement.banker,settlement.player)>0};
+  const raw={banker_ev:settlement.banker,player_ev:settlement.player,gap:settlement.banker-settlement.player,direction:choice.direction};
+  const previous=Array.isArray(history)?previousFirstSmoothedGap(history):null;
+  const smoothed=firstSmoothingStep(raw.gap,previous,roundIndex,noise,quality,uncertainty);
+  if(!smoothed)return legacy;
+  return {...legacy,pipeline_stage:legacy.stage,stage,unsmoothed_direction:legacy.direction,unsmoothed_effective_gap:legacy.effective_gap,unsmoothed_gap_min:legacy.effective_gap_min,raw,smoothed,smoothing_enabled:true,smoothing_storage_error:firstSmoothingStorageError,
+    direction:smoothed.direction,effective_gap:smoothed.gap,effective_gap_min:smoothed.min_gap,balanced_by_effective_gap:smoothed.direction==="Balanced"};
+
 }
 function profileValue(key,roundIndex){
   if(!cardcountProfile?.enabled)return null;
@@ -553,7 +619,7 @@ function physicsPrecisionPenalty(roundIndex,uncertainty,consistency){
     .0045*Math.max(0,u-.35)/.65 + .0035*(1-c) + .0015*early*(1-c)
   );
 }
-function directPhysicsPrimary(physics,roundIndex,macroFeatures=null,particleQuality=null){
+function directPhysicsPrimary(physics,roundIndex,macroFeatures=null,particleQuality=null,history=null,firstNoise=null){
   const pB=clip(+physics?.[23]||0),pP=clip(+physics?.[24]||0),pT=clip(+physics?.[25]||0);
   const directionalMass=Math.max(1e-9,pB+pP),rawDirectionalPB=clip(pB/directionalMass);
   const uncertainty=clip(+physics?.[42]||0),consistency=physicsConsistencyScore(physics);
@@ -561,7 +627,7 @@ function directPhysicsPrimary(physics,roundIndex,macroFeatures=null,particleQual
   const progressWeight=directPhysicsProgressWeight(roundIndex,physics),noise=physicsNoiseScore(physics,roundIndex,Math.cbrt(progressWeight));
   const policy=decisionPolicy(roundIndex,noise);
   // First-layer EV evaluates the completed-hand Physics + PF distribution before any smoothing.
-  const firstEv=firstLayerEv(physics,roundIndex,particleQuality);
+  const firstEv=firstLayerEv(physics,roundIndex,particleQuality,Number.isFinite(firstNoise)?firstNoise:noise,history);
   const baseSettlement=settlementPolicy()?conditionalSettlement(calibratedPB,pT):null;
   const baseEvBanker=baseSettlement?baseSettlement.banker:pB*.95-pP,baseEvPlayer=baseSettlement?baseSettlement.player:pP-pB;
   const macro=MACRO?MACRO.adjustment(calibratedPB,macroFeatures,clip(roundIndex/getEstimatedTotalHands()),noise,{...(final56Bundle?.decision_policy?.macro_ema||{}),...(cardcountProfile?.enabled?cardcountProfile.macro:{})}):{value:calibratedPB,delta:0,reason:"module_unavailable"};
@@ -698,7 +764,8 @@ function applyFinalPrediction(seq,corePrediction=null){
   if(physics&&physicsBundleUsesPhysicalEv()){
     const roundIndex=Math.max(1,Math.min(70,seq.length+1));
     const macroFeatures=getMacroFeatures(seq);
-    primary=directPhysicsPrimary(physics,roundIndex,macroFeatures,particleDiagnostics?.particle_quality??null);
+    const firstNoise=firstSmoothingConfig()?physicsNoiseScore(physicsDirect||physics,roundIndex,Math.cbrt(directPhysicsProgressWeight(roundIndex,physicsDirect||physics))):null;
+    primary=directPhysicsPrimary(physics,roundIndex,macroFeatures,particleDiagnostics?.particle_quality??null,seq,firstNoise);
     primary.macroFeatures=macroFeatures;
     executionOrder.push("physics_candidate");
     rawPB=primary.directionalPB;
@@ -742,7 +809,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     finalPB=filteredPB;
 
     // Compare both decisions before the next outcome is known; keep the original risk rules.
-    function evaluateProbability(finalPB){
+    function evaluateProbability(finalPB,firstDirection=primary.firstLayerEv?.direction){
     let pPlayer=1-finalPB,evBanker=finalPB*.95-pPlayer,evPlayer=pPlayer-finalPB;
     if(settlementPolicy()){
       const finalSettlement=conditionalSettlement(finalPB,primary.pT);
@@ -756,7 +823,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     const evLed=directionSelectionPolicy().enabled,evChoice=selectEvDirection(evBanker,evPlayer);
     const policy=primary.policy,candidate=evLed?(evChoice.direction==="Balanced"?"Skip":evChoice.direction):primary.candidate;
     if(evLed)auxFilter=auxiliaryCandidateFilter(candidate,corePB,xgbAuxPB);
-    const consistency=directionConsistency(primary.firstLayerEv?.direction,candidate);
+    const consistency=directionConsistency(firstDirection,candidate);
     const selectiveBoost=selectiveEvBoost(roundIndex,Number.isFinite(extended?.at(-1))?extended.at(-1):primary.noise,particleDiagnostics?.particle_quality??null);
     const originalBaseActivation=Math.max(policy.activationEv,primary.physicsActivationEv);
     const baseBand=Math.max(policy.confidenceBand,primary.physicsConfidenceBand),baseActivation=originalBaseActivation+selectiveBoost.total_boost,distance=Math.abs(finalPB-.5);
@@ -784,14 +851,15 @@ function applyFinalPrediction(seq,corePrediction=null){
         effectiveBand,effectiveActivationEv,guardBandRelief:guard.bandRelief,guardEvRelief:guard.evRelief}
     };
     }
-    const basePB=finalPB,baseDecision=evaluateProbability(basePB);
+    const calibrationReferenceDirection=primary.firstLayerEv?.unsmoothed_direction??primary.firstLayerEv?.direction;
+    const basePB=finalPB,baseDecision=evaluateProbability(basePB,calibrationReferenceDirection);
     if(localCalibrationConfig().formal_ev_enabled===true&&directionSelectionPolicy().enabled&&LOCAL_CALIBRATION&&browserCalibrationTag!=="unready"&&primary.pT<1-1e-12){
       calibrationInputForecast=evDirectionForecast(conditionalSettlement(basePB,primary.pT),Math.max(primary.noise,primary.uncertainty));
       calibrationInputForecast.directional={B:basePB,P:1-basePB};
       calibrationInputForecast.calibration_bounds={low:bounds.low,high:bounds.high};
       formalCalibration=LOCAL_CALIBRATION.apply(calibrationInputForecast,seq,getShoeId(),browserCalibrationTag,localCalibrationConfig());
       const proposedPB=formalCalibration.proposed_forecast?.directional?.B??basePB;
-      const proposedDecision=evaluateProbability(proposedPB),fees=settlementPolicy();
+      const proposedDecision=evaluateProbability(proposedPB,calibrationReferenceDirection),fees=settlementPolicy();
       calibrationInputForecast.validation_trial={proposal_p:proposedPB,base_action:baseDecision.direction,candidate_action:proposedDecision.direction,banker_commission:fees.banker_commission,player_commission:fees.player_commission};
       finalPB=formalCalibration.forecast?.directional?.B??basePB;
       // Calibration may not escape the existing probability bounds.
@@ -882,6 +950,7 @@ function rotateShoeId(){
   for(const key of [SHOE_KEY,PENDING_KEY,MACRO_KEY])try{localStorage.removeItem(key);}catch(_){}
   macroJournal=null;macroState=null;
   LOCAL_CALIBRATION?.clear();
+  clearFirstSmoothing();
 }
 function saveMacroJournal(){try{localStorage.setItem(MACRO_KEY,JSON.stringify(macroJournal));}catch(_){}}
 function syncMacro(history){
@@ -922,6 +991,7 @@ function recordCompletedHand(history,observation={}){
 function undoRuntimeHistory(){
   const history=readHistory(),shoeId=getShoeId();syncMacro(history);
   LOCAL_CALIBRATION?.reconcile(history,shoeId,browserCalibrationTag);
+  reconcileFirstSmoothing(history);
   writeRows(readRows().filter(row=>{
     if(row?.shoe_id!==shoeId)return true;
     const count=Number(row.history_event_count??(row.round_index-1));
@@ -999,8 +1069,10 @@ async function loadModels(){
   if(gapControl){gapControl.disabled=!cardcountProfile?.enabled;if(displayGapOverride===null)gapControl.value=String(cardcountProfile?.enabled?cardcountProfile.display_gap:0);}
   if(!valid)status.errors.push("cardcount_profile_fallback");
   if(status.physics&&status.final56&&!modelSemanticsCompatible()){status.final56=false;status.errors.push("feature_semantics_mismatch");}
-  const {selective_entry_v2:ignoredSelectivePolicy,...originalProfile}=cardcountProfile||{};
-  browserCalibrationTag=status.physics&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(VERSION,physicsBundle,final56Bundle,localCalibrationConfig(),selectiveEntryPolicy()?cardcountProfile:originalProfile):"unready";
+  const {first_layer_smoothing:ignoredFirstSmoothing,...probabilityProfile}=cardcountProfile||{};
+  const {selective_entry_v2:ignoredSelectivePolicy,...originalProfile}=probabilityProfile;
+  browserCalibrationTag=status.physics&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(VERSION,physicsBundle,final56Bundle,localCalibrationConfig(),selectiveEntryPolicy()?probabilityProfile:originalProfile):"unready";
+  firstSmoothingModelTag=status.physics?firstSmoothingFingerprint(physicsBundle,final56Bundle,PARTICLE500?.version||null,probabilityProfile):"unready";
   renderLocalCalibrationStatus(readHistory());
   return status;
 }
@@ -1070,12 +1142,12 @@ function installUI(){
   const historyMatches=(actual,expected)=>actual.length===expected.length&&actual.every((v,i)=>v===expected[i]);
   for(const [id,outcome] of [["btnB","B"],["btnP","P"],["btnT","T"]]){
     const button=document.getElementById(id);if(!button)continue;
-    let observed=null,observationError="",beforeHistory=[],calibrationTicket=null;
+    let observed=null,observationError="",beforeHistory=[],calibrationTicket=null,firstSmoothingTicket=null;
     // Capture the previous history, then settle the last prediction. All optional
     // telemetry failures still let the Frozen Core receive the clicked outcome.
     button.addEventListener("click",event=>{
       beforeHistory=readHistory();
-      observed=null;observationError="";calibrationTicket=null;
+      observed=null;observationError="";calibrationTicket=null;firstSmoothingTicket=null;
       const shown=Number(document.getElementById("roundCount")?.textContent);
       if(Number.isInteger(shown)&&shown!==beforeHistory.length){
         // Another tab (or failed persistent write) has changed history since this
@@ -1085,9 +1157,10 @@ function installUI(){
         if(message){message.textContent="牌路資料已在其他頁籤更新，請重新整理後再報莊／閒／和，避免覆蓋已記錄的局數。";message.classList.add("warning");}
         return;
       }
-      if(LOCAL_CALIBRATION&&browserCalibrationTag!=="unready")try{
+      if((LOCAL_CALIBRATION&&browserCalibrationTag!=="unready")||firstSmoothingConfig())try{
         const prior=applyFinalPrediction(beforeHistory);
         calibrationTicket=prepareCalibrationTicket(beforeHistory,prior);
+        firstSmoothingTicket=prepareFirstSmoothingTicket(beforeHistory,prior);
       }catch(_){/* Calibration never blocks reporting the actual result. */}
       try{
         const get=id=>document.getElementById(id)?.value??"";
@@ -1117,6 +1190,7 @@ function installUI(){
         return;
       }
       if(calibrationTicket)commitCalibrationTicket(calibrationTicket,outcome,history);
+      if(firstSmoothingTicket)commitFirstSmoothingTicket(firstSmoothingTicket,outcome,history);
       try{recordCompletedHand(history,observed||{});}
       catch(error){observationError=observationError||"分析附加紀錄異常："+String(error?.message||error);}
       clearFields();
@@ -1135,7 +1209,7 @@ function installUI(){
   const observations=document.getElementById("btnExportObservations");if(observations)observations.addEventListener("click",downloadMacroObservations);
   syncMacro(readHistory());
 }
-if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,selectiveEntryPolicy,selectiveEvBoost,directionConsistency,firstLayerEvPolicy,firstLayerEv,prepareCalibrationTicket,commitCalibrationTicket,directionSelectionPolicy,selectEvDirection,evDirectionForecast,settlementPolicy,settledOutcomeEv,conditionalSettlement,drawCountDistribution,getLocalCalibrationStatus:(history=readHistory())=>LOCAL_CALIBRATION?.inspect(history,getShoeId(),browserCalibrationTag,localCalibrationConfig())||null,displayDirection,profileValue,getCardcountProfile:()=>cardcountProfile,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
+if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,firstSmoothingConfig,firstSmoothingStep,prepareFirstSmoothingTicket,commitFirstSmoothingTicket,reconcileFirstSmoothing,selectiveEntryPolicy,selectiveEvBoost,directionConsistency,firstLayerEvPolicy,firstLayerEv,prepareCalibrationTicket,commitCalibrationTicket,directionSelectionPolicy,selectEvDirection,evDirectionForecast,settlementPolicy,settledOutcomeEv,conditionalSettlement,drawCountDistribution,getLocalCalibrationStatus:(history=readHistory())=>LOCAL_CALIBRATION?.inspect(history,getShoeId(),browserCalibrationTag,localCalibrationConfig())||null,displayDirection,profileValue,getCardcountProfile:()=>cardcountProfile,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
   registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,
   getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 if(typeof window?.addEventListener==="function")window.addEventListener("storage",event=>{if(event.key===MACRO_KEY||event.key===SHOE_KEY){macroJournal=null;macroState=null;}});
