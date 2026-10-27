@@ -1,0 +1,7 @@
+# 建議 Python 3.11 或 3.12；research 專用依賴，勿與正式網頁一起部署。
+numpy>=1.26,<3
+numba>=0.60
+scipy>=1.13
+scikit-learn>=1.5
+matplotlib>=3.8
+torch>=2.4
