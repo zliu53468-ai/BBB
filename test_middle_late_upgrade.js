@@ -1,6 +1,8 @@
 "use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
 const current=JSON.parse(fs.readFileSync("cardcount_profile.json")),baseline=JSON.parse(fs.readFileSync("validation/cardcount_moderate_v1_baseline.json"));
+// This test isolates the inherited smoothing profile; selective entry is tested separately.
+current.hitrate_max_v1.enabled=false;
 const M=require("./browser_calibration.js");
 function make(profile){
   const store=new Map(),ctx={console,localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},document:{getElementById:()=>null},fetch:async file=>({ok:true,json:async()=>file==="cardcount_profile.json"?profile:JSON.parse(fs.readFileSync(file,"utf8"))})};

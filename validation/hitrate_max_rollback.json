@@ -1,0 +1,187 @@
+{
+  "source_commit": "423022df7069932a1b8fb465c64af588c2b8d358",
+  "rows": [
+    {
+      "history": "B",
+      "direction": "Skip",
+      "forecast": {
+        "available": true,
+        "source": "direct_physics_particle500_winner_head",
+        "direction": "B",
+        "probabilities": {
+          "B": 0.4530972862580015,
+          "P": 0.4512821995683063,
+          "T": 0.0956205141736922
+        },
+        "directional": {
+          "B": 0.5010034983754839,
+          "P": 0.49899650162451614
+        },
+        "uncertainty": 0.3182860244676893,
+        "weak_signal": true
+      },
+      "finalPB": 0.5008228686678967,
+      "evB": -0.023395406097601434,
+      "evP": -0.001645737335793429,
+      "smoothing": 1,
+      "guard": false,
+      "candidate": "Skip"
+    },
+    {
+      "history": "BP",
+      "direction": "Skip",
+      "forecast": {
+        "available": true,
+        "source": "direct_physics_particle500_winner_head",
+        "direction": "B",
+        "probabilities": {
+          "B": 0.45732836962915513,
+          "P": 0.4501773121056514,
+          "T": 0.09249431826519347
+        },
+        "directional": {
+          "B": 0.5039399519294654,
+          "P": 0.4960600480705346
+        },
+        "uncertainty": 0.33661858859956295,
+        "weak_signal": true
+      },
+      "finalPB": 0.5032307605821617,
+      "evB": -0.018700016864784785,
+      "evP": -0.006461521164323303,
+      "smoothing": 1,
+      "guard": false,
+      "candidate": "Skip"
+    },
+    {
+      "history": "BPTBBPPBBT",
+      "direction": "Skip",
+      "forecast": {
+        "available": true,
+        "source": "direct_physics_particle500_winner_head",
+        "direction": "P",
+        "probabilities": {
+          "B": 0.4479752097881669,
+          "P": 0.45271036553329874,
+          "T": 0.09931442467853432
+        },
+        "directional": {
+          "B": 0.4973713602866118,
+          "P": 0.5026286397133882
+        },
+        "uncertainty": 0.2958833176773771,
+        "weak_signal": true
+      },
+      "finalPB": 0.4978445154350217,
+      "evB": -0.029203194901707696,
+      "evP": 0.004310969129956599,
+      "smoothing": 1,
+      "guard": false,
+      "candidate": "Skip"
+    },
+    {
+      "history": "BBBBBBBBBBBBBBBBBBBB",
+      "direction": "Skip",
+      "forecast": {
+        "available": true,
+        "source": "direct_physics_particle500_winner_head",
+        "direction": "Balanced",
+        "probabilities": {
+          "B": 0.451230481218056,
+          "P": 0.451230481218056,
+          "T": 0.09753903756388804
+        },
+        "directional": {
+          "B": 0.5,
+          "P": 0.5
+        },
+        "uncertainty": 0.3508976104842568,
+        "weak_signal": true
+      },
+      "finalPB": 0.5,
+      "evB": -0.025000000000000022,
+      "evP": 0,
+      "smoothing": 1,
+      "guard": false,
+      "candidate": "Skip"
+    },
+    {
+      "history": "PPPPPPPPPPPPPPPPPPPPPPPPP",
+      "direction": "Skip",
+      "forecast": {
+        "available": true,
+        "source": "direct_physics_particle500_winner_head",
+        "direction": "B",
+        "probabilities": {
+          "B": 0.4328297807468614,
+          "P": 0.4282858405600064,
+          "T": 0.13888437869313217
+        },
+        "directional": {
+          "B": 0.5026384030636669,
+          "P": 0.4973615969363331
+        },
+        "uncertainty": 0.39013893412938006,
+        "weak_signal": true
+      },
+      "finalPB": 0.5023768247830324,
+      "evB": -0.020365191673086924,
+      "evP": -0.0047536495660647216,
+      "smoothing": 1,
+      "guard": false,
+      "candidate": "Skip"
+    },
+    {
+      "history": "BPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBP",
+      "direction": "Skip",
+      "forecast": {
+        "available": true,
+        "source": "direct_physics_particle500_winner_head",
+        "direction": "B",
+        "probabilities": {
+          "B": 0.4569558573105134,
+          "P": 0.43903808179598497,
+          "T": 0.10400606089350167
+        },
+        "directional": {
+          "B": 0.5099988262936223,
+          "P": 0.49000117370637775
+        },
+        "uncertainty": 0.3421772642026628,
+        "weak_signal": false
+      },
+      "finalPB": 0.5099988262936223,
+      "evB": -0.005502288727436633,
+      "evP": -0.019997652587244508,
+      "smoothing": 1,
+      "guard": false,
+      "candidate": "Skip"
+    },
+    {
+      "history": "BBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPP",
+      "direction": "P",
+      "forecast": {
+        "available": true,
+        "source": "direct_physics_particle500_winner_head",
+        "direction": "P",
+        "probabilities": {
+          "B": 0.43656727211501045,
+          "P": 0.4526309969389255,
+          "T": 0.11080173094606392
+        },
+        "directional": {
+          "B": 0.4909672986425142,
+          "P": 0.5090327013574858
+        },
+        "uncertainty": 0.33548516852316884,
+        "weak_signal": false
+      },
+      "finalPB": 0.4909672986425142,
+      "evB": -0.042613767647097345,
+      "evP": 0.01806540271497159,
+      "smoothing": 1,
+      "guard": false,
+      "candidate": "P"
+    }
+  ]
+}

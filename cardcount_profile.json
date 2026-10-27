@@ -414,5 +414,32 @@
         ]
       ]
     }
+  },
+  "hitrate_max_v1": {
+    "schema_version": 1,
+    "enabled": true,
+    "xgb_influence": 0,
+    "markov": {
+      "enabled": true,
+      "order": 2,
+      "mix_weight": 0.08,
+      "max_weight": 0.12,
+      "conflict_policy": "ignore_if_opposite",
+      "min_observations": 12,
+      "prior_strength": 24,
+      "window": 200,
+      "min_ev_gap": 0.003
+    },
+    "entry_thresholds": {
+      "early": 0.012,
+      "middle": 0.009,
+      "late": 0.007
+    },
+    "max_noise": 0.65,
+    "max_uncertainty": 0.65,
+    "min_particle_quality": 0.6,
+    "min_positive_ev": 0.004,
+    "require_first_final_consistency": true,
+    "volume_guard_selective": true
   }
 }

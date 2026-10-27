@@ -66,7 +66,7 @@ assert.match(el("message").textContent,/模型未就緒/);
 const fs=require("node:fs");global.fetch=async file=>({ok:true,json:async()=>JSON.parse(fs.readFileSync(file,"utf8"))});
 await global.__BGS_FINAL56__.loadModels();
 const api=global.__BGS_FINAL56__,tie={available:true,directional:{B:.5,P:.5}};
-assert.equal(api.noSkipTestDirection(tie),"B");assert.equal(api.noSkipTestDirection({available:false}),null);
+assert.equal(api.noSkipTestDirection(tie),"Balanced");assert.equal(api.noSkipTestDirection({available:false}),null);
 assert.equal(api.noSkipTestDirection({available:true,directional:{B:.49,P:.51}}),"P");
 report("btnNoSkipTest"); // Back to moderate display for threshold control checks.
 const sampleForecast={available:true,direction:"B",directional:{B:.51,P:.49},probabilities:{B:.459,P:.441,T:.1}};

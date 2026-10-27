@@ -12,7 +12,7 @@ function make(enabled=true){
   const f=b=>({available:true,direction:b===.5?"Balanced":b>.5?"B":"P",directional:{B:b,P:1-b},probabilities:{B:b*.9,P:(1-b)*.9,T:.1}});
   assert.equal(api.displayDirection(f(.5099)),"Skip");assert.equal(api.displayDirection(f(.51)),"B");
   assert.equal(api.displayDirection(f(.49)),"P");assert.equal(api.displayDirection(f(.5)),"Skip");
-  assert.equal(api.noSkipTestDirection(f(.5)),"B");assert.equal(api.displayDirection({available:false}),null);
+  assert.equal(api.noSkipTestDirection(f(.5)),"Balanced");assert.equal(api.displayDirection({available:false}),null);
   const ids=["directionOrb","directionText","directionCode","confidence","regime","strength","modePill","roundCount","message"];
   const nodes=Object.fromEntries(ids.map(id=>[id,{textContent:"",className:""}]));ctx.document.getElementById=id=>nodes[id]||null;
   api.renderPrediction({next_hand_forecast:f(.5099),direction:"Skip"},10);

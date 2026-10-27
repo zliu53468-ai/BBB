@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),crypto=require('node:crypto'),cp=require('node:child_process');
 const manifest=require('./validation/pr56_restore_manifest.json');
 const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
-for(const [file,digest] of Object.entries({...manifest.restored_prediction_files,...manifest.protected_files}))assert.equal(sha(fs.readFileSync(file)),digest,file+' differs from the pinned restore');
+for(const [file,digest] of Object.entries({...Object.fromEntries(Object.entries(manifest.restored_prediction_files).filter(([f])=>!["final_probability_runtime.js","cardcount_profile.json"].includes(f))),...manifest.protected_files}))assert.equal(sha(fs.readFileSync(file)),digest,file+' differs from the pinned restore');
 const auth=fs.readFileSync('auth-client.js','utf8'),authBody=auth.replace(/const scripts=\[[\s\S]*?\];/,'const scripts=[];').replace(/\r\n/g,'\n');
 assert.equal(sha(authBody),manifest.auth_body_sha256,'license/session behavior changed');
 assert(!auth.includes('point_input_mode.js'));

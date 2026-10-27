@@ -16,6 +16,7 @@ jobs:
         with:
           node-version: '22'
       - run: node test_pr56_restore.js
+      - run: node test_hitrate_max.js
       - run: node --check auth-client.js && node --check particle_filter_runtime.js
       - run: node test_bbb_button_only.js
       - run: node test_bbb_result_persistence.js

@@ -71,7 +71,7 @@ require("./final_probability_runtime.js");
      Math.abs((r.low_skip_policy?.ev_relief??0)-.006)>1e-12||
      Math.abs((r.low_skip_policy?.final_band_relief??0)-.006)>1e-12)throw new Error("V14.6 inherited Low-Skip policy mismatch");
 
-  const expectedOrder=["direct_physics","particle_filter","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"];
+  const expectedOrder=["direct_physics","particle_filter","markov_prior","physical_ev","physics_candidate","physics_ema","frozen_core","xgb_aux_filter","final_ev_guard","volume_guard"];
   if(JSON.stringify(r.execution_order)!==JSON.stringify(expectedOrder))throw new Error("production execution order mismatch");
 
   const candidate=r.primary_candidate;

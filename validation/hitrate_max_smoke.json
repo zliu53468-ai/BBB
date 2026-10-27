@@ -1,0 +1,33 @@
+{
+  "data_kind": "synthetic_mechanics_only_not_real_holdout",
+  "shoes": 5,
+  "rows": 345,
+  "stats": {
+    "legacy": {
+      "wagers": 113,
+      "wins": 47,
+      "profit": -12.050000000000015
+    },
+    "hitrate_max": {
+      "wagers": 68,
+      "wins": 28,
+      "profit": -6.449999999999998,
+      "forecast": {
+        "B": 216,
+        "P": 105,
+        "Balanced": 24
+      },
+      "markov_applied": 83,
+      "blocked": {
+        "nonpositive_or_weak_ev": 217,
+        "particle_quality": 141,
+        "ev_gap": 76,
+        "direction_consistency": 8
+      }
+    }
+  },
+  "training": false,
+  "real_holdout": false,
+  "promotion_allowed": false,
+  "note": "Fresh-profile causal-prefix smoke only; no live hit-rate claim. Volume history and device learning tested separately."
+}
