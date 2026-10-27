@@ -2,10 +2,10 @@
 
 ## 使用流程
 
-1. 開通後可貼上目前牌靴已知的舊 B/P/T 路單；新牌靴可以留空並直接開始輸入第一局。要用舊按鈕補登歷史時，開啟 B/P/T 相容模式。
-2. 開始後預設使用點數輸入。可先選本局總張數 4、5 或 6 張，再輸入閒、莊最終點數 0–9。兩個點數完成後，程式會按高低自動判定 B/P/T、走既有授權結果記錄流程，並分析下一局。
+1. 開通後直接使用點數欄位，不必貼入過往 B/P/T 路單。要讓目前牌靴已發生的各局進入點數後驗，可依順序逐局補入每局的閒、莊最終點數。
+2. 可先選本局總張數 4、5 或 6 張，再輸入閒、莊最終點數 0–9。兩個點數完成後，程式會按高低自動判定 B/P/T、走既有授權結果記錄流程，並分析下一局。
 3. 總張數可留空。點數、張數與結果會進入原有本機逐局紀錄；不會把不同瀏覽器的資料合併。
-4. 畫面顯示點數條件後驗狀態及「B/P/T-only」對照。模型權重狀態會說明 Physics／輔助模型仍採用最近一次離線訓練版本。
+4. 畫面不再顯示 B/P/T 歷史路牌串；局數與點數條件後驗診斷仍會更新。模型權重狀態會說明 Physics／輔助模型仍採用最近一次離線訓練版本。
 
 ## PF 更新方式
 
@@ -33,7 +33,7 @@
 | `pf.score_update_enabled` | `true` | 允許完整點數／張數紀錄進入十類點數 PF |
 | `score_conditioned_entry.enabled` | `true` | 啟用點數後驗專用 EV 門檻、低出手率目標與方向一致限制 |
 
-在畫面點「開啟 B/P/T 相容模式」即可立即切換舊輸入與舊 B/P/T PF。要以設定檔全域回滾，將 `point_input.enabled`、`pf.score_update_enabled` 和 `score_conditioned_entry.enabled` 設成 `false`，並將 `point_input.default_mode` 設成 `"compatibility"`，再重新載入。`estimate()` 舊 PF 程式和授權、30 分鐘限制、本機資料隔離路徑均保留。
+在畫面點「開啟 B/P/T 相容模式」即可立即切換舊輸入與舊 B/P/T PF。要以設定檔全域回滾，將 `point_input.enabled`、`pf.score_update_enabled` 和 `score_conditioned_entry.enabled` 設成 `false`，並將 `point_input.default_mode` 設成 `"compatibility"`，再重新載入。`estimate()` 舊 PF 程式和授權、30 分鐘限制、本機資料隔離路徑均保留。使用者介面不再提供貼入 B/P/T 歷史路單或顯示 B/P/T 歷史串的功能。
 
 `point_input.enabled` 關閉後可恢復舊 UI 流程；若要完全撤銷本次程式碼，可使用本次 Git 提交的父版本，或反向套用本提交。新增的研究工具不會改部署權重。
 

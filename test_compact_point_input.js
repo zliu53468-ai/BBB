@@ -11,8 +11,8 @@ class Element{
   click(){for(const fn of this.listeners.click||[])fn({});}
   change(){for(const fn of this.listeners.change||[])fn({});}
 }
-const ids=["resultModePanel","pointModePanel","historySeedPanel","entryStageTitle","entryStageNote",
-  "historySeed","macroCardCount","macroBankerScore","macroPlayerScore","pointResultPreview","btnStart",
+const ids=["resultModePanel","pointModePanel","entryStageTitle","entryStageNote",
+  "macroCardCount","macroBankerScore","macroPlayerScore","pointResultPreview","btnStart",
   "compatModeToggle","compatModeHint","btnB","btnP","btnT","btnBack","btnEnd"];
 function make(initial=[],savedPhase="history",denyWrite=false){
   const els=Object.fromEntries(ids.map(id=>[id,new Element(id)]));
@@ -46,41 +46,40 @@ function make(initial=[],savedPhase="history",denyWrite=false){
 }
 (async()=>{
   const a=make();
-  assert.equal(a.api.getPhase(),"history");
+  assert.equal(a.api.getPhase(),"points");
   assert.equal(a.api.getInputMode(),"points","point input is the default mode");
   assert.equal(a.els.resultModePanel.hidden,true,"B/P/T buttons are hidden by default");
-  assert.equal(a.els.pointModePanel.hidden,true);
+  assert.equal(a.els.pointModePanel.hidden,false,"score fields are ready without a history seed step");
   assert.equal(a.api.deriveOutcome("0","0"),"T");
   assert.equal(a.api.deriveOutcome("9","0"),"B");
   assert.equal(a.api.deriveOutcome("0","9"),"P");
   for(const value of ["","-1","10","4.5","NaN"," "])assert.equal(a.api.deriveOutcome(value,"5"),null);
   a.els.btnStart.click();
-  assert.equal(a.api.getPhase(),"points","empty shoe can begin with point entry");assert.equal(a.predictions,0);
+  assert.equal(a.api.getPhase(),"points","empty shoe starts directly in point entry");assert.equal(a.predictions,0);
   assert.equal(a.els.pointModePanel.hidden,false);
-  const fresh=make();fresh.els.btnStart.click();fresh.choose("9","0","4");
+  const fresh=make();fresh.choose("9","0","4");
   assert.equal(fresh.api.readHistory().join(""),"B");assert.equal(fresh.predictions,1,"first scored hand starts next-hand analysis");
   assert.deepEqual(fresh.observed.at(-1),{outcome:"B",b:"9",p:"0",c:"4"});
   const freshCompat=make();freshCompat.els.compatModeToggle.click();
   assert.equal(freshCompat.api.getPhase(),"points");assert.equal(freshCompat.els.resultModePanel.hidden,false);
   freshCompat.els.btnT.click();assert.equal(freshCompat.api.readHistory().join(""),"T");
   assert.equal(freshCompat.predictions,1,"compatibility mode can start a fresh shoe");
-  a.els.historySeed.value="B P,T";a.els.btnStart.click();
-  assert.equal(a.api.readHistory().join(""),"BPT");
-  assert.equal(a.predictions,1,"imported historical results start one forecast");
-  assert.equal(a.api.getPhase(),"points");
-  assert.equal(a.els.historySeedPanel.hidden,true);assert.equal(a.els.pointModePanel.hidden,false);
+  assert.equal(a.api.readHistory().length,0,"no B/P/T historical pattern is required or imported");
   assert.equal(a.data.get(PHASE_KEY),"points");
+  a.choose("9","0","4");
+  assert.equal(a.api.readHistory().join(""),"B");assert.equal(a.predictions,1,"first hand is recorded and forecasts the next hand");
+  assert.deepEqual(a.observed.at(-1),{outcome:"B",b:"9",p:"0",c:"4"});
   const n=a.observed.length;
   a.els.macroCardCount.value="5";a.els.macroCardCount.change();
   a.els.macroBankerScore.value="7";a.els.macroBankerScore.change();
-  assert.equal(a.api.readHistory().length,3,"one score must not auto-commit");assert.equal(a.observed.length,n);
+  assert.equal(a.api.readHistory().length,1,"one score must not auto-commit");assert.equal(a.observed.length,n);
   a.els.macroPlayerScore.value="2";a.els.macroPlayerScore.change();
-  assert.equal(a.api.readHistory().join(""),"BPTB");assert.equal(a.predictions,2,"completed point entry starts next forecast");
+  assert.equal(a.api.readHistory().join(""),"BB");assert.equal(a.predictions,2,"completed point entry starts next forecast");
   assert.deepEqual(a.observed.at(-1),{outcome:"B",b:"7",p:"2",c:"5"});
   assert.equal(a.els.macroBankerScore.value,"");assert.equal(a.els.macroPlayerScore.value,"");assert.equal(a.els.macroCardCount.value,"");
-  a.els.macroPlayerScore.change();assert.equal(a.api.readHistory().length,4,"cleared score prevents duplicate write");
+  a.els.macroPlayerScore.change();assert.equal(a.api.readHistory().length,2,"cleared score prevents duplicate write");
   a.choose("3","9");a.choose("4","4");
-  assert.equal(a.api.readHistory().join(""),"BPTBPT");assert.equal(a.predictions,4);
+  assert.equal(a.api.readHistory().join(""),"BBPT");assert.equal(a.predictions,4);
   assert.deepEqual(a.observed.slice(-2),[
     {outcome:"P",b:"3",p:"9",c:""},{outcome:"T",b:"4",p:"4",c:""}
   ]);
@@ -93,7 +92,7 @@ function make(initial=[],savedPhase="history",denyWrite=false){
   assert.equal(disabled.api.getInputMode(),"compatibility");assert.equal(disabled.els.compatModeToggle.disabled,true);
   disabled.els.compatModeToggle.click();assert.equal(disabled.api.getInputMode(),"compatibility","disabled setting cannot re-enable point input from the UI");
   a.els.btnBack.click();assert.equal(a.api.getPhase(),"points");assert.equal(a.api.readHistory().at(-1),"T");
-  a.els.btnEnd.click();assert.equal(a.api.getPhase(),"history");assert.equal(a.data.has(PHASE_KEY),false);
+  a.els.btnEnd.click();assert.equal(a.api.getPhase(),"points");assert.equal(a.data.get(PHASE_KEY),"points");
 
   const failed=make(["B"],"history",true);failed.els.btnStart.click();failed.choose("6","2");
   assert.equal(failed.api.readHistory().join(""),"B","failed persistence cannot be reported as committed");
@@ -111,12 +110,14 @@ function make(initial=[],savedPhase="history",denyWrite=false){
   const html=fs.readFileSync("index.html","utf8"),css=fs.readFileSync("styles.css","utf8"),auth=fs.readFileSync("auth-client.js","utf8");
   for(const id of ids)assert(html.includes('id="'+id+'"'),"missing element "+id);
   assert(html.includes('id="resultModePanel" class="bbb-mode-panel" hidden'));
+  assert(!html.includes("historySeed"),"B/P/T history seeding UI is removed");
+  assert(!html.includes('id="historyTrack"'),"historical B/P/T pattern display is removed");
   assert(html.includes('id="macroCardCount"'));assert(html.includes('建議使用點數輸入以啟用準算牌'));
   assert(!html.includes('id="btnRecordPoints"'),"score entry remains automatic");
   assert(css.includes("grid-template-columns:repeat(3,minmax(0,1fr))"));
-  assert(auth.includes('"point_input_mode.js?v=20261027-point-input-v1"'));
-  assert(auth.indexOf('"point_input_mode.js?v=20261027-point-input-v1"')>auth.indexOf('"final_probability_runtime.js?'));
+  assert(auth.includes('"point_input_mode.js?v=20261027-score-only-input-v2"'));
+  assert(auth.indexOf('"point_input_mode.js?v=20261027-score-only-input-v2"')>auth.indexOf('"final_probability_runtime.js?'));
   assert(!html.includes('<script src="point_input_mode.js"'),"point workflow must run after successful license verification");
-  console.log(JSON.stringify({passed:true,default_point_mode:true,history_seed_import:true,automatic_score_commit:true,
+  console.log(JSON.stringify({passed:true,default_point_mode:true,no_history_seed:true,automatic_score_commit:true,
     optional_card_count:true,compatibility_toggle:true,undo_and_end:true,reload:true,post_license_only:true}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

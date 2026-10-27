@@ -68,13 +68,8 @@
     <section class="card controls-card">
       <div class="bbb-results-block" aria-label="每局結果輸入">
         <div class="bbb-input-head">
-          <strong id="entryStageTitle">① 補齊進場前牌路</strong>
-          <small id="entryStageNote">可貼上過往路單；新靴可直接輸入第一局閒／莊點數</small>
-        </div>
-        <div id="historySeedPanel" class="bbb-mode-panel">
-          <label class="bbb-history-label" for="historySeed">進場前過往牌路（可貼上 B/P/T，例如：BPPBT）</label>
-          <textarea id="historySeed" rows="2" maxlength="500" placeholder="BPPBT...；新靴可留空並直接開始"></textarea>
-          <small class="bbb-history-note">舊牌局只有 B/P/T 時可貼入路單；新靴可直接以閒／莊點數輸入第一局。</small>
+          <strong id="entryStageTitle">開牌點數自動紀錄</strong>
+          <small id="entryStageNote">每局結束後輸入實際點數，程式自動判定並分析下一局</small>
         </div>
         <div id="resultModePanel" class="bbb-mode-panel" hidden>
           <div class="result-buttons">
@@ -119,7 +114,7 @@
               </select>
             </label>
           </div>
-          <div class="bbb-point-hint" id="pointResultPreview" role="status" aria-live="polite">可先選總張數，再選莊、閒最終點數；兩邊都有點數時會自動記錄並分析下一局。</div>
+          <div class="bbb-point-hint" id="pointResultPreview" role="status" aria-live="polite">每局結束後輸入閒、莊最終點數；總張數可選填。兩邊都有點數時會自動記錄並分析下一局。</div>
         </div>
         <div class="bbb-compat-controls">
           <button class="action-btn" id="compatModeToggle" type="button" aria-pressed="false">開啟 B/P/T 相容模式</button>
@@ -145,17 +140,13 @@
       <details class="bbb-clear-details"><summary>結束分析與資料清除說明</summary><div class="clear-note">結束分析會清空此開通碼的牌路、分析快照與歷史觀測；會員裝置授權仍會保留。未連線裝置將在下次驗證時同步清空。</div></details>
     </section>
 
-    <section class="card history-card">
-      <div class="card-title"><span>本靴紀錄</span><small>依輸入順序排列</small></div>
-      <div class="history-track" id="historyTrack"><div class="empty-history">尚未輸入牌局</div></div>
-      <div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div>
-    </section>
+    <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">歷史牌路串不在畫面顯示；每局點數與結果仍會留在本機，用於粒子後驗、返回上一局及離線匯出。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
 
     <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
   </main>
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
-  <script src="auth-client.js?v=20261027-point-score-pf-v1"></script>
+  <script src="auth-client.js?v=20261027-score-only-input-v2"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

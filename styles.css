@@ -118,10 +118,6 @@ button{font:inherit}
 .action-btn.primary{color:white;background:linear-gradient(135deg,#7c3ee9,#396fe9);border-color:rgba(201,160,255,.48);box-shadow:0 8px 22px rgba(117,67,231,.24)}
 .action-btn.danger{color:#ffabc4;background:rgba(255,95,145,.075);border-color:rgba(255,95,145,.22)}
 .clear-note{text-align:right;margin-top:8px;color:#81789c;font-size:10px}
-.history-card{padding-bottom:15px}.history-track{display:flex;gap:7px;overflow-x:auto;padding-bottom:4px;min-height:40px;scrollbar-width:thin}
-.history-chip{width:34px;height:34px;flex:0 0 34px;border-radius:10px;display:grid;place-items:center;font-size:13px;font-weight:900;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025)}
-.history-chip.B{color:#ff83ac;border-color:rgba(255,95,145,.25);background:rgba(255,95,145,.07)}.history-chip.P{color:#83d1ff;border-color:rgba(105,201,255,.25);background:rgba(105,201,255,.07)}.history-chip.T{color:#68edbc;border-color:rgba(84,229,177,.22);background:rgba(84,229,177,.06)}
-.empty-history{color:#81789c;font-size:12px;align-self:center}
 footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;padding-top:7px}
 .macro-inputs{margin-bottom:14px;color:#ded6f0;font-size:13px}
 .macro-inputs summary{cursor:pointer;padding:8px 0}.macro-inputs p{font-size:12px;color:#a89cbf;line-height:1.6}
@@ -190,9 +186,6 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
 .bbb-points-submit{min-height:44px;padding:7px 5px;border-radius:10px;border:1px solid rgba(201,160,255,.48);background:linear-gradient(135deg,#7c3ee9,#396fe9);color:white;font-size:13px;font-weight:800;cursor:pointer}
 .bbb-point-hint{font-size:11px;line-height:1.4;color:var(--muted);min-height:16px;margin-top:6px}
 .bbb-point-hint.is-error{color:#ff9bb7}
-.bbb-history-label{display:block;margin:5px 0;font-size:11px;color:#c9bee0;font-weight:700}
-#historySeed{display:block;width:100%;min-height:56px;resize:vertical;padding:9px 10px;background:#181028;color:#fff;font-size:15px;line-height:1.4;border-radius:10px;border:1px solid rgba(164,135,232,.48)}
-.bbb-history-note{display:block;margin-top:5px;color:var(--muted);font-size:10px;line-height:1.4}
 .bbb-compat-controls{display:grid;grid-template-columns:minmax(140px,auto) 1fr;align-items:center;gap:8px;margin-top:9px}
 .bbb-compat-controls .action-btn{min-height:40px}
 .bbb-compat-controls small{color:var(--muted);font-size:10px;line-height:1.35}
@@ -201,6 +194,7 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
 .bbb-clear-details{margin-top:7px;font-size:10px;color:#9f94b7}
 .bbb-clear-details summary{cursor:pointer}
 .bbb-clear-details .clear-note{text-align:left;line-height:1.5;margin-top:5px}
+.bbb-export-details .export-buttons{margin:7px 0 2px}
 @media(max-width:620px){
   .app-shell{padding-top:8px;padding-bottom:14px}
   .topbar{margin-bottom:7px;gap:8px}
@@ -221,7 +215,6 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
   .result-buttons{gap:7px}
   #forecastGap{font-size:13px;padding:8px;margin:5px 0}
   .bbb-results-block{padding:9px;margin-bottom:8px}
-  .history-card{padding-bottom:10px}
   .export-buttons{margin-top:7px;gap:7px}
   .export-buttons button{font-size:11px;padding:7px 9px}
 }

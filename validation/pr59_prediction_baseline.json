@@ -434,8 +434,8 @@
     }
   },
   "ui_sha256": {
-    "index.html": "be069a1793dddd7f2ef2fc89005e23d66e2c5cbc5b46241999ce05a8b03f8013",
-    "styles.css": "3401b9c409e6f90146e6a44515e6fef4dcb31e86c3e20b1fbd0202b6d687ee33"
+    "index.html": "aece6afa88875b53f35181058f7759869d43f55334c0c4094083c563f246d8a8",
+    "styles.css": "f4b9021a82a93e81b51e958f98b635dacec909d73dc4d96d2163d6578f1a83a2"
   },
   "smoothing_source_sha256": "0e16dc4e5f1e830c8c1d73eff1fbadc695ac8c6b9530b3ae74879fd07608fb52"
 }

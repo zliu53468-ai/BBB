@@ -250,8 +250,7 @@
       "schema_version": 1,
       "enabled": true,
       "default_mode": "points",
-      "compatibility_mode_default": false,
-      "history_import_limit": 500
+      "compatibility_mode_default": false
     },
     "score_conditioned_entry": {
       "schema_version": 1,
