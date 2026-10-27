@@ -14,7 +14,7 @@ const scripts=[
   "particle_filter_runtime.js?v=20261027-point-score-pf-v1",
   "macro_ema.js?v=20261023-middle-late-v2",
   "browser_calibration.js?v=20261027-prequential-ev-v1",
-  "final_probability_runtime.js?v=20261027-point-score-pf-v1",
+  "final_probability_runtime.js?v=20261028-independent-point-pf-v1",
   "point_input_mode.js?v=20261027-score-only-input-v2"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;

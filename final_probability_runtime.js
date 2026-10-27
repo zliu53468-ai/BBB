@@ -98,7 +98,7 @@ function selectiveEntryPolicy(){
 function legacyProbabilityProfile(profile){
   const {point_input:ignoredInput,score_conditioned_entry:ignoredEntry,...legacy}=profile||{};
   if(!legacy.pf)return legacy;
-  const {score_update_enabled:ignoredScoreEnabled,score_update_method:ignoredScoreMethod,...pf}=legacy.pf;
+  const {score_update_enabled:ignoredScoreEnabled,independent_point_update_enabled:ignoredIndependentPointUpdate,score_update_method:ignoredScoreMethod,...pf}=legacy.pf;
   return {...legacy,pf};
 }
 function scoreConditionedEntryPolicy(){
@@ -753,7 +753,7 @@ function nextHandForecast(physics){
     weak_signal:Math.abs(directional.B-.5)<.005};
 }
 function applyFinalPrediction(seq,corePrediction=null){
-  // Point/BPT history -> Direct Physics 213D->48D -> stateless PF500 -> EV -> guarded entry
+  // Outcome history -> Direct Physics 213D->48D -> per-hand score PF500 -> EV -> guarded entry
   // -> Clip/EMA -> Frozen Core + 57D XGB -> Final EV Guard -> Volume Guard.
   let particleDiagnostics=null;
   let physics=null,physicsDirect=null,particlePosterior=null,physicsForecast=null,physicsIntegrityReport=null,physicalEv=null,error="";
@@ -768,25 +768,32 @@ function applyFinalPrediction(seq,corePrediction=null){
     pointObservations=getPointObservationHistory(seq);
     macroFeatures=getMacroFeatures(seq);
     const inputMode=window.__BBB_POINT_INPUT__?.getInputMode?.()||"points";
+    const independentPointUpdate=cardcountProfile?.pf?.independent_point_update_enabled!==false;
+    const latestObservation=pointObservations.at(-1);
     const scoreConfigEnabled=cardcountProfile?.enabled===true&&cardcountProfile?.point_input?.enabled!==false&&cardcountProfile?.pf?.score_update_enabled===true&&inputMode!=="compatibility";
     const observedNumber=v=>v!==null&&v!==undefined&&v!==""&&Number.isInteger(Number(v));
-    scorePFRequested=scoreConfigEnabled&&pointObservations.some(o=>
-      observedNumber(o.player_score)&&observedNumber(o.banker_score)||observedNumber(o.card_count));
+    const hasPointData=o=>!!o&&(observedNumber(o.player_score)&&observedNumber(o.banker_score)||observedNumber(o.card_count));
+    scorePFRequested=scoreConfigEnabled&&(independentPointUpdate?hasPointData(latestObservation):pointObservations.some(hasPointData));
     if(physicsBundle?.trained){
       executionOrder.push("direct_physics");
       physicsDirect=predictPhysics(seq);
       physics=physicsDirect;
-      // Each estimate creates 500 new particles and replays this history only.
+      // By default each score PF starts from a fresh shoe prior and conditions
+      // only on the latest completed hand. Earlier scores remain local records,
+      // but do not accumulate into its remaining-card posterior.
       // Keep Direct Physics as a safe fallback if the optional particle layer fails.
       if(PARTICLE500&&typeof PARTICLE500.estimate==="function"){
         try{
           const pfConfig=cardcountProfile?.enabled?{...cardcountProfile.pf,max_blend:profileValue("pf_max",seq.length+1),forecast_draws:cardcountProfile.anchors?.pf_draws?profileValue("pf_draws",seq.length+1):cardcountProfile.pf.forecast_draws}:{};
+          const pointHistory=independentPointUpdate?seq.slice(-1):seq;
+          const pointHistoryObservations=independentPointUpdate?pointObservations.slice(-1):pointObservations;
           const estimate=scorePFRequested&&typeof PARTICLE500.estimatePoints==="function"
-            ?PARTICLE500.estimatePoints(seq,physicsDirect,"quality",pfConfig,pointObservations)
+            ?PARTICLE500.estimatePoints(pointHistory,physicsDirect,"quality",pfConfig,pointHistoryObservations)
             :PARTICLE500.estimate(seq,physicsDirect,"quality",pfConfig);
           if(!Array.isArray(estimate?.physics)||estimate.physics.length!==PHYSICS_DIM||!estimate.physics.every(Number.isFinite))throw new Error("invalid particle physics");
           physics=estimate.physics;particleDiagnostics=estimate.diagnostics;particlePosterior=estimate.posterior||null;
           pointPosteriorActive=particleDiagnostics?.posterior_update_method==="ten_class_score_pair_likelihood_and_conditional_hand_sampling";
+          if(pointPosteriorActive)particleDiagnostics={...particleDiagnostics,point_history_mode:independentPointUpdate?"latest_hand_only":"full_shoe",point_source_history_rounds:seq.length};
           executionOrder.push(pointPosteriorActive?"point_conditioned_particle_filter":"particle_filter");
         }catch(e){error="particle500:"+String(e?.message||e);}
       }
@@ -1177,13 +1184,14 @@ function renderPrediction(p,n){
     posteriorStatus.dataset.active=String(pointActive);
     if(pointActive){
       const compare=particle.point_vs_bpt_diagnostic,delta=compare?.max_absolute_probability_delta;
-      posteriorStatus.textContent="即時點數後驗：已條件更新 "+particle.point_observations_processed+" 局；ESS "+(100*(particle.recent_ess_ratio||0)).toFixed(1)+"%；與 B/P/T PF 對照最大機率差 "+(Number.isFinite(delta)?(100*delta).toFixed(2)+" 個百分點":"—");
+      const scope=particle.point_history_mode==="latest_hand_only"?"僅最近一局，前局點數不累積":"整靴點數歷史";
+      posteriorStatus.textContent="單局點數後驗："+scope+"；ESS "+(100*(particle.recent_ess_ratio||0)).toFixed(1)+"%；與 B/P/T PF 對照最大機率差 "+(Number.isFinite(delta)?(100*delta).toFixed(2)+" 個百分點":"—");
     }else if(cardcountProfile&&(cardcountProfile.enabled===false||cardcountProfile.point_input?.enabled===false||cardcountProfile.pf?.score_update_enabled!==true)){
       posteriorStatus.textContent="點數條件更新已由設定停用；目前回退至 B/P/T PF500。";
     }else if(particle?.score_update_fallback_reason){
       posteriorStatus.textContent="點數條件更新未套用（"+particle.score_update_fallback_reason+"）；目前回退至 B/P/T PF500。";
     }else{
-      posteriorStatus.textContent="點數條件粒子後驗：等待完整點數紀錄；相容模式沿用 B/P/T PF500。";
+      posteriorStatus.textContent="單局點數後驗：等待最近一局點數；前局點數不累積；相容模式沿用 B/P/T PF500。";
     }
   }
   const weightStatus=el("modelWeightStatus");

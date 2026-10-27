@@ -241,6 +241,7 @@
     "signal_gate": true,
     "forecast_draws": 3,
     "score_update_enabled": true,
+    "independent_point_update_enabled": true,
     "score_update_method": "ten_class_score_pair_likelihood_and_conditional_hand_sampling"
   },
   "point_input": {

@@ -26,7 +26,11 @@ for(const file of ["app256forward.js","app256continuation.js","particle_filter_r
   assert(point.finalProbability.execution_order.includes("point_conditioned_particle_filter"));
   assert.equal(point.finalProbability.primary_source,"score_conditioned_point_particle_posterior");
   assert.equal(point.direction_bias_audit.observation_basis,"BPT_plus_final_point_scores");
-  assert.equal(diagnostics.point_observations_processed,history.length);
+  assert.equal(diagnostics.point_history_mode,"latest_hand_only");
+  assert.equal(diagnostics.point_source_history_rounds,history.length);
+  assert.equal(diagnostics.history_rounds,1,"point PF resets and conditions on one hand only");
+  assert.equal(diagnostics.point_observations_processed,1,"older score observations must not accumulate into point PF");
+  assert.equal(diagnostics.observed_point_history.length,1);
   const posterior=point.finalProbability.particleDiagnostics.point_vs_bpt_diagnostic.point_conditioned_probabilities;
   assert(Math.abs(point.first_layer_ev.probabilities.B-posterior.B)<1e-12);
   assert(Math.abs(point.first_layer_ev.probabilities.P-posterior.P)<1e-12);
@@ -37,10 +41,16 @@ for(const file of ["app256forward.js","app256continuation.js","particle_filter_r
   assert.equal(boost.base_boost,.006);assert.equal(boost.extra_boost,.006);
   assert(api.scoreConditionedEntryPolicy().volume_guard_target_action_rate.early<=.25);
 
+  const profile=api.getCardcountProfile();profile.pf.independent_point_update_enabled=false;
+  const cumulative=api.applyFinalPrediction(history),cumulativeDiagnostics=cumulative.finalProbability.particleDiagnostics;
+  assert.equal(cumulativeDiagnostics.point_history_mode,"full_shoe","independent-update switch retains the prior cumulative path when disabled");
+  assert.equal(cumulativeDiagnostics.point_observations_processed,history.length);
+  profile.pf.independent_point_update_enabled=true;
+
   ctx.__BBB_POINT_INPUT__={getInputMode:()=>"compatibility"};
   const compatible=api.applyFinalPrediction(history);
   assert.equal(compatible.finalProbability.point_posterior_active,false);
   assert.equal(compatible.finalProbability.particleDiagnostics.posterior_update_method,"observed_bpt_likelihood_and_resampling");
-  console.log(JSON.stringify({passed:true,point_pf_primary:true,first_layer_uses_point_posterior:true,
+  console.log(JSON.stringify({passed:true,point_pf_primary:true,latest_hand_only:true,cumulative_rollback_switch:true,first_layer_uses_point_posterior:true,
     strict_direction_consistency:true,score_noise_ev_boost:true,compatibility_uses_legacy_pf:true}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
