@@ -98,7 +98,7 @@ function selectiveEntryPolicy(){
 function legacyProbabilityProfile(profile){
   const {point_input:ignoredInput,score_conditioned_entry:ignoredEntry,...legacy}=profile||{};
   if(!legacy.pf)return legacy;
-  const {score_update_enabled:ignoredScoreEnabled,independent_point_update_enabled:ignoredIndependentPointUpdate,score_update_method:ignoredScoreMethod,...pf}=legacy.pf;
+  const {score_update_enabled:ignoredScoreEnabled,independent_point_update_enabled:ignoredIndependentPointUpdate,independent_hand_prediction_enabled:ignoredIndependentHandPrediction,score_update_method:ignoredScoreMethod,...pf}=legacy.pf;
   return {...legacy,pf};
 }
 function scoreConditionedEntryPolicy(){
@@ -121,14 +121,15 @@ function directionBiasAudit(direct,posterior,mixed,particleDiagnostics,forecast,
     ?{banker:forecast.banker_ev,player:forecast.player_ev,better_side:forecast.direction,
       both_negative:Math.max(forecast.banker_ev,forecast.player_ev)<=0}:null;
   const pointConditioned=particleDiagnostics?.posterior_update_method==="ten_class_score_pair_likelihood_and_conditional_hand_sampling";
-  return Object.freeze({schema_version:1,mode:"read_only",observation_basis:pointConditioned?"BPT_plus_final_point_scores":"BPT_only",
+  const independent=particleDiagnostics?.forecast_history_mode==="independent_hand";
+  return Object.freeze({schema_version:1,mode:"read_only",observation_basis:pointConditioned?(independent?"latest_hand_point_scores_only":"BPT_plus_final_point_scores"):"BPT_only",
     direct_physics_side:side(direct),pf_posterior_side:side(posterior),mixed_side:side(mixed),
     physics_pf_disagree:!!(side(direct)&&side(posterior)&&!["Balanced"].includes(side(direct))&&!["Balanced"].includes(side(posterior))&&side(direct)!==side(posterior)),
     pf_flip_blocked:particleDiagnostics?.direction_flip_blocked===true,
     pf_weight:particleDiagnostics?.blend_weight??null,pf_quality:particleDiagnostics?.particle_quality??null,
     pf_ess_ratio:particleDiagnostics?.recent_ess_ratio??null,
     ev_comparison:ev,bet_direction:["B","P"].includes(betDirection)?betDirection:"Skip",
-    note:pointConditioned?"Final point scores add information to a ten-class approximate posterior; actual ranks and remaining deck are not observed":"EV preference does not imply profitable bet; actual remaining cards not observed"});
+    note:pointConditioned?(independent?"Only the latest final score pair conditions a fresh ten-class posterior; actual ranks and remaining deck are not observed":"Final point scores add information to a ten-class approximate posterior; actual ranks and remaining deck are not observed"):"EV preference does not imply profitable bet; actual remaining cards not observed"});
 }
 function directionConsistency(first,final,scoreConditioned=false){
   const firstDirection=["B","P"].includes(first)?first:"Balanced",finalDirection=["B","P"].includes(final)?final:"Skip";
@@ -179,7 +180,7 @@ function previousFirstSmoothedGap(history){
   return !firstSmoothingStorageError&&lastIndex===history.length-1?previous:null;
 }
 function prepareFirstSmoothingTicket(history,prediction){
-  const model=firstSmoothingTag(),f=prediction?.first_layer_ev;if(!model||!f?.smoothed||!Number.isFinite(f.raw?.gap)||!Number.isFinite(f.smoothed.physics_noise_score))return null;
+  const model=firstSmoothingTag(),f=prediction?.first_layer_ev;if(prediction?.finalProbability?.independent_hand_prediction_active||!model||!f?.smoothed||!Number.isFinite(f.raw?.gap)||!Number.isFinite(f.smoothed.physics_noise_score))return null;
   return {model,shoe_id:getShoeId(),index:history.length,prefix:history.join(""),raw_gap:f.raw.gap,noise:clip(f.smoothed.physics_noise_score),quality:clip(f.particle_quality),uncertainty:clip(f.physics_uncertainty)};
 }
 function saveFirstSmoothingJournal(journal){
@@ -753,11 +754,11 @@ function nextHandForecast(physics){
     weak_signal:Math.abs(directional.B-.5)<.005};
 }
 function applyFinalPrediction(seq,corePrediction=null){
-  // Outcome history -> Direct Physics 213D->48D -> per-hand score PF500 -> EV -> guarded entry
-  // -> Clip/EMA -> Frozen Core + 57D XGB -> Final EV Guard -> Volume Guard.
+  // Point mode can isolate every forecast to the latest scored hand; compatibility mode
+  // retains the complete pre-existing B/P/T history path.
   let particleDiagnostics=null;
   let physics=null,physicsDirect=null,particlePosterior=null,physicsForecast=null,physicsIntegrityReport=null,physicalEv=null,error="";
-  let macroFeatures=null,pointObservations=[],scorePFRequested=false,pointPosteriorActive=false;
+  let macroFeatures=null,pointObservations=[],scorePFRequested=false,pointPosteriorActive=false,independentHandPrediction=false,predictionHistory=seq;
   let resolvedCore=null,original7=null,corePB=.5,extended=null,xgbAuxPB=.5,primary=null,auxFilter=null;
   let rawPB=.5,clippedPB=.5,smoothedPB=.5,filteredPB=.5,finalPB=.5,bounds=null;
   let formalCalibration=null,calibrationInputForecast=null;
@@ -766,7 +767,6 @@ function applyFinalPrediction(seq,corePrediction=null){
 
   try{
     pointObservations=getPointObservationHistory(seq);
-    macroFeatures=getMacroFeatures(seq);
     const inputMode=window.__BBB_POINT_INPUT__?.getInputMode?.()||"points";
     const independentPointUpdate=cardcountProfile?.pf?.independent_point_update_enabled!==false;
     const latestObservation=pointObservations.at(-1);
@@ -774,9 +774,14 @@ function applyFinalPrediction(seq,corePrediction=null){
     const observedNumber=v=>v!==null&&v!==undefined&&v!==""&&Number.isInteger(Number(v));
     const hasPointData=o=>!!o&&(observedNumber(o.player_score)&&observedNumber(o.banker_score)||observedNumber(o.card_count));
     scorePFRequested=scoreConfigEnabled&&(independentPointUpdate?hasPointData(latestObservation):pointObservations.some(hasPointData));
+    independentHandPrediction=scorePFRequested&&independentPointUpdate&&cardcountProfile?.pf?.independent_hand_prediction_enabled!==false;
+    // Point mode uses a fresh prior and conditions only on the latest scored hand.
+    // Compatibility mode preserves the original history-dependent prediction.
+    predictionHistory=independentHandPrediction?[]:seq;
+    macroFeatures=independentHandPrediction&&MACRO?MACRO.snapshot(MACRO.createState(getShoeId())):getMacroFeatures(seq);
     if(physicsBundle?.trained){
       executionOrder.push("direct_physics");
-      physicsDirect=predictPhysics(seq);
+      physicsDirect=predictPhysics(predictionHistory);
       physics=physicsDirect;
       // By default each score PF starts from a fresh shoe prior and conditions
       // only on the latest completed hand. Earlier scores remain local records,
@@ -784,7 +789,8 @@ function applyFinalPrediction(seq,corePrediction=null){
       // Keep Direct Physics as a safe fallback if the optional particle layer fails.
       if(PARTICLE500&&typeof PARTICLE500.estimate==="function"){
         try{
-          const pfConfig=cardcountProfile?.enabled?{...cardcountProfile.pf,max_blend:profileValue("pf_max",seq.length+1),forecast_draws:cardcountProfile.anchors?.pf_draws?profileValue("pf_draws",seq.length+1):cardcountProfile.pf.forecast_draws}:{};
+          const pfRoundIndex=independentHandPrediction?1:seq.length+1;
+          const pfConfig=cardcountProfile?.enabled?{...cardcountProfile.pf,max_blend:profileValue("pf_max",pfRoundIndex),forecast_draws:cardcountProfile.anchors?.pf_draws?profileValue("pf_draws",pfRoundIndex):cardcountProfile.pf.forecast_draws}:{};
           const pointHistory=independentPointUpdate?seq.slice(-1):seq;
           const pointHistoryObservations=independentPointUpdate?pointObservations.slice(-1):pointObservations;
           const estimate=scorePFRequested&&typeof PARTICLE500.estimatePoints==="function"
@@ -793,7 +799,7 @@ function applyFinalPrediction(seq,corePrediction=null){
           if(!Array.isArray(estimate?.physics)||estimate.physics.length!==PHYSICS_DIM||!estimate.physics.every(Number.isFinite))throw new Error("invalid particle physics");
           physics=estimate.physics;particleDiagnostics=estimate.diagnostics;particlePosterior=estimate.posterior||null;
           pointPosteriorActive=particleDiagnostics?.posterior_update_method==="ten_class_score_pair_likelihood_and_conditional_hand_sampling";
-          if(pointPosteriorActive)particleDiagnostics={...particleDiagnostics,point_history_mode:independentPointUpdate?"latest_hand_only":"full_shoe",point_source_history_rounds:seq.length};
+          if(pointPosteriorActive)particleDiagnostics={...particleDiagnostics,point_history_mode:independentPointUpdate?"latest_hand_only":"full_shoe",point_source_history_rounds:seq.length,forecast_history_mode:independentHandPrediction?"independent_hand":"legacy_outcome_history",forecast_source_history_rounds:independentHandPrediction?0:seq.length};
           executionOrder.push(pointPosteriorActive?"point_conditioned_particle_filter":"particle_filter");
         }catch(e){error="particle500:"+String(e?.message||e);}
       }
@@ -812,22 +818,25 @@ function applyFinalPrediction(seq,corePrediction=null){
   }
 
   if(physics&&physicsBundleUsesPhysicalEv()){
-    const roundIndex=Math.max(1,Math.min(70,seq.length+1));
+    const roundIndex=independentHandPrediction?1:Math.max(1,Math.min(70,seq.length+1));
+    const volumeGuardRoundIndex=Math.max(1,Math.min(70,seq.length+1));
     const firstNoise=firstSmoothingConfig()?physicsNoiseScore(physicsDirect||physics,roundIndex,Math.cbrt(directPhysicsProgressWeight(roundIndex,physicsDirect||physics))):null;
-    primary=directPhysicsPrimary(physics,roundIndex,macroFeatures,particleDiagnostics?.particle_quality??null,seq,firstNoise,pointPosteriorActive);
+    primary=directPhysicsPrimary(physics,roundIndex,macroFeatures,particleDiagnostics?.particle_quality??null,predictionHistory,firstNoise,pointPosteriorActive);
     primary.macroFeatures=macroFeatures;
     executionOrder.push("physics_candidate");
     rawPB=primary.directionalPB;
     bounds=applyProbabilityBounds(rawPB,roundIndex,primary.noise,primary.progressWeight);
     clippedPB=bounds.value;
-    const smoothing=applyDynamicSmoothing(clippedPB,roundIndex,primary.noise,bounds,primary.progressWeight);
+    const smoothing=independentHandPrediction
+      ?{value:clippedPB,alpha:1,strength:0,profile:"independent_per_hand",applied:false}
+      :applyDynamicSmoothing(clippedPB,roundIndex,primary.noise,bounds,primary.progressWeight);
     smoothedPB=smoothing.value;smoothingAlpha=smoothing.alpha;smoothingStrength=smoothing.strength;smoothingProfile=smoothing.profile;
     executionOrder.push("physics_ema");
 
     try{
       executionOrder.push("frozen_core");
-      resolvedCore=corePrediction||CORE.hazardChoose(seq);
-      original7=buildOriginal7(seq,resolvedCore);
+      resolvedCore=(!independentHandPrediction&&corePrediction)||CORE.hazardChoose(predictionHistory);
+      original7=buildOriginal7(predictionHistory,resolvedCore);
       corePB=original7.core_p_b;
 
       if(final56Bundle?.trained&&modelSemanticsCompatible()){
@@ -844,8 +853,8 @@ function applyFinalPrediction(seq,corePrediction=null){
       }
     }catch(e){
       const message=String(e?.message||e||"runtime_error");error=error?error+";"+message:message;
-      if(!resolvedCore)resolvedCore=corePrediction||CORE.hazardChoose(seq);
-      if(!original7)original7=buildOriginal7(seq,resolvedCore);
+      if(!resolvedCore)resolvedCore=(!independentHandPrediction&&corePrediction)||CORE.hazardChoose(predictionHistory);
+      if(!original7)original7=buildOriginal7(predictionHistory,resolvedCore);
       corePB=original7.core_p_b;
       auxFilter=primary.candidate==="Skip"
         ?{decision:"skip",reason:"physics_candidate_skip",coreSupport:.5,xgbSupport:.5,support:.5,shrink:0}
@@ -880,7 +889,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     const aligned=evLed?candidate===evChoice.direction:candidate==="B"?finalPB>.5:candidate==="P"?finalPB<.5:false;
     const basePass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=baseBand&&candidateEdge>baseActivation;
 
-    const guard=consistency.forced_skip_by_consistency?{active:false,bandRelief:0,evRelief:0,blocked_by_consistency:true}:volumeGuardState(roundIndex,finalPB,policy,pointPosteriorActive);
+    const guard=consistency.forced_skip_by_consistency?{active:false,bandRelief:0,evRelief:0,blocked_by_consistency:true}:volumeGuardState(volumeGuardRoundIndex,finalPB,policy,pointPosteriorActive);
     const effectiveBand=Math.max(policy.bandMinimum,baseBand-guard.bandRelief-(policy.finalBandRelief??LOW_SKIP_FINAL_BAND_RELIEF)),effectiveActivationEv=Math.max(0,originalBaseActivation-guard.evRelief)+selectiveBoost.total_boost;
     const guardedPass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=effectiveBand&&candidateEdge>effectiveActivationEv;
     const direction=!consistency.forced_skip_by_consistency&&(basePass||guardedPass)?candidate:"Skip";
@@ -902,7 +911,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     }
     const calibrationReferenceDirection=pointPosteriorActive?primary.firstLayerEv?.direction:(primary.firstLayerEv?.unsmoothed_direction??primary.firstLayerEv?.direction);
     const basePB=finalPB,baseDecision=evaluateProbability(basePB,calibrationReferenceDirection);
-    if(localCalibrationConfig().formal_ev_enabled===true&&directionSelectionPolicy().enabled&&LOCAL_CALIBRATION&&browserCalibrationTag!=="unready"&&primary.pT<1-1e-12){
+    if(!independentHandPrediction&&localCalibrationConfig().formal_ev_enabled===true&&directionSelectionPolicy().enabled&&LOCAL_CALIBRATION&&browserCalibrationTag!=="unready"&&primary.pT<1-1e-12){
       calibrationInputForecast=evDirectionForecast(conditionalSettlement(basePB,primary.pT),Math.max(primary.noise,primary.uncertainty));
       calibrationInputForecast.directional={B:basePB,P:1-basePB};
       calibrationInputForecast.calibration_bounds={low:bounds.low,high:bounds.high};
@@ -923,13 +932,13 @@ function applyFinalPrediction(seq,corePrediction=null){
     mode="physics_primary";
   }else{
     executionOrder.push("physics_unavailable_skip");
-    resolvedCore=corePrediction||CORE.hazardChoose(seq);
-    original7=buildOriginal7(seq,resolvedCore);
+    resolvedCore=(!independentHandPrediction&&corePrediction)||CORE.hazardChoose(predictionHistory);
+    original7=buildOriginal7(predictionHistory,resolvedCore);
     corePB=original7.core_p_b;rawPB=.5;clippedPB=.5;smoothedPB=.5;filteredPB=.5;finalPB=.5;mode="physics_unavailable";
     error=error?error+";physics_primary_unavailable":"physics_primary_unavailable";
   }
 
-  if(!resolvedCore){resolvedCore=corePrediction||CORE.hazardChoose(seq);original7=buildOriginal7(seq,resolvedCore);corePB=original7.core_p_b;}
+  if(!resolvedCore){resolvedCore=(!independentHandPrediction&&corePrediction)||CORE.hazardChoose(predictionHistory);original7=buildOriginal7(predictionHistory,resolvedCore);corePB=original7.core_p_b;}
   const direction=evDecision?.direction||"Skip",finalPP=1-finalPB;
   const confidence=evDecision?.confidence??0;
   const skipDiagnostics=v15SkipDiagnostics(primary,auxFilter,evDecision,mode,error);
@@ -941,7 +950,7 @@ function applyFinalPrediction(seq,corePrediction=null){
   const rawForecast=nextHandForecast(physics);
   if(rawForecast.available&&pointPosteriorActive)rawForecast.source="score_conditioned_point_particle_posterior";
   else if(rawForecast.available&&particleDiagnostics)rawForecast.source="direct_physics_particle500_winner_head";
-  const calibrated=formalCalibration||LOCAL_CALIBRATION?.apply(rawForecast,seq,getShoeId(),browserCalibrationTag,localCalibrationConfig());
+  const calibrated=formalCalibration||(independentHandPrediction?{forecast:rawForecast,status:{enabled:false,applied:false,reason:"independent_per_hand_prediction"}}:LOCAL_CALIBRATION?.apply(rawForecast,seq,getShoeId(),browserCalibrationTag,localCalibrationConfig()));
   const evForecast=evDirectionForecast(settlementAudit?.final,rawForecast.uncertainty);
   const useEvDirection=directionSelectionPolicy().enabled;
   const forecast=useEvDirection?evForecast:calibrated?.forecast||rawForecast;
@@ -957,7 +966,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     regime:mode==="physics_primary"?(pointPosteriorActive?(direction==="Skip"?"點數後驗觀望":"點數後驗／嚴格EV與量能閘門"):direction==="Skip"?"Direct Physics觀望":auxFilter?.decision==="downgrade"?"Direct Physics / XGB降權":"Direct Physics / XGB輔助提醒"):"模型未就緒／觀望",
     finalProbability:{version:VERSION,direction_bias_audit,direction_consistency:consistencyReport,selective_entry_v2:settlementAudit?.selective_entry_v2||null,direction_selection:evDecision?.v15Trace?.directionSelection||"physics_candidate_v1",direction_candidate:evDecision?.candidate??"Skip",settlement_audit:settlementAudit,draw_report:drawReport,active:mode==="physics_primary",mode,
       skip_diagnostics:skipDiagnostics,
-      first_layer_ev:primary?.firstLayerEv||null,legacy_primary_candidate:primary?.legacyCandidate??"Skip",particleDiagnostics,point_posterior_active:pointPosteriorActive,primary_source:pointPosteriorActive?"score_conditioned_point_particle_posterior":particleDiagnostics?"direct_physics_particle500_physical_ev":"direct_physics_physical_ev",primary_candidate:primary?.candidate??"Skip",
+      first_layer_ev:primary?.firstLayerEv||null,legacy_primary_candidate:primary?.legacyCandidate??"Skip",particleDiagnostics,point_posterior_active:pointPosteriorActive,independent_hand_prediction_active:independentHandPrediction,forecast_history_mode:independentHandPrediction?"independent_hand":"legacy_outcome_history",primary_source:pointPosteriorActive?"score_conditioned_point_particle_posterior":particleDiagnostics?"direct_physics_particle500_physical_ev":"direct_physics_physical_ev",primary_candidate:primary?.candidate??"Skip",
       macro_ema:primary?.macroFeatures??null,macro_adjustment:primary?.macro??null,
       decision_stage:primary?.policy?.stage??(seq.length<40?"early":seq.length<50?"middle":"late"),decision_progress:clip((seq.length+1)/getEstimatedTotalHands()),dynamic_band:primary?.policy?.dynamicBand??null,
       physics_raw_p_b:primary?.rawDirectionalPB??null,physics_calibrated_p_b:primary?.directionalPB??null,physics_clipped_p_b:clippedPB,physics_smoothed_p_b:smoothedPB,
@@ -1149,7 +1158,7 @@ function noSkipTestDirection(f){
   return f.directional.B>=f.directional.P?"B":"P";
 }
 function prepareCalibrationTicket(history,prediction){
-  if(!LOCAL_CALIBRATION||browserCalibrationTag==="unready")return null;
+  if(prediction?.finalProbability?.independent_hand_prediction_active||!LOCAL_CALIBRATION||browserCalibrationTag==="unready")return null;
   return LOCAL_CALIBRATION.prepare(history,prediction.calibration_input_forecast||prediction.raw_next_hand_forecast,getShoeId(),browserCalibrationTag);
 }
 function commitCalibrationTicket(ticket,outcome,history){
@@ -1158,6 +1167,7 @@ function commitCalibrationTicket(ticket,outcome,history){
 function renderLocalCalibrationStatus(history,calibration=null){
   if(typeof document==="undefined")return;
   const el=document.getElementById("localCalibrationStatus");if(!el)return;
+  if(calibration?.reason==="independent_per_hand_prediction"){el.textContent="獨立點數模式：不套用跨局本機校準";return;}
   if(directionSelectionPolicy().enabled&&!localCalibrationConfig().formal_ev_enabled){el.textContent="EV選向採補牌後機率；本機校準僅供診斷（非完整重訓）";return;}
   if(!LOCAL_CALIBRATION){el.textContent="本機逐局校準未載入";return;}
   if(browserCalibrationTag==="unready"){el.textContent="本機校準：等待模型就緒";return;}
@@ -1184,8 +1194,8 @@ function renderPrediction(p,n){
     posteriorStatus.dataset.active=String(pointActive);
     if(pointActive){
       const compare=particle.point_vs_bpt_diagnostic,delta=compare?.max_absolute_probability_delta;
-      const scope=particle.point_history_mode==="latest_hand_only"?"僅最近一局，前局點數不累積":"整靴點數歷史";
-      posteriorStatus.textContent="單局點數後驗："+scope+"；ESS "+(100*(particle.recent_ess_ratio||0)).toFixed(1)+"%；與 B/P/T PF 對照最大機率差 "+(Number.isFinite(delta)?(100*delta).toFixed(2)+" 個百分點":"—");
+      const scope=particle.forecast_history_mode==="independent_hand"?"不累積前局牌路或點數":particle.point_history_mode==="latest_hand_only"?"僅最近一局點數，前局不累積":"整靴點數歷史";
+      posteriorStatus.textContent="獨立點數後驗："+scope+"；ESS "+(100*(particle.recent_ess_ratio||0)).toFixed(1)+"%；與 B/P/T PF 對照最大機率差 "+(Number.isFinite(delta)?(100*delta).toFixed(2)+" 個百分點":"—");
     }else if(cardcountProfile&&(cardcountProfile.enabled===false||cardcountProfile.point_input?.enabled===false||cardcountProfile.pf?.score_update_enabled!==true)){
       posteriorStatus.textContent="點數條件更新已由設定停用；目前回退至 B/P/T PF500。";
     }else if(particle?.score_update_fallback_reason){

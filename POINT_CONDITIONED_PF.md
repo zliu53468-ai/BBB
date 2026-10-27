@@ -2,9 +2,9 @@
 
 ## 使用流程
 
-1. 開通後直接使用點數欄位，不必貼入過往 B/P/T 路單。點數後驗每次預測都從新靴先驗重置，只使用最近完成的一局閒、莊點數，不會把前局點數累積進剩餘牌組後驗。
+1. 開通後直接使用點數欄位，不必貼入過往 B/P/T 路單。預設每次預測都從新靴先驗重置，Physics 輸入不讀取舊牌路，點數 PF 只條件化最近完成的一局閒、莊點數。
 2. 可先選本局總張數 4、5 或 6 張，再輸入閒、莊最終點數 0–9。兩個點數完成後，程式會按高低自動判定 B/P/T、走既有授權結果記錄流程，並分析下一局。
-3. 總張數可留空。每局點數、張數與結果仍寫入本機逐局紀錄，供返回上一局及離線匯出；點數 PF 只讀取最新一筆點數。原有勝負序列模型仍依其既有設計讀取自動判定的 B/P/T 結果。
+3. 總張數可留空。每局點數、張數與結果仍寫入本機逐局紀錄，供返回上一局及離線匯出；預設預測不把先前點數或 B/P/T 結果帶入模型。Volume Guard 仍會讀取近期建議紀錄來控制出手率。
 4. 畫面不再顯示 B/P/T 歷史路牌串；局數與點數條件後驗診斷仍會更新。模型權重狀態會說明 Physics／輔助模型仍採用最近一次離線訓練版本。
 
 ## PF 更新方式
@@ -17,7 +17,7 @@
 
 ## 選擇性出手
 
-啟用點數後驗時，第一層和最終 EV 都以 PF 點數後驗作為 Physics 主分布。既有第一層因果平滑仍保留；點數策略提高 EV 門檻，在 noise 高或粒子品質低時再提高門檻，縮小 Volume Guard 目標出手比例，並要求第一層與最終層方向一致。任一方向為 Balanced、方向不一致、EV 或 Volume Guard 未通過時不出手。
+啟用獨立點數預測時，第一層和最終 EV 都以 PF 點數後驗作為 Physics 主分布；舊牌路不參與方向機率、跨局 EMA 或本機 EV 校準。每次第一層都從當局觀測重新起算。點數策略提高 EV 門檻，在 noise 高或粒子品質低時再提高門檻，縮小 Volume Guard 目標出手比例，並要求第一層與最終層方向一致。Volume Guard 只依近期出手紀錄調整是否通過，不會改變當局預測方向。任一方向為 Balanced、方向不一致、EV 或 Volume Guard 未通過時不出手。
 
 這些條件可能減少出手，理論上能避免較多弱訊號局，但尚未由實際前瞻資料證明可提升命中率或期望值。畫面與程式都不保證正期望。
 
@@ -32,9 +32,10 @@
 | `point_input.compatibility_mode_default` | `false` | 設為 `true` 會預設 B/P/T 模式 |
 | `pf.score_update_enabled` | `true` | 允許點數／張數觀測進入十類點數 PF |
 | `pf.independent_point_update_enabled` | `true` | 每次重置 PF，只使用最新一局點數；設為 `false` 可恢復累積整靴點數的舊行為 |
+| `pf.independent_hand_prediction_enabled` | `true` | 點數模式以空白牌路先驗獨立預測；設為 `false` 恢復歷史牌路 Physics／EMA 輸入，點數 PF 是否累積仍由上一項開關控制 |
 | `score_conditioned_entry.enabled` | `true` | 啟用點數後驗專用 EV 門檻、低出手率目標與方向一致限制 |
 
-在畫面點「開啟 B/P/T 相容模式」即可立即切換舊輸入與舊 B/P/T PF。要停用點數 PF，可將 `pf.score_update_enabled` 設成 `false`；要回到舊式整靴點數累積，將 `pf.independent_point_update_enabled` 設成 `false`。要以設定檔全域回滾，將 `point_input.enabled`、`pf.score_update_enabled` 和 `score_conditioned_entry.enabled` 設成 `false`，並將 `point_input.default_mode` 設成 `"compatibility"`，再重新載入。`estimate()` 舊 PF 程式和授權、30 分鐘限制、本機資料隔離路徑均保留。使用者介面不再提供貼入 B/P/T 歷史路單或顯示 B/P/T 歷史串的功能。
+在畫面點「開啟 B/P/T 相容模式」即可立即切換舊輸入與舊 B/P/T PF。要恢復完整舊式路牌預測，將 `point_input.enabled`、`pf.score_update_enabled`、`pf.independent_point_update_enabled`、`pf.independent_hand_prediction_enabled` 和 `score_conditioned_entry.enabled` 設成 `false`，並將 `point_input.default_mode` 設成 `"compatibility"`，再重新載入。`estimate()` 舊 PF 程式和授權、30 分鐘限制、本機資料隔離路徑均保留。使用者介面不再提供貼入 B/P/T 歷史路單或顯示 B/P/T 歷史串的功能。
 
 `point_input.enabled` 關閉後可恢復舊 UI 流程；若要完全撤銷本次程式碼，可使用本次 Git 提交的父版本，或反向套用本提交。新增的研究工具不會改部署權重。
 

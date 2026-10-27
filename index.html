@@ -121,7 +121,7 @@
           <small id="compatModeHint">建議使用點數輸入以啟用準算牌；舊 B/P/T 按鈕模式預設關閉。</small>
         </div>
       </div>
-      <p id="pointPosteriorStatus" role="status" aria-live="polite">單局點數粒子後驗：每次重置，只使用最近一局點數</p>
+      <p id="pointPosteriorStatus" role="status" aria-live="polite">獨立點數預測：只使用本局閒、莊最終點數；不累積先前牌路或點數。EV 與出手率閘門仍會過濾建議。</p>
       <p id="modelWeightStatus" role="status" aria-live="polite">目前使用即時粒子後驗；Physics／輔助模型權重沿用上次離線訓練版本。</p>
       <p id="localCalibrationStatus" role="status" aria-live="polite">本機校準：等待模型就緒</p>
       <label for="forecastGap">一般方向門檻（莊閒機率差）</label>
@@ -140,7 +140,7 @@
       <details class="bbb-clear-details"><summary>結束分析與資料清除說明</summary><div class="clear-note">結束分析會清空此開通碼的牌路、分析快照與歷史觀測；會員裝置授權仍會保留。未連線裝置將在下次驗證時同步清空。</div></details>
     </section>
 
-    <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">歷史牌路串不在畫面顯示；每局點數與結果仍會留在本機，用於粒子後驗、返回上一局及離線匯出。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
+    <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">每局點數與結果仍會留在本機，供返回上一局及離線匯出；預設點數預測只讀取本局，舊 B/P/T 相容模式才會使用累積牌路。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
 
     <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
   </main>

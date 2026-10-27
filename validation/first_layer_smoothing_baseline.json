@@ -245,7 +245,8 @@
       "forecast_draws": 3,
       "score_update_enabled": true,
       "independent_point_update_enabled": true,
-      "score_update_method": "ten_class_score_pair_likelihood_and_conditional_hand_sampling"
+      "score_update_method": "ten_class_score_pair_likelihood_and_conditional_hand_sampling",
+      "independent_hand_prediction_enabled": true
     },
     "point_input": {
       "schema_version": 1,
@@ -515,7 +516,7 @@
     "render": {
       "start": "function renderPrediction(",
       "end": "function installUI(",
-      "sha256": "34a7adbfe3a2409c61881512c99c7b556cc7a8f0d58a072d2d89ab070e0e6eb5"
+      "sha256": "e7f4a0fc5804e9eb49b3eaa47ae9caf0b05453c099dd132d9a3bfa7efdaf573e"
     },
     "clip": {
       "start": "function applyProbabilityBounds(",
@@ -546,7 +547,7 @@
     "browser_calibration.js": "1ca512b9afb6d4111a4cb609fb6ee0d89d24218ce364681b2dd3b5b172368aa2",
     "physics_multitask_model.json": "3ec0d60251cb5b3fcb40bd67fec1334cb64d37becebbe0b040efbae871071138",
     "final_probability_model.json": "862347a6937b30ac9a8a3ece8f0eb9927569c97dee799e53cbb418e6c10be2f9",
-    "index.html": "eb8d5bdbe9864ea5cb8b869b4e80a7c9cc1542495b7f97d57ee8f735f6c89810",
+    "index.html": "31da96d830fa967144919d505cf6b1e6d715fbf31472d58eb6a0d30c2a4f0fa0",
     "styles.css": "f4b9021a82a93e81b51e958f98b635dacec909d73dc4d96d2163d6578f1a83a2"
   },
   "cases": [
