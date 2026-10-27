@@ -13,8 +13,8 @@ const scripts=[
   "app256continuation.js",
   "particle_filter_runtime.js?v=20261027-per-hand-posterior-v2",
   "macro_ema.js?v=20261023-middle-late-v2",
-  "browser_calibration.js?v=20261023-middle-late-v2",
-  "final_probability_runtime.js?v=20261027-pr59-pf-only-v1"
+  "browser_calibration.js?v=20261027-prequential-ev-v1",
+  "final_probability_runtime.js?v=20261027-prequential-ev-v1"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}

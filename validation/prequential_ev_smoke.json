@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "data_kind": "synthetic_mechanics_only_seed_20261026",
+  "production_accuracy_claim": false,
+  "rows": 274,
+  "learning_enabled": true,
+  "applied_rows": 9,
+  "ready_rows": 9,
+  "changed_actions": 1,
+  "max_probability_change": 0.0050000000000000044,
+  "negative_ev_wagers": 0,
+  "stages": {
+    "all": {
+      "baseline": {
+        "rows": 274,
+        "wagers": 111,
+        "hit_rate": 0.49504950495049505,
+        "ev_per_bet": -0.020720720720720703,
+        "skip_rate": 0.5948905109489051,
+        "brier": 0.25099828496432836
+      },
+      "candidate": {
+        "rows": 274,
+        "wagers": 110,
+        "hit_rate": 0.49504950495049505,
+        "ev_per_bet": -0.02090909090909089,
+        "skip_rate": 0.5985401459854014,
+        "brier": 0.2510007072916012
+      }
+    },
+    "1-20": {
+      "baseline": {
+        "rows": 76,
+        "wagers": 19,
+        "hit_rate": 0.6111111111111112,
+        "ev_per_bet": 0.21052631578947367,
+        "skip_rate": 0.75,
+        "brier": 0.2492772389906139
+      },
+      "candidate": {
+        "rows": 76,
+        "wagers": 19,
+        "hit_rate": 0.6111111111111112,
+        "ev_per_bet": 0.21052631578947367,
+        "skip_rate": 0.75,
+        "brier": 0.2492772389906139
+      }
+    },
+    "21-45": {
+      "baseline": {
+        "rows": 100,
+        "wagers": 49,
+        "hit_rate": 0.5111111111111111,
+        "ev_per_bet": 0.0040816326530612465,
+        "skip_rate": 0.51,
+        "brier": 0.25082801133422455
+      },
+      "candidate": {
+        "rows": 100,
+        "wagers": 49,
+        "hit_rate": 0.5111111111111111,
+        "ev_per_bet": 0.0040816326530612465,
+        "skip_rate": 0.51,
+        "brier": 0.25078477854642856
+      }
+    },
+    "46-70": {
+      "baseline": {
+        "rows": 98,
+        "wagers": 43,
+        "hit_rate": 0.42105263157894735,
+        "ev_per_bet": -0.1511627906976744,
+        "skip_rate": 0.5612244897959184,
+        "brier": 0.2526007011763616
+      },
+      "candidate": {
+        "rows": 98,
+        "wagers": 42,
+        "hit_rate": 0.42105263157894735,
+        "ev_per_bet": -0.15476190476190477,
+        "skip_rate": 0.5714285714285714,
+        "brier": 0.25265288238909317
+      }
+    }
+  },
+  "notes": "Synthetic mechanics only; no real hold-out or production improvement claim."
+}
