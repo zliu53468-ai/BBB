@@ -62,7 +62,8 @@ function recordPointHand(){
     const before=readHistory();
     // Reuse the existing click path: settle previous prediction -> Frozen Core
     // B/P/T history write -> macro scores/first-layer journal update.
-    resultButton.click();
+    let clickError=null;
+    try{resultButton.click();}catch(error){clickError=error;}
     const after=readHistory();
     if(after.length!==before.length+1||after.at(-1)!==outcome||
        !before.every((value,i)=>value===after[i])){
@@ -71,11 +72,12 @@ function recordPointHand(){
     }
     clear();
     paint();
-    note("已自動記錄第 "+after.length+" 局："+(outcome==="B"?"莊勝":outcome==="P"?"閒勝":"和局")+
-         "；正在分析下一局。");
-    // Re-arm prediction for the next completed hand. No manual button required.
+    const success="已自動記錄第 "+after.length+" 局："+(outcome==="B"?"莊勝":outcome==="P"?"閒勝":"和局");
+    if(clickError){note(success+"；附加處理異常，請確認紀錄。",true);return true;}
+    note(success+"；正在分析下一局。");
     // This is the existing authorized start handler, not a new betting path.
-    start.click();
+    // Never report a committed hand as failed if the next forecast errors.
+    try{start.click();}catch(_){note(success+"；下一局分析未完成，請按重新分析。",true);}
     return true;
   }catch(error){
     note("自動紀錄失敗，請檢查歷史紀錄與上方提示。",true);
