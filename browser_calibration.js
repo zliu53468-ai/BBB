@@ -1,5 +1,5 @@
 /* Device/browser-local prequential probability calibration. No model training,
- * network requests or route-pattern rules. Optional formal EV use is gated. */
+ * network requests, route-pattern rules or writes to formal wager snapshots. */
 (function(root,factory){
   const api=factory();
   if(typeof module==="object"&&module.exports)module.exports=api;
@@ -9,15 +9,13 @@
   // bgs* is managed by the existing verified-license IndexedDB isolation layer.
   const KEY="bgs_browser_calibration_v1",VERSION=1;
   const defaults={enabled:true,min_samples:24,min_validation:16,prior_strength:100,
-    max_delta:.005,residual_decay:1,validation_window:32,min_brier_gain:.00005,noise_start:.55,noise_stop:.85,formal_ev_enabled:false,min_bet_validation:8};
+    max_delta:.005,residual_decay:1,validation_window:32,min_brier_gain:.00005,noise_start:.55,noise_stop:.85};
   const finite=x=>typeof x==="number"&&Number.isFinite(x);
   const clamp=(x,lo=0,hi=1)=>Math.max(lo,Math.min(hi,x));
   function settings(input={}){
     const c={...defaults};
     for(const key of Object.keys(c))if(finite(input[key]))c[key]=input[key];
     c.enabled=input.enabled!==false;
-    c.formal_ev_enabled=input.formal_ev_enabled===true;
-    c.min_bet_validation=Math.round(clamp(c.min_bet_validation,8,100));
     c.min_samples=Math.round(clamp(c.min_samples,12,200));
     c.min_validation=Math.round(clamp(c.min_validation,8,100));
     c.prior_strength=clamp(c.prior_strength,50,1000);
@@ -53,24 +51,16 @@
     // Local correction never reverses the underlying Physics/PF side.
     return p>.5?Math.max(.500001,adjusted):Math.min(.499999,adjusted);
   }
-  function validTrial(t){return t&&finite(t.proposal_p)&&t.proposal_p>=0&&t.proposal_p<=1&&["B","P","Skip"].includes(t.base_action)&&["B","P","Skip"].includes(t.candidate_action)&&finite(t.banker_commission)&&t.banker_commission>=0&&t.banker_commission<=1&&finite(t.player_commission)&&t.player_commission>=0&&t.player_commission<=1;}
-  function betMetrics(events,key){
-    let bets=0,nonTie=0,wins=0,profit=0;
-    for(const e of events){const side=e.trial[key];if(side==="Skip")continue;bets++;if(e.actual==="T")continue;nonTie++;
-      if(side===e.actual){wins++;profit+=1-e.trial[side==="B"?"banker_commission":"player_commission"];}else profit--;}
-    return {bets,non_tie_bets:nonTie,hit_rate:nonTie?wins/nonTie:null,ev_per_bet:bets?profit/bets:null};
-  }
   function replay(events,c,nextRound){
-    const state={n:0,effective_n:0,residual:0,trials:[],bet_trials:[],seen:events.length,ties:0};
+    const state={n:0,effective_n:0,residual:0,trials:[],seen:events.length,ties:0};
     for(const event of events){
-      if(c.formal_ev_enabled&&state.n>=c.min_samples&&finite(event.p)&&validTrial(event.trial))state.bet_trials.push(event);
       if(event.actual==="T"){state.ties++;continue;}
       if(!finite(event.p)||event.p<0||event.p>1)continue;
       const active=atRound(c,event.index+1);
-      const proposed=c.formal_ev_enabled&&validTrial(event.trial)?event.trial.proposal_p:candidate(event.p,event.noise,state,active),y=event.actual==="B"?1:0;
+      const proposed=candidate(event.p,event.noise,state,active),y=event.actual==="B"?1:0;
       // Score the proposal from PRIOR results, then learn this result. No
       // in-sample validation or use of the just-observed outcome for its forecast.
-      if(state.n>=c.min_samples&&(c.formal_ev_enabled?validTrial(event.trial):Math.abs(proposed-event.p)>1e-12)){
+      if(state.n>=c.min_samples&&Math.abs(proposed-event.p)>1e-12){
         state.trials.push({base:(event.p-y)**2,local:(proposed-y)**2});
         if(state.trials.length>active.validation_window)state.trials.shift();
       }
@@ -81,11 +71,7 @@
     state.trials=state.trials.slice(-active.validation_window);
     state.validation_count=state.trials.length;
     state.brier_gain=state.trials.length?state.trials.reduce((sum,t)=>sum+t.base-t.local,0)/state.trials.length:0;
-    state.bet_trials=state.bet_trials.slice(-active.validation_window);
-    state.baseline_bets=betMetrics(state.bet_trials,"base_action");state.candidate_bets=betMetrics(state.bet_trials,"candidate_action");
-    const a=state.baseline_bets,b=state.candidate_bets;
-    state.bet_gate=!c.formal_ev_enabled||(a.non_tie_bets>=c.min_bet_validation&&b.non_tie_bets>=c.min_bet_validation&&b.hit_rate>=a.hit_rate&&b.ev_per_bet>=a.ev_per_bet);
-    state.ready=c.enabled&&state.n>=c.min_samples&&state.validation_count>=c.min_validation&&state.brier_gain>=c.min_brier_gain&&state.bet_gate;
+    state.ready=c.enabled&&state.n>=c.min_samples&&state.validation_count>=c.min_validation&&state.brier_gain>=c.min_brier_gain;
     return state;
   }
   function fingerprint(...values){
@@ -111,27 +97,27 @@
       const c=settings(config),state=replay(read(history,shoe,model).events,c,history.length+1);
       return {enabled:c.enabled,seen:state.seen,directional_samples:state.n,ties:state.ties,
         validation_count:state.validation_count,brier_gain:state.brier_gain,ready:state.ready,
-        max_delta:c.max_delta,formal_ev_enabled:c.formal_ev_enabled,bet_gate:state.bet_gate,baseline_bets:state.baseline_bets,candidate_bets:state.candidate_bets,storage_error:storageError};
+        max_delta:c.max_delta,storage_error:storageError};
     }
     function prepare(history,forecast,shoe,model){
       return {version:VERSION,shoe,model,index:history.length,prefix:history.join(""),
         p:forecast?.available&&finite(forecast.directional?.B)?forecast.directional.B:null,
-        noise:finite(forecast?.uncertainty)?forecast.uncertainty:null,trial:validTrial(forecast?.validation_trial)?{...forecast.validation_trial}:null};
+        noise:finite(forecast?.uncertainty)?forecast.uncertainty:null};
     }
     function commit(ticket,actual,history,config){
       if(!ticket||!Array.isArray(history)||history.length!==ticket.index+1||history.at(-1)!==actual||history.slice(0,-1).join("")!==ticket.prefix||!["B","P","T"].includes(actual))return false;
       const journal=read(history,ticket.shoe,ticket.model);
       if(journal.events.some(e=>e.index===ticket.index))return false;
-      journal.events.push({index:ticket.index,prefix:ticket.prefix,actual,p:ticket.p,noise:ticket.noise,trial:validTrial(ticket.trial)?ticket.trial:null});
+      journal.events.push({index:ticket.index,prefix:ticket.prefix,actual,p:ticket.p,noise:ticket.noise});
       return save(journal);
     }
     function apply(forecast,history,shoe,model,config){
       const c=settings(config),journal=read(history,shoe,model),state=replay(journal.events,c,history.length+1);
       const status=inspect(history,shoe,model,config);
       if(!forecast?.available)return {forecast,status:{...status,applied:false,delta:0,reason:"model_unavailable"}};
-      const p=forecast.directional.B,proposed=clamp(candidate(p,forecast.uncertainty,state,atRound(c,history.length+1)),finite(forecast.calibration_bounds?.low)?forecast.calibration_bounds.low:0,finite(forecast.calibration_bounds?.high)?forecast.calibration_bounds.high:1),adjusted=state.ready&&!storageError?proposed:p;
+      const p=forecast.directional.B,proposed=candidate(p,forecast.uncertainty,state,atRound(c,history.length+1)),adjusted=state.ready&&!storageError?proposed:p;
       const delta=adjusted-p,mass=forecast.probabilities.B+forecast.probabilities.P;
-      return {proposed_forecast:{...forecast,directional:{B:proposed,P:1-proposed},probabilities:{B:mass*proposed,P:mass*(1-proposed),T:forecast.probabilities.T}},forecast:{...forecast,directional:{B:adjusted,P:1-adjusted},
+      return {forecast:{...forecast,directional:{B:adjusted,P:1-adjusted},
         probabilities:{B:mass*adjusted,P:mass*(1-adjusted),T:forecast.probabilities.T},
         weak_signal:Math.abs(adjusted-.5)<.005},status:{...status,applied:Math.abs(delta)>1e-12,delta,
         reason:!c.enabled?"disabled":storageError?"storage_error":!state.ready?"warming_or_not_better":Math.abs(delta)>1e-12?"bounded_local_calibration":"noise_or_neutral"}};

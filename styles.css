@@ -168,74 +168,39 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
 @keyframes page-hero-sweep{0%,22%{left:-28%;opacity:0}30%{opacity:.16}47%,100%{left:118%;opacity:0}}
 
 
-/* Compact B/P/T + optional score entry. Mobile first; tap targets remain >= 44px. */
-.bbb-results-block{padding:11px;border:1px solid rgba(164,128,246,.26);border-radius:14px;background:rgba(32,20,55,.45);margin-bottom:10px}
-.bbb-input-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-.bbb-input-head>strong{font-size:14px;white-space:nowrap}
-.bbb-mode-tabs{display:flex;gap:3px;padding:3px;background:rgba(6,5,17,.55);border:1px solid var(--line);border-radius:11px}
-.bbb-mode-tabs button{min-height:36px;min-width:72px;padding:6px 10px;border:0;border-radius:8px;background:transparent;color:#aaa1c5;font-size:12px;font-weight:800;cursor:pointer}
-.bbb-mode-tabs button.is-active{background:rgba(145,90,234,.35);color:white}
-.bbb-mode-tabs button:focus-visible,.bbb-points-submit:focus-visible,.bbb-points-row select:focus-visible{outline:2px solid #d5b6ff;outline-offset:2px}
-.bbb-mode-panel[hidden]{display:none!important}
-.bbb-results-block .result-btn{min-height:60px;border-radius:11px}
+/* Compact B/P/T entry; decorative background remains fixed to the viewport. */
+.app-shell{padding-top:12px;padding-bottom:18px}
+.topbar{margin-bottom:8px;gap:9px}
+.card{padding:13px;margin-bottom:9px;border-radius:15px;background:linear-gradient(140deg,rgba(25,18,48,.83),rgba(13,10,27,.88))}
+.card-title{margin-bottom:9px}
+.prediction-layout{gap:12px}
+.metric{padding:9px;min-width:0}
+.metric strong{overflow-wrap:anywhere}
+.message{margin-top:9px;padding:8px 10px}
+.bbb-results-block{padding:10px;border:1px solid rgba(164,128,246,.26);border-radius:12px;background:rgba(32,20,55,.40);margin-bottom:8px}
+.bbb-input-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:8px}
+.bbb-input-head strong{font-size:13px}.bbb-input-head small{font-size:10px;color:var(--muted)}
+.bbb-results-block .result-btn{min-height:56px;border-radius:10px}
 .bbb-results-block .result-btn strong{font-size:24px;line-height:1.15}
 .bbb-results-block .result-btn small{font-size:9px;margin-top:2px}
-.bbb-points-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:end}
-.bbb-points-row label{display:grid;gap:4px;min-width:0;font-size:11px;color:#c9bee0;font-weight:700}
-.bbb-points-row select{width:100%;min-width:0;min-height:44px;padding:8px 6px;background:#181028;color:#fff;font-size:16px;border-radius:10px;border:1px solid rgba(164,135,232,.48)}
-.bbb-points-submit{min-height:44px;padding:7px 5px;border-radius:10px;border:1px solid rgba(201,160,255,.48);background:linear-gradient(135deg,#7c3ee9,#396fe9);color:white;font-size:13px;font-weight:800;cursor:pointer}
-.bbb-point-hint{font-size:11px;line-height:1.4;color:var(--muted);min-height:16px;margin-top:6px}
-.bbb-point-hint.is-error{color:#ff9bb7}
-.bbb-compat-controls{display:grid;grid-template-columns:minmax(140px,auto) 1fr;align-items:center;gap:8px;margin-top:9px}
-.bbb-compat-controls .action-btn{min-height:40px}
-.bbb-compat-controls small{color:var(--muted);font-size:10px;line-height:1.35}
-#pointPosteriorStatus,#modelWeightStatus{margin:5px 0;color:#bdb1d5;font-size:10px;line-height:1.45}
-#pointPosteriorStatus[data-active="true"]{color:#c9ffd8}
-.bbb-clear-details{margin-top:7px;font-size:10px;color:#9f94b7}
-.bbb-clear-details summary{cursor:pointer}
+.action-buttons{gap:7px;margin-top:9px}.action-btn{min-height:44px}
+.bbb-clear-details{margin-top:7px;font-size:10px;color:#b5a9ca}
+.bbb-clear-details summary{cursor:pointer;min-height:24px;line-height:24px}
 .bbb-clear-details .clear-note{text-align:left;line-height:1.5;margin-top:5px}
 .bbb-export-details .export-buttons{margin:7px 0 2px}
 @media(max-width:620px){
-  .app-shell{padding-top:8px;padding-bottom:14px}
-  .topbar{margin-bottom:7px;gap:8px}
-  .card{padding:10px;margin-bottom:8px;border-radius:14px}
-  .card-title{margin-bottom:8px}
-  .card-title span{font-size:13px}
-  .prediction-layout{grid-template-columns:100px minmax(0,1fr);gap:8px;align-items:center}
-  .direction-orb{width:94px;height:94px}
-  .direction-orb span{font-size:32px}
-  .direction-orb small{font-size:8px;margin-top:3px}
-  .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
-  .metric{padding:7px 5px;border-radius:10px;min-width:0}
-  .metric span{font-size:9px;margin-bottom:3px;line-height:1.25}
-  .metric strong{font-size:12px;line-height:1.3;overflow-wrap:anywhere}
-  .message{margin-top:8px;padding:7px 9px;font-size:11px}
-  .action-buttons{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:8px}
-  .action-btn{min-height:44px;font-size:12px;padding:5px}
-  .result-buttons{gap:7px}
-  #forecastGap{font-size:13px;padding:8px;margin:5px 0}
-  .bbb-results-block{padding:9px;margin-bottom:8px}
-  .export-buttons{margin-top:7px;gap:7px}
-  .export-buttons button{font-size:11px;padding:7px 9px}
+ .app-shell{padding-top:8px;padding-bottom:14px}
+ .card{padding:10px;margin-bottom:8px}
+ .prediction-layout{grid-template-columns:94px minmax(0,1fr);gap:8px;align-items:center}
+ .direction-orb{width:90px;height:90px}.direction-orb span{font-size:31px}.direction-orb small{font-size:8px}
+ .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+ .metric{padding:7px 5px;border-radius:9px}.metric span{font-size:9px;line-height:1.3;margin-bottom:3px}.metric strong{font-size:12px;line-height:1.3}
+ .message{font-size:11px;padding:7px 8px;margin-top:7px}
+ .bbb-input-head{flex-wrap:wrap;gap:3px}.result-buttons{gap:7px}
+ .action-buttons{grid-template-columns:repeat(2,minmax(0,1fr))}.action-btn{font-size:12px;padding:5px}
+ #forecastGap{font-size:12px;padding:8px;margin:5px 0}
+ .export-buttons{gap:6px}.export-buttons button{font-size:11px;padding:7px}
 }
-@media(max-width:350px){
-  .bbb-mode-tabs button{min-width:60px;padding-inline:6px;font-size:11px}
-  .bbb-input-head>strong{font-size:12px}
-  .prediction-layout{grid-template-columns:85px minmax(0,1fr)}
-  .direction-orb{width:80px;height:80px}
-  .direction-orb span{font-size:29px}
-  .metric strong{font-size:11px}
-}
+@media(max-width:350px){.prediction-layout{grid-template-columns:80px minmax(0,1fr)}.direction-orb{width:76px;height:76px}.metric strong{font-size:11px}}
 
-/* History-first entry: no switching tabs and no manual score submit. */
-.bbb-input-head{align-items:baseline;gap:7px}
-.bbb-input-head>small{font-size:10px;color:var(--muted);line-height:1.3;text-align:right}
-.bbb-points-row label{font-size:12px}
-.bbb-points-row select{width:100%;min-height:44px}
-@media(max-width:620px){
-  .bbb-input-head{flex-wrap:wrap;margin-bottom:7px}
-  .bbb-input-head>small{text-align:left}
-  .bbb-points-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-  .bbb-points-row label:first-child{grid-column:1/-1}
-  .bbb-compat-controls{grid-template-columns:1fr;gap:5px}
-}
+#predictionApp #localCalibrationStatus{font-size:11px;line-height:1.45;margin:6px 0;color:var(--muted)}

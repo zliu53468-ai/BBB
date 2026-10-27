@@ -234,48 +234,9 @@
     "noise_high": 0.72
   },
   "pf": {
-    "update_profile": "per_hand_posterior_v2",
-    "likelihood_draws": 4,
-    "fallback_draws": 4,
     "min_blend": 0.06,
     "signal_gate": true,
-    "forecast_draws": 3,
-    "score_update_enabled": true,
-    "independent_point_update_enabled": true,
-    "independent_hand_prediction_enabled": true,
-    "score_update_method": "ten_class_score_pair_likelihood_and_conditional_hand_sampling"
-  },
-  "point_input": {
-    "schema_version": 1,
-    "enabled": true,
-    "default_mode": "points",
-    "compatibility_mode_default": false
-  },
-  "score_conditioned_entry": {
-    "schema_version": 1,
-    "enabled": true,
-    "require_first_final_consistency": true,
-    "direction_consistency_mode": "ev_penalty",
-    "direction_mismatch_ev_boost": 0.004,
-    "no_skip_ev_balance_threshold": 0.005,
-    "ev_threshold_boost": {
-      "early": 0.003,
-      "middle": 0.0025,
-      "late": 0.002
-    },
-    "noise_threshold": 0.55,
-    "pf_quality_threshold": 0.65,
-    "noise_extra_boost": 0.0025,
-    "volume_guard_target_action_rate": {
-      "early": 0.28,
-      "middle": 0.32,
-      "late": 0.36
-    },
-    "first_layer_effective_gap": {
-      "early": 0.012,
-      "middle": 0.009,
-      "late": 0.006
-    }
+    "forecast_draws": 3
   },
   "training": {
     "name": "aggressive_cardcount",
@@ -364,8 +325,6 @@
     }
   },
   "local_calibration": {
-    "formal_ev_enabled": true,
-    "min_bet_validation": 8,
     "enabled": true,
     "min_samples": 24,
     "min_validation": 16,
@@ -455,65 +414,5 @@
         ]
       ]
     }
-  },
-  "settlement": {
-    "schema_version": 1,
-    "mode": "post_draw_unconditional_v1",
-    "banker_commission": 0.05,
-    "player_commission": 0,
-    "tie_settlement": "push"
-  },
-  "selective_entry_v2": {
-    "schema_version": 1,
-    "enabled": true,
-    "require_first_final_consistency": true,
-    "ev_threshold_boost": {
-      "early": 0.005,
-      "middle": 0.0035,
-      "late": 0.0025
-    },
-    "noise_threshold": 0.55,
-    "pf_quality_threshold": 0.6,
-    "noise_extra_boost": 0.004,
-    "volume_guard_target_action_rate": {
-      "early": 0.25,
-      "middle": 0.31,
-      "late": 0.37
-    },
-    "first_layer_effective_gap": {
-      "early": 0.014,
-      "middle": 0.009,
-      "late": 0.005
-    }
-  },
-  "first_layer_smoothing": {
-    "schema_version": 1,
-    "enabled": true,
-    "alpha": {
-      "early": 0.48,
-      "middle": 0.58,
-      "late": 0.65
-    },
-    "max_alpha": 0.7,
-    "min_gap": {
-      "early": 0.012,
-      "middle": 0.008,
-      "late": 0.005
-    },
-    "noise_high": 0.7,
-    "noise_low": 0.45,
-    "quality_low": 0.45,
-    "quality_high": 0.75,
-    "uncertainty_high": 0.7,
-    "uncertainty_low": 0.45
-  },
-  "first_layer_ev": {
-    "schema_version": 1,
-    "enabled": true
-  },
-  "direction_selection": {
-    "schema_version": 1,
-    "mode": "post_draw_ev_argmax_v1",
-    "ev_tie_tolerance": 1e-12
   }
 }

@@ -4,8 +4,6 @@ function make(missing=false,opposed=false){
   const store=new Map(),nodes=new Map();
   const ctx={console,document:{getElementById:()=>null},localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},fetch:async file=>({ok:true,json:async()=>{
     const m=JSON.parse(fs.readFileSync(file,"utf8"));
-    // Historical winner-head mode remains tested for rollback; EV-led mode has a dedicated suite.
-    if(file==="cardcount_profile.json")m.direction_selection={schema_version:1,mode:"physics_candidate_v1",ev_tie_tolerance:1e-12};
     if(missing&&file==="physics_multitask_model.json")m.trained=false;
     if(opposed&&file==="final_probability_model.json"){m.base_margin=Math.log(.001/.999);m.trees=[];m.calibration={method:"identity"};}
     return m;
@@ -68,7 +66,7 @@ const plain=v=>JSON.parse(JSON.stringify(v));
   a.api.renderPrediction({...sample,direction:"Skip",next_hand_forecast:f},13);
   assert.equal(a.nodes.get("directionText").textContent,"莊");
   assert.match(a.nodes.get("confidence").textContent,/莊 51\.11% \/ 閒 48\.89%/);
-  assert.equal(a.nodes.get("regime").textContent,"Direct Physics觀望","legacy B/P/T forecast label remains unchanged");
+  assert.match(a.nodes.get("regime").textContent,/下注觀望/);
   const saved={...sample,direction:"Skip",finalProbability:{...sample.finalProbability,finalDirection:"觀望 Skip"}};
   a.api.registerPrediction(["B","P"],saved);a.api.settlePending("B",{outcome:"B"},["B","P"]);
   const row=a.api.getTrainingRows().at(-1);assert.equal(row.bet_direction,"Skip");assert.equal(row.predicted_direction,"觀望 Skip");assert(row.next_hand_forecast);

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
   <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
-  <link rel="stylesheet" href="styles.css?v=20261027-auto-points-v2">
+  <link rel="stylesheet" href="styles.css?v=20261028-pr56-compact">
 
 </head>
 <body>
@@ -67,69 +67,17 @@
 
     <section class="card controls-card">
       <div class="bbb-results-block" aria-label="每局結果輸入">
-        <div class="bbb-input-head">
-          <strong id="entryStageTitle">開牌點數自動紀錄</strong>
-          <small id="entryStageNote">每局結束後輸入實際點數，程式自動判定並分析下一局</small>
-        </div>
-        <div id="resultModePanel" class="bbb-mode-panel" hidden>
-          <div class="result-buttons">
-            <button class="result-btn banker" id="btnB" type="button"><strong>莊</strong><small>BANKER</small></button>
-            <button class="result-btn player" id="btnP" type="button"><strong>閒</strong><small>PLAYER</small></button>
-            <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
-          </div>
-        </div>
-        <div id="pointModePanel" class="bbb-mode-panel" hidden>
-          <div class="bbb-points-row">
-            <label for="macroCardCount">本局總張數（選填）
-              <select id="macroCardCount" aria-label="本局總張數（選填）"><option value="">先選張數（可略過）</option>
-                <option value="4">4 張</option><option value="5">5 張</option><option value="6">6 張</option>
-              </select>
-            </label>
-            <label for="macroPlayerScore">閒家點數
-              <select id="macroPlayerScore" aria-label="本局閒家最終點數"><option value="">閒：選擇</option>
-                <option value="0">0 點</option>
-                <option value="1">1 點</option>
-                <option value="2">2 點</option>
-                <option value="3">3 點</option>
-                <option value="4">4 點</option>
-                <option value="5">5 點</option>
-                <option value="6">6 點</option>
-                <option value="7">7 點</option>
-                <option value="8">8 點</option>
-                <option value="9">9 點</option>
-              </select>
-            </label>
-            <label for="macroBankerScore">莊家點數
-              <select id="macroBankerScore" aria-label="本局莊家最終點數"><option value="">莊：選擇</option>
-                <option value="0">0 點</option>
-                <option value="1">1 點</option>
-                <option value="2">2 點</option>
-                <option value="3">3 點</option>
-                <option value="4">4 點</option>
-                <option value="5">5 點</option>
-                <option value="6">6 點</option>
-                <option value="7">7 點</option>
-                <option value="8">8 點</option>
-                <option value="9">9 點</option>
-              </select>
-            </label>
-          </div>
-          <div class="bbb-point-hint" id="pointResultPreview" role="status" aria-live="polite">每局結束後輸入閒、莊最終點數；總張數可選填。兩邊都有點數時會自動記錄並分析下一局。</div>
-        </div>
-        <div class="bbb-compat-controls">
-          <button class="action-btn" id="compatModeToggle" type="button" aria-pressed="false">開啟 B/P/T 相容模式</button>
-          <small id="compatModeHint">建議使用點數輸入以啟用準算牌；舊 B/P/T 按鈕模式預設關閉。</small>
+        <div class="bbb-input-head"><strong>記錄本局結果</strong><small>輸入莊／閒／和，再分析下一局</small></div>
+        <div class="result-buttons">
+          <button class="result-btn banker" id="btnB" type="button"><strong>莊</strong><small>BANKER</small></button>
+          <button class="result-btn player" id="btnP" type="button"><strong>閒</strong><small>PLAYER</small></button>
+          <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
         </div>
       </div>
-      <p id="pointPosteriorStatus" role="status" aria-live="polite">獨立點數預測：只使用本局閒、莊最終點數；不累積先前牌路或點數。EV 與出手率閘門仍會過濾建議。</p>
-      <p id="modelWeightStatus" role="status" aria-live="polite">目前使用即時粒子後驗；Physics／輔助模型權重沿用上次離線訓練版本。</p>
       <p id="localCalibrationStatus" role="status" aria-live="polite">本機校準：等待模型就緒</p>
       <label for="forecastGap">一般方向門檻（莊閒機率差）</label>
       <select id="forecastGap" aria-label="一般方向機率差距門檻" disabled>
-        <option value="0" disabled>舊版顯示（未啟用分段設定）</option>
-        <option value="0.01">1 個百分點（50.5%／49.5%）</option>
         <option value="0.02" selected>2 個百分點（51%／49%）</option>
-        <option value="0.03">3 個百分點（51.5%／48.5%）</option>
       </select>
       <div class="action-buttons">
         <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
@@ -140,13 +88,13 @@
       <details class="bbb-clear-details"><summary>結束分析與資料清除說明</summary><div class="clear-note">結束分析會清空此開通碼的牌路、分析快照與歷史觀測；會員裝置授權仍會保留。未連線裝置將在下次驗證時同步清空。</div></details>
     </section>
 
-    <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">每局點數與結果仍會留在本機，供返回上一局及離線匯出；預設點數預測只讀取本局，舊 B/P/T 相容模式才會使用累積牌路。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
+    <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">每局莊／閒／和結果保留在本機，可返回上一局或匯出離線紀錄。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
 
     <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
   </main>
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
-  <script src="auth-client.js?v=20261028-independent-point-pf-v1"></script>
+  <script src="auth-client.js?v=20261028-pr56-restore"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

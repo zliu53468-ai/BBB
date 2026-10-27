@@ -1,47 +1,21 @@
-name: Compact mobile score entry regression
+name: PR56 預測回復與精簡版面檢查
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "index.html"
-      - "styles.css"
-      - "auth-client.js"
-      - "point_input_mode.js"
-      - "particle_filter_runtime.js"
-      - "final_probability_runtime.js"
-      - "cardcount_profile.json"
-      - "test_compact_point_input.js"
-      - "test_pf_points_update.js"
-      - "test_point_conditioned_runtime.js"
-      - ".github/workflows/compact-score-input.yml"
   push:
     branches: [main]
-    paths:
-      - "index.html"
-      - "styles.css"
-      - "auth-client.js"
-      - "point_input_mode.js"
-      - "particle_filter_runtime.js"
-      - "final_probability_runtime.js"
-      - "cardcount_profile.json"
-      - "test_compact_point_input.js"
-      - "test_pf_points_update.js"
-      - "test_point_conditioned_runtime.js"
-      - ".github/workflows/compact-score-input.yml"
 permissions:
   contents: read
 jobs:
-  score-entry:
+  bpt-entry:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
-      - run: node --check point_input_mode.js && node --check auth-client.js
-      - run: node test_compact_point_input.js
+          node-version: '22'
+      - run: node test_pr56_restore.js
+      - run: node --check auth-client.js && node --check particle_filter_runtime.js
       - run: node test_bbb_button_only.js
-      - run: node test_pf_per_hand_update.js
-      - run: node --check particle_filter_runtime.js && node test_pf_points_update.js
-      - run: node test_point_conditioned_runtime.js
+      - run: node test_bbb_result_persistence.js
