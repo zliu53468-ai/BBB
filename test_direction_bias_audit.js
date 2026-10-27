@@ -15,7 +15,7 @@ const fs=require("node:fs"),vm=require("node:vm");
   assert.equal(d.observation_basis,"BPT_only");
   assert.equal(p.finalProbability.direction_bias_audit,d);
   assert.equal(d.bet_direction,p.direction);
-  assert.equal(d.direct_physics_side,p.physicsDirect[23]>p.physicsDirect[24]?"B":"P");
+  assert.equal(d.direct_physics_side,p.finalProbability.physicsDirect[23]>p.finalProbability.physicsDirect[24]?"B":"P");
   assert.equal(d.pf_flip_blocked,p.finalProbability.particleDiagnostics?.direction_flip_blocked===true);
   assert(d.pf_weight===null||d.pf_weight>=0&&d.pf_weight<=1);
   // 不能偷將偏好當成已授權下注：negative EV 仍須受原 guard。
