@@ -171,5 +171,7 @@ def simulate_shoe(shoe_id, seed=SEED, decks=8, cut_from_end=14,
         yield dict(shoe_id=int(shoe_id), round=len(history)+1,
                    history="".join(history), outcome=outcome, cards=n,
                    ground_truth=list(probs) if probs is not None else None,
+                   remaining_point_probs=[v/sum(before) for v in before],
+                   expected_next_point=sum(i*v for i,v in enumerate(before))/sum(before),
                    remaining_before=sum(before), burned=burned)
         history.append(outcome)
