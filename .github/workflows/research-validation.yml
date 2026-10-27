@@ -33,9 +33,7 @@ jobs:
         run: python -m pip install 'numpy>=1.26,<3' 'numba>=0.60'
       - name: Research simulation rules, composition probability, posterior leakage
         run: python -m unittest discover -s research/tests -v
-      - name: Runtime read-only diagnostic contracts
+      - name: PR56 production contract (later EV-led diagnostics are archived)
         run: |
           node --check final_probability_runtime.js
-          node --check test_direction_bias_audit.js
-          node test_direction_bias_audit.js
-          node test_ev_led_direction.js
+          node test_pr56_restore.js
