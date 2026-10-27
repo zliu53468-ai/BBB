@@ -42,11 +42,43 @@ for(const file of ["app256forward.js","app256continuation.js","particle_filter_r
   assert(Math.abs(point.first_layer_ev.probabilities.B-posterior.B)<1e-12);
   assert(Math.abs(point.first_layer_ev.probabilities.P-posterior.P)<1e-12);
   assert.equal(point.settlement_audit.pf_stage_applications,1);
-  if(["B","P"].includes(point.direction))assert.equal(point.direction,point.first_layer_ev.direction,"accepted point-mode direction must match first-layer direction");
-  else assert.equal(point.direction_consistency.consistent,false,"point-mode Skip is retained if the first/final direction is not identical");
+  if(["B","P"].includes(point.direction)&&point.direction!==point.first_layer_ev.direction){
+    assert.equal(point.direction_consistency.mismatch,true,"a direction mismatch must remain visible");
+    assert.equal(point.direction_consistency.threshold_boost,.004,"mismatches require the added EV margin");
+    assert(point.ev_direction.best_ev>point.finalProbability.effective_activation_ev,"a mismatch action must clear the stricter EV threshold");
+  }
+  const entry=point.finalProbability.entry_diagnostics;
+  assert.equal(entry.first_layer_raw_direction,point.first_layer_ev.raw.direction);
+  assert.equal(entry.first_layer_smoothed_direction,point.first_layer_ev.direction);
+  assert.equal(entry.final_action,point.direction);
+  assert.equal(entry.consistency_blocked,false,"default point mode applies the configured EV penalty instead of a hard block");
+  assert.equal(point.next_hand_forecast.score_conditioned_point_posterior,true);
+  assert.equal(api.noSkipTestDirection({available:true,selection_method:"post_draw_ev_argmax_v1",banker_ev:.001,player_ev:.004,score_conditioned_point_posterior:true}),"Balanced","near-equal point-mode EVs display Balanced");
+  assert.equal(api.noSkipTestDirection({available:true,selection_method:"post_draw_ev_argmax_v1",banker_ev:.01,player_ev:.003,score_conditioned_point_posterior:true}),"B","outside the balance band the higher EV still selects the side");
+  assert.equal(api.noSkipTestDirection(point.next_hand_forecast),Math.abs(point.next_hand_forecast.banker_ev-point.next_hand_forecast.player_ev)<=.005?"Balanced":api.selectEvDirection(point.next_hand_forecast.banker_ev,point.next_hand_forecast.player_ev).direction,"real point forecast applies its configured EV balance band");
+  const mismatch=api.directionConsistency("B","P",true);
+  assert.equal(mismatch.forced_skip_by_consistency,false);assert.equal(mismatch.threshold_boost,.004);assert.equal(mismatch.mismatch,true);
+  api.getCardcountProfile().score_conditioned_entry.direction_consistency_mode="hard_skip";
+  assert.equal(api.directionConsistency("B","P",true).forced_skip_by_consistency,true,"hard_skip profile restores the previous consistency rule");
+  api.getCardcountProfile().score_conditioned_entry.direction_consistency_mode="ev_penalty";
+  api.getCardcountProfile().score_conditioned_entry.enabled=false;
+  const rollbackBoost=api.selectiveEvBoost(10,.8,.4,true);
+  assert.equal(rollbackBoost.base_boost,.005);assert.equal(rollbackBoost.extra_boost,.004);
+  assert.equal(api.noSkipTestDirection({available:true,selection_method:"post_draw_ev_argmax_v1",banker_ev:.001,player_ev:.004,score_conditioned_point_posterior:true}),"P","disabling the new score-conditioned profile restores the prior test behavior");
+  api.getCardcountProfile().score_conditioned_entry.enabled=true;
   const boost=api.selectiveEvBoost(10,.8,.4,true);
-  assert.equal(boost.base_boost,.006);assert.equal(boost.extra_boost,.006);
-  assert(api.scoreConditionedEntryPolicy().volume_guard_target_action_rate.early<=.25);
+  assert.equal(boost.base_boost,.003);assert.equal(boost.extra_boost,.0025);
+  assert.equal(api.scoreConditionedEntryPolicy().volume_guard_target_action_rate.early,.28);
+  storage.set("bgs_xgb_final_training_v5",JSON.stringify(Array.from({length:5},(_,i)=>({shoe_id:"shoe_point_runtime_test",round_index:i+1,final_p_b:.5,p_tie:.1,predicted_direction:"Skip"}))));
+  const pointGuard=api.volumeGuardState(10,.5,api.decisionPolicy(10,.2),true);
+  assert.equal(pointGuard.target,.28,"point-mode Volume Guard target is no longer capped below 28%");
+  storage.delete("bgs_xgb_final_training_v5");
+  const uiNodes=Object.fromEntries(["directionOrb","directionText","directionCode","confidence","regime","strength","modePill","roundCount","message","pointPosteriorStatus","modelWeightStatus","localCalibrationStatus"].map(id=>[id,{textContent:"",className:"",dataset:{},setAttribute(){}}]));
+  ctx.document.getElementById=id=>uiNodes[id]||null;
+  api.renderPrediction(point,history.length);
+  assert.match(uiNodes.pointPosteriorStatus.textContent,/第一層 raw/);
+  assert.match(uiNodes.pointPosteriorStatus.textContent,/EV差\/門檻/);
+  assert.match(uiNodes.pointPosteriorStatus.textContent,/PF品質/);
 
   const alternateHistory=["B","B","B","B","B","B","B","P"];
   storage.set("bgs_xgb_final_shoe_id_v5","shoe_point_runtime_alt");
@@ -78,6 +110,10 @@ for(const file of ["app256forward.js","app256continuation.js","particle_filter_r
   assert.equal(compatible.finalProbability.point_posterior_active,false);
   assert.equal(compatible.finalProbability.particleDiagnostics.posterior_update_method,"observed_bpt_likelihood_and_resampling");
   assert.deepEqual(compatible.finalProbability.physicsDirect,api.predictPhysics(history),"B/P/T compatibility mode must retain the prior history-conditioned Physics path");
+  assert(compatible.finalProbability.entry_diagnostics,"B/P/T output also includes the read-only diagnostic structure");
+  api.registerPrediction(history,compatible);api.settlePending("B",null,history);
+  const settled=api.getTrainingRows().at(-1);
+  assert(settled.entry_diagnostics&&settled.skip_diagnostics.entry_diagnostics,"entry diagnostics persist into local export snapshots");
   console.log(JSON.stringify({passed:true,point_pf_primary:true,latest_hand_only:true,independent_forecast_history:true,cumulative_rollback_switch:true,first_layer_uses_point_posterior:true,
-    strict_direction_consistency:true,score_noise_ev_boost:true,compatibility_uses_legacy_pf:true}));
+    consistency_ev_penalty:true,score_ev_balance_band:true,diagnostics_visible_and_exported:true,compatibility_uses_legacy_pf:true}));
 })().catch(e=>{console.error(e);process.exitCode=1;});

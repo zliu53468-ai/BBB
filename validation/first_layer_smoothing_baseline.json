@@ -258,23 +258,26 @@
       "schema_version": 1,
       "enabled": true,
       "require_first_final_consistency": true,
+      "direction_consistency_mode": "ev_penalty",
+      "direction_mismatch_ev_boost": 0.004,
+      "no_skip_ev_balance_threshold": 0.005,
       "ev_threshold_boost": {
-        "early": 0.006,
-        "middle": 0.0045,
-        "late": 0.0035
+        "early": 0.003,
+        "middle": 0.0025,
+        "late": 0.002
       },
       "noise_threshold": 0.55,
       "pf_quality_threshold": 0.65,
-      "noise_extra_boost": 0.006,
+      "noise_extra_boost": 0.0025,
       "volume_guard_target_action_rate": {
-        "early": 0.2,
-        "middle": 0.26,
-        "late": 0.32
+        "early": 0.28,
+        "middle": 0.32,
+        "late": 0.36
       },
       "first_layer_effective_gap": {
-        "early": 0.016,
-        "middle": 0.011,
-        "late": 0.007
+        "early": 0.012,
+        "middle": 0.009,
+        "late": 0.006
       }
     },
     "training": {
@@ -511,12 +514,12 @@
     "no_skip_test": {
       "start": "function noSkipTestDirection(",
       "end": "function prepareCalibrationTicket(",
-      "sha256": "227f303c7ec500f38018a52ef2bfa5e9b5938c4ea4b507bfb01de7b94e6a323c"
+      "sha256": "924ff5c6df6f1b9b462458705b86db0f8cbac6b6ff737cdb0455e9bd6fbc7c07"
     },
     "render": {
       "start": "function renderPrediction(",
       "end": "function installUI(",
-      "sha256": "849561bcad88a719a573c5f585be0aa618d36ea172215778277baa8c33018159"
+      "sha256": "84f0517556fac903ed03bfe156d0bd2a9019b76c4c6d8ec16589f8591736ec39"
     },
     "clip": {
       "start": "function applyProbabilityBounds(",
