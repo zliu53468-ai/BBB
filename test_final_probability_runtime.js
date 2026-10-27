@@ -104,8 +104,8 @@ require("./final_probability_runtime.js");
     if(training.runtime_role!=="auxiliary_candidate_filter_no_flip")throw new Error("generated XGB runtime role metadata missing");
     if(training.primary_predictor!=="direct_physics_physical_ev")throw new Error("generated primary predictor metadata missing");
     if((+training.physics_primary_version||0)<13)throw new Error("Physics Primary V13 metadata missing");
-    // Older trained bundles predate the stateless runtime Particle500 wrapper.
-    if(JSON.stringify(training.execution_order.filter(x=>x!=="particle_filter"))!==JSON.stringify(expectedOrder.filter(x=>x!=="particle_filter")))throw new Error("generated execution-order metadata mismatch");
+    // Trained bundles predate runtime-only Particle500/Markov wrappers; weights stay frozen.
+    if(JSON.stringify(training.execution_order.filter(x=>x!=="particle_filter"))!==JSON.stringify(expectedOrder.filter(x=>x!=="particle_filter"&&x!=="markov_prior")))throw new Error("generated execution-order metadata mismatch");
   }
 
   api.registerPrediction(history,out);
