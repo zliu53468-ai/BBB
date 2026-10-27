@@ -450,6 +450,27 @@
       "late": 0.005
     }
   },
+  "first_layer_smoothing": {
+    "schema_version": 1,
+    "enabled": true,
+    "alpha": {
+      "early": 0.48,
+      "middle": 0.58,
+      "late": 0.65
+    },
+    "max_alpha": 0.7,
+    "min_gap": {
+      "early": 0.012,
+      "middle": 0.008,
+      "late": 0.005
+    },
+    "noise_high": 0.7,
+    "noise_low": 0.45,
+    "quality_low": 0.45,
+    "quality_high": 0.75,
+    "uncertainty_high": 0.7,
+    "uncertainty_low": 0.45
+  },
   "first_layer_ev": {
     "schema_version": 1,
     "enabled": true
