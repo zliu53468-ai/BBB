@@ -77,3 +77,9 @@ fixture同時鎖定Clip、決策EMA、決策門檻、Volume Guard、結算、顯
 設first_layer_smoothing.enabled=false並重新載入即可回復修改前未平滑首層的完整方向與數值，包括目前PR #66既有effectiveGap篩選；不會順便撤銷PR #66。停用時不讀寫此EMA狀態，也不改變後段校準識別。已記錄的實際牌局與下注不倒轉。
 
 完整回滾可revert本次merge commit。模型、PF500與抽樣／混合、佣金、和局、後段EMA／Clip／Macro／最終EV／Guard參數、2pp、不觀望按鈕、授權及30分鐘設定均保留。沒有重訓或替換權重，也沒有實戰收益改善主張。
+
+## 逐局回放補充
+
+回放工具也會在結果公布後提交首層ticket，包含未列入下注統計的第一局預測狀態：node tools/top_parameters/replay.js . complete-hands.json report.json。若需同時模擬既有本機校準學習，可加--local-calibration；這是工具旗標，不修改正式校準設定。
+
+固定4靴、274筆合成回放，raw方向翻轉123次、smoothed39次；首層狀態非每筆重新初始化，alpha最大0.65。與關閉首層平滑相比，最終機率與EV差均為0，只有1筆動作不同，下注80→81。該差異屬首層一致性改變的允許路徑，並非放寬EV或其他出手門檻。這不是獨立實戰hold-out，不能宣稱勝率或收益提升。詳見validation/first_layer_smoothing_smoke.json。

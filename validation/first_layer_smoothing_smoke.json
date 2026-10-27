@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "data_kind": "synthetic_mechanics_only_seed_20261026",
+  "production_accuracy_claim": false,
+  "rows": 274,
+  "raw_direction_flips": 123,
+  "smoothed_direction_flips": 39,
+  "initialized_eligible_rows": 0,
+  "max_alpha_effective": 0.65,
+  "max_final_probability_delta": 0.0,
+  "max_final_ev_delta": 0.0,
+  "changed_actions": 1,
+  "baseline_bets": 80,
+  "smoothed_bets": 81,
+  "local_calibration_learning": false,
+  "notes": "Causal replay includes the first forecast state; no first-layer values enter final probabilities. Changed actions can change later Volume Guard history. Not production performance evidence."
+}
