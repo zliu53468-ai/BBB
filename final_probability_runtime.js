@@ -1134,7 +1134,6 @@ function renderPrediction(p,n){
   if(el("roundCount"))el("roundCount").textContent=n;
   if(el("message"))el("message").textContent="第 "+(n+1)+" 局分析完成"+(ready?(f.weak_signal?"；莊閒接近五五波":"；莊閒百分比已排除和局，和局另列")+(f.uncertainty>=.85?"；模型不確定性偏高":""):"");
   if(!noSkipTestActive&&ready&&shownDirection==="Skip"&&el("message"))el("message").textContent+="；機率差未達 "+((displayGapOverride??cardcountProfile.display_gap)*100).toFixed(1)+" 個百分點，方向觀望";
-  if(!noSkipTestActive&&ready&&el("message")){const d=p.direction_bias_audit;if(d?.ev_comparison?.both_negative)el("message").textContent+="；EV兩邊皆非正：僅顯示較佳傾向，不代表值得下注";if(d?.pf_flip_blocked)el("message").textContent+="；PF方向修正受保護條件限制";}
   if(noSkipTestActive&&el("message"))el("message").textContent=ready?"不觀望測試：每次報結果後自動更新下一局；不列入正式下注"+(f.selection_method==="post_draw_ev_argmax_v1"?(Math.abs(f.banker_ev-f.player_ev)<=directionSelectionPolicy().ev_tie_tolerance?"；EV相同時以莊作測試方向":"；依EV較高方顯示，不代表EV為正"):(f.directional.B===f.directional.P?"；五五波固定以莊作測試方向，無機率優勢":"")):"不觀望測試：模型未就緒，暫無測試方向";
 }
 function installUI(){
