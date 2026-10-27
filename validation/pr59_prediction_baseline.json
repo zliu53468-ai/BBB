@@ -257,7 +257,7 @@
       },
       "low_uncertainty_gain": 0.18,
       "actionability_gain": 0.08,
-      "pattern_gain": 0.0,
+      "pattern_gain": 0,
       "weight_cap": 1.5,
       "xgb_candidates": [
         {
@@ -336,7 +336,7 @@
       "prior_strength": 100,
       "max_delta": 0.005,
       "validation_window": 32,
-      "min_brier_gain": 5e-05,
+      "min_brier_gain": 0.00005,
       "noise_start": 0.55,
       "noise_stop": 0.85,
       "stage_anchors": {
@@ -434,8 +434,8 @@
     }
   },
   "ui_sha256": {
-    "index.html": "56282f3b2a4087f0cbf2b246c10b7e8ad346bb3d2b7577bd17d57d6fac60c67b",
-    "styles.css": "a8b3196780479ee462008e8a0c20b6d3f4378e65ad716f98552e5baf65b3f34b"
+    "index.html": "4ce05bc946cbd449e0f9aef55cef0ccae79f11017c77745d141472c379c94b3a",
+    "styles.css": "418b10384a1ad827cb1860683051a47ddd59609d3f38bfc033ab3fd2375b6f2d"
   },
   "smoothing_source_sha256": "0e16dc4e5f1e830c8c1d73eff1fbadc695ac8c6b9530b3ae74879fd07608fb52"
 }

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
   <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
-  <link rel="stylesheet" href="styles.css?v=20261027-compact-point-v1">
+  <link rel="stylesheet" href="styles.css?v=20261027-auto-points-v2">
 
 </head>
 <body>
@@ -66,13 +66,10 @@
     </section>
 
     <section class="card controls-card">
-      <div class="bbb-results-block" aria-label="本局結果輸入">
+      <div class="bbb-results-block" aria-label="每局結果輸入">
         <div class="bbb-input-head">
-          <strong>記錄本局</strong>
-          <div class="bbb-mode-tabs" role="group" aria-label="紀錄輸入模式">
-            <button type="button" id="modeResults" class="is-active" aria-pressed="true">莊閒和</button>
-            <button type="button" id="modePoints" aria-pressed="false">輸入點數</button>
-          </div>
+          <strong id="entryStageTitle">① 補齊進場前牌路</strong>
+          <small id="entryStageNote">先輸入過往莊／閒／和，再按開始分析</small>
         </div>
         <div id="resultModePanel" class="bbb-mode-panel">
           <div class="result-buttons">
@@ -83,8 +80,8 @@
         </div>
         <div id="pointModePanel" class="bbb-mode-panel" hidden>
           <div class="bbb-points-row">
-            <label for="macroBankerScore">莊點數
-              <select id="macroBankerScore" aria-label="莊家最終點數"><option value="">選擇</option>
+            <label for="macroBankerScore">莊家點數
+              <select id="macroBankerScore" aria-label="本局莊家最終點數"><option value="">莊：選擇</option>
                 <option value="0">0 點</option>
                 <option value="1">1 點</option>
                 <option value="2">2 點</option>
@@ -97,8 +94,8 @@
                 <option value="9">9 點</option>
               </select>
             </label>
-            <label for="macroPlayerScore">閒點數
-              <select id="macroPlayerScore" aria-label="閒家最終點數"><option value="">選擇</option>
+            <label for="macroPlayerScore">閒家點數
+              <select id="macroPlayerScore" aria-label="本局閒家最終點數"><option value="">閒：選擇</option>
                 <option value="0">0 點</option>
                 <option value="1">1 點</option>
                 <option value="2">2 點</option>
@@ -111,9 +108,8 @@
                 <option value="9">9 點</option>
               </select>
             </label>
-            <button id="btnRecordPoints" class="bbb-points-submit" type="button">記錄</button>
           </div>
-          <div class="bbb-point-hint" id="pointResultPreview" role="status" aria-live="polite">選擇莊、閒最終點數，自動判定勝方。</div>
+          <div class="bbb-point-hint" id="pointResultPreview" role="status" aria-live="polite">每局選完雙方點數，立即自動記錄並分析下一局；不需要再按任何結果鍵。</div>
         </div>
       </div>
       <p id="localCalibrationStatus" role="status" aria-live="polite">本機校準：等待模型就緒</p>
@@ -143,7 +139,7 @@
   </main>
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
-  <script src="auth-client.js?v=20261023-middle-late-v2"></script>
+  <script src="auth-client.js?v=20261027-auto-point-flow-v2"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
