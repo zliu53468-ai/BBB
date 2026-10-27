@@ -1,6 +1,7 @@
 "use strict";
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),M=require('./browser_calibration.js');
 const profile=JSON.parse(fs.readFileSync('cardcount_profile.json','utf8'));
+delete profile.winrate_priority_v1; // Exercise the original version-specific regression fixture.
 const config={...profile.local_calibration,stage_anchors:{}};
 const memory=()=>{const m=new Map();return {getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}};
 const forecast=()=>({available:true,directional:{B:.55,P:.45},probabilities:{B:.495,P:.405,T:.1},uncertainty:.2,calibration_bounds:{low:.4,high:.6}});
