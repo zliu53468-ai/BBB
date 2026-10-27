@@ -1,7 +1,6 @@
 "use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm"),crypto=require("node:crypto");
 const profile=JSON.parse(fs.readFileSync("cardcount_profile.json","utf8"));
-delete profile.winrate_priority_v1; // Retain this historical policy fixture.
 async function make(legacy=false,commission=.05,gap=.02){
  const store=new Map([["bgs_xgb_final_shoe_id_v5","ev-direction-test"]]),nodes=new Map();
  const config={...profile,selective_entry_v2:{...profile.selective_entry_v2,enabled:false},first_layer_smoothing:{...profile.first_layer_smoothing,enabled:false},display_gap:gap,settlement:{...profile.settlement,banker_commission:commission},direction_selection:{schema_version:1,mode:legacy?"physics_candidate_v1":"post_draw_ev_argmax_v1",ev_tie_tolerance:1e-12}};

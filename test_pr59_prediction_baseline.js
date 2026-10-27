@@ -1,7 +1,6 @@
 "use strict";
 const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:assert/strict');
 const baseline=require('./validation/pr59_prediction_baseline.json'),current=require('./cardcount_profile.json');
-delete current.winrate_priority_v1; // Retain this historical policy fixture.
 const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const source=fs.readFileSync('final_probability_runtime.js','utf8').replace(/\r\n/g,'\n'),smoothing=source.slice(source.indexOf('function dynamicEmaAlpha('),source.indexOf('function dynamicBand('));
 assert.equal(crypto.createHash('sha256').update(smoothing).digest('hex'),baseline.smoothing_source_sha256,'PR59 smoothing must remain identical');

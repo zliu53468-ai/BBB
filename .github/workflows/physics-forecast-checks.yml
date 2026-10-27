@@ -13,8 +13,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -33,7 +31,6 @@ jobs:
       - run: node test_post_draw_ev.js
       - run: node test_pf_per_hand_update.js
       - run: node test_first_layer_smoothing.js
-      - run: node test_winrate_priority_v1.js
       - run: node test_selective_entry_v2.js
       - run: node test_first_layer_ev.js
       - run: node test_prequential_ev.js
