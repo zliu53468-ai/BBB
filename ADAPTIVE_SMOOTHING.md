@@ -1,3 +1,5 @@
+> 歷史方案：2026-10-27 已依使用者要求退回 PR #59，不再啟用本文件的自適應平滑。現況見 PR59_PF_ONLY.md。
+
 # 僅平滑改善｜clean_signal_responsive_v1
 
 日期：2026-10-26。此版只調整決策 EMA，未重訓、未替換模型。版本 PHYSICS_57D_V14_8_EV_LED_DIRECTION_SMOOTH1。

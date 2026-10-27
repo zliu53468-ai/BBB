@@ -425,21 +425,6 @@
     "player_commission": 0,
     "tie_settlement": "push"
   },
-  "adaptive_smoothing": {
-    "schema_version": 1,
-    "profile": "clean_signal_responsive_v1",
-    "enabled": true,
-    "start_round": 21,
-    "full_round": 46,
-    "edge_start": 0.015,
-    "edge_full": 0.04,
-    "noise_low": 0.45,
-    "noise_high": 0.7,
-    "uncertainty_low": 0.45,
-    "uncertainty_high": 0.75,
-    "max_alpha_boost": 0.1,
-    "max_alpha": 0.84
-  },
   "direction_selection": {
     "schema_version": 1,
     "mode": "post_draw_ev_argmax_v1",
