@@ -87,6 +87,8 @@ def run_stage3(data,reports="research/reports",seed=SEED,max_shoes=100):
         return
     from .run import chunks
     from scipy.stats import pearsonr
+    from .reference import PhysicsReference
+    reference=PhysicsReference()
     # 小型 deterministic pilot 先做 500/2000/10000 收斂比較。
     # max_shoes 與粒子數為研究運算預算，未執行滿量不得宣稱所有資料已驗證。
     grouped={}
@@ -96,29 +98,39 @@ def run_stage3(data,reports="research/reports",seed=SEED,max_shoes=100):
             if split(sid,seed)!=2:
                 continue
             d=grouped.setdefault(int(sid),[])
-            d.append((int(part["round"][i]),int(part["y"][i]),part["p"][i]))
+            d.append((int(part["round"][i]),int(part["y"][i]),part["p"][i],part["x"][i]))
             if len(grouped)>max_shoes*4:break
         if len(grouped)>max_shoes*4:break
     shoe_ids=sorted(grouped)[:max_shoes]
     summary={"seed":seed,"pilot_test_shoes":len(shoe_ids),
              "particle_results":{},"status":"PILOT_ONLY"}
     for count in (500,2000,10000):
-        preds=[];truth=[];actual=[];all_ess=[];used=[]
+        preds=[];truth=[];actual=[];all_ess=[];used=[];base_preds=[];blended=[]
         for sid in shoe_ids:
             pf=CompositionPF(count,seed+sid)
-            for position,label,exact in sorted(grouped[sid]):
+            for position,label,exact,x in sorted(grouped[sid]):
                 pred=pf.forecast()
-                preds.append(pred);truth.append(exact);actual.append(label);used.append(sid)
+                direct=reference.predict_proba(np.asarray([x]))[0]
+                preds.append(pred);base_preds.append(direct);blended.append(.90*direct+.10*pred)
+                truth.append(exact);actual.append(label);used.append(sid)
                 pf.observe("BPT"[label])
             all_ess.extend(pf.ess_history)
         if not actual:continue
         y=np.asarray(actual,dtype=np.int8);p=np.asarray(preds)
         ground=np.asarray(truth);ids=np.asarray(used)
+        direct_p=np.asarray(base_preds);blend_p=np.asarray(blended)
         # 防止 test 偷選阈值：只以機率 log loss、全時段永遠莊 vs PF 作無調參比較。
         direction=np.where(.95*p[:,0]-p[:,1]>p[:,1]-p[:,0],0,1).astype(np.int8)
         rows=shoe_rows(ids,y,p,direction)
         coef=pearsonr(p[:,0],ground[:,0]).statistic if np.std(p[:,0])>0 and np.std(ground[:,0])>0 else None
+        no_dir=np.argmax(np.column_stack((.95*direct_p[:,0]-direct_p[:,1],direct_p[:,1]-direct_p[:,0])),axis=1)
+        yes_dir=np.argmax(np.column_stack((.95*blend_p[:,0]-blend_p[:,1],blend_p[:,1]-blend_p[:,0])),axis=1)
+        no_rows=shoe_rows(ids,y,direct_p,no_dir)
+        yes_rows=shoe_rows(ids,y,blend_p,yes_dir)
         summary["particle_results"][str(count)]={
+           "ablation_pf_off":{**metrics(y,direct_p),**pooled(no_rows)},
+           "ablation_pf_on_blend_10pct":{**metrics(y,blend_p),**pooled(yes_rows)},
+           "log_loss_delta_on_minus_off":metrics(y,blend_p)["log_loss"]-metrics(y,direct_p)["log_loss"],
            **metrics(y,p),
            "mae_pB":float(np.abs(p[:,0]-ground[:,0]).mean()),
            "pearson_pB":float(coef) if coef is not None else None,
