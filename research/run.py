@@ -33,18 +33,22 @@ def generate(args):
         path=out/f"shoe_{start:09d}_{stop:09d}.npz"
         if path.exists():
             raise FileExistsError(f"不能靜默覆蓋既有實驗：{path}")
-        rows=[];yy=[];pp=[];aux=[];ids=[];rounds=[]
+        rows=[];yy=[];pp=[];aux=[];ids=[];rounds=[];point_probs=[];point_means=[]
         for sid in range(start,stop):
             for hand in simulate_shoe(sid,args.seed,cut_from_end=args.cut):
                 rows.append(vector(hand["history"]))
                 yy.append(OUT.index(hand["outcome"]))
                 gt=hand["ground_truth"]
                 pp.append(gt[:3]);aux.append(gt[3:])
+                point_probs.append(hand["remaining_point_probs"])
+                point_means.append(hand["expected_next_point"])
                 ids.append(sid);rounds.append(hand["round"])
         np.savez_compressed(path,x=np.asarray(rows,dtype=np.float32),
             y=np.asarray(yy,dtype=np.uint8),p=np.asarray(pp,dtype=np.float32),
             aux=np.asarray(aux,dtype=np.float32),shoe=np.asarray(ids,dtype=np.int32),
-            round=np.asarray(rounds,dtype=np.int16))
+            round=np.asarray(rounds,dtype=np.int16),
+            point_probs=np.asarray(point_probs,dtype=np.float32),
+            point_means=np.asarray(point_means,dtype=np.float32))
         print(f"{path.name}: {len(yy)} 局 / {stop-start} 靴",flush=True)
 
 def chunks(data):
@@ -53,7 +57,7 @@ def chunks(data):
         raise FileNotFoundError(f"{data} 找不到模擬分片，先執行 generate")
     for path in paths:
         with np.load(path) as z:
-            yield {k:z[k] for k in ("x","y","p","aux","shoe","round")}
+            yield {k:z[k] for k in ("x","y","p","aux","shoe","round","point_probs","point_means")}
 
 def collect_train_valid(data,seed,max_train=300000,max_valid=80000):
     # 第一趟統計靴分組筆數，第二趟按固定機率抽樣，避免載入千萬局造成 OOM。
