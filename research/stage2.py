@@ -9,15 +9,16 @@ from .run import QUANTILES, chunks, split, metrics, scores, decisions, returns, 
 def _sample(data,seed,group,rate=.025):
     # 從整靴分組內按固定種子抽取局；標籤只來自該局開始前的真實牌組。
     rng=np.random.default_rng(seed+group)
-    xs=[];ys=[];ps=[];aux=[]
+    xs=[];ys=[];ps=[];aux=[];point_probs=[];point_means=[]
     for d in chunks(data):
         use=np.asarray([split(i,seed)==group for i in d["shoe"]])
         use &= rng.random(len(use))<rate
         if use.any():
             xs.append(d["x"][use]);ys.append(d["y"][use])
             ps.append(d["p"][use]);aux.append(d["aux"][use])
+            point_probs.append(d["point_probs"][use]);point_means.append(d["point_means"][use])
     if not xs:raise ValueError("階段二訓練/驗證靴樣本不足")
-    return [np.concatenate(a) for a in (xs,ys,ps,aux)]
+    return [np.concatenate(a) for a in (xs,ys,ps,aux,point_probs,point_means)]
 
 def _train(samples,seed,soft):
     import torch
@@ -27,12 +28,14 @@ def _train(samples,seed,soft):
     net=nn.Sequential(nn.Linear(213,64),nn.ReLU(),
                       nn.Linear(64,32),nn.ReLU(),nn.Linear(32,48))
     opt=torch.optim.Adam(net.parameters(),lr=.001,weight_decay=.0001)
-    x,y,p,aux=samples
+    x,y,p,aux,point_probs,point_means=samples
     batch=2048
     xx=torch.from_numpy(x).float()
     yy=torch.from_numpy(y.astype(np.int64))
     pp=torch.from_numpy(p).float()
     aa=torch.from_numpy(aux).float()
+    vv=torch.from_numpy(point_probs).float()
+    mm=torch.from_numpy(point_means).float()
     for epoch in range(25):
         # 固定亂數 shuffle，只從訓練組取樣
         order=torch.randperm(len(y),generator=torch.Generator().manual_seed(seed+epoch))
@@ -47,7 +50,10 @@ def _train(samples,seed,soft):
                           (slice(3,13),slice(3,13)),
                           (slice(13,23),slice(13,23))):
                 aux_loss+=-(aa[ix,gt]*torch.log_softmax(z[:,sl],dim=1)).sum(dim=1).mean()
-            opt.zero_grad();(main+.2*aux_loss).backward();opt.step()
+            # 26..35: research-only 十點數類別輔助 head；不宣稱是正式 rank ABI。
+            point_loss=-(vv[ix]*torch.log_softmax(z[:,26:36],dim=1)).sum(dim=1).mean()
+            mean_loss=((torch.sigmoid(z[:,47])*9-mm[ix])**2).mean()
+            opt.zero_grad();(main+.2*aux_loss+.1*point_loss+.01*mean_loss).backward();opt.step()
     net.eval()
     return net
 
