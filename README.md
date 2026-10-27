@@ -2,6 +2,8 @@
 
 > 最新：所有開通成功的瀏覽器自動逐局累積本機校準，資料留在各瀏覽器；這不是完整模型重訓。詳見 [BROWSER_LOCAL_CALIBRATION.md](BROWSER_LOCAL_CALIBRATION.md)。
 
+> 2026-10-27：新增閒／莊最終點數輸入與十類點數條件粒子後驗；B/P/T 模式仍可切回，瀏覽器只做逐局後驗更新，不重訓模型。詳見 [POINT_CONDITIONED_PF.md](POINT_CONDITIONED_PF.md)。
+
 > 最新：新增分段平滑、PF 同向品質閘門、2 個百分點適中觀望與激進重訓候選。詳見 [CARDCOUNT_MODERATE_PROFILE.md](CARDCOUNT_MODERATE_PROFILE.md)。正式模型權重未更換。
 
 > 最新：PF500 已回復，每次分析獨立重建 500 粒子；保留觀望切換。見 [PF500_RESTORED.md](PF500_RESTORED.md)。

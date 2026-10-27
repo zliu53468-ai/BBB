@@ -69,9 +69,14 @@
       <div class="bbb-results-block" aria-label="每局結果輸入">
         <div class="bbb-input-head">
           <strong id="entryStageTitle">① 補齊進場前牌路</strong>
-          <small id="entryStageNote">先輸入過往莊／閒／和，再按開始分析</small>
+          <small id="entryStageNote">可貼上過往路單；新靴可直接輸入第一局閒／莊點數</small>
         </div>
-        <div id="resultModePanel" class="bbb-mode-panel">
+        <div id="historySeedPanel" class="bbb-mode-panel">
+          <label class="bbb-history-label" for="historySeed">進場前過往牌路（可貼上 B/P/T，例如：BPPBT）</label>
+          <textarea id="historySeed" rows="2" maxlength="500" placeholder="BPPBT...；新靴可留空並直接開始"></textarea>
+          <small class="bbb-history-note">舊牌局只有 B/P/T 時可貼入路單；新靴可直接以閒／莊點數輸入第一局。</small>
+        </div>
+        <div id="resultModePanel" class="bbb-mode-panel" hidden>
           <div class="result-buttons">
             <button class="result-btn banker" id="btnB" type="button"><strong>莊</strong><small>BANKER</small></button>
             <button class="result-btn player" id="btnP" type="button"><strong>閒</strong><small>PLAYER</small></button>
@@ -80,66 +85,4 @@
         </div>
         <div id="pointModePanel" class="bbb-mode-panel" hidden>
           <div class="bbb-points-row">
-            <label for="macroBankerScore">莊家點數
-              <select id="macroBankerScore" aria-label="本局莊家最終點數"><option value="">莊：選擇</option>
-                <option value="0">0 點</option>
-                <option value="1">1 點</option>
-                <option value="2">2 點</option>
-                <option value="3">3 點</option>
-                <option value="4">4 點</option>
-                <option value="5">5 點</option>
-                <option value="6">6 點</option>
-                <option value="7">7 點</option>
-                <option value="8">8 點</option>
-                <option value="9">9 點</option>
-              </select>
-            </label>
-            <label for="macroPlayerScore">閒家點數
-              <select id="macroPlayerScore" aria-label="本局閒家最終點數"><option value="">閒：選擇</option>
-                <option value="0">0 點</option>
-                <option value="1">1 點</option>
-                <option value="2">2 點</option>
-                <option value="3">3 點</option>
-                <option value="4">4 點</option>
-                <option value="5">5 點</option>
-                <option value="6">6 點</option>
-                <option value="7">7 點</option>
-                <option value="8">8 點</option>
-                <option value="9">9 點</option>
-              </select>
-            </label>
-          </div>
-          <div class="bbb-point-hint" id="pointResultPreview" role="status" aria-live="polite">每局選完雙方點數，立即自動記錄並分析下一局；不需要再按任何結果鍵。</div>
-        </div>
-      </div>
-      <p id="localCalibrationStatus" role="status" aria-live="polite">本機校準：等待模型就緒</p>
-      <label for="forecastGap">一般方向門檻（莊閒機率差）</label>
-      <select id="forecastGap" aria-label="一般方向機率差距門檻" disabled>
-        <option value="0" disabled>舊版顯示（未啟用分段設定）</option>
-        <option value="0.01">1 個百分點（50.5%／49.5%）</option>
-        <option value="0.02" selected>2 個百分點（51%／49%）</option>
-        <option value="0.03">3 個百分點（51.5%／48.5%）</option>
-      </select>
-      <div class="action-buttons">
-        <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
-        <button class="action-btn" id="btnNoSkipTest" type="button" aria-pressed="false">全程不觀望測試</button>
-        <button class="action-btn" id="btnBack" type="button">返回上一局</button>
-        <button class="action-btn danger" id="btnEnd" type="button">結束分析</button>
-      </div>
-      <details class="bbb-clear-details"><summary>結束分析與資料清除說明</summary><div class="clear-note">結束分析會清空此開通碼的牌路、分析快照與歷史觀測；會員裝置授權仍會保留。未連線裝置將在下次驗證時同步清空。</div></details>
-    </section>
-
-    <section class="card history-card">
-      <div class="card-title"><span>本靴紀錄</span><small>依輸入順序排列</small></div>
-      <div class="history-track" id="historyTrack"><div class="empty-history">尚未輸入牌局</div></div>
-      <div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div>
-    </section>
-
-    <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
-  </main>
-
-  <script src="auth-config.js?v=20261011-prod-gateway"></script>
-  <script src="auth-client.js?v=20261027-auto-point-flow-v2"></script>
-</body>
-</html>
-<!-- deploy: Physics Primary V13 model bundle 226130f -->
+            <label

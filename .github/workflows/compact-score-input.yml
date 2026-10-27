@@ -7,7 +7,12 @@ on:
       - "styles.css"
       - "auth-client.js"
       - "point_input_mode.js"
+      - "particle_filter_runtime.js"
+      - "final_probability_runtime.js"
+      - "cardcount_profile.json"
       - "test_compact_point_input.js"
+      - "test_pf_points_update.js"
+      - "test_point_conditioned_runtime.js"
       - ".github/workflows/compact-score-input.yml"
   push:
     branches: [main]
@@ -16,7 +21,12 @@ on:
       - "styles.css"
       - "auth-client.js"
       - "point_input_mode.js"
+      - "particle_filter_runtime.js"
+      - "final_probability_runtime.js"
+      - "cardcount_profile.json"
       - "test_compact_point_input.js"
+      - "test_pf_points_update.js"
+      - "test_point_conditioned_runtime.js"
       - ".github/workflows/compact-score-input.yml"
 permissions:
   contents: read
@@ -33,3 +43,5 @@ jobs:
       - run: node test_compact_point_input.js
       - run: node test_bbb_button_only.js
       - run: node test_pf_per_hand_update.js
+      - run: node --check particle_filter_runtime.js && node test_pf_points_update.js
+      - run: node test_point_conditioned_runtime.js

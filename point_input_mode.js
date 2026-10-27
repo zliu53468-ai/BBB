@@ -1,17 +1,19 @@
-/* History-first, then automatic score input; loaded only after verified license.
- * Authoritative Frozen Core button clicks are preserved (including settlement,
- * macro point telemetry and per-hand smoothing) and never replaced.
- * This UI deliberately does not alter Physics/PF weights or formal bet policy.
+/*
+ * Point-first input. Historical B/P/T results may be pasted as a seed, while
+ * each new hand is recorded from final scores. The old B/P/T buttons remain a
+ * one-click compatibility mode and are disabled as the default input path.
  */
 (() => {
 "use strict";
 const PHASE_KEY="bgs_score_entry_phase_v2";
+const INPUT_MODE_KEY="bgs_score_input_mode_v1";
 const HISTORY_KEY="bgs256d_frozen_6x15_forward_v18";
 const el=id=>document.getElementById(id);
-const resultPanel=el("resultModePanel"),pointPanel=el("pointModePanel");
+const resultPanel=el("resultModePanel"),pointPanel=el("pointModePanel"),historyPanel=el("historySeedPanel");
 const stageTitle=el("entryStageTitle"),stageNote=el("entryStageNote");
-const banker=el("macroBankerScore"),player=el("macroPlayerScore");
-const preview=el("pointResultPreview"),start=el("btnStart");
+const banker=el("macroBankerScore"),player=el("macroPlayerScore"),cardCount=el("macroCardCount");
+const preview=el("pointResultPreview"),start=el("btnStart"),historySeed=el("historySeed");
+const compatibilityToggle=el("compatModeToggle"),compatibilityHint=el("compatModeHint");
 if(!resultPanel||!pointPanel||!banker||!player||!preview||!start)return;
 const parseScore=value=>/^[0-9]$/.test(String(value))?Number(value):null;
 const deriveOutcome=(b,p)=>{
@@ -25,109 +27,61 @@ const readHistory=()=>{
     return Array.isArray(saved?.history)?saved.history.filter(x=>["B","P","T"].includes(x)):[];
   }catch(_){return[];}
 };
-const clear=()=>{banker.value="";player.value="";};
+const clear=()=>{banker.value="";player.value="";if(cardCount)cardCount.value="";};
 const note=(text,error=false)=>{
   preview.textContent=text;
   preview.classList.toggle("is-error",!!error);
 };
-let phase="history",submitting=false;
-const savePhase=()=>{
-  // Managed bgs* key remains isolated by the existing licensed IndexedDB adapter.
-  try{localStorage.setItem(PHASE_KEY,phase);}catch(_){}
-};
+let phase="history",inputMode="points",submitting=false,inputModeStored=false,pointInputEnabled=true;
+try{const savedMode=localStorage.getItem(INPUT_MODE_KEY);inputModeStored=savedMode!==null;inputMode=savedMode==="compatibility"?"compatibility":"points";}catch(_){}
+const savePhase=()=>{try{localStorage.setItem(PHASE_KEY,phase);}catch(_){}};
+const saveInputMode=()=>{try{localStorage.setItem(INPUT_MODE_KEY,inputMode);}catch(_){}};
 function paint(){
-  const started=phase==="points";
-  resultPanel.hidden=started;
-  pointPanel.hidden=!started;
-  if(stageTitle)stageTitle.textContent=started?"② 開獎點數自動紀錄":"① 補齊進場前牌路";
-  if(stageNote)stageNote.textContent=started?"第 "+(readHistory().length+1)+" 局：選莊、閒點數":"輸入過往莊／閒／和後，按開始分析";
-  start.textContent=started?"重新分析（選用）":"開始分析";
+  const started=phase==="points",compatible=inputMode==="compatibility";
+  if(historyPanel)historyPanel.hidden=started;
+  resultPanel.hidden=!compatible;
+  pointPanel.hidden=!started||compatible;
+  if(stageTitle)stageTitle.textContent=started?(compatible?"② B/P/T 相容輸入":"② 開牌點數自動紀錄"):"① 載入舊牌路或直接開始";
+  if(stageNote)stageNote.textContent=started
+    ?"第 "+(readHistory().length+1)+" 局："+(compatible?"按莊／閒／和記錄":"先選張數（可略過），再選莊、閒點數")
+    :"可貼上過往 B/P/T 路單；新靴可直接輸入第一局點數";
+  if(compatibilityToggle){
+    compatibilityToggle.disabled=!pointInputEnabled;
+    compatibilityToggle.textContent=!pointInputEnabled?"點數輸入已由設定停用":compatible?"切回閒／莊點數輸入":"開啟 B/P/T 相容模式";
+    compatibilityToggle.setAttribute("aria-pressed",String(compatible));
+  }
+  if(compatibilityHint)compatibilityHint.textContent=!pointInputEnabled
+    ?"點數輸入已由設定停用，目前使用 B/P/T 相容模式。"
+    :compatible
+    ?"目前為相容模式，使用舊 B/P/T 粒子更新；點此可切回點數條件後驗。"
+    :"建議使用點數輸入以啟用準算牌；舊 B/P/T 按鈕模式預設關閉。";
 }
 function setPhase(next){
   phase=next==="points"?"points":"history";
   if(phase==="history")clear();
   savePhase();paint();
-  if(phase==="points")note("選好莊、閒最終點數就會自動記錄；可按「返回上一局」更正。");
+  if(phase==="points"&&inputMode==="points")note("選填總張數請先選，再輸入閒、莊最終點數；兩邊完成後會自動記錄並分析下一局。");
+}
+function importHistory(value){
+  const compact=String(value||"").trim().toUpperCase().replace(/[\s,，;；、|/]+/g,"");
+  if(!compact)return {ok:false,reason:"請貼上過往 B/P/T 路單，或用相容模式輸入。"};
+  if(compact.length>500)return {ok:false,reason:"一次最多載入 500 局。"};
+  if(!/^[BPT]+$/.test(compact))return {ok:false,reason:"路單只能包含 B、P、T；可用逗號或空格分隔。"};
+  const before=readHistory();
+  for(const outcome of compact){
+    const button=el("btn"+outcome);
+    if(!button||typeof button.click!=="function")return {ok:false,reason:"結果按鈕尚未就緒，請重新整理後再試。"};
+    button.click();
+  }
+  const after=readHistory(),expected=[...before,...compact];
+  if(after.length!==expected.length||!expected.every((value,i)=>after[i]===value))
+    return {ok:false,reason:"牌路沒有完整寫入，請檢查本機紀錄後再試。"};
+  if(historySeed)historySeed.value="";
+  return {ok:true,count:compact.length,total:after.length};
 }
 function recordPointHand(){
-  if(phase!=="points"||submitting)return false;
+  if(phase!=="points"||inputMode!=="points"||submitting)return false;
   const outcome=deriveOutcome(banker.value,player.value);
-  if(outcome===null)return false; // first selected field alone never commits
-  const resultButton=el("btn"+outcome);
-  if(!resultButton||typeof resultButton.click!=="function"){
-    note("原本結果按鈕未就緒，沒有記錄。",true);return false;
-  }
-  submitting=true;
-  try{
-    const before=readHistory();
-    // Reuse the existing click path: settle previous prediction -> Frozen Core
-    // B/P/T history write -> macro scores/first-layer journal update.
-    let clickError=null;
-    try{resultButton.click();}catch(error){clickError=error;}
-    const after=readHistory();
-    if(after.length!==before.length+1||after.at(-1)!==outcome||
-       !before.every((value,i)=>value===after[i])){
-      note("本局未確認寫入成功，請檢查上方提示；請勿重複輸入。",true);
-      return false;
-    }
-    clear();
-    paint();
-    const success="已自動記錄第 "+after.length+" 局："+(outcome==="B"?"莊勝":outcome==="P"?"閒勝":"和局");
-    if(clickError){note(success+"；附加處理異常，請確認紀錄。",true);return true;}
-    note(success+"；正在分析下一局。");
-    // This is the existing authorized start handler, not a new betting path.
-    // Never report a committed hand as failed if the next forecast errors.
-    try{start.click();}catch(_){note(success+"；下一局分析未完成，請按重新分析。",true);}
-    return true;
-  }catch(error){
-    note("自動紀錄失敗，請檢查歷史紀錄與上方提示。",true);
-    return false;
-  }finally{submitting=false;}
-}
-function maybeCommit(){
-  if(phase!=="points"||submitting)return;
-  if(deriveOutcome(banker.value,player.value)===null){
-    note("請選擇另一方點數；兩邊都有數字才會自動記錄。");
-    return;
-  }
-  recordPointHand();
-}
-start.addEventListener("click",()=>{
-  // The normal Start handler has already run (script loads last). No history
-  // means neither the model nor the phase is allowed to advance.
-  if(readHistory().length===0){paint();return;}
-  if(phase==="history"){clear();setPhase("points");}
-  else paint();
-});
-banker.addEventListener("change",maybeCommit);
-player.addEventListener("change",maybeCommit);
-const back=el("btnBack");if(back)back.addEventListener("click",()=>{
-  clear();
-  if(phase==="points"&&readHistory().length===0)setPhase("history");
-  paint();
-  if(phase==="points")note("已返回上一局；請重新輸入本局雙方點數。");
-});
-const end=el("btnEnd");if(end)end.addEventListener("click",()=>{
-  clear();phase="history";
-  try{localStorage.removeItem(PHASE_KEY);}catch(_){}
-  paint();
-});
-let stored="history";
-try{stored=localStorage.getItem(PHASE_KEY)||"history";}catch(_){}
-phase=stored==="points"&&readHistory().length>0?"points":"history";
-savePhase();paint();
-if(phase==="points"){
-  note("已恢復點數輸入；兩邊選完後會自動記錄。");
-  // On reload the original runtime does not resume its active prediction;
-  // once models are loaded, use the same Start handler to restore it.
-  const api=typeof window!=="undefined"?window.__BGS_FINAL56__:null;
-  if(typeof api?.loadModels==="function"){
-    Promise.resolve().then(()=>api.loadModels()).then(()=>{
-      if(phase==="points"&&readHistory().length>0)start.click();
-    }).catch(()=>{note("模型未成功恢復，請按「重新分析（選用）」。",true);});
-  }
-}
-if(typeof window!=="undefined")window.__BBB_POINT_INPUT__={
-  deriveOutcome,recordPointHand,readHistory,getPhase:()=>phase
-};
-})();
+  if(outcome===null)return false;
+  const cardValue=cardCount?.value||null;
+  const validation=window.__BGS_PARTIC
