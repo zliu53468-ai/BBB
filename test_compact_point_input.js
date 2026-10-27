@@ -108,6 +108,15 @@ function make(initial=[],savedPhase="history",denyWrite=false){
   assert.equal(failed.predictions,1,"failed persistence cannot trigger next prediction");
   assert.match(failed.els.pointResultPreview.textContent,/未確認寫入成功/);
 
+  const forecastError=make(["B"]);
+  forecastError.els.btnStart.click();
+  forecastError.els.btnStart.addEventListener("click",()=>{throw Error("synthetic next-forecast failure");});
+  forecastError.choose("7","4");
+  assert.equal(forecastError.api.readHistory().join(""),"BB");
+  assert.match(forecastError.els.pointResultPreview.textContent,/已自動記錄第 2 局/);
+  assert.match(forecastError.els.pointResultPreview.textContent,/下一局分析未完成/);
+  assert.equal(forecastError.els.macroBankerScore.value,"","committed scores must be cleared even if next forecast fails");
+
   const restored=make(["B","P"],"points");
   assert.equal(restored.api.getPhase(),"points");
   await new Promise(resolve=>setImmediate(resolve)); // await asynchronous model-restore callback
