@@ -91,11 +91,14 @@ def stage2(data="research/data",reports="research/reports",seed=SEED):
     soft=_train(train,seed,soft=True)
     hard=_train(train,seed,soft=False)
     from .reference import PhysicsReference
+    from .physics_posterior_v2 import PosteriorTeacher
     reference=PhysicsReference()
+    teacher=PosteriorTeacher(context_length=5,prior_strength=200).fit(train[0],train[2],train[4])
     models={
         "soft_MLP":lambda x:_predict(soft,x),
         "hard_MLP":lambda x:_predict(hard,x),
-        "physics_direct_only":reference.predict_proba
+        "physics_direct_only":reference.predict_proba,
+        "posterior_teacher_BPT_only":teacher.predict_proba
     }
     thresholds={}
     for name,predict in models.items():
@@ -121,7 +124,7 @@ def stage2(data="research/data",reports="research/reports",seed=SEED):
     # 同一測試靴配對重抽，估計兩模型每局 net profit 差，避免不同下注數扭曲 ROI。
     rng=np.random.default_rng(seed)
     unique=np.unique(sid)
-    for name in ("hard_MLP","physics_direct_only"):
+    for name in ("hard_MLP","physics_direct_only","posterior_teacher_BPT_only"):
         r1=outputs["soft_MLP"];r0=outputs[name]
         diffs=np.asarray([r1[int(s)][1]-r0[int(s)][1] for s in unique])
         hands=np.asarray([r1[int(s)][4] for s in unique])
@@ -137,6 +140,7 @@ def stage2(data="research/data",reports="research/reports",seed=SEED):
             "profit_per_hand_mean":float(diffs.sum()/hands.sum()),
             "log_loss_delta":report["models"]["soft_MLP"]["log_loss"]-
                              report["models"][name]["log_loss"]}
+    report["posterior_teacher"]={"validation":teacher.diagnose(valid[0]),"test":teacher.diagnose(np.concatenate([d["x"][np.asarray([split(i,seed)==2 for i in d["shoe"]])] for d in chunks(data) if np.any([split(i,seed)==2 for i in d["shoe"]])])) if len(y) else None}
     write_json(dest/"stage2.json",report)
     import matplotlib
     matplotlib.use("Agg")
