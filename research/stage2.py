@@ -140,7 +140,7 @@ def stage2(data="research/data",reports="research/reports",seed=SEED):
             "profit_per_hand_mean":float(diffs.sum()/hands.sum()),
             "log_loss_delta":report["models"]["soft_MLP"]["log_loss"]-
                              report["models"][name]["log_loss"]}
-    report["posterior_teacher"]={"validation":teacher.diagnose(valid[0]),"test":teacher.diagnose(np.concatenate([d["x"][np.asarray([split(i,seed)==2 for i in d["shoe"]])] for d in chunks(data) if np.any([split(i,seed)==2 for i in d["shoe"]])])) if len(y) else None}
+    report["posterior_teacher"]={"validation":teacher.diagnose(valid[0]),"training_shoes_only":True}
     write_json(dest/"stage2.json",report)
     import matplotlib
     matplotlib.use("Agg")
