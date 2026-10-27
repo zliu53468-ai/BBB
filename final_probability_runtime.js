@@ -91,7 +91,13 @@ function firstLayerEvPolicy(){
   if(c.schema_version!==1||typeof c.enabled!=="boolean")throw new Error("invalid first-layer EV policy");
   return {...c,enabled:c.enabled&&directionSelectionPolicy().enabled};
 }
+// Unified switch supersedes the legacy switches, including complete PR65 rollback.
+function winratePriorityPolicy(){
+  const c=cardcountProfile?.winrate_priority_v1;
+  return c?.schema_version===1&&c.enabled===true?c:null;
+}
 function selectiveEntryPolicy(){
+  if(cardcountProfile?.winrate_priority_v1!==undefined)return winratePriorityPolicy();
   const c=cardcountProfile?.selective_entry_v2;
   return c?.schema_version===1&&c.enabled===true?c:null;
 }
@@ -108,7 +114,9 @@ function directionConsistency(first,final){
   return {first_layer:firstDirection,final:finalDirection,consistent,forced_skip_by_consistency:selectiveEntryPolicy()?.require_first_final_consistency===true&&!consistent};
 }
 // First-layer-only EV-gap state. Never feeds Clip, decision EMA, features or final EV.
-function firstSmoothingConfig(input=cardcountProfile?.first_layer_smoothing){
+function firstSmoothingConfig(input=cardcountProfile?.winrate_priority_v1!==undefined
+  ?(winratePriorityPolicy()?{schema_version:1,enabled:true,...winratePriorityPolicy().first_layer_smoothing}:null)
+  :cardcountProfile?.first_layer_smoothing){
   const c=input,stages=["early","middle","late"],finite=v=>typeof v==="number"&&Number.isFinite(v);
   if(c?.schema_version!==1||c.enabled!==true)return null;
   if(!stages.every(k=>finite(c.alpha?.[k])&&c.alpha[k]>0&&c.alpha[k]<=1&&finite(c.min_gap?.[k])&&c.min_gap[k]>=0&&c.min_gap[k]<=2)||!finite(c.max_alpha)||c.max_alpha<=0||c.max_alpha>1)return null;
@@ -174,6 +182,7 @@ function firstLayerEv(physics,roundIndex=1,particleQuality=null,noise=null,histo
   const threshold=c&&typeof c.first_layer_effective_gap?.[stage]==="number"&&Number.isFinite(c.first_layer_effective_gap[stage])?Math.max(0,c.first_layer_effective_gap[stage]):0;
   const balanced=!!c&&Math.abs(effectiveGap)<threshold;
   const legacy={schema_version:1,source:"physics_pf_post_draw",stage:"before_macro_clip_ema_calibration",...choice,direction:balanced?"Balanced":choice.direction,raw_direction:choice.direction,effective_gap:effectiveGap,effective_gap_min:threshold,effective_gap_stage:stage,balanced_by_effective_gap:balanced,physics_uncertainty:uncertainty,particle_quality:quality,probabilities:settlement.probabilities,positive_ev:Math.max(settlement.banker,settlement.player)>0};
+  if(cardcountProfile?.winrate_priority_v1!==undefined&&!winratePriorityPolicy())return {schema_version:1,source:"physics_pf_post_draw",stage:"before_macro_clip_ema_calibration",...choice,probabilities:settlement.probabilities,positive_ev:Math.max(settlement.banker,settlement.player)>0};
   const raw={banker_ev:settlement.banker,player_ev:settlement.player,gap:settlement.banker-settlement.player,direction:choice.direction};
   const previous=Array.isArray(history)?previousFirstSmoothedGap(history):null;
   const smoothed=firstSmoothingStep(raw.gap,previous,roundIndex,noise,quality,uncertainty);
@@ -887,6 +896,11 @@ function applyFinalPrediction(seq,corePrediction=null){
   const physicalEvBanker=primary?.evBanker??physicalEv?.banker??null,physicalEvPlayer=primary?.evPlayer??physicalEv?.player??null,physicalEvGap=primary?(primary.evBanker-primary.evPlayer):(physicalEv?.gap??null),physicsUncertainty=primary?.uncertainty??physicalEv?.uncertainty??null;
   const consistencyReport=evDecision?.directionConsistency||directionConsistency(primary?.firstLayerEv?.direction,"Skip");
   const settlementAudit=postDrawAudit(physicsDirect,particlePosterior,physics,primary,finalPB);
+  if(winratePriorityPolicy()){
+    consistencyReport.first_layer_smoothed=consistencyReport.first_layer;
+    if(primary?.firstLayerEv)primary.firstLayerEv.direction_consistency={...consistencyReport};
+    if(settlementAudit){settlementAudit.raw=primary?.firstLayerEv?.raw||null;settlementAudit.smoothed=primary?.firstLayerEv?.smoothed||null;}
+  }
   if(settlementAudit){settlementAudit.direction_consistency=consistencyReport;settlementAudit.selective_entry_v2=evDecision?{...evDecision.selectiveBoost,original_base_activation_ev:evDecision.v15Trace.baseActivation-evDecision.selectiveBoost.total_boost,volume_guard_evaluated:!evDecision.directionConsistency.forced_skip_by_consistency,base_activation_ev:evDecision.v15Trace.baseActivation,effective_activation_ev:evDecision.effectiveActivationEv,volume_guard:evDecision.volumeGuard}:null;}
   const drawReport={schema_version:1,basis:"completed_hand_after_third_card_rules",direct_physics:drawCountDistribution(physicsDirect),pf_posterior:drawCountDistribution(particlePosterior),mixed:drawCountDistribution(physics)};
   const rawForecast=nextHandForecast(physics);
@@ -1069,7 +1083,7 @@ async function loadModels(){
   if(gapControl){gapControl.disabled=!cardcountProfile?.enabled;if(displayGapOverride===null)gapControl.value=String(cardcountProfile?.enabled?cardcountProfile.display_gap:0);}
   if(!valid)status.errors.push("cardcount_profile_fallback");
   if(status.physics&&status.final56&&!modelSemanticsCompatible()){status.final56=false;status.errors.push("feature_semantics_mismatch");}
-  const {first_layer_smoothing:ignoredFirstSmoothing,...probabilityProfile}=cardcountProfile||{};
+  const {winrate_priority_v1:ignoredWinrate,first_layer_smoothing:ignoredFirstSmoothing,...probabilityProfile}=cardcountProfile||{};
   const {selective_entry_v2:ignoredSelectivePolicy,...originalProfile}=probabilityProfile;
   browserCalibrationTag=status.physics&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(VERSION,physicsBundle,final56Bundle,localCalibrationConfig(),selectiveEntryPolicy()?probabilityProfile:originalProfile):"unready";
   firstSmoothingModelTag=status.physics?firstSmoothingFingerprint(physicsBundle,final56Bundle,PARTICLE500?.version||null,probabilityProfile):"unready";

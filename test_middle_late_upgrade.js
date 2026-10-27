@@ -1,6 +1,7 @@
 "use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
 const current=JSON.parse(fs.readFileSync("cardcount_profile.json")),baseline=JSON.parse(fs.readFileSync("validation/cardcount_moderate_v1_baseline.json"));
+delete current.winrate_priority_v1; // Retain this historical policy fixture.
 // Compare stage settings with identical PF sampling budgets.
 baseline.pf={...baseline.pf,likelihood_draws:current.pf.likelihood_draws,fallback_draws:current.pf.fallback_draws};
 // This regression isolates the historical stage upgrade; v2 selectivity is covered separately.

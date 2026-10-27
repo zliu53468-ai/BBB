@@ -1,6 +1,7 @@
 "use strict";
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const profile=JSON.parse(fs.readFileSync('cardcount_profile.json','utf8')),baseline=require('./validation/first_layer_smoothing_baseline.json');
+delete profile.winrate_priority_v1; // Exercise the original version-specific regression fixture.
 const KEY='bgs_first_layer_gap_smoothing_v1',SHOE='bgs_xgb_final_shoe_id_v5',HISTORY='bgs256d_frozen_6x15_forward_v18';
 const hash=x=>crypto.createHash('sha256').update(x).digest('hex'),close=(a,b)=>assert(Math.abs(a-b)<1e-12,a+' != '+b);
 async function make(enabled,map=new Map()){const config=structuredClone(profile);config.first_layer_smoothing.enabled=enabled;if(!map.has(SHOE))map.set(SHOE,'gap-test');const store={getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,String(v)),removeItem:k=>map.delete(k)},ctx={console,document:{getElementById:()=>null},localStorage:store,fetch:async f=>({ok:true,json:async()=>f==='cardcount_profile.json'?config:JSON.parse(fs.readFileSync(f,'utf8'))})};ctx.window=ctx;vm.createContext(ctx);for(const f of ['app256forward.js','app256continuation.js','particle_filter_runtime.js','macro_ema.js','browser_calibration.js','final_probability_runtime.js'])vm.runInContext(fs.readFileSync(f,'utf8'),ctx,{filename:f});await ctx.__BGS_FINAL56__.loadModels();return {api:ctx.__BGS_FINAL56__,map,config,store};}
