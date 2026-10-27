@@ -103,9 +103,9 @@ def run_stage3(data,reports="research/reports",seed=SEED,max_shoes=100):
         if len(grouped)>max_shoes*4:break
     shoe_ids=sorted(grouped)[:max_shoes]
     summary={"seed":seed,"pilot_test_shoes":len(shoe_ids),
-             "particle_results":{},"status":"PILOT_ONLY"}
+             "particle_results":{},"ess_curve_by_round":{},"status":"PILOT_ONLY"}
     for count in (500,2000,10000):
-        preds=[];truth=[];actual=[];all_ess=[];used=[];base_preds=[];blended=[]
+        preds=[];truth=[];actual=[];all_ess=[];used=[];base_preds=[];blended=[];ess_by_round={}
         for sid in shoe_ids:
             pf=CompositionPF(count,seed+sid)
             for position,label,exact,x in sorted(grouped[sid]):
@@ -113,7 +113,8 @@ def run_stage3(data,reports="research/reports",seed=SEED,max_shoes=100):
                 direct=reference.predict_proba(np.asarray([x]))[0]
                 preds.append(pred);base_preds.append(direct);blended.append(.90*direct+.10*pred)
                 truth.append(exact);actual.append(label);used.append(sid)
-                pf.observe("BPT"[label])
+                ess=pf.observe("BPT"[label])
+                ess_by_round.setdefault(position,[]).append(ess/count)
             all_ess.extend(pf.ess_history)
         if not actual:continue
         y=np.asarray(actual,dtype=np.int8);p=np.asarray(preds)
@@ -127,10 +128,21 @@ def run_stage3(data,reports="research/reports",seed=SEED,max_shoes=100):
         yes_dir=np.argmax(np.column_stack((.95*blend_p[:,0]-blend_p[:,1],blend_p[:,1]-blend_p[:,0])),axis=1)
         no_rows=shoe_rows(ids,y,direct_p,no_dir)
         yes_rows=shoe_rows(ids,y,blend_p,yes_dir)
+        rng=np.random.default_rng(seed+count)
+        unique=np.unique(ids)
+        delta=np.asarray([yes_rows[int(s)][1]-no_rows[int(s)][1] for s in unique])
+        hands=np.asarray([yes_rows[int(s)][4] for s in unique])
+        ci=[]
+        if len(unique)>=20:
+            for _ in range(1500):
+                pick=rng.integers(0,len(unique),len(unique))
+                ci.append(delta[pick].sum()/hands[pick].sum())
+        summary["ess_curve_by_round"][str(count)]={str(i):float(np.mean(v)) for i,v in sorted(ess_by_round.items())}
         summary["particle_results"][str(count)]={
            "ablation_pf_off":{**metrics(y,direct_p),**pooled(no_rows)},
            "ablation_pf_on_blend_10pct":{**metrics(y,blend_p),**pooled(yes_rows)},
            "log_loss_delta_on_minus_off":metrics(y,blend_p)["log_loss"]-metrics(y,direct_p)["log_loss"],
+           "profit_per_hand_delta_pf_on_minus_off_ci95":np.quantile(ci,[.025,.975]).tolist() if ci else None,
            **metrics(y,p),
            "mae_pB":float(np.abs(p[:,0]-ground[:,0]).mean()),
            "pearson_pB":float(coef) if coef is not None else None,
@@ -145,8 +157,9 @@ def run_stage3(data,reports="research/reports",seed=SEED,max_shoes=100):
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         fig,ax=plt.subplots()
-        ax.bar(list(summary["particle_results"]),
-               [v["ess_mean"]/int(k) for k,v in summary["particle_results"].items()])
-        ax.set(ylabel="平均 ESS / N",xlabel="粒子數",title="後驗粒子有效率")
+        for key,trace in summary["ess_curve_by_round"].items():
+            ax.plot([int(t) for t in trace],[v for v in trace.values()],label=f"N={key}")
+        ax.set(ylabel="ESS/N",xlabel="已觀測局數",title="各局粒子有效率（整靴 pilot）")
+        ax.legend()
         fig.tight_layout();fig.savefig(Path(reports)/"ess_curve.png",dpi=150);plt.close(fig)
     except ImportError:pass
