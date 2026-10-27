@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "source_main": "bd143996eef289671c40e4ee6c1d430c4aa6b8c2",
+  "calibration_model_tag": "1a3b6bf9",
+  "cases": [
+    {
+      "history": "B",
+      "previous": null,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.5004834204278655,
+        "banker": -0.021727872032358708,
+        "player": -0.000873222184021305,
+        "first": "P",
+        "effective_ev": 0.002,
+        "effective_band": 0.003,
+        "guard_active": false,
+        "physics_sha256": "087f1702e2b71621fc36c2651587b4ad5bbb4d64f2726c49e739c64afa3257f6",
+        "features_sha256": "a99b14677168d9a4489cf8b09cba21b03ff4be98dca301f4b1201baab3a7e9ab"
+      }
+    },
+    {
+      "history": "B",
+      "previous": 0.01,
+      "expected": {
+        "direction": "P",
+        "finalPB": 0.42,
+        "banker": -0.16347386891128352,
+        "player": 0.1445072874353887,
+        "first": "P",
+        "effective_ev": 0.0015,
+        "effective_band": 0.003,
+        "guard_active": true,
+        "physics_sha256": "087f1702e2b71621fc36c2651587b4ad5bbb4d64f2726c49e739c64afa3257f6",
+        "features_sha256": "a99b14677168d9a4489cf8b09cba21b03ff4be98dca301f4b1201baab3a7e9ab"
+      }
+    },
+    {
+      "history": "B",
+      "previous": 0.99,
+      "expected": {
+        "direction": "B",
+        "finalPB": 0.58,
+        "banker": 0.11831534158772439,
+        "player": -0.1445072874353886,
+        "first": "P",
+        "effective_ev": 0.0015,
+        "effective_band": 0.003,
+        "guard_active": true,
+        "physics_sha256": "087f1702e2b71621fc36c2651587b4ad5bbb4d64f2726c49e739c64afa3257f6",
+        "features_sha256": "a99b14677168d9a4489cf8b09cba21b03ff4be98dca301f4b1201baab3a7e9ab"
+      }
+    },
+    {
+      "history": "BPTBPBBP",
+      "previous": null,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.5010651005175412,
+        "banker": -0.020719436577900208,
+        "player": -0.0019254225576701423,
+        "first": "P",
+        "effective_ev": 0.002,
+        "effective_band": 0.003,
+        "guard_active": false,
+        "physics_sha256": "bb5b12549f009a36c2a22483c14c6c63f0437655e08e418ada1f6016c3fe22cb",
+        "features_sha256": "ccd5158d58106a2dd72998fd758228cfaeca7a1500fb18a4591843fd5af977c3"
+      }
+    },
+    {
+      "history": "BPTBPBBP",
+      "previous": 0.01,
+      "expected": {
+        "direction": "P",
+        "finalPB": 0.42,
+        "banker": -0.16360027865859095,
+        "player": 0.14461903085842293,
+        "first": "P",
+        "effective_ev": 0.0015,
+        "effective_band": 0.003,
+        "guard_active": true,
+        "physics_sha256": "bb5b12549f009a36c2a22483c14c6c63f0437655e08e418ada1f6016c3fe22cb",
+        "features_sha256": "ccd5158d58106a2dd72998fd758228cfaeca7a1500fb18a4591843fd5af977c3"
+      }
+    },
+    {
+      "history": "BPTBPBBP",
+      "previous": 0.99,
+      "expected": {
+        "direction": "B",
+        "finalPB": 0.58,
+        "banker": 0.1184068315153336,
+        "player": -0.14461903085842276,
+        "first": "P",
+        "effective_ev": 0.0015,
+        "effective_band": 0.003,
+        "guard_active": true,
+        "physics_sha256": "bb5b12549f009a36c2a22483c14c6c63f0437655e08e418ada1f6016c3fe22cb",
+        "features_sha256": "ccd5158d58106a2dd72998fd758228cfaeca7a1500fb18a4591843fd5af977c3"
+      }
+    },
+    {
+      "history": "BPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBP",
+      "previous": null,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.5049224001145347,
+        "banker": -0.013931074064960247,
+        "player": -0.008904992762618247,
+        "first": "P",
+        "effective_ev": 0.0006898353960500667,
+        "effective_band": 0.0020666666666666667,
+        "guard_active": false,
+        "physics_sha256": "52a056e40a1741b8ab87e2b553e55fed6a169ff867c5ec07b04017d25cd15081",
+        "features_sha256": "4e2679fd7b95329c1431728125ea9df35754d357152160378bac9a3cd61b352f"
+      }
+    },
+    {
+      "history": "BPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBP",
+      "previous": 0.01,
+      "expected": {
+        "direction": "P",
+        "finalPB": 0.36991015632001284,
+        "banker": -0.25207221461291845,
+        "player": 0.23534233087631323,
+        "first": "P",
+        "effective_ev": 0.0006898353960500667,
+        "effective_band": 0.002,
+        "guard_active": true,
+        "physics_sha256": "52a056e40a1741b8ab87e2b553e55fed6a169ff867c5ec07b04017d25cd15081",
+        "features_sha256": "4e2679fd7b95329c1431728125ea9df35754d357152160378bac9a3cd61b352f"
+      }
+    },
+    {
+      "history": "BPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBP",
+      "previous": 0.99,
+      "expected": {
+        "direction": "B",
+        "finalPB": 0.6300898436799871,
+        "banker": 0.20684533059589227,
+        "player": -0.23534233087631318,
+        "first": "P",
+        "effective_ev": 0.0006898353960500667,
+        "effective_band": 0.002,
+        "guard_active": true,
+        "physics_sha256": "52a056e40a1741b8ab87e2b553e55fed6a169ff867c5ec07b04017d25cd15081",
+        "features_sha256": "4e2679fd7b95329c1431728125ea9df35754d357152160378bac9a3cd61b352f"
+      }
+    },
+    {
+      "history": "BBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPP",
+      "previous": null,
+      "expected": {
+        "direction": "B",
+        "finalPB": 0.5132456994896325,
+        "banker": 0.0007444561064324229,
+        "player": -0.023786455932805706,
+        "first": "B",
+        "effective_ev": 0.0003849999999999999,
+        "effective_band": 0.0015866666666666668,
+        "guard_active": false,
+        "physics_sha256": "98267157cef4d667ec4d4131a34f1b811538fa935b0e6ad2064f1aa2d54d77c3",
+        "features_sha256": "b3b7daa74b64d23ff2580302743126f8a5cda4264f5d8da2f28cd93e58ffaa25"
+      }
+    },
+    {
+      "history": "BBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPP",
+      "previous": 0.01,
+      "expected": {
+        "direction": "P",
+        "finalPB": 0.3723369036325354,
+        "banker": -0.24597168328487667,
+        "player": 0.22925573831469082,
+        "first": "B",
+        "effective_ev": 0.0003849999999999999,
+        "effective_band": 0.0015,
+        "guard_active": true,
+        "physics_sha256": "98267157cef4d667ec4d4131a34f1b811538fa935b0e6ad2064f1aa2d54d77c3",
+        "features_sha256": "b3b7daa74b64d23ff2580302743126f8a5cda4264f5d8da2f28cd93e58ffaa25"
+      }
+    },
+    {
+      "history": "BBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPPBBPP",
+      "previous": 0.99,
+      "expected": {
+        "direction": "B",
+        "finalPB": 0.6416890991986095,
+        "banker": 0.22563502815156655,
+        "player": -0.25444345290217407,
+        "first": "B",
+        "effective_ev": 0.0003849999999999999,
+        "effective_band": 0.0015,
+        "guard_active": true,
+        "physics_sha256": "98267157cef4d667ec4d4131a34f1b811538fa935b0e6ad2064f1aa2d54d77c3",
+        "features_sha256": "b3b7daa74b64d23ff2580302743126f8a5cda4264f5d8da2f28cd93e58ffaa25"
+      }
+    },
+    {
+      "history": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "previous": null,
+      "expected": {
+        "direction": "Skip",
+        "finalPB": 0.49887438883959406,
+        "banker": -0.0236505010967073,
+        "player": 0.001957810258676085,
+        "first": "P",
+        "effective_ev": 0.0006299999999999999,
+        "effective_band": 0.0015999999999999999,
+        "guard_active": false,
+        "physics_sha256": "85d9e1b2131376719ad132e7a07e0dbce2b0623daee0131b1520dbe98192e86d",
+        "features_sha256": "7cb3685cfa0cdaf4e5b3e27a132fb729b99381a9ef2f67800fd805c8dc4de5fe"
+      }
+    },
+    {
+      "history": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "previous": 0.01,
+      "expected": {
+        "direction": "P",
+        "finalPB": 0.3619895599645077,
+        "banker": -0.25578631172496985,
+        "player": 0.24004582115945816,
+        "first": "P",
+        "effective_ev": 0.0006299999999999999,
+        "effective_band": 0.0015,
+        "guard_active": true,
+        "physics_sha256": "85d9e1b2131376719ad132e7a07e0dbce2b0623daee0131b1520dbe98192e86d",
+        "features_sha256": "7cb3685cfa0cdaf4e5b3e27a132fb729b99381a9ef2f67800fd805c8dc4de5fe"
+      }
+    },
+    {
+      "history": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "previous": 0.99,
+      "expected": {
+        "direction": "B",
+        "finalPB": 0.6363895599645077,
+        "banker": 0.20955427393279236,
+        "player": -0.2372265743869646,
+        "first": "P",
+        "effective_ev": 0.0006299999999999999,
+        "effective_band": 0.0015,
+        "guard_active": true,
+        "physics_sha256": "85d9e1b2131376719ad132e7a07e0dbce2b0623daee0131b1520dbe98192e86d",
+        "features_sha256": "7cb3685cfa0cdaf4e5b3e27a132fb729b99381a9ef2f67800fd805c8dc4de5fe"
+      }
+    }
+  ]
+}

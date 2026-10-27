@@ -427,6 +427,29 @@
     "player_commission": 0,
     "tie_settlement": "push"
   },
+  "selective_entry_v2": {
+    "schema_version": 1,
+    "enabled": true,
+    "require_first_final_consistency": true,
+    "ev_threshold_boost": {
+      "early": 0.005,
+      "middle": 0.0035,
+      "late": 0.0025
+    },
+    "noise_threshold": 0.55,
+    "pf_quality_threshold": 0.6,
+    "noise_extra_boost": 0.004,
+    "volume_guard_target_action_rate": {
+      "early": 0.25,
+      "middle": 0.31,
+      "late": 0.37
+    },
+    "first_layer_effective_gap": {
+      "early": 0.014,
+      "middle": 0.009,
+      "late": 0.005
+    }
+  },
   "first_layer_ev": {
     "schema_version": 1,
     "enabled": true

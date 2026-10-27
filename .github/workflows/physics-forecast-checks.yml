@@ -30,6 +30,7 @@ jobs:
       - run: node test_middle_late_upgrade.js
       - run: node test_post_draw_ev.js
       - run: node test_pf_per_hand_update.js
+      - run: node test_selective_entry_v2.js
       - run: node test_first_layer_ev.js
       - run: node test_prequential_ev.js
       - run: node test_pr59_prediction_baseline.js
