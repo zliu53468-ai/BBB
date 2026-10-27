@@ -110,7 +110,7 @@ function make(initial=[],savedPhase="history",denyWrite=false){
 
   const restored=make(["B","P"],"points");
   assert.equal(restored.api.getPhase(),"points");
-  await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  await new Promise(resolve=>setImmediate(resolve)); // await asynchronous model-restore callback
   assert.equal(restored.predictions,1,"reload should restore active analysis once");
   assert.equal(restored.api.readHistory().join(""),"BP");
   restored.choose("8","1");
