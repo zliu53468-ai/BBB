@@ -1,3 +1,5 @@
+> 歷史基準：後續加入逐局機率校準參與EV；原PR #59平滑與目前畫面仍保留。現況見 PREQUENTIAL_EV_CALIBRATION.md。
+
 # 預測退回 PR #59｜僅保留 PF 逐局更新加強
 
 2026-10-27。依使用者最新指定，final_probability_runtime.js 逐位元還原 PR #59 合併後版本62d84b78bcd01b7465a4ddc02428d1e9644cc3f5；版本標籤回到 PHYSICS_57D_V14_8_EV_LED_DIRECTION。

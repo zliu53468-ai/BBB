@@ -328,6 +328,8 @@
     }
   },
   "local_calibration": {
+    "formal_ev_enabled": true,
+    "min_bet_validation": 8,
     "enabled": true,
     "min_samples": 24,
     "min_validation": 16,

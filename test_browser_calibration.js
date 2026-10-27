@@ -59,11 +59,11 @@ const before=poorStore.getItem(M.KEY);for(let i=0;i<5;i++)poor.apply(f,bad,shoe,
   for(const file of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","browser_calibration.js","final_probability_runtime.js"])vm.runInContext(fs.readFileSync(file,"utf8"),ctx,{filename:file});
   const api=ctx.__BGS_FINAL56__;await api.loadModels();const h=Array(50).fill("B"),baseline=api.applyFinalPrediction(h);
   const local=ctx.__BBB_BROWSER_CALIBRATION__.createClient(backing),shoeId=backing.getItem("bgs_xgb_final_shoe_id_v5");
-  const tag=ctx.__BBB_BROWSER_CALIBRATION__.fingerprint(api.version,JSON.parse(fs.readFileSync("physics_multitask_model.json")),JSON.parse(fs.readFileSync("final_probability_model.json")),JSON.parse(fs.readFileSync("cardcount_profile.json")).local_calibration);
+  const tag=api.prepareCalibrationTicket(h,baseline).model;
   const prefix=[];for(const result of h){const ticket=local.prepare(prefix,f,shoeId,tag);prefix.push(result);local.commit(ticket,result,prefix);}
   const next=api.applyFinalPrediction(h);
   assert.equal(next.browser_calibration.directional_samples,50);
-  assert.equal(next.direction,baseline.direction,"local calibration must not change formal bet decision");
+  assert.equal(next.direction,baseline.direction,"unvalidated calibration must not change formal bet decision");
   assert.equal(next.finalProbability.finalPB,baseline.finalProbability.finalPB,"formal EV probability stays unchanged");
   assert.equal(JSON.stringify(next.finalProbability.extended),JSON.stringify(baseline.finalProbability.extended),"57D features unchanged");
   assert.equal(JSON.stringify(next.raw_next_hand_forecast),JSON.stringify(baseline.raw_next_hand_forecast));
