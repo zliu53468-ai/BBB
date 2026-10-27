@@ -102,6 +102,23 @@ function selectiveEvBoost(roundIndex,noise,quality){
   const base=c?amount(c.ev_threshold_boost?.[stage]):0,extra=c&&(highNoise||lowQuality)?amount(c.noise_extra_boost):0;
   return {enabled:!!c,stage,base_boost:base,extra_boost:extra,total_boost:base+extra,high_noise:highNoise,low_particle_quality:lowQuality,noise_score:noise??null,particle_quality:quality??null};
 }
+// Read-only physical-versus-particle direction bias audit. No outcome or future-card input.
+// A 500-particle correction is not a measurement of the casino's real remaining composition.
+function directionBiasAudit(direct,posterior,mixed,particleDiagnostics,forecast,betDirection){
+  const side=a=>Array.isArray(a)&&a.length>=26&&Number.isFinite(a[23])&&Number.isFinite(a[24])
+    ?Math.abs(a[23]-a[24])<1e-12?"Balanced":a[23]>a[24]?"B":"P":null;
+  const ev=forecast?.available&&Number.isFinite(forecast.banker_ev)&&Number.isFinite(forecast.player_ev)
+    ?{banker:forecast.banker_ev,player:forecast.player_ev,better_side:forecast.direction,
+      both_negative:Math.max(forecast.banker_ev,forecast.player_ev)<=0}:null;
+  return Object.freeze({schema_version:1,mode:"read_only",observation_basis:"BPT_only",
+    direct_physics_side:side(direct),pf_posterior_side:side(posterior),mixed_side:side(mixed),
+    physics_pf_disagree:!!(side(direct)&&side(posterior)&&!["Balanced"].includes(side(direct))&&!["Balanced"].includes(side(posterior))&&side(direct)!==side(posterior)),
+    pf_flip_blocked:particleDiagnostics?.direction_flip_blocked===true,
+    pf_weight:particleDiagnostics?.blend_weight??null,pf_quality:particleDiagnostics?.particle_quality??null,
+    pf_ess_ratio:particleDiagnostics?.recent_ess_ratio??null,
+    ev_comparison:ev,bet_direction:["B","P"].includes(betDirection)?betDirection:"Skip",
+    note:"EV preference does not imply profitable bet; actual remaining cards not observed"});
+}
 function directionConsistency(first,final){
   const firstDirection=["B","P"].includes(first)?first:"Balanced",finalDirection=["B","P"].includes(final)?final:"Skip";
   const consistent=firstDirection==="Balanced"||firstDirection===finalDirection;
@@ -895,8 +912,9 @@ function applyFinalPrediction(seq,corePrediction=null){
   const evForecast=evDirectionForecast(settlementAudit?.final,rawForecast.uncertainty);
   const useEvDirection=directionSelectionPolicy().enabled;
   const forecast=useEvDirection?evForecast:calibrated?.forecast||rawForecast;
+  const direction_bias_audit=directionBiasAudit(physicsDirect,particlePosterior,physics,particleDiagnostics,forecast,direction);
   const calibrationStatus=formalCalibration?formalCalibration.status:useEvDirection?{...calibrated?.status,shadow_applied:calibrated?.status?.applied===true,applied:false,used_for_direction:false}:calibrated?.status||null;
-  return {...resolvedCore,direction_consistency:consistencyReport,selective_entry_v2:settlementAudit?.selective_entry_v2||null,first_layer_ev:primary?.firstLayerEv||null,calibration_input_forecast:calibrationInputForecast,settlement_audit:settlementAudit,draw_report:drawReport,raw_next_hand_forecast:rawForecast,browser_calibration:calibrationStatus,ev_direction:useEvDirection&&evForecast.available?selectEvDirection(evForecast.banker_ev,evForecast.player_ev):null,next_hand_forecast:forecast,forecast_direction:forecast.direction,bet_direction:direction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
+  return {...resolvedCore,direction_bias_audit,direction_consistency:consistencyReport,selective_entry_v2:settlementAudit?.selective_entry_v2||null,first_layer_ev:primary?.firstLayerEv||null,calibration_input_forecast:calibrationInputForecast,settlement_audit:settlementAudit,draw_report:drawReport,raw_next_hand_forecast:rawForecast,browser_calibration:calibrationStatus,ev_direction:useEvDirection&&evForecast.available?selectEvDirection(evForecast.banker_ev,evForecast.player_ev):null,next_hand_forecast:forecast,forecast_direction:forecast.direction,bet_direction:direction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
     ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,
     physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,
     min_ev:evDecision?.minEv??null,activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,
@@ -904,7 +922,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     volume_guard_active:evDecision?.volumeGuardActive??false,entry_tier:evDecision?.entryTier??"skip",stake_multiplier:evDecision?.stakeMultiplier??0,
     decision_policy_enabled:evDecision?.policyEnabled??false,decision_policy_profile:evDecision?.policyProfile??"hard_ev",probabilities:{B:finalPB,P:finalPP},
     regime:mode==="physics_primary"?(direction==="Skip"?"Direct Physics觀望":auxFilter?.decision==="downgrade"?"Direct Physics / XGB降權":"Direct Physics / XGB輔助提醒"):"模型未就緒／觀望",
-    finalProbability:{version:VERSION,direction_consistency:consistencyReport,selective_entry_v2:settlementAudit?.selective_entry_v2||null,direction_selection:evDecision?.v15Trace?.directionSelection||"physics_candidate_v1",direction_candidate:evDecision?.candidate??"Skip",settlement_audit:settlementAudit,draw_report:drawReport,active:mode==="physics_primary",mode,
+    finalProbability:{version:VERSION,direction_bias_audit,direction_consistency:consistencyReport,selective_entry_v2:settlementAudit?.selective_entry_v2||null,direction_selection:evDecision?.v15Trace?.directionSelection||"physics_candidate_v1",direction_candidate:evDecision?.candidate??"Skip",settlement_audit:settlementAudit,draw_report:drawReport,active:mode==="physics_primary",mode,
       skip_diagnostics:skipDiagnostics,
       first_layer_ev:primary?.firstLayerEv||null,legacy_primary_candidate:primary?.legacyCandidate??"Skip",particleDiagnostics,primary_source:particleDiagnostics?"direct_physics_particle500_physical_ev":"direct_physics_physical_ev",primary_candidate:primary?.candidate??"Skip",
       macro_ema:primary?.macroFeatures??null,macro_adjustment:primary?.macro??null,
@@ -1116,6 +1134,7 @@ function renderPrediction(p,n){
   if(el("roundCount"))el("roundCount").textContent=n;
   if(el("message"))el("message").textContent="第 "+(n+1)+" 局分析完成"+(ready?(f.weak_signal?"；莊閒接近五五波":"；莊閒百分比已排除和局，和局另列")+(f.uncertainty>=.85?"；模型不確定性偏高":""):"");
   if(!noSkipTestActive&&ready&&shownDirection==="Skip"&&el("message"))el("message").textContent+="；機率差未達 "+((displayGapOverride??cardcountProfile.display_gap)*100).toFixed(1)+" 個百分點，方向觀望";
+  if(!noSkipTestActive&&ready&&el("message")){const d=p.direction_bias_audit;if(d?.ev_comparison?.both_negative)el("message").textContent+="；EV兩邊皆非正：僅顯示較佳傾向，不代表值得下注";if(d?.pf_flip_blocked)el("message").textContent+="；PF方向修正受保護條件限制";}
   if(noSkipTestActive&&el("message"))el("message").textContent=ready?"不觀望測試：每次報結果後自動更新下一局；不列入正式下注"+(f.selection_method==="post_draw_ev_argmax_v1"?(Math.abs(f.banker_ev-f.player_ev)<=directionSelectionPolicy().ev_tie_tolerance?"；EV相同時以莊作測試方向":"；依EV較高方顯示，不代表EV為正"):(f.directional.B===f.directional.P?"；五五波固定以莊作測試方向，無機率優勢":"")):"不觀望測試：模型未就緒，暫無測試方向";
 }
 function installUI(){
