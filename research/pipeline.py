@@ -19,22 +19,39 @@ def main():
     out=Path(a.reports);out.mkdir(parents=True,exist_ok=True)
     try:
         stage1(a)
-    except (FileNotFoundError,ValueError) as exc:
-        write_json(out/"stage1.json",{"status":"BLOCKED","reason":str(exc),
-                                    "gate_1":{"passed":False,"reason":"資料不足"}})
+    except Exception as exc:
+        write_json(out/"stage1.json",{"status":"BLOCKED_OR_FAILED",
+             "reason":f"{type(exc).__name__}: {exc}",
+             "gate_1":{"passed":False,"reason":"階段一未成功；不得進階"}})
     gate=json.loads((out/"stage1.json").read_text(encoding="utf-8"))["gate_1"]
     if gate["passed"]:
         from .stage2 import stage2
         from .pf import run_stage3
-        stage2(a.data,a.reports,a.seed)
-        run_stage3(a.data,a.reports,a.seed,a.stage3_shoes)
+        try:
+            stage2(a.data,a.reports,a.seed)
+        except Exception as exc:
+            write_json(out/"stage2.json",{"status":"FAILED",
+                         "reason":f"{type(exc).__name__}: {exc}"})
+        try:
+            run_stage3(a.data,a.reports,a.seed,a.stage3_shoes)
+        except Exception as exc:
+            write_json(out/"stage3.json",{"status":"FAILED",
+                         "reason":f"{type(exc).__name__}: {exc}"})
     else:
         write_json(out/"stage2.json",{"status":"SKIPPED_GATE_1"})
         write_json(out/"stage3.json",{"status":"SKIPPED_GATE_1"})
-    # 獨立且一定執行，即使 stage 1 不能計算或 Gate 1 未通過。
-    stage4(a.real_csv,a.data,a.reports,a.seed)
-    stage5(a.real_csv,a.reports,a.seed)
-    print("已輸出 stage1..5 報告；注意 BLOCKED/SKIPPED 不是實驗完成。")
+    # 階段四與五必須獨立執行；任何先前例外都不阻擋。
+    try:
+        stage4(a.real_csv,a.data,a.reports,a.seed)
+    except Exception as exc:
+        write_json(out/"stage4.json",{"status":"FAILED",
+                     "reason":f"{type(exc).__name__}: {exc}"})
+    try:
+        stage5(a.real_csv,a.reports,a.seed)
+    except Exception as exc:
+        write_json(out/"stage5.json",{"status":"FAILED",
+                     "reason":f"{type(exc).__name__}: {exc}"})
+    print("已輸出 stage1..5 狀態報告；BLOCKED/SKIPPED/FAILED 不是完成。")
 
 if __name__=="__main__":
     main()
