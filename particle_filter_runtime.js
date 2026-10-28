@@ -245,10 +245,10 @@ function estimate(history,directPhysics,mode="quality",config={}){
 // 僅估計蒙地卡羅數值穩定性，不是實際勝率／模型正確性的信賴區間。
 function batchEvGate(history,directPhysics,direction,evFloor,config={}){
  const count=4,values=[];
- try{for(let i=0;i<count;i++){const r=estimate(history,directPhysics,"quality",{...config,seed_offset:Math.imul(i+1,0x9e3779b9)}),p=config.evaluation_mode==="official_blend"?r.physics:r.posterior;if(!p||!p.every(Number.isFinite))throw Error("invalid_batch");const b=p[23],v=p[24];values.push({banker_ev:.95*b-v,player_ev:v-b});}
+ try{for(let i=0;i<count;i++){const r=estimate(history,directPhysics,"quality",{...config,seed_offset:Math.imul(i+1,0x9e3779b9)}),p=r.posterior;if(!p||!p.every(Number.isFinite))throw Error("invalid_batch");const b=p[23],v=p[24];values.push({banker_ev:.95*b-v,player_ev:v-b});}
  const ev=values.map(v=>direction==='B'?v.banker_ev:v.player_ev),mean=ev.reduce((a,b)=>a+b,0)/count,se=Math.sqrt(ev.reduce((a,b)=>a+(b-mean)**2,0)/(count-1)/count),lower=mean-3.182446*se;
  const same=values.every(v=>direction==='B'?v.banker_ev>v.player_ev:v.player_ev>v.banker_ev);
- return {enabled:true,batches:count,particles_per_batch:PARTICLE_COUNT,scope:"monte_carlo_stability_only",evaluation_mode:config.evaluation_mode||"posterior_only",candidate_direction:direction,values,mean_ev:mean,standard_error:se,lower_ev:lower,ev_floor:evFloor,same_direction:same,passed:same&&lower>evFloor};
+ return {enabled:true,batches:count,particles_per_batch:PARTICLE_COUNT,scope:"monte_carlo_stability_only",candidate_direction:direction,values,mean_ev:mean,standard_error:se,lower_ev:lower,ev_floor:evFloor,same_direction:same,passed:same&&lower>evFloor};
  }catch(e){return {enabled:true,passed:false,error:String(e.message||e),scope:"monte_carlo_stability_only"};}
 }
 if(typeof window!=="undefined")window.__BGS_PARTICLE500__={version:VERSION,particleCount:PARTICLE_COUNT,estimate,batchEvGate};
