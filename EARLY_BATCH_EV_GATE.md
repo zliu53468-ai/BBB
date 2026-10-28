@@ -1,0 +1,10 @@
+# 前期多批抽樣EV穩定性閘門（候選）
+前30局使用4組不同固定種子，各自從初始牌組重建500粒子，依當局之前歷史更新，再以每粒子5次下一手抽補牌得到獨立後驗EV。沿用莊佣5%及和局退回。不是對同一後驗反覆取平均。
+
+只有4批EV方向全數一致，且推薦方批次均值減3.182446倍標準誤仍大於既有EV門檻才允許原本合格推薦通過。這是條件於現有模擬器的蒙地卡羅穩定性檢查，並不涵蓋模型偏差、未知牌面的真實不確定性或保證勝率；4批只能作初步保守篩選。
+
+不改原始PF抽樣規則、500粒子數或正式混合；僅新增可選seed_offset及batchEvGate；舊seed_offset缺省0與原結果完全相同。檢查只追加Skip原因batch_ev_uncertain，不覆寫Physics、Final P、EV或降低門檻。新靴無批次持久記憶，同歷史重算可重現。
+
+設定physics_priority_v1.early_batch_ev_gate.enabled=false即可回滾本次閘門。batches固定4；max_round預設30。診斷在physics_priority.batch_ev_gate及finalProbability.physics_priority中保留4批EV、標準誤、下界、閾值與通過狀態，隨原匯出路徑輸出。
+
+通過test_early_batch_ev.js、test_ratio_risk_guard.js、test_early_mid_conservative.js、test_physics_priority.js、test_end_analysis_reload.js，並對3/6/31局實際runtime做煙霧測試。本次未跑命中率回測，不沿用前版500靴數字宣稱此版本效果。保持草稿，不部署main。

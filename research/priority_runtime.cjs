@@ -14,9 +14,9 @@ async function runtime({legacy=false,memoized=true,fastIO=true,revision=null}={}
  for(const f of ['app256forward.js','app256continuation.js','particle_filter_runtime.js','macro_ema.js','browser_calibration.js',...(!legacy?['point_conditioned_pf.js','physics_priority_runtime.js']:[]),'final_probability_runtime.js']){
   let code=source(f,legacy,revision);
   if(f==='particle_filter_runtime.js'&&memoized){
-   const start=code.indexOf('  const rng=rng32(seedFromHistory(seq));'),end=code.indexOf('  const winner=normalizeBlock(posterior.slice(23,26));',start);if(start<0||end<0)throw Error('PF memo anchor mismatch');
+   const start=code.indexOf('  const rng=rng32((seedFromHistory(seq)^(Number.isInteger(config.seed_offset)?config.seed_offset:0))>>>0);'),end=code.indexOf('  const winner=normalizeBlock(posterior.slice(23,26));',start);if(start<0||end<0)throw Error('PF memo anchor mismatch');
    const original=code.slice(start,end);
-   code=code.slice(0,start)+`const memoKey=seq.join('')+'|'+Math.round(clip(config.forecast_draws??FORECAST_DRAWS,1,5));
+   code=code.slice(0,start)+`const memoKey=(config.seed_offset||0)+'|'+seq.join('')+'|'+Math.round(clip(config.forecast_draws??FORECAST_DRAWS,1,5));
 let forecast,posterior,lastEssRatio,resamplingCount,forecastDraws;
 const cached=window.__labPosterior?.key===memoKey?window.__labPosterior:seq.length<=8?window.__labPosteriorCache.get(memoKey):null;
 if(cached){({forecast,posterior,lastEssRatio,resamplingCount,forecastDraws}=cached);window.__labPosterior={key:memoKey,...cached};}

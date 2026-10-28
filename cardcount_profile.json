@@ -870,6 +870,13 @@
       "full": 0.35,
       "max_band_boost": 0.012,
       "force_skip_at": 0.35
+    },
+    "early_batch_ev_gate": {
+      "schema_version": 1,
+      "enabled": true,
+      "max_round": 30,
+      "batches": 4,
+      "scope": "monte_carlo_stability_only"
     }
   }
 }

@@ -890,7 +890,13 @@ function applyPhysicsPriority(result,history,physics,particleDiagnostics){
   const direct=result.finalProbability.physicsDirect;
   if(earlyLimits&&used&&direct){const dm=direct[23]+direct[24],um=used[23]+used[24];if(dm>0&&um>0){const base=direct[23]/dm,raw=used[23]/um,limited=clip(raw,Math.max(0,base-earlyLimits.residual_max_delta),Math.min(1,base+earlyLimits.residual_max_delta));used[23]=um*limited;used[24]=um*(1-limited);used[39]=.95*used[23]-used[24];used[40]=used[24]-used[23];used[41]=used[39]-used[40];residual={raw_delta:raw-base,applied_delta:limited-base,cap:earlyLimits.residual_max_delta};}}
   const mass=used?(used[23]+used[24]+used[25]):0,probs=mass>0?{B:used[23]/mass,P:used[24]/mass,T:used[25]/mass}:null;
-  const audit=PRIORITY.predict({history,shoe_id:getShoeId(),probabilities:probs,
+  let batchGate=null;
+  if(config.early_batch_ev_gate?.enabled===true&&history.length+1<=config.early_batch_ev_gate.max_round){
+    const side=probs&&(.95*probs.B-probs.P>probs.P-probs.B)?'B':'P';
+    const floor=Math.max(earlyLimits?.ev_min??config.stages?.early?.ev_min??.015,result.activation_ev||0,result.finalProbability.physics_activation_ev||0);
+    batchGate=PARTICLE500?.batchEvGate&&direct?PARTICLE500.batchEvGate(history,direct,side,floor,{forecast_draws:5}):{enabled:true,passed:false,error:'batch_module_unavailable'};
+  }
+  const audit=PRIORITY.predict({batch_ev_gate:batchGate,history,shoe_id:getShoeId(),probabilities:probs,
     noise:used?physicsNoiseScore(used,history.length+1):null,uncertainty:used?.[42],ess_ratio:diagnostics?.recent_ess_ratio,particle_quality:diagnostics?.particle_quality,clip_limits:result.finalProbability.bounds?[result.finalProbability.bounds.low,result.finalProbability.bounds.high]:null,
     legacy_ev_floor:Math.max(result.activation_ev||0,result.finalProbability.physics_activation_ev||0),residual,point_weight:pointWeight,point_diagnostics:pointWeight?diagnostics:null,point_error:pointError},config);
   const direction=audit.direction,q=audit.smoothed_q??.5;

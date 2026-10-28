@@ -56,13 +56,14 @@ function infer(input,records=[],custom={}){
  if(imbalance.forced_skip)reasons.push('ratio_imbalance');
  if(bestEV<=evFloor)reasons.push('nonpositive_or_insufficient_ev');
  if(n<=protection.cooldown_until)reasons.push('loss_cooldown');
+ if(input.batch_ev_gate?.enabled&&!input.batch_ev_gate.passed)reasons.push('batch_ev_uncertain');
  if(input.point_error)reasons.push('point_posterior_unavailable');
  const uncertain=reasons.some(r=>['noise_high','uncertainty_high','ess_low_or_missing','particle_quality_low_or_missing'].includes(r));
  const eligible=!reasons.length,level=eligible?(Math.abs(q-.5)>=band*1.5&&noise<.55?'高':'中'):'低';
  return {version:tight?.version||VERSION,direction:eligible?direction:'Skip',candidate_direction:direction,eligible,confidence_level:level,uncertainty_skip:uncertain,reasons,stage:s,round:n,
   raw_q:raw,calibrated_q:calibrated,smoothed_q:q,alpha,sign_reset,calibration:{samples:count,delta,...(tight?{minimum,gain:tight.calibration_gain}:{})},...(tight?{conservative_limits:tight,residual:input.residual||null}:{}),probabilities:{B:mass*q,P:mass*(1-q),T:source.T},directional:{B:q,P:1-q},ev_banker:evB,ev_player:evP,
   ...(imbalance.enabled?{ratio_imbalance:imbalance}:{}),probability_band:band,ev_floor:evFloor,noise,uncertainty,ess_ratio:ess,particle_quality:quality,protection,volume:{action_rate:actionRate,tightened:volume_tightened,relief_applied:false},
-  route_weight:0,xgb_influence:0,point_weight:input.point_weight||0,point_diagnostics:input.point_diagnostics||null,
+  ...(input.batch_ev_gate?{batch_ev_gate:input.batch_ev_gate}:{}),route_weight:0,xgb_influence:0,point_weight:input.point_weight||0,point_diagnostics:input.point_diagnostics||null,
   remaining_cards_interval:[Math.max(0,416-6*input.history.length-c.estimated_burn_max),Math.max(0,416-4*input.history.length-c.estimated_burn_min)],remaining_note:'依已輸入局數與4–6張/局及未知燒牌推估；不是已知牌階'};
 }
 function createClient(storage){
