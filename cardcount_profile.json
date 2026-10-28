@@ -553,7 +553,7 @@
     "estimated_burn_max": 11,
     "early_mid_conservative_v2": {
       "schema_version": 1,
-      "version": "EARLY_MID_CONSERVATIVE_V2",
+      "version": "EARLY_MID_TABLE_SMOOTH_V3",
       "enabled": true,
       "min_calibration_samples": 30,
       "curves": {
@@ -724,27 +724,23 @@
         "alpha": [
           [
             1,
-            0.28
+            0.32
           ],
           [
             30,
-            0.28
-          ],
-          [
-            40,
-            0.5
+            0.32
           ],
           [
             45,
-            0.5
+            0.34
           ],
           [
             50,
-            0.62
+            0.35
           ],
           [
             70,
-            0.62
+            0.36
           ]
         ],
         "alpha_max": [
@@ -757,16 +753,16 @@
             0.4
           ],
           [
-            40,
-            0.65
+            45,
+            0.48
           ],
           [
             50,
-            0.8
+            0.49
           ],
           [
             70,
-            0.8
+            0.5
           ]
         ],
         "pf_max": [

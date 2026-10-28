@@ -11,12 +11,12 @@ const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu5346
 const scripts=[
   "app256forward.js",
   "app256continuation.js",
-  "particle_filter_runtime.js?v=20261029-batch-ev-v1",
+  "particle_filter_runtime.js?v=20261029-table-smooth-v3",
   "macro_ema.js?v=20261023-middle-late-v2",
   "browser_calibration.js?v=20261028-pr56-restore",
   "point_conditioned_pf.js?v=20261029-priority-v1",
-  "physics_priority_runtime.js?v=20261029-batch-ev-v1",
-  "final_probability_runtime.js?v=20261029-batch-ev-v1"
+  "physics_priority_runtime.js?v=20261029-table-smooth-v3",
+  "final_probability_runtime.js?v=20261029-table-smooth-v3"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
