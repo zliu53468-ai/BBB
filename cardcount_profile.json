@@ -252,7 +252,7 @@
     },
     "low_uncertainty_gain": 0.18,
     "actionability_gain": 0.08,
-    "pattern_gain": 0,
+    "pattern_gain": 0.0,
     "weight_cap": 1.5,
     "xgb_candidates": [
       {
@@ -325,13 +325,13 @@
     }
   },
   "local_calibration": {
-    "enabled": true,
+    "enabled": false,
     "min_samples": 24,
     "min_validation": 16,
     "prior_strength": 100,
     "max_delta": 0.005,
     "validation_window": 32,
-    "min_brier_gain": 0.00005,
+    "min_brier_gain": 5e-05,
     "noise_start": 0.55,
     "noise_stop": 0.85,
     "stage_anchors": {
@@ -420,9 +420,9 @@
     "enabled": true,
     "xgb_influence": 0,
     "markov": {
-      "enabled": true,
+      "enabled": false,
       "order": 2,
-      "mix_weight": 0.04,
+      "mix_weight": 0.08,
       "max_weight": 0.12,
       "conflict_policy": "ignore_if_opposite",
       "min_observations": 12,
@@ -444,36 +444,44 @@
   },
   "experimental_no_skip_v1": {
     "schema_version": 1,
-    "enabled": true,
+    "enabled": false,
     "release_status": "user_accepted_unvalidated_experiment",
     "applies_to": "no_skip_test_only",
-    "version": "A_PLUS_SELECTED_4PCT_20261029",
+    "version": "bounded_platt_1_20261028",
     "expected_physics_fingerprint": "c82e9483",
-    "expected_input_fingerprint": "713c1f86",
+    "expected_input_fingerprint": "4107fc1a",
     "expected_particle_version": "PARTICLE500_STATELESS_V1",
     "model": {
       "type": "bounded_monotone_platt",
-      "slope": 0.5,
-      "intercept": 0.01879682266346735,
+      "slope": 0.9224432421914172,
+      "intercept": 0.006788755139259169,
       "max_delta": 0.01,
-      "fit_rows": 379804,
-      "ridge": 0.0001,
+      "identity_l2": 0.01,
+      "train_non_tie_rows": 11416,
+      "train_loss_in_sample_only": 0.6937495409398682,
       "optimizer_success": true
     },
     "evidence": {
       "data_kind": "synthetic_only_not_real_holdout",
-      "source": "independent_lab_round4_A",
-      "candidate": "A_m4_r0.0001_d0.01",
-      "not_proven_better_than_A": true
+      "shoes": 100,
+      "hands": 6989,
+      "observed_hit_rate_non_tie": 0.5165374268080393,
+      "bootstrap_hit95": [
+        0.5045266880355677,
+        0.5285987621724875
+      ],
+      "statistical_checks_passed": false,
+      "upper_bound_is_not_a_model_setting": true
     },
-    "expected_model_fingerprint": "75a8a338"
+    "expected_model_fingerprint": "46ed64c2"
   },
-  "a_plus_release": {
+  "independent_round_v1": {
     "schema_version": 1,
+    "version": "INDEPENDENT_A_NO_HISTORY_V1",
     "enabled": true,
-    "default_no_skip": true,
-    "source_commit": "c6f4a0afbf9fc9de3806ae662319471daadfb405",
-    "candidate": "A_m4_r0.0001_d0.01",
-    "unvalidated": true
+    "default_reference_direction": true,
+    "history_input": "empty",
+    "fixed_progress": "first_hand",
+    "warning": "no_current_card_input_same_prior_each_round"
   }
 }

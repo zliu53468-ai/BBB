@@ -14,7 +14,7 @@ const scripts=[
   "particle_filter_runtime.js?v=20261028-pr56-restore",
   "macro_ema.js?v=20261023-middle-late-v2",
   "browser_calibration.js?v=20261028-pr56-restore",
-  "final_probability_runtime.js?v=20261029-Aplus-selected"
+  "final_probability_runtime.js?v=20261029-independent-A"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
