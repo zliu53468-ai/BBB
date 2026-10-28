@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "scope": "engineering regressions only; statistical promotion failed",
+  "new_unit_tests": [
+    "joint probability/noise/uncertainty/ESS/quality gates",
+    "positive unconditional EV",
+    "signal-adaptive alpha",
+    "3-loss threshold and5-loss9-hand cooldown",
+    "Skip and tie do not clear losing runs",
+    "causal undo/reload and shoe isolation",
+    "storage failure closes entry",
+    "future labels/Core/XGB/road cannot vote"
+  ],
+  "integration": {
+    "flag_off_matches_original_main": true,
+    "pf_memo_matches_original": true,
+    "point_weight": 0.65,
+    "point_samples": 7,
+    "point_undo_replay_exact": true,
+    "no_skip_experiment_preserved": true,
+    "export_has_audit": true
+  },
+  "legacy_tests_mode": "physics_priority_v1.enabled=false in test-only fetch; original tests untouched",
+  "legacy_tests_passed": [
+    "test_hitrate_max.js",
+    "test_experimental_no_skip.js",
+    "test_physics_forecast_first.js",
+    "test_macro_runtime.js"
+  ],
+  "other_tests_passed": [
+    "test_browser_calibration.js",
+    "test_end_analysis_reload.js",
+    "research.tests.test_priority_metrics"
+  ],
+  "canonical_IO_parity_cases": 486,
+  "browser_widths": [
+    320,
+    390,
+    1365
+  ],
+  "browser_overflow": false,
+  "live_auth_tested": false
+}

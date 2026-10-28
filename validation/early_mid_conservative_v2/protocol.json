@@ -1,0 +1,414 @@
+{
+  "version": "EARLY_MID_CONSERVATIVE_V2",
+  "before_ref": "116ffc97b62f2519659d5ceb5ef5d717da0b8c7b",
+  "main_ref": "c6f4a0afbf9fc9de3806ae662319471daadfb405",
+  "seed": 2026102921,
+  "shoes": 500,
+  "maximum_hands": 70,
+  "primary_horizon": 70,
+  "secondary_horizons": [
+    50,
+    60
+  ],
+  "synthetic": true,
+  "no_points_or_latent_cards_input": true,
+  "input_sha256": "c8fcdecf2058d119b4d29f4cd7185b40ffd4b927f497a5f63f876df5f3b81aeb",
+  "candidate": {
+    "schema_version": 1,
+    "version": "PHYSICS_PRIORITY_SELECTIVE_V1",
+    "enabled": true,
+    "route_weight": 0,
+    "stages": {
+      "early": {
+        "end": 20,
+        "probability_band": 0.06,
+        "noise_max": 0.66,
+        "uncertainty_max": 0.66,
+        "ess_min": 0.6,
+        "quality_min": 0.62,
+        "ev_min": 0.015,
+        "alpha": 0.38
+      },
+      "middle": {
+        "end": 50,
+        "probability_band": 0.018,
+        "noise_max": 0.7,
+        "uncertainty_max": 0.7,
+        "ess_min": 0.6,
+        "quality_min": 0.62,
+        "ev_min": 0.01,
+        "alpha": 0.52
+      },
+      "late": {
+        "probability_band": 0.015,
+        "noise_max": 0.72,
+        "uncertainty_max": 0.72,
+        "ess_min": 0.6,
+        "quality_min": 0.62,
+        "ev_min": 0.006,
+        "alpha": 0.62
+      }
+    },
+    "alpha": {
+      "signal_gain": 0.15,
+      "noise_penalty": 0.1,
+      "min": 0.22,
+      "max": 0.8
+    },
+    "calibration": {
+      "min_samples": 30,
+      "prior_strength": 120,
+      "window": 60,
+      "decay": 0.98,
+      "max_delta": 0.004
+    },
+    "point_conditioned": {
+      "enabled": true,
+      "weight": 0.65,
+      "minimum_weight": 0.6,
+      "maximum_weight": 0.7
+    },
+    "protection": {
+      "loss_raise_at": 3,
+      "loss_multiplier": 1.2,
+      "cooldown_at": 5,
+      "cooldown_hands": 9,
+      "win_relief_at": 3,
+      "win_relief": 0.03
+    },
+    "volume": {
+      "enabled": true,
+      "window": 16,
+      "min_history": 8,
+      "target": {
+        "early": 0.05,
+        "middle": 0.3,
+        "late": 0.35
+      },
+      "band_multiplier": 1.1
+    },
+    "estimated_burn_min": 2,
+    "estimated_burn_max": 11,
+    "early_mid_conservative_v2": {
+      "schema_version": 1,
+      "version": "EARLY_MID_CONSERVATIVE_V2",
+      "enabled": true,
+      "min_calibration_samples": 30,
+      "curves": {
+        "probability_band": [
+          [
+            1,
+            0.06
+          ],
+          [
+            20,
+            0.06
+          ],
+          [
+            30,
+            0.0275
+          ],
+          [
+            31,
+            0.027
+          ],
+          [
+            35,
+            0.0225
+          ],
+          [
+            40,
+            0.019
+          ],
+          [
+            45,
+            0.019
+          ],
+          [
+            50,
+            0.015
+          ],
+          [
+            70,
+            0.015
+          ]
+        ],
+        "noise_max": [
+          [
+            1,
+            0.55
+          ],
+          [
+            30,
+            0.55
+          ],
+          [
+            40,
+            0.62
+          ],
+          [
+            45,
+            0.62
+          ],
+          [
+            50,
+            0.72
+          ],
+          [
+            70,
+            0.72
+          ]
+        ],
+        "uncertainty_max": [
+          [
+            1,
+            0.55
+          ],
+          [
+            30,
+            0.55
+          ],
+          [
+            40,
+            0.62
+          ],
+          [
+            45,
+            0.62
+          ],
+          [
+            50,
+            0.72
+          ],
+          [
+            70,
+            0.72
+          ]
+        ],
+        "ess_min": [
+          [
+            1,
+            0.75
+          ],
+          [
+            30,
+            0.75
+          ],
+          [
+            40,
+            0.68
+          ],
+          [
+            45,
+            0.68
+          ],
+          [
+            50,
+            0.6
+          ],
+          [
+            70,
+            0.6
+          ]
+        ],
+        "quality_min": [
+          [
+            1,
+            0.7
+          ],
+          [
+            30,
+            0.7
+          ],
+          [
+            40,
+            0.65
+          ],
+          [
+            45,
+            0.65
+          ],
+          [
+            50,
+            0.62
+          ],
+          [
+            70,
+            0.62
+          ]
+        ],
+        "ev_min": [
+          [
+            1,
+            0.015
+          ],
+          [
+            30,
+            0.015
+          ],
+          [
+            45,
+            0.01
+          ],
+          [
+            50,
+            0.006
+          ],
+          [
+            70,
+            0.006
+          ]
+        ],
+        "alpha": [
+          [
+            1,
+            0.28
+          ],
+          [
+            30,
+            0.28
+          ],
+          [
+            40,
+            0.5
+          ],
+          [
+            45,
+            0.5
+          ],
+          [
+            50,
+            0.62
+          ],
+          [
+            70,
+            0.62
+          ]
+        ],
+        "alpha_max": [
+          [
+            1,
+            0.4
+          ],
+          [
+            30,
+            0.4
+          ],
+          [
+            40,
+            0.65
+          ],
+          [
+            50,
+            0.8
+          ],
+          [
+            70,
+            0.8
+          ]
+        ],
+        "pf_max": [
+          [
+            1,
+            0.08
+          ],
+          [
+            30,
+            0.08
+          ],
+          [
+            35,
+            0.1
+          ],
+          [
+            45,
+            0.14
+          ],
+          [
+            50,
+            0.16
+          ],
+          [
+            70,
+            0.16
+          ]
+        ],
+        "residual_max_delta": [
+          [
+            1,
+            0.015
+          ],
+          [
+            30,
+            0.015
+          ],
+          [
+            45,
+            0.025
+          ],
+          [
+            50,
+            0.05
+          ],
+          [
+            70,
+            0.05
+          ]
+        ],
+        "calibration_gain": [
+          [
+            1,
+            0
+          ],
+          [
+            30,
+            0
+          ],
+          [
+            40,
+            1
+          ],
+          [
+            70,
+            1
+          ]
+        ],
+        "point_weight_max": [
+          [
+            1,
+            0
+          ],
+          [
+            30,
+            0
+          ],
+          [
+            40,
+            0.65
+          ],
+          [
+            70,
+            0.65
+          ]
+        ]
+      }
+    },
+    "validation_status": "candidate_not_promoted",
+    "backtest_goal_action_rate": [
+      0.2,
+      0.35
+    ]
+  },
+  "sources": {
+    "final_probability_runtime.js": "5c5cf253563bb5bfd6f901c3f304d7dcd38828a2bcd88a4ac984d3623588aa20",
+    "physics_priority_runtime.js": "0ce469f53de8418b22da58fb0aeb822f868cdd10b5882c6b9c73b35844a40cf0",
+    "cardcount_profile.json": "6da0839525b8995e9150040bd669ab3b870de6b38a3c215e603695efadb5a46c",
+    "particle_filter_runtime.js": "4c11f9122b9474ec1798ae38e2751de6f72115167fa2537affdf2cd4ae704d18",
+    "physics_multitask_model.json": "3ec0d60251cb5b3fcb40bd67fec1334cb64d37becebbe0b040efbae871071138",
+    "final_probability_model.json": "862347a6937b30ac9a8a3ece8f0eb9927569c97dee799e53cbb418e6c10be2f9",
+    "app256forward.js": "79d43e0be7b23f77e631909cd7c6808fc668df488df0171fe5cc4722e8597064",
+    "app256continuation.js": "d3302c7d09db8932f7ab9ea7c722f394c6aa566d0654962e79bba751f30bf006",
+    "research/priority_runtime.cjs": "dc180ad57cc2589e7cd8adf7e0ac44da8b4eb9e48e8eacdf0ec0332bc6d770aa",
+    "research/early_mid_backtest.cjs": "e4b39869c457a3faa55c21084782ce1cf7c8a28f3d9f8d5b446cf4ffe3d58e41"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "unique_shoes": 500,
+  "forecasts": 35000,
+  "early_limit_checks": 15000,
+  "before_ref": "116ffc97b62f2519659d5ceb5ef5d717da0b8c7b",
+  "main_ref": "c6f4a0afbf9fc9de3806ae662319471daadfb405",
+  "policy_parameters_changed_after_test": false,
+  "rollback_only_fix_forecasts_unchanged": true,
+  "all_35000_rows_exact": true,
+  "tests": [
+    "test_physics_priority.js",
+    "test_early_mid_conservative.js",
+    "research/test_early_mid_runtime.cjs",
+    "research/test_priority_integration.cjs",
+    "test_browser_calibration.js in legacy rollback mode",
+    "test_end_analysis_reload.js"
+  ],
+  "models_and_frozen_core_unchanged": true
+}

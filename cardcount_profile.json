@@ -474,5 +474,405 @@
       "upper_bound_is_not_a_model_setting": true
     },
     "expected_model_fingerprint": "46ed64c2"
+  },
+  "physics_priority_v1": {
+    "schema_version": 1,
+    "version": "PHYSICS_PRIORITY_SELECTIVE_V1",
+    "enabled": true,
+    "route_weight": 0,
+    "stages": {
+      "early": {
+        "end": 20,
+        "probability_band": 0.06,
+        "noise_max": 0.66,
+        "uncertainty_max": 0.66,
+        "ess_min": 0.6,
+        "quality_min": 0.62,
+        "ev_min": 0.015,
+        "alpha": 0.38
+      },
+      "middle": {
+        "end": 50,
+        "probability_band": 0.018,
+        "noise_max": 0.7,
+        "uncertainty_max": 0.7,
+        "ess_min": 0.6,
+        "quality_min": 0.62,
+        "ev_min": 0.01,
+        "alpha": 0.52
+      },
+      "late": {
+        "probability_band": 0.015,
+        "noise_max": 0.72,
+        "uncertainty_max": 0.72,
+        "ess_min": 0.6,
+        "quality_min": 0.62,
+        "ev_min": 0.006,
+        "alpha": 0.62
+      }
+    },
+    "alpha": {
+      "signal_gain": 0.15,
+      "noise_penalty": 0.1,
+      "min": 0.22,
+      "max": 0.8
+    },
+    "calibration": {
+      "min_samples": 30,
+      "prior_strength": 120,
+      "window": 60,
+      "decay": 0.98,
+      "max_delta": 0.004
+    },
+    "point_conditioned": {
+      "enabled": true,
+      "weight": 0.65,
+      "minimum_weight": 0.6,
+      "maximum_weight": 0.7
+    },
+    "protection": {
+      "loss_raise_at": 3,
+      "loss_multiplier": 1.2,
+      "cooldown_at": 5,
+      "cooldown_hands": 9,
+      "win_relief_at": 3,
+      "win_relief": 0.03
+    },
+    "volume": {
+      "enabled": true,
+      "window": 16,
+      "min_history": 8,
+      "target": {
+        "early": 0.05,
+        "middle": 0.3,
+        "late": 0.35
+      },
+      "band_multiplier": 1.1
+    },
+    "estimated_burn_min": 2,
+    "estimated_burn_max": 11,
+    "early_mid_conservative_v2": {
+      "schema_version": 1,
+      "version": "EARLY_MID_TABLE_SMOOTH_V3",
+      "enabled": true,
+      "min_calibration_samples": 30,
+      "curves": {
+        "probability_band": [
+          [
+            1,
+            0.06
+          ],
+          [
+            20,
+            0.06
+          ],
+          [
+            30,
+            0.0275
+          ],
+          [
+            31,
+            0.027
+          ],
+          [
+            35,
+            0.0225
+          ],
+          [
+            40,
+            0.019
+          ],
+          [
+            45,
+            0.019
+          ],
+          [
+            50,
+            0.015
+          ],
+          [
+            70,
+            0.015
+          ]
+        ],
+        "noise_max": [
+          [
+            1,
+            0.55
+          ],
+          [
+            30,
+            0.55
+          ],
+          [
+            40,
+            0.62
+          ],
+          [
+            45,
+            0.62
+          ],
+          [
+            50,
+            0.72
+          ],
+          [
+            70,
+            0.72
+          ]
+        ],
+        "uncertainty_max": [
+          [
+            1,
+            0.55
+          ],
+          [
+            30,
+            0.55
+          ],
+          [
+            40,
+            0.62
+          ],
+          [
+            45,
+            0.62
+          ],
+          [
+            50,
+            0.72
+          ],
+          [
+            70,
+            0.72
+          ]
+        ],
+        "ess_min": [
+          [
+            1,
+            0.75
+          ],
+          [
+            30,
+            0.75
+          ],
+          [
+            40,
+            0.68
+          ],
+          [
+            45,
+            0.68
+          ],
+          [
+            50,
+            0.6
+          ],
+          [
+            70,
+            0.6
+          ]
+        ],
+        "quality_min": [
+          [
+            1,
+            0.7
+          ],
+          [
+            30,
+            0.7
+          ],
+          [
+            40,
+            0.65
+          ],
+          [
+            45,
+            0.65
+          ],
+          [
+            50,
+            0.62
+          ],
+          [
+            70,
+            0.62
+          ]
+        ],
+        "ev_min": [
+          [
+            1,
+            0.015
+          ],
+          [
+            30,
+            0.015
+          ],
+          [
+            45,
+            0.01
+          ],
+          [
+            50,
+            0.006
+          ],
+          [
+            70,
+            0.006
+          ]
+        ],
+        "alpha": [
+          [
+            1,
+            0.32
+          ],
+          [
+            30,
+            0.32
+          ],
+          [
+            45,
+            0.34
+          ],
+          [
+            50,
+            0.35
+          ],
+          [
+            70,
+            0.36
+          ]
+        ],
+        "alpha_max": [
+          [
+            1,
+            0.4
+          ],
+          [
+            30,
+            0.4
+          ],
+          [
+            45,
+            0.48
+          ],
+          [
+            50,
+            0.49
+          ],
+          [
+            70,
+            0.5
+          ]
+        ],
+        "pf_max": [
+          [
+            1,
+            0.08
+          ],
+          [
+            30,
+            0.08
+          ],
+          [
+            35,
+            0.1
+          ],
+          [
+            45,
+            0.14
+          ],
+          [
+            50,
+            0.16
+          ],
+          [
+            70,
+            0.16
+          ]
+        ],
+        "residual_max_delta": [
+          [
+            1,
+            0.015
+          ],
+          [
+            30,
+            0.015
+          ],
+          [
+            45,
+            0.025
+          ],
+          [
+            50,
+            0.05
+          ],
+          [
+            70,
+            0.05
+          ]
+        ],
+        "calibration_gain": [
+          [
+            1,
+            0
+          ],
+          [
+            30,
+            0
+          ],
+          [
+            40,
+            1
+          ],
+          [
+            70,
+            1
+          ]
+        ],
+        "point_weight_max": [
+          [
+            1,
+            0
+          ],
+          [
+            30,
+            0
+          ],
+          [
+            40,
+            0.65
+          ],
+          [
+            70,
+            0.65
+          ]
+        ]
+      }
+    },
+    "validation_status": "candidate_not_promoted",
+    "backtest_goal_action_rate": [
+      0.2,
+      0.35
+    ],
+    "ratio_imbalance_guard": {
+      "schema_version": 1,
+      "version": "RATIO_RISK_GATE_V1",
+      "enabled": true,
+      "window": 16,
+      "min_samples": 12,
+      "start": 0.2,
+      "full": 0.35,
+      "max_band_boost": 0.012,
+      "force_skip_at": 0.35
+    },
+    "early_batch_ev_gate": {
+      "schema_version": 1,
+      "enabled": true,
+      "max_round": 30,
+      "batches": 4,
+      "scope": "monte_carlo_stability_only"
+    }
   }
 }

@@ -1,0 +1,1328 @@
+{
+  "protocol": {
+    "version": "EARLY_MID_CONSERVATIVE_V2",
+    "before_ref": "116ffc97b62f2519659d5ceb5ef5d717da0b8c7b",
+    "main_ref": "c6f4a0afbf9fc9de3806ae662319471daadfb405",
+    "seed": 2026102921,
+    "shoes": 500,
+    "maximum_hands": 70,
+    "primary_horizon": 70,
+    "secondary_horizons": [
+      50,
+      60
+    ],
+    "synthetic": true,
+    "no_points_or_latent_cards_input": true,
+    "input_sha256": "c8fcdecf2058d119b4d29f4cd7185b40ffd4b927f497a5f63f876df5f3b81aeb",
+    "candidate": {
+      "schema_version": 1,
+      "version": "PHYSICS_PRIORITY_SELECTIVE_V1",
+      "enabled": true,
+      "route_weight": 0,
+      "stages": {
+        "early": {
+          "end": 20,
+          "probability_band": 0.06,
+          "noise_max": 0.66,
+          "uncertainty_max": 0.66,
+          "ess_min": 0.6,
+          "quality_min": 0.62,
+          "ev_min": 0.015,
+          "alpha": 0.38
+        },
+        "middle": {
+          "end": 50,
+          "probability_band": 0.018,
+          "noise_max": 0.7,
+          "uncertainty_max": 0.7,
+          "ess_min": 0.6,
+          "quality_min": 0.62,
+          "ev_min": 0.01,
+          "alpha": 0.52
+        },
+        "late": {
+          "probability_band": 0.015,
+          "noise_max": 0.72,
+          "uncertainty_max": 0.72,
+          "ess_min": 0.6,
+          "quality_min": 0.62,
+          "ev_min": 0.006,
+          "alpha": 0.62
+        }
+      },
+      "alpha": {
+        "signal_gain": 0.15,
+        "noise_penalty": 0.1,
+        "min": 0.22,
+        "max": 0.8
+      },
+      "calibration": {
+        "min_samples": 30,
+        "prior_strength": 120,
+        "window": 60,
+        "decay": 0.98,
+        "max_delta": 0.004
+      },
+      "point_conditioned": {
+        "enabled": true,
+        "weight": 0.65,
+        "minimum_weight": 0.6,
+        "maximum_weight": 0.7
+      },
+      "protection": {
+        "loss_raise_at": 3,
+        "loss_multiplier": 1.2,
+        "cooldown_at": 5,
+        "cooldown_hands": 9,
+        "win_relief_at": 3,
+        "win_relief": 0.03
+      },
+      "volume": {
+        "enabled": true,
+        "window": 16,
+        "min_history": 8,
+        "target": {
+          "early": 0.05,
+          "middle": 0.3,
+          "late": 0.35
+        },
+        "band_multiplier": 1.1
+      },
+      "estimated_burn_min": 2,
+      "estimated_burn_max": 11,
+      "early_mid_conservative_v2": {
+        "schema_version": 1,
+        "version": "EARLY_MID_CONSERVATIVE_V2",
+        "enabled": true,
+        "min_calibration_samples": 30,
+        "curves": {
+          "probability_band": [
+            [
+              1,
+              0.06
+            ],
+            [
+              20,
+              0.06
+            ],
+            [
+              30,
+              0.0275
+            ],
+            [
+              31,
+              0.027
+            ],
+            [
+              35,
+              0.0225
+            ],
+            [
+              40,
+              0.019
+            ],
+            [
+              45,
+              0.019
+            ],
+            [
+              50,
+              0.015
+            ],
+            [
+              70,
+              0.015
+            ]
+          ],
+          "noise_max": [
+            [
+              1,
+              0.55
+            ],
+            [
+              30,
+              0.55
+            ],
+            [
+              40,
+              0.62
+            ],
+            [
+              45,
+              0.62
+            ],
+            [
+              50,
+              0.72
+            ],
+            [
+              70,
+              0.72
+            ]
+          ],
+          "uncertainty_max": [
+            [
+              1,
+              0.55
+            ],
+            [
+              30,
+              0.55
+            ],
+            [
+              40,
+              0.62
+            ],
+            [
+              45,
+              0.62
+            ],
+            [
+              50,
+              0.72
+            ],
+            [
+              70,
+              0.72
+            ]
+          ],
+          "ess_min": [
+            [
+              1,
+              0.75
+            ],
+            [
+              30,
+              0.75
+            ],
+            [
+              40,
+              0.68
+            ],
+            [
+              45,
+              0.68
+            ],
+            [
+              50,
+              0.6
+            ],
+            [
+              70,
+              0.6
+            ]
+          ],
+          "quality_min": [
+            [
+              1,
+              0.7
+            ],
+            [
+              30,
+              0.7
+            ],
+            [
+              40,
+              0.65
+            ],
+            [
+              45,
+              0.65
+            ],
+            [
+              50,
+              0.62
+            ],
+            [
+              70,
+              0.62
+            ]
+          ],
+          "ev_min": [
+            [
+              1,
+              0.015
+            ],
+            [
+              30,
+              0.015
+            ],
+            [
+              45,
+              0.01
+            ],
+            [
+              50,
+              0.006
+            ],
+            [
+              70,
+              0.006
+            ]
+          ],
+          "alpha": [
+            [
+              1,
+              0.28
+            ],
+            [
+              30,
+              0.28
+            ],
+            [
+              40,
+              0.5
+            ],
+            [
+              45,
+              0.5
+            ],
+            [
+              50,
+              0.62
+            ],
+            [
+              70,
+              0.62
+            ]
+          ],
+          "alpha_max": [
+            [
+              1,
+              0.4
+            ],
+            [
+              30,
+              0.4
+            ],
+            [
+              40,
+              0.65
+            ],
+            [
+              50,
+              0.8
+            ],
+            [
+              70,
+              0.8
+            ]
+          ],
+          "pf_max": [
+            [
+              1,
+              0.08
+            ],
+            [
+              30,
+              0.08
+            ],
+            [
+              35,
+              0.1
+            ],
+            [
+              45,
+              0.14
+            ],
+            [
+              50,
+              0.16
+            ],
+            [
+              70,
+              0.16
+            ]
+          ],
+          "residual_max_delta": [
+            [
+              1,
+              0.015
+            ],
+            [
+              30,
+              0.015
+            ],
+            [
+              45,
+              0.025
+            ],
+            [
+              50,
+              0.05
+            ],
+            [
+              70,
+              0.05
+            ]
+          ],
+          "calibration_gain": [
+            [
+              1,
+              0
+            ],
+            [
+              30,
+              0
+            ],
+            [
+              40,
+              1
+            ],
+            [
+              70,
+              1
+            ]
+          ],
+          "point_weight_max": [
+            [
+              1,
+              0
+            ],
+            [
+              30,
+              0
+            ],
+            [
+              40,
+              0.65
+            ],
+            [
+              70,
+              0.65
+            ]
+          ]
+        }
+      },
+      "validation_status": "candidate_not_promoted",
+      "backtest_goal_action_rate": [
+        0.2,
+        0.35
+      ]
+    },
+    "sources": {
+      "final_probability_runtime.js": "5c5cf253563bb5bfd6f901c3f304d7dcd38828a2bcd88a4ac984d3623588aa20",
+      "physics_priority_runtime.js": "0ce469f53de8418b22da58fb0aeb822f868cdd10b5882c6b9c73b35844a40cf0",
+      "cardcount_profile.json": "6da0839525b8995e9150040bd669ab3b870de6b38a3c215e603695efadb5a46c",
+      "particle_filter_runtime.js": "4c11f9122b9474ec1798ae38e2751de6f72115167fa2537affdf2cd4ae704d18",
+      "physics_multitask_model.json": "3ec0d60251cb5b3fcb40bd67fec1334cb64d37becebbe0b040efbae871071138",
+      "final_probability_model.json": "862347a6937b30ac9a8a3ece8f0eb9927569c97dee799e53cbb418e6c10be2f9",
+      "app256forward.js": "79d43e0be7b23f77e631909cd7c6808fc668df488df0171fe5cc4722e8597064",
+      "app256continuation.js": "d3302c7d09db8932f7ab9ea7c722f394c6aa566d0654962e79bba751f30bf006",
+      "research/priority_runtime.cjs": "dc180ad57cc2589e7cd8adf7e0ac44da8b4eb9e48e8eacdf0ec0332bc6d770aa",
+      "research/early_mid_backtest.cjs": "e4b39869c457a3faa55c21084782ce1cf7c8a28f3d9f8d5b446cf4ffe3d58e41"
+    }
+  },
+  "synthetic_only": true,
+  "stages": {
+    "all": {
+      "main": {
+        "hands": 35000,
+        "recommendations": 5219,
+        "wins": 2385,
+        "losses": 2363,
+        "pushes": 471,
+        "profit": -32.249999999999176,
+        "B": 2426,
+        "P": 2793,
+        "skip": 29781,
+        "action_rate": 0.14911428571428573,
+        "hit_on_recommendations_excluding_ties": 0.5023167649536647,
+        "wins_per_all_hands": 0.06814285714285714,
+        "EV_per_recommendation": -0.006179344702050043,
+        "EV_per_opportunity": -0.0009214285714285479
+      },
+      "before": {
+        "hands": 35000,
+        "recommendations": 2417,
+        "wins": 1116,
+        "losses": 1063,
+        "pushes": 238,
+        "profit": 12.799999999999958,
+        "B": 1714,
+        "P": 703,
+        "skip": 32583,
+        "action_rate": 0.06905714285714286,
+        "hit_on_recommendations_excluding_ties": 0.5121615419917394,
+        "wins_per_all_hands": 0.03188571428571429,
+        "EV_per_recommendation": 0.005295821266032254,
+        "EV_per_opportunity": 0.00036571428571428454
+      },
+      "after": {
+        "hands": 35000,
+        "recommendations": 1753,
+        "wins": 805,
+        "losses": 778,
+        "pushes": 170,
+        "profit": -4.20000000000012,
+        "B": 1329,
+        "P": 424,
+        "skip": 33247,
+        "action_rate": 0.05008571428571429,
+        "hit_on_recommendations_excluding_ties": 0.5085281111813014,
+        "wins_per_all_hands": 0.023,
+        "EV_per_recommendation": -0.002395892755276737,
+        "EV_per_opportunity": -0.00012000000000000343
+      }
+    },
+    "1-30": {
+      "main": {
+        "hands": 15000,
+        "recommendations": 1797,
+        "wins": 811,
+        "losses": 839,
+        "pushes": 147,
+        "profit": -39.44999999999999,
+        "B": 532,
+        "P": 1265,
+        "skip": 13203,
+        "action_rate": 0.1198,
+        "hit_on_recommendations_excluding_ties": 0.4915151515151515,
+        "wins_per_all_hands": 0.054066666666666666,
+        "EV_per_recommendation": -0.02195325542570951,
+        "EV_per_opportunity": -0.002629999999999999
+      },
+      "before": {
+        "hands": 15000,
+        "recommendations": 492,
+        "wins": 217,
+        "losses": 225,
+        "pushes": 50,
+        "profit": -13.650000000000048,
+        "B": 261,
+        "P": 231,
+        "skip": 14508,
+        "action_rate": 0.0328,
+        "hit_on_recommendations_excluding_ties": 0.49095022624434387,
+        "wins_per_all_hands": 0.014466666666666666,
+        "EV_per_recommendation": -0.027743902439024488,
+        "EV_per_opportunity": -0.0009100000000000033
+      },
+      "after": {
+        "hands": 15000,
+        "recommendations": 25,
+        "wins": 9,
+        "losses": 15,
+        "pushes": 1,
+        "profit": -6.25,
+        "B": 12,
+        "P": 13,
+        "skip": 14975,
+        "action_rate": 0.0016666666666666668,
+        "hit_on_recommendations_excluding_ties": 0.375,
+        "wins_per_all_hands": 0.0006,
+        "EV_per_recommendation": -0.25,
+        "EV_per_opportunity": -0.0004166666666666667
+      }
+    },
+    "31-45": {
+      "main": {
+        "hands": 7500,
+        "recommendations": 1583,
+        "wins": 735,
+        "losses": 701,
+        "pushes": 147,
+        "profit": 11.350000000000254,
+        "B": 1024,
+        "P": 559,
+        "skip": 5917,
+        "action_rate": 0.21106666666666668,
+        "hit_on_recommendations_excluding_ties": 0.5118384401114207,
+        "wins_per_all_hands": 0.098,
+        "EV_per_recommendation": 0.0071699305116868315,
+        "EV_per_opportunity": 0.0015133333333333672
+      },
+      "before": {
+        "hands": 7500,
+        "recommendations": 844,
+        "wins": 404,
+        "losses": 357,
+        "pushes": 83,
+        "profit": 30.099999999999856,
+        "B": 704,
+        "P": 140,
+        "skip": 6656,
+        "action_rate": 0.11253333333333333,
+        "hit_on_recommendations_excluding_ties": 0.5308804204993429,
+        "wins_per_all_hands": 0.05386666666666667,
+        "EV_per_recommendation": 0.035663507109004566,
+        "EV_per_opportunity": 0.004013333333333314
+      },
+      "after": {
+        "hands": 7500,
+        "recommendations": 623,
+        "wins": 285,
+        "losses": 275,
+        "pushes": 63,
+        "profit": -2.7500000000000764,
+        "B": 548,
+        "P": 75,
+        "skip": 6877,
+        "action_rate": 0.08306666666666666,
+        "hit_on_recommendations_excluding_ties": 0.5089285714285714,
+        "wins_per_all_hands": 0.038,
+        "EV_per_recommendation": -0.004414125200642177,
+        "EV_per_opportunity": -0.00036666666666667686
+      }
+    },
+    "1-45": {
+      "main": {
+        "hands": 22500,
+        "recommendations": 3380,
+        "wins": 1546,
+        "losses": 1540,
+        "pushes": 294,
+        "profit": -28.099999999999287,
+        "B": 1556,
+        "P": 1824,
+        "skip": 19120,
+        "action_rate": 0.15022222222222223,
+        "hit_on_recommendations_excluding_ties": 0.5009721322099806,
+        "wins_per_all_hands": 0.06871111111111111,
+        "EV_per_recommendation": -0.00831360946745541,
+        "EV_per_opportunity": -0.0012488888888888571
+      },
+      "before": {
+        "hands": 22500,
+        "recommendations": 1336,
+        "wins": 621,
+        "losses": 582,
+        "pushes": 133,
+        "profit": 16.4499999999999,
+        "B": 965,
+        "P": 371,
+        "skip": 21164,
+        "action_rate": 0.05937777777777778,
+        "hit_on_recommendations_excluding_ties": 0.516209476309227,
+        "wins_per_all_hands": 0.0276,
+        "EV_per_recommendation": 0.01231287425149693,
+        "EV_per_opportunity": 0.0007311111111111066
+      },
+      "after": {
+        "hands": 22500,
+        "recommendations": 648,
+        "wins": 294,
+        "losses": 290,
+        "pushes": 64,
+        "profit": -9.000000000000114,
+        "B": 560,
+        "P": 88,
+        "skip": 21852,
+        "action_rate": 0.0288,
+        "hit_on_recommendations_excluding_ties": 0.5034246575342466,
+        "wins_per_all_hands": 0.013066666666666667,
+        "EV_per_recommendation": -0.013888888888889065,
+        "EV_per_opportunity": -0.00040000000000000506
+      }
+    },
+    "46-70": {
+      "main": {
+        "hands": 12500,
+        "recommendations": 1839,
+        "wins": 839,
+        "losses": 823,
+        "pushes": 177,
+        "profit": -4.150000000000088,
+        "B": 870,
+        "P": 969,
+        "skip": 10661,
+        "action_rate": 0.14712,
+        "hit_on_recommendations_excluding_ties": 0.5048134777376655,
+        "wins_per_all_hands": 0.06712,
+        "EV_per_recommendation": -0.0022566612289288135,
+        "EV_per_opportunity": -0.00033200000000000704
+      },
+      "before": {
+        "hands": 12500,
+        "recommendations": 1081,
+        "wins": 495,
+        "losses": 481,
+        "pushes": 105,
+        "profit": -3.650000000000089,
+        "B": 749,
+        "P": 332,
+        "skip": 11419,
+        "action_rate": 0.08648,
+        "hit_on_recommendations_excluding_ties": 0.507172131147541,
+        "wins_per_all_hands": 0.0396,
+        "EV_per_recommendation": -0.0033765032377429133,
+        "EV_per_opportunity": -0.00029200000000000715
+      },
+      "after": {
+        "hands": 12500,
+        "recommendations": 1105,
+        "wins": 511,
+        "losses": 488,
+        "pushes": 106,
+        "profit": 4.799999999999798,
+        "B": 769,
+        "P": 336,
+        "skip": 11395,
+        "action_rate": 0.0884,
+        "hit_on_recommendations_excluding_ties": 0.5115115115115115,
+        "wins_per_all_hands": 0.04088,
+        "EV_per_recommendation": 0.0043438914027147495,
+        "EV_per_opportunity": 0.00038399999999998386
+      }
+    }
+  },
+  "horizons": {
+    "50": {
+      "main": {
+        "hands": 25000,
+        "recommendations": 3817,
+        "wins": 1723,
+        "losses": 1758,
+        "pushes": 336,
+        "profit": -76.04999999999865,
+        "B": 1892,
+        "P": 1925,
+        "skip": 21183,
+        "action_rate": 0.15268,
+        "hit_on_recommendations_excluding_ties": 0.49497270899166906,
+        "wins_per_all_hands": 0.06892,
+        "EV_per_recommendation": -0.0199240241026981,
+        "EV_per_opportunity": -0.003041999999999946
+      },
+      "before": {
+        "hands": 25000,
+        "recommendations": 1622,
+        "wins": 743,
+        "losses": 721,
+        "pushes": 158,
+        "profit": -6.200000000000133,
+        "B": 1228,
+        "P": 394,
+        "skip": 23378,
+        "action_rate": 0.06488,
+        "hit_on_recommendations_excluding_ties": 0.5075136612021858,
+        "wins_per_all_hands": 0.02972,
+        "EV_per_recommendation": -0.0038224414303330047,
+        "EV_per_opportunity": -0.0002480000000000053
+      },
+      "after": {
+        "hands": 25000,
+        "recommendations": 953,
+        "wins": 428,
+        "losses": 435,
+        "pushes": 90,
+        "profit": -26.099999999999824,
+        "B": 839,
+        "P": 114,
+        "skip": 24047,
+        "action_rate": 0.03812,
+        "hit_on_recommendations_excluding_ties": 0.4959443800695249,
+        "wins_per_all_hands": 0.01712,
+        "EV_per_recommendation": -0.027387198321091107,
+        "EV_per_opportunity": -0.0010439999999999929
+      }
+    },
+    "60": {
+      "main": {
+        "hands": 30000,
+        "recommendations": 4475,
+        "wins": 2025,
+        "losses": 2050,
+        "pushes": 400,
+        "profit": -74.09999999999876,
+        "B": 2223,
+        "P": 2252,
+        "skip": 25525,
+        "action_rate": 0.14916666666666667,
+        "hit_on_recommendations_excluding_ties": 0.49693251533742333,
+        "wins_per_all_hands": 0.0675,
+        "EV_per_recommendation": -0.016558659217876817,
+        "EV_per_opportunity": -0.0024699999999999588
+      },
+      "before": {
+        "hands": 30000,
+        "recommendations": 2026,
+        "wins": 932,
+        "losses": 897,
+        "pushes": 197,
+        "profit": -0.8500000000003429,
+        "B": 1539,
+        "P": 487,
+        "skip": 27974,
+        "action_rate": 0.06753333333333333,
+        "hit_on_recommendations_excluding_ties": 0.5095680699835976,
+        "wins_per_all_hands": 0.031066666666666666,
+        "EV_per_recommendation": -0.0004195459032578198,
+        "EV_per_opportunity": -2.8333333333344764e-05
+      },
+      "after": {
+        "hands": 30000,
+        "recommendations": 1361,
+        "wins": 619,
+        "losses": 613,
+        "pushes": 129,
+        "profit": -20.800000000000217,
+        "B": 1152,
+        "P": 209,
+        "skip": 28639,
+        "action_rate": 0.045366666666666666,
+        "hit_on_recommendations_excluding_ties": 0.502435064935065,
+        "wins_per_all_hands": 0.020633333333333333,
+        "EV_per_recommendation": -0.015282880235121395,
+        "EV_per_opportunity": -0.0006933333333333406
+      }
+    },
+    "70": {
+      "main": {
+        "hands": 35000,
+        "recommendations": 5219,
+        "wins": 2385,
+        "losses": 2363,
+        "pushes": 471,
+        "profit": -32.249999999999176,
+        "B": 2426,
+        "P": 2793,
+        "skip": 29781,
+        "action_rate": 0.14911428571428573,
+        "hit_on_recommendations_excluding_ties": 0.5023167649536647,
+        "wins_per_all_hands": 0.06814285714285714,
+        "EV_per_recommendation": -0.006179344702050043,
+        "EV_per_opportunity": -0.0009214285714285479
+      },
+      "before": {
+        "hands": 35000,
+        "recommendations": 2417,
+        "wins": 1116,
+        "losses": 1063,
+        "pushes": 238,
+        "profit": 12.799999999999958,
+        "B": 1714,
+        "P": 703,
+        "skip": 32583,
+        "action_rate": 0.06905714285714286,
+        "hit_on_recommendations_excluding_ties": 0.5121615419917394,
+        "wins_per_all_hands": 0.03188571428571429,
+        "EV_per_recommendation": 0.005295821266032254,
+        "EV_per_opportunity": 0.00036571428571428454
+      },
+      "after": {
+        "hands": 35000,
+        "recommendations": 1753,
+        "wins": 805,
+        "losses": 778,
+        "pushes": 170,
+        "profit": -4.20000000000012,
+        "B": 1329,
+        "P": 424,
+        "skip": 33247,
+        "action_rate": 0.05008571428571429,
+        "hit_on_recommendations_excluding_ties": 0.5085281111813014,
+        "wins_per_all_hands": 0.023,
+        "EV_per_recommendation": -0.002395892755276737,
+        "EV_per_opportunity": -0.00012000000000000343
+      }
+    }
+  },
+  "streaks": {
+    "main": {
+      "within_shoe": {
+        "win": {
+          "maximum": 8,
+          "histogram": {
+            "1": 663,
+            "2": 356,
+            "3": 147,
+            "4": 72,
+            "5": 32,
+            "6": 14,
+            "7": 3,
+            "8": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 270,
+              "mean_run_length": 3.740740740740741,
+              "overlapping_windows": 470,
+              "windows_per_1000_non_tie_recommendations": 98.98904802021904
+            },
+            "5": {
+              "maximal_run_count": 51,
+              "mean_run_length": 5.509803921568627,
+              "overlapping_windows": 77,
+              "windows_per_1000_non_tie_recommendations": 16.217354675652906
+            },
+            "7": {
+              "maximal_run_count": 5,
+              "mean_run_length": 7.4,
+              "overlapping_windows": 7,
+              "windows_per_1000_non_tie_recommendations": 1.4743049705139006
+            }
+          }
+        },
+        "loss": {
+          "maximum": 7,
+          "histogram": {
+            "1": 694,
+            "2": 338,
+            "3": 146,
+            "4": 64,
+            "5": 39,
+            "6": 15,
+            "7": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 266,
+              "mean_run_length": 3.7330827067669174,
+              "overlapping_windows": 461,
+              "windows_per_1000_non_tie_recommendations": 97.09351305812974
+            },
+            "5": {
+              "maximal_run_count": 56,
+              "mean_run_length": 5.339285714285714,
+              "overlapping_windows": 75,
+              "windows_per_1000_non_tie_recommendations": 15.796124684077506
+            },
+            "7": {
+              "maximal_run_count": 2,
+              "mean_run_length": 7.0,
+              "overlapping_windows": 2,
+              "windows_per_1000_non_tie_recommendations": 0.42122999157540014
+            }
+          }
+        }
+      },
+      "across_shoes": {
+        "win": {
+          "maximum": 12,
+          "histogram": {
+            "1": 559,
+            "2": 310,
+            "3": 145,
+            "4": 79,
+            "5": 39,
+            "6": 21,
+            "7": 6,
+            "8": 4,
+            "9": 3,
+            "10": 1,
+            "11": 1,
+            "12": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 300,
+              "mean_run_length": 4.02,
+              "overlapping_windows": 606,
+              "windows_per_1000_non_tie_recommendations": 127.63268744734626
+            },
+            "5": {
+              "maximal_run_count": 76,
+              "mean_run_length": 5.9868421052631575,
+              "overlapping_windows": 151,
+              "windows_per_1000_non_tie_recommendations": 31.802864363942714
+            },
+            "7": {
+              "maximal_run_count": 16,
+              "mean_run_length": 8.375,
+              "overlapping_windows": 38,
+              "windows_per_1000_non_tie_recommendations": 8.003369839932603
+            }
+          }
+        },
+        "loss": {
+          "maximum": 11,
+          "histogram": {
+            "1": 576,
+            "2": 301,
+            "3": 145,
+            "4": 64,
+            "5": 43,
+            "6": 25,
+            "7": 9,
+            "8": 1,
+            "9": 3,
+            "10": 2,
+            "11": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 293,
+              "mean_run_length": 4.044368600682594,
+              "overlapping_windows": 599,
+              "windows_per_1000_non_tie_recommendations": 126.15838247683234
+            },
+            "5": {
+              "maximal_run_count": 84,
+              "mean_run_length": 5.880952380952381,
+              "overlapping_windows": 158,
+              "windows_per_1000_non_tie_recommendations": 33.277169334456616
+            },
+            "7": {
+              "maximal_run_count": 16,
+              "mean_run_length": 8.0625,
+              "overlapping_windows": 33,
+              "windows_per_1000_non_tie_recommendations": 6.950294860994103
+            }
+          }
+        }
+      }
+    },
+    "before": {
+      "within_shoe": {
+        "win": {
+          "maximum": 7,
+          "histogram": {
+            "1": 379,
+            "2": 176,
+            "3": 76,
+            "4": 22,
+            "5": 5,
+            "6": 5,
+            "7": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 110,
+              "mean_run_length": 3.5,
+              "overlapping_windows": 165,
+              "windows_per_1000_non_tie_recommendations": 75.72280862781092
+            },
+            "5": {
+              "maximal_run_count": 12,
+              "mean_run_length": 5.75,
+              "overlapping_windows": 21,
+              "windows_per_1000_non_tie_recommendations": 9.637448370812299
+            },
+            "7": {
+              "maximal_run_count": 2,
+              "mean_run_length": 7.0,
+              "overlapping_windows": 2,
+              "windows_per_1000_non_tie_recommendations": 0.9178522257916475
+            }
+          }
+        },
+        "loss": {
+          "maximum": 6,
+          "histogram": {
+            "1": 416,
+            "2": 163,
+            "3": 70,
+            "4": 20,
+            "5": 5,
+            "6": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 96,
+              "mean_run_length": 3.34375,
+              "overlapping_windows": 129,
+              "windows_per_1000_non_tie_recommendations": 59.201468563561264
+            },
+            "5": {
+              "maximal_run_count": 6,
+              "mean_run_length": 5.166666666666667,
+              "overlapping_windows": 7,
+              "windows_per_1000_non_tie_recommendations": 3.212482790270766
+            },
+            "7": {
+              "maximal_run_count": 0,
+              "mean_run_length": null,
+              "overlapping_windows": 0,
+              "windows_per_1000_non_tie_recommendations": 0.0
+            }
+          }
+        }
+      },
+      "across_shoes": {
+        "win": {
+          "maximum": 10,
+          "histogram": {
+            "1": 247,
+            "2": 135,
+            "3": 78,
+            "4": 34,
+            "5": 17,
+            "6": 8,
+            "7": 6,
+            "8": 1,
+            "9": 4,
+            "10": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 149,
+              "mean_run_length": 4.02013422818792,
+              "overlapping_windows": 301,
+              "windows_per_1000_non_tie_recommendations": 138.13675998164297
+            },
+            "5": {
+              "maximal_run_count": 37,
+              "mean_run_length": 6.1891891891891895,
+              "overlapping_windows": 81,
+              "windows_per_1000_non_tie_recommendations": 37.173015144561724
+            },
+            "7": {
+              "maximal_run_count": 12,
+              "mean_run_length": 8.0,
+              "overlapping_windows": 24,
+              "windows_per_1000_non_tie_recommendations": 11.01422670949977
+            }
+          }
+        },
+        "loss": {
+          "maximum": 13,
+          "histogram": {
+            "1": 266,
+            "2": 135,
+            "3": 63,
+            "4": 34,
+            "5": 17,
+            "6": 10,
+            "7": 4,
+            "8": 2,
+            "13": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 131,
+              "mean_run_length": 4.022900763358779,
+              "overlapping_windows": 265,
+              "windows_per_1000_non_tie_recommendations": 121.6154199173933
+            },
+            "5": {
+              "maximal_run_count": 34,
+              "mean_run_length": 5.9411764705882355,
+              "overlapping_windows": 66,
+              "windows_per_1000_non_tie_recommendations": 30.289123451124368
+            },
+            "7": {
+              "maximal_run_count": 7,
+              "mean_run_length": 8.142857142857142,
+              "overlapping_windows": 15,
+              "windows_per_1000_non_tie_recommendations": 6.883891693437357
+            }
+          }
+        }
+      }
+    },
+    "after": {
+      "within_shoe": {
+        "win": {
+          "maximum": 6,
+          "histogram": {
+            "1": 312,
+            "2": 136,
+            "3": 46,
+            "4": 13,
+            "5": 5,
+            "6": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 65,
+              "mean_run_length": 3.4,
+              "overlapping_windows": 91,
+              "windows_per_1000_non_tie_recommendations": 57.4857864813645
+            },
+            "5": {
+              "maximal_run_count": 6,
+              "mean_run_length": 5.166666666666667,
+              "overlapping_windows": 7,
+              "windows_per_1000_non_tie_recommendations": 4.421983575489577
+            },
+            "7": {
+              "maximal_run_count": 0,
+              "mean_run_length": null,
+              "overlapping_windows": 0,
+              "windows_per_1000_non_tie_recommendations": 0.0
+            }
+          }
+        },
+        "loss": {
+          "maximum": 6,
+          "histogram": {
+            "1": 324,
+            "2": 125,
+            "3": 47,
+            "4": 13,
+            "5": 1,
+            "6": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 62,
+              "mean_run_length": 3.2903225806451615,
+              "overlapping_windows": 80,
+              "windows_per_1000_non_tie_recommendations": 50.53695514845231
+            },
+            "5": {
+              "maximal_run_count": 2,
+              "mean_run_length": 5.5,
+              "overlapping_windows": 3,
+              "windows_per_1000_non_tie_recommendations": 1.8951358180669615
+            },
+            "7": {
+              "maximal_run_count": 0,
+              "mean_run_length": null,
+              "overlapping_windows": 0,
+              "windows_per_1000_non_tie_recommendations": 0.0
+            }
+          }
+        }
+      },
+      "across_shoes": {
+        "win": {
+          "maximum": 8,
+          "histogram": {
+            "1": 178,
+            "2": 105,
+            "3": 48,
+            "4": 26,
+            "5": 17,
+            "6": 8,
+            "7": 4,
+            "8": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 104,
+              "mean_run_length": 4.009615384615385,
+              "overlapping_windows": 209,
+              "windows_per_1000_non_tie_recommendations": 132.02779532533165
+            },
+            "5": {
+              "maximal_run_count": 30,
+              "mean_run_length": 5.633333333333334,
+              "overlapping_windows": 49,
+              "windows_per_1000_non_tie_recommendations": 30.953885028427038
+            },
+            "7": {
+              "maximal_run_count": 5,
+              "mean_run_length": 7.2,
+              "overlapping_windows": 6,
+              "windows_per_1000_non_tie_recommendations": 3.790271636133923
+            }
+          }
+        },
+        "loss": {
+          "maximum": 10,
+          "histogram": {
+            "1": 199,
+            "2": 88,
+            "3": 49,
+            "4": 28,
+            "5": 13,
+            "6": 3,
+            "7": 5,
+            "8": 2,
+            "10": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 101,
+              "mean_run_length": 3.99009900990099,
+              "overlapping_windows": 201,
+              "windows_per_1000_non_tie_recommendations": 126.97409981048642
+            },
+            "5": {
+              "maximal_run_count": 24,
+              "mean_run_length": 6.0,
+              "overlapping_windows": 48,
+              "windows_per_1000_non_tie_recommendations": 30.322173089071384
+            },
+            "7": {
+              "maximal_run_count": 8,
+              "mean_run_length": 7.625,
+              "overlapping_windows": 13,
+              "windows_per_1000_non_tie_recommendations": 8.2122552116235
+            }
+          }
+        }
+      }
+    }
+  },
+  "whole_shoe_bootstrap": {
+    "all": {
+      "after_hit95": [
+        0.4851848930949877,
+        0.5332112026002694
+      ],
+      "paired_hit_change95": [
+        -0.01678586722787701,
+        0.010408013527349252
+      ],
+      "paired_hit_change_vs_main95": [
+        -0.014910022220319397,
+        0.02778935541033172
+      ]
+    },
+    "1-30": {
+      "after_hit95": [
+        0.18181818181818182,
+        0.5862576064908719
+      ],
+      "paired_hit_change95": [
+        -0.3026729893469261,
+        0.0941178919435758
+      ],
+      "paired_hit_change_vs_main95": [
+        -0.3068149097358641,
+        0.0953683158602573
+      ]
+    },
+    "31-45": {
+      "after_hit95": [
+        0.4662985805033241,
+        0.5517303176368804
+      ],
+      "paired_hit_change95": [
+        -0.04441309016531952,
+        0.002552579140180217
+      ],
+      "paired_hit_change_vs_main95": [
+        -0.03981274468833748,
+        0.03500346787820327
+      ]
+    },
+    "1-45": {
+      "after_hit95": [
+        0.4636614904211326,
+        0.544666819299534
+      ],
+      "paired_hit_change95": [
+        -0.041971623707773964,
+        0.018273686261602928
+      ],
+      "paired_hit_change_vs_main95": [
+        -0.036675173907996794,
+        0.040065615806918316
+      ]
+    },
+    "46-70": {
+      "after_hit95": [
+        0.47864640766170546,
+        0.5438788353446018
+      ],
+      "paired_hit_change95": [
+        -0.0032479734228305535,
+        0.011798143769977882
+      ],
+      "paired_hit_change_vs_main95": [
+        -0.018686747787267838,
+        0.03226943765217209
+      ]
+    }
+  },
+  "early_cap_checks_passed": 15000,
+  "skip_reasons": {
+    "probability_band": 30298,
+    "nonpositive_or_insufficient_ev": 25766,
+    "ess_low_or_missing": 15020,
+    "particle_quality_low_or_missing": 21538,
+    "loss_cooldown": 25
+  },
+  "raw_sha256": "9bd11d8c66423a5b69cf2302868e0a5d6cb20301d2a03f90debe8542b6f8979f",
+  "deployed": false,
+  "limitations": [
+    "500 shoes only; low action counts cannot establish improved accuracy.",
+    "Points not provided in this comparison; early point posterior disabled by design.",
+    "Push ties and Skip do not erase the placed losing streak. All stakes flat1, Banker commission5%.",
+    "Primary horizon70;50/60 are prespecified causal prefix checks, not additional independent shoes."
+  ]
+}

@@ -1,0 +1,20 @@
+'use strict';
+const assert=require('node:assert/strict'),P=require('./physics_priority_runtime');
+const input=(history=Array(30).fill('P'))=>({history,shoe_id:'one',probabilities:{B:.40,P:.50,T:.10},noise:.3,uncertainty:.3,ess_ratio:.9,particle_quality:.9,legacy_ev_floor:0});
+assert.equal(P.infer(input()).direction,'P');
+for(const [key,value,reason]of [['noise',.99,'noise_high'],['uncertainty',.99,'uncertainty_high'],['ess_ratio',.1,'ess_low_or_missing'],['particle_quality',.1,'particle_quality_low_or_missing']]){const p=P.infer({...input(),[key]:value});assert.equal(p.direction,'Skip');assert(p.reasons.includes(reason));}
+assert.equal(P.infer({...input(),probabilities:{B:.4545,P:.4455,T:.1}}).direction,'Skip');
+const losses=Array.from({length:5},(_,i)=>({round:i+26,direction:'B',actual:'P',raw_q:.6,smoothed_q:.6}));
+assert(P.infer(input(),losses.slice(0,3)).probability_band>P.DEFAULTS.stages.middle.probability_band);
+const cool=P.infer(input(),losses);assert.equal(cool.direction,'Skip');assert(cool.reasons.includes('loss_cooldown'));assert.equal(cool.protection.cooldown_until,39);
+assert(!P.infer(input(Array(39).fill('P')),losses).reasons.includes('loss_cooldown'));
+const withSkip=[...losses.slice(0,3),{round:29,direction:'Skip',actual:'B'}];assert.equal(P.state(withSkip,P.config()).losses,3,'Skip cannot erase recommended losing run');
+const strong=P.infer(input()).alpha,weak=P.infer({...input(),probabilities:{B:.459,P:.441,T:.10}}).alpha;assert(strong>weak);
+const map=new Map(),storage={getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)},client=P.createClient(storage);
+const first=client.predict(input([])),again=client.predict(input([]));assert.deepEqual(first,again);
+client.predict(input(['P']));const next=client.predict(input(['P','B']));client.predict(input(['P']));assert.deepEqual(client.predict(input(['P','B'])),next,'undo/replay exact');
+assert.deepEqual(client.predict({...input([]),shoe_id:'two'}),P.infer(input([])),'new shoe isolated');
+const throwing=P.createClient({getItem:()=>null,setItem:()=>{throw Error('quota');}});assert.equal(throwing.predict(input(),{}).direction,'Skip');
+const base=P.infer(input());assert.deepEqual(P.infer({...input(),future_outcome:'B',core_p_b:.99,markov_p_b:.01,xgb_p_b:0}),base,'future/road/Core/XGB must not vote');
+assert.equal(base.route_weight,0);assert.equal(base.xgb_influence,0);
+console.log('Physics priority: joint gates / EV / signal alpha / 3-5 loss protection / ties-Skip / undo-reset / storage failure / no future or road voting passed');
