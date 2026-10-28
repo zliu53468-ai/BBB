@@ -859,6 +859,17 @@
     "backtest_goal_action_rate": [
       0.2,
       0.35
-    ]
+    ],
+    "ratio_imbalance_guard": {
+      "schema_version": 1,
+      "version": "RATIO_RISK_GATE_V1",
+      "enabled": true,
+      "window": 16,
+      "min_samples": 12,
+      "start": 0.2,
+      "full": 0.35,
+      "max_band_boost": 0.012,
+      "force_skip_at": 0.35
+    }
   }
 }

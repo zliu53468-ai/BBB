@@ -19,6 +19,8 @@ const CONSERVATIVE_DEFAULTS={schema_version:1,version:'EARLY_MID_CONSERVATIVE_V2
  calibration_gain:[[1,0],[30,0],[40,1],[70,1]],point_weight_max:[[1,0],[30,0],[40,.65],[70,.65]]}};
 function interpolate(n,anchors){if(n<=anchors[0][0])return anchors[0][1];for(let i=1;i<anchors.length;i++)if(n<=anchors[i][0]){const [x,a]=anchors[i-1],[y,b]=anchors[i];return a+(n-x)/(y-x)*(b-a);}return anchors.at(-1)[1];}
 function limits(n,custom={}){const v=custom.early_mid_conservative_v2;if(v?.enabled!==true)return null;const cfg={...CONSERVATIVE_DEFAULTS,...v},curves={...CONSERVATIVE_DEFAULTS.curves,...v.curves},out={version:cfg.version,min_calibration_samples:Math.max(30,cfg.min_calibration_samples),stage:n<=30?'early':n<=45?'middle':'late'};for(const [k,a]of Object.entries(curves))out[k]=interpolate(n,a);if(n<=30){out.probability_band=Math.max(.0275,out.probability_band);out.pf_max=Math.min(.08,out.pf_max);out.alpha_max=Math.min(.40,out.alpha_max);out.residual_max_delta=Math.min(.015,out.residual_max_delta);out.calibration_gain=0;out.point_weight_max=0;}return out;}
+// 比例只作風險閘門，不修改 Physics 機率或莊閒方向；和局不算莊閒分母。
+function imbalanceGate(history,custom={}){const c={enabled:false,window:16,min_samples:12,start:.20,full:.35,max_band_boost:.012,force_skip_at:.35,...custom};const rows=history.slice(-Math.max(12,Math.min(20,Math.round(c.window)))).filter(x=>x==='B'||x==='P'),samples=rows.length,ratio=samples?rows.filter(x=>x==='B').length/samples:null,deviation=ratio===null?0:Math.abs(ratio-.5),active=c.enabled===true&&samples>=Math.max(12,c.min_samples),strength=active?clamp((deviation-c.start)/Math.max(.001,c.full-c.start)):0;return {enabled:c.enabled===true,samples,banker_ratio:ratio,deviation,strength,band_boost:strength*Math.max(0,c.max_band_boost),forced_skip:active&&deviation>=c.force_skip_at};}
 function config(c={}){const out={...DEFAULTS,...c};for(const k of ['alpha','calibration','point_conditioned','protection','volume'])out[k]={...DEFAULTS[k],...c[k]};out.stages={};for(const k of ['early','middle','late'])out.stages[k]={...DEFAULTS.stages[k],...c.stages?.[k]};return out;}
 function stage(n,c){return n<=c.stages.early.end?'early':n<=c.stages.middle.end?'middle':'late';}
 function state(records,c){let losses=0,wins=0,cooldown_until=0;for(const r of records){if(!['B','P'].includes(r.direction)||r.actual==='T')continue;if(r.direction===r.actual){wins++;losses=0;}else{losses++;wins=0;if(losses>=c.protection.cooldown_at)cooldown_until=r.round+c.protection.cooldown_hands;}}return {losses,wins,cooldown_until};}
@@ -39,7 +41,8 @@ function infer(input,records=[],custom={}){
  let q=finite(previous)?alpha*calibrated+(1-alpha)*previous:calibrated;
  const sign_reset=(q-.5)*(calibrated-.5)<0;if(sign_reset)q=calibrated;
  q=input.clip_limits?.every(finite)?clamp(q,input.clip_limits[0],input.clip_limits[1]):clamp(q);const direction=q>.5?'B':q<.5?'P':'Skip';
- let band=p.probability_band;if(protection.losses>=c.protection.loss_raise_at)band*=c.protection.loss_multiplier;
+ const imbalance=imbalanceGate(input.history,c.ratio_imbalance_guard);
+ let band=p.probability_band+imbalance.band_boost;if(protection.losses>=c.protection.loss_raise_at)band*=c.protection.loss_multiplier;
  if(!tight&&protection.wins>=c.protection.win_relief_at)band*=1-clamp(c.protection.win_relief,0,.05);
  const v=c.volume,last=records.slice(-v.window),actionRate=last.length?last.filter(r=>['B','P'].includes(r.direction)).length/last.length:0;
  const volume_tightened=v.enabled&&last.length>=v.min_history&&actionRate>(v.target[s]??.35);if(volume_tightened)band*=Math.max(1,v.band_multiplier);
@@ -50,6 +53,7 @@ function infer(input,records=[],custom={}){
  if(!finite(ess)||ess<p.ess_min)reasons.push('ess_low_or_missing');
  if(!finite(quality)||quality<p.quality_min)reasons.push('particle_quality_low_or_missing');
  if(Math.abs(q-.5)<=band)reasons.push('probability_band');
+ if(imbalance.forced_skip)reasons.push('ratio_imbalance');
  if(bestEV<=evFloor)reasons.push('nonpositive_or_insufficient_ev');
  if(n<=protection.cooldown_until)reasons.push('loss_cooldown');
  if(input.point_error)reasons.push('point_posterior_unavailable');
@@ -57,7 +61,7 @@ function infer(input,records=[],custom={}){
  const eligible=!reasons.length,level=eligible?(Math.abs(q-.5)>=band*1.5&&noise<.55?'高':'中'):'低';
  return {version:tight?.version||VERSION,direction:eligible?direction:'Skip',candidate_direction:direction,eligible,confidence_level:level,uncertainty_skip:uncertain,reasons,stage:s,round:n,
   raw_q:raw,calibrated_q:calibrated,smoothed_q:q,alpha,sign_reset,calibration:{samples:count,delta,...(tight?{minimum,gain:tight.calibration_gain}:{})},...(tight?{conservative_limits:tight,residual:input.residual||null}:{}),probabilities:{B:mass*q,P:mass*(1-q),T:source.T},directional:{B:q,P:1-q},ev_banker:evB,ev_player:evP,
-  probability_band:band,ev_floor:evFloor,noise,uncertainty,ess_ratio:ess,particle_quality:quality,protection,volume:{action_rate:actionRate,tightened:volume_tightened,relief_applied:false},
+  ...(imbalance.enabled?{ratio_imbalance:imbalance}:{}),probability_band:band,ev_floor:evFloor,noise,uncertainty,ess_ratio:ess,particle_quality:quality,protection,volume:{action_rate:actionRate,tightened:volume_tightened,relief_applied:false},
   route_weight:0,xgb_influence:0,point_weight:input.point_weight||0,point_diagnostics:input.point_diagnostics||null,
   remaining_cards_interval:[Math.max(0,416-6*input.history.length-c.estimated_burn_max),Math.max(0,416-4*input.history.length-c.estimated_burn_min)],remaining_note:'依已輸入局數與4–6張/局及未知燒牌推估；不是已知牌階'};
 }
@@ -78,5 +82,5 @@ function createClient(storage){
  }
  return {predict,reconcile,export:()=>JSON.parse(JSON.stringify(memory)),clear:()=>{memory={shoe_id:null,records:[],pending:null};storageError=false;try{storage?.removeItem(KEY);}catch(_){storageError=true;}}};
 }
-return {VERSION,KEY,DEFAULTS,CONSERVATIVE_DEFAULTS,limits,interpolate,config,infer,state,createClient};
+return {imbalanceGate,VERSION,KEY,DEFAULTS,CONSERVATIVE_DEFAULTS,limits,interpolate,config,infer,state,createClient};
 });

@@ -15,8 +15,8 @@ const scripts=[
   "macro_ema.js?v=20261023-middle-late-v2",
   "browser_calibration.js?v=20261028-pr56-restore",
   "point_conditioned_pf.js?v=20261029-priority-v1",
-  "physics_priority_runtime.js?v=20261029-early-mid-v2",
-  "final_probability_runtime.js?v=20261029-early-mid-v2"
+  "physics_priority_runtime.js?v=20261029-ratio-risk-v1",
+  "final_probability_runtime.js?v=20261029-ratio-risk-v1"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
