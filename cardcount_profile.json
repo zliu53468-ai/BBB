@@ -553,46 +553,34 @@
     "estimated_burn_max": 11,
     "early_mid_conservative_v2": {
       "schema_version": 1,
-      "version": "EARLY_MID_TABLE_SMOOTH_V3",
+      "version": "PHYSICS_MODERATE_ENTRY_V4",
       "enabled": true,
       "min_calibration_samples": 30,
       "curves": {
         "probability_band": [
           [
             1,
-            0.06
-          ],
-          [
-            20,
-            0.06
+            0.0275
           ],
           [
             30,
             0.0275
           ],
           [
-            31,
-            0.027
-          ],
-          [
-            35,
-            0.0225
-          ],
-          [
             40,
-            0.019
+            0.0175
           ],
           [
             45,
-            0.019
+            0.0175
           ],
           [
             50,
-            0.015
+            0.014
           ],
           [
             70,
-            0.015
+            0.014
           ]
         ],
         "noise_max": [
@@ -851,7 +839,7 @@
         ]
       }
     },
-    "validation_status": "candidate_not_promoted",
+    "validation_status": "experimental_deployed_not_accuracy_validated",
     "backtest_goal_action_rate": [
       0.2,
       0.35
@@ -872,7 +860,8 @@
       "enabled": true,
       "max_round": 30,
       "batches": 4,
-      "scope": "monte_carlo_stability_only"
+      "scope": "monte_carlo_stability_only",
+      "evaluation_mode": "official_blend"
     }
   }
 }
