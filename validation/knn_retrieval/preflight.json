@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "baseline_sha": "42106a9adf082630357b3ae7ccd1c422c1add489",
+  "seed": 20261029,
+  "claim_scope": "回放统计",
+  "status": "INSUFFICIENT_SAMPLE",
+  "phase": "data_preflight_only",
+  "retrieval_implemented": false,
+  "fitting_executed": false,
+  "replay_executed": false,
+  "production_modified": false,
+  "expansion_allowed": false,
+  "source": null,
+  "source_time_range": null,
+  "failures": [
+    "NO_COMPLETE_REPLAY_DATA",
+    "NO_CAUSAL_COMPOSITION_DATA"
+  ],
+  "split": [],
+  "per_shoe": [],
+  "library_rows": 0,
+  "comparisons": [
+    {
+      "group": "baseline",
+      "standard_hit_rate": null,
+      "pct_shoes_max_losses_le_2": null,
+      "pct_shoes_with_four_streak": null,
+      "mean_shoe_five_window_coverage": null,
+      "mean_shoe_six_window_coverage": null,
+      "action_rate": null
+    },
+    {
+      "group": "baseline_plus_retrieval_no_gate",
+      "standard_hit_rate": null,
+      "pct_shoes_max_losses_le_2": null,
+      "pct_shoes_with_four_streak": null,
+      "mean_shoe_five_window_coverage": null,
+      "mean_shoe_six_window_coverage": null,
+      "action_rate": null
+    },
+    {
+      "group": "baseline_plus_retrieval_gated",
+      "standard_hit_rate": null,
+      "pct_shoes_max_losses_le_2": null,
+      "pct_shoes_with_four_streak": null,
+      "mean_shoe_five_window_coverage": null,
+      "mean_shoe_six_window_coverage": null,
+      "action_rate": null
+    }
+  ],
+  "deltas": null,
+  "significance": null,
+  "no_increment": null
+}

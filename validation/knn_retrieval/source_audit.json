@@ -1,0 +1,459 @@
+{
+  "baseline_sha": "42106a9adf082630357b3ae7ccd1c422c1add489",
+  "date": "2026-10-29",
+  "recursive_tree_truncated": false,
+  "json_file_audit": [
+    {
+      "path": "cardcount_profile.json",
+      "sha": "f3ae6542a64d9a3b67898c63c6d568568c7f3149",
+      "bytes": 6603,
+      "top_level": [
+        "schema_version",
+        "name",
+        "enabled",
+        "display_gap",
+        "stages",
+        "anchors",
+        "macro",
+        "pf",
+        "training",
+        "local_calibration"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "final_probability_model.json",
+      "sha": "998caeea3f5e7f94b29f818b795a5a1e91fd5615",
+      "bytes": 365512,
+      "top_level": [
+        "schema_version",
+        "early35_version",
+        "shoe_error_correction_version",
+        "physics_direct_version",
+        "physics_primary_version",
+        "particle_filter_version",
+        "particle_filter_enabled",
+        "model_type",
+        "trained",
+        "feature_names",
+        "link",
+        "base_margin",
+        "probability_bounds",
+        "calibration",
+        "ev_thresholds",
+        "smoothing",
+        "decision_policy",
+        "trees",
+        "training"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "physics_multitask_model.json",
+      "sha": "01e5b6eb6204db15ad78d299bdaaecf67f73d2c8",
+      "bytes": 381139,
+      "top_level": [
+        "schema_version",
+        "model_type",
+        "trained",
+        "history_input_dim",
+        "physics_dim",
+        "feature_names",
+        "scaler",
+        "target_scaler",
+        "loss_scale",
+        "calibration_temperatures",
+        "uncertainty_calibration",
+        "output_calibration",
+        "activation",
+        "coefs",
+        "intercepts",
+        "metadata"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "residual_bias_model.json",
+      "sha": "d4163ce97beb65641eef62013db86d018aea5d43",
+      "bytes": 394,
+      "top_level": [
+        "schema_version",
+        "model_type",
+        "trained",
+        "feature_names",
+        "base_score",
+        "max_delta",
+        "trees",
+        "training"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "residual_bias_physics_model.json",
+      "sha": "ccbb46f9b24e816bdb1af875c1f83ca9ad449f90",
+      "bytes": 270836,
+      "top_level": [
+        "schema_version",
+        "model_type",
+        "trained",
+        "feature_names",
+        "base_score",
+        "max_delta",
+        "trees",
+        "training"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "tools/top_parameters/baseline_profile.json",
+      "sha": "6e314a21788c60873678c8f1a3dfbb0b4dac02cb",
+      "bytes": 6185,
+      "top_level": [
+        "schema_version",
+        "name",
+        "enabled",
+        "display_gap",
+        "stages",
+        "anchors",
+        "macro",
+        "pf",
+        "training",
+        "local_calibration"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "tools/top_parameters/production_manifest.json",
+      "sha": "d4e8ad5b447a3f26fa51b70156fcb5ae704f3cf6",
+      "bytes": 6030,
+      "top_level": [
+        "schema_version",
+        "remote_baseline_commit",
+        "sha256",
+        "candidate_only",
+        "production_modified"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "tools/top_parameters/retrain_profile.json",
+      "sha": "4cceeded3f1101fb1f4a61f011ea4e61468622b6",
+      "bytes": 6724,
+      "top_level": [
+        "schema_version",
+        "name",
+        "enabled",
+        "display_gap",
+        "stages",
+        "anchors",
+        "macro",
+        "pf",
+        "training",
+        "local_calibration"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "tools/top_parameters/smooth_profile.json",
+      "sha": "2d659210cfaf93d7497ef7f1fa9571875e3844cb",
+      "bytes": 6199,
+      "top_level": [
+        "schema_version",
+        "name",
+        "enabled",
+        "display_gap",
+        "stages",
+        "anchors",
+        "macro",
+        "pf",
+        "training",
+        "local_calibration"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "v15_candidate_policies.json",
+      "sha": "bb68d8eb78bee50f43ade8f54d599edd9602aff6",
+      "bytes": 882,
+      "top_level": [
+        "schema_version",
+        "mode",
+        "provenance",
+        "objective",
+        "hard_limits",
+        "candidates"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/adaptive_smoothing_smoke.json",
+      "sha": "260d6f08f59ac094c8f0391786523d7c7e0597fc",
+      "bytes": 2217,
+      "top_level": [
+        "schema_version",
+        "data_kind",
+        "production_accuracy_claim",
+        "stages",
+        "max_probability_change",
+        "changed_actions",
+        "early_max_probability_change"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/blind_upgrade_smoke.json",
+      "sha": "b99b4a67a0c1d0d64a0e6a77dfc688b22aeb7fcc",
+      "bytes": 2224,
+      "top_level": [
+        "data_kind",
+        "total_shoes",
+        "holdout_shoes",
+        "split",
+        "inputs",
+        "baseline",
+        "candidate",
+        "delta",
+        "performance_claim_validated",
+        "auto_promote",
+        "note"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/cardcount_moderate_v1_baseline.json",
+      "sha": "b7b4947934021ff64988c84d2a4874188ba7fd57",
+      "bytes": 3914,
+      "top_level": [
+        "schema_version",
+        "name",
+        "enabled",
+        "display_gap",
+        "stages",
+        "anchors",
+        "macro",
+        "pf",
+        "training",
+        "local_calibration"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/ev_led_direction_smoke.json",
+      "sha": "9c6eb0d83c79189353a36cb84d353cbdfe29c697",
+      "bytes": 692,
+      "top_level": [
+        "schema_version",
+        "data_kind",
+        "production_accuracy_claim",
+        "baseline",
+        "candidate",
+        "maximum_probability_change",
+        "changed_actions",
+        "formal_ev_argmax_mismatches",
+        "negative_ev_wagers"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/first_layer_smoothing_baseline.json",
+      "sha": "56b6e0d5475288d49d1a0633aced990f4fdf8b2e",
+      "bytes": 37450,
+      "top_level": [
+        "schema_version",
+        "source_main",
+        "profile",
+        "calibration_tag",
+        "protected_functions",
+        "locked_files",
+        "cases",
+        "scope_note"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/first_layer_smoothing_smoke.json",
+      "sha": "7598a9e5df417c71dba0a5ba5c898eec3a062d3d",
+      "bytes": 662,
+      "top_level": [
+        "schema_version",
+        "data_kind",
+        "production_accuracy_claim",
+        "rows",
+        "raw_direction_flips",
+        "smoothed_direction_flips",
+        "initialized_eligible_rows",
+        "max_alpha_effective",
+        "max_final_probability_delta",
+        "max_final_ev_delta",
+        "changed_actions",
+        "baseline_bets",
+        "smoothed_bets",
+        "local_calibration_learning",
+        "notes"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/macro_direction_3000_summary.json",
+      "sha": "63aeb0078bdcc59eed9f3815faa27c7490781b00",
+      "bytes": 1091,
+      "top_level": [
+        "schema",
+        "generated_by",
+        "head_sha",
+        "workflow_url",
+        "seed",
+        "split",
+        "shoes",
+        "hands",
+        "coefficients",
+        "features",
+        "warning"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/macro_direction_shadow_smoke.json",
+      "sha": "d4a92f5372fea33fbe5f1e11ba12ada3400957bf",
+      "bytes": 1151,
+      "top_level": [
+        "schema",
+        "data_kind",
+        "seed",
+        "workflow_url",
+        "coefficients",
+        "shadow_ok",
+        "shoes",
+        "eligible",
+        "baseline",
+        "candidate",
+        "max_macro_delta",
+        "no_flip_violations",
+        "warning"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/macro_ema_smoke.json",
+      "sha": "a504c1ddbb0c3e5d63da7e40f841cdc1bce3a258",
+      "bytes": 3987,
+      "top_level": [
+        "input",
+        "data_kind",
+        "shoes",
+        "completed_hands",
+        "definitions",
+        "current",
+        "baseline",
+        "elapsed_seconds",
+        "baseline_commit",
+        "coefficient_status"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/pf_update_legacy_fixture.json",
+      "sha": "6604c850f694c84159a32371904a4f6b9570f0ce",
+      "bytes": 2899,
+      "top_level": [
+        "history",
+        "direct",
+        "physics",
+        "posterior",
+        "rules_prefix_sha256"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/physics_forecast_first_audit.json",
+      "sha": "9d137f7603831b1cf48c82933b64eb86a043503f",
+      "bytes": 1733,
+      "top_level": [
+        "baseline_main",
+        "mechanics_tests",
+        "unchanged_sha256",
+        "performance_claim"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/post_draw_ev_smoke.json",
+      "sha": "042d0ad258de4f22379df37eb1c44bce3b75ed7d",
+      "bytes": 20481,
+      "top_level": [
+        "schema_version",
+        "data_kind",
+        "card_count_order",
+        "probability_basis",
+        "stages",
+        "warning",
+        "production_promotion_allowed",
+        "comparison",
+        "baseline_commit"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/pr56_restore_manifest.json",
+      "sha": "695067c2bd6b6c54dd2a709e3965704ae74032cf",
+      "bytes": 1322,
+      "top_level": [
+        "source_pr",
+        "source_commit",
+        "restored_prediction_files",
+        "protected_files",
+        "auth_body_sha256"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/pr59_prediction_baseline.json",
+      "sha": "7e39d76e24de047afea396e1659510352c61784e",
+      "bytes": 7843,
+      "top_level": [
+        "schema_version",
+        "source_pr",
+        "source_merge",
+        "runtime_sha256",
+        "profile",
+        "ui_sha256",
+        "smoothing_source_sha256"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/prequential_ev_smoke.json",
+      "sha": "b13775fd8b8124d7c7d081d0b05520f663238b0c",
+      "bytes": 2400,
+      "top_level": [
+        "schema_version",
+        "data_kind",
+        "production_accuracy_claim",
+        "rows",
+        "learning_enabled",
+        "applied_rows",
+        "ready_rows",
+        "changed_actions",
+        "max_probability_change",
+        "negative_ev_wagers",
+        "stages",
+        "notes"
+      ],
+      "replay_rows": null
+    },
+    {
+      "path": "validation/selective_entry_v2_baseline.json",
+      "sha": "62ced623be5e218e7a8b6b907b6bf5311497cc2e",
+      "bytes": 8814,
+      "top_level": [
+        "schema_version",
+        "source_main",
+        "calibration_model_tag",
+        "cases"
+      ],
+      "replay_rows": null
+    }
+  ],
+  "complete_replay_files": [],
+  "scope": "PR72 head tracked repository files only; no external devices or all Actions artifacts audited"
+}
