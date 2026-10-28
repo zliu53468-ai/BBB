@@ -1,9 +1,3 @@
-> 前中段v2候選：前30局PF≤8%、EMA≤0.40、Residual≤±1.5pp，門檻與30／45局交界漸變。500靴前30推薦數下降94.9%，但命中率未提升，仍不晉升。詳見 [EARLY_MID_CONSERVATIVE_V2.md](EARLY_MID_CONSERVATIVE_V2.md)。
-
-> 2026-10-29 候選：新增純算牌優先、不確定性／ESS閘門、65%點數後驗及連錯保護；Frozen Core／正式模型權重未修改。含200靴煙霧與獨立10,000靴完整連勝連敗驗證流程、feature flag及回滾。未通過不得自動部署。見 [PHYSICS_PRIORITY_SELECTIVE.md](PHYSICS_PRIORITY_SELECTIVE.md)。
-
-> 萬靴結果：出手7.1224%、非和推薦命中50.3250%；全程跨靴最大連錯16（舊版18），每推薦EV與正規化三連錯未改善，**不晉升正式版**。完整[回測報告](validation/physics_priority_v1/REPORT.zh-TW.md)。
-
 > 最新：中後段分段平滑、PF 抽樣與本機校準升級，前 1～20 局對照鎖定；完整重訓另有 middle_late_focus 候選設定，正式權重未替換。見 [MIDDLE_LATE_UPGRADE.md](MIDDLE_LATE_UPGRADE.md)。
 
 > 最新：所有開通成功的瀏覽器自動逐局累積本機校準，資料留在各瀏覽器；這不是完整模型重訓。詳見 [BROWSER_LOCAL_CALIBRATION.md](BROWSER_LOCAL_CALIBRATION.md)。

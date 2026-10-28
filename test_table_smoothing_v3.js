@@ -1,3 +1,0 @@
-'use strict';const assert=require('node:assert/strict'),P=require('./physics_priority_runtime'),c=require('./cardcount_profile.json').physics_priority_v1;
-let previous=null;for(let n=1;n<=70;n++){const v=P.limits(n,c);if(previous)assert(Math.abs(v.alpha-previous.alpha)<.01);previous=v;const a=P.infer({history:Array(n-1).fill('B'),probabilities:{B:.54,P:.36,T:.1},noise:.3,uncertainty:.3,ess_ratio:.9,particle_quality:.9},[],c);assert(a.alpha<=v.alpha_max+1e-12);}
-assert.equal(P.limits(20,c).alpha,.32);assert.equal(P.limits(45,c).alpha,.34);assert.equal(P.limits(70,c).alpha,.36);console.log('PASS: table 1–70 smooth alpha curve and effective alpha caps.');

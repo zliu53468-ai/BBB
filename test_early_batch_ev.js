@@ -1,6 +1,0 @@
-'use strict';
-const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');const window={};vm.runInNewContext(fs.readFileSync('particle_filter_runtime.js','utf8'),{window});const pf=window.__BGS_PARTICLE500__,d=Array(48).fill(.1);d[23]=.48;d[24]=.42;d[25]=.10;
-const a=pf.estimate(['B','P'],d),b=pf.estimate(['B','P'],d,'quality',{seed_offset:0});assert.equal(JSON.stringify(a),JSON.stringify(b));
-const g=pf.batchEvGate(['B','P'],d,'B',.015,{forecast_draws:5});assert.equal(g.batches,4);assert.equal(g.values.length,4);assert(Number.isFinite(g.lower_ev));assert.equal(JSON.stringify(g),JSON.stringify(pf.batchEvGate(['B','P'],d,'B',.015,{forecast_draws:5})));
-const P=require('./physics_priority_runtime'),input={history:[],probabilities:{B:.6,P:.3,T:.1},noise:.2,uncertainty:.2,ess_ratio:.9,particle_quality:.9};const base=P.infer(input),blocked=P.infer({...input,batch_ev_gate:{enabled:true,passed:false}});assert.equal(base.direction,'B');assert.equal(blocked.direction,'Skip');assert.equal(base.smoothed_q,blocked.smoothed_q);assert.equal(base.ev_banker,blocked.ev_banker);assert.deepEqual(P.infer({...input,batch_ev_gate:null}),base);
-console.log('PASS: seeded independent rebuild, deterministic replay, original PF parity, gate only tightens, probabilities/EV unchanged, rollback.');
