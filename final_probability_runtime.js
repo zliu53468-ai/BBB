@@ -894,7 +894,7 @@ function applyPhysicsPriority(result,history,physics,particleDiagnostics){
   if(config.early_batch_ev_gate?.enabled===true&&history.length+1<=config.early_batch_ev_gate.max_round){
     const side=probs&&(.95*probs.B-probs.P>probs.P-probs.B)?'B':'P';
     const floor=Math.max(earlyLimits?.ev_min??config.stages?.early?.ev_min??.015,result.activation_ev||0,result.finalProbability.physics_activation_ev||0);
-    batchGate=PARTICLE500?.batchEvGate&&direct?PARTICLE500.batchEvGate(history,direct,side,floor,{forecast_draws:5}):{enabled:true,passed:false,error:'batch_module_unavailable'};
+    batchGate=PARTICLE500?.batchEvGate&&direct?PARTICLE500.batchEvGate(history,direct,side,floor,{forecast_draws:5,evaluation_mode:config.early_batch_ev_gate.evaluation_mode,max_blend:earlyLimits?.pf_max??.08,min_blend:Math.min(cardcountProfile.pf?.min_blend??.06,earlyLimits?.pf_max??.08)}):{enabled:true,passed:false,error:'batch_module_unavailable'};
   }
   const audit=PRIORITY.predict({batch_ev_gate:batchGate,history,shoe_id:getShoeId(),probabilities:probs,
     noise:used?physicsNoiseScore(used,history.length+1):null,uncertainty:used?.[42],ess_ratio:diagnostics?.recent_ess_ratio,particle_quality:diagnostics?.particle_quality,clip_limits:result.finalProbability.bounds?[result.finalProbability.bounds.low,result.finalProbability.bounds.high]:null,
