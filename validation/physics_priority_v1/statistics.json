@@ -1,0 +1,1375 @@
+{
+  "schema_version": 1,
+  "data_kind": "synthetic_only",
+  "protocol": {
+    "schema_version": 1,
+    "baseline": "c6f4a0afbf9fc9de3806ae662319471daadfb405",
+    "input_sha256": "3ff085ac4859d9a51bdf59ea6736e4e6397e08619b1d773bd915322692325e86",
+    "shoes": 10000,
+    "mode": "BPT_only_no_points_no_latent_counts",
+    "commission": 0.05,
+    "tie": "push, excluded from win/loss streak sequence",
+    "streak_skip_policy": "Skip does not erase a losing/winning recommendation run; time-adjacent streaks also reported separately",
+    "cut": 14,
+    "candidate_config": {
+      "schema_version": 1,
+      "version": "PHYSICS_PRIORITY_SELECTIVE_V1",
+      "enabled": true,
+      "route_weight": 0,
+      "stages": {
+        "early": {
+          "end": 20,
+          "probability_band": 0.06,
+          "noise_max": 0.66,
+          "uncertainty_max": 0.66,
+          "ess_min": 0.6,
+          "quality_min": 0.62,
+          "ev_min": 0.015,
+          "alpha": 0.38
+        },
+        "middle": {
+          "end": 50,
+          "probability_band": 0.018,
+          "noise_max": 0.7,
+          "uncertainty_max": 0.7,
+          "ess_min": 0.6,
+          "quality_min": 0.62,
+          "ev_min": 0.01,
+          "alpha": 0.52
+        },
+        "late": {
+          "probability_band": 0.015,
+          "noise_max": 0.72,
+          "uncertainty_max": 0.72,
+          "ess_min": 0.6,
+          "quality_min": 0.62,
+          "ev_min": 0.006,
+          "alpha": 0.62
+        }
+      },
+      "alpha": {
+        "signal_gain": 0.15,
+        "noise_penalty": 0.1,
+        "min": 0.22,
+        "max": 0.8
+      },
+      "calibration": {
+        "min_samples": 30,
+        "prior_strength": 120,
+        "window": 60,
+        "decay": 0.98,
+        "max_delta": 0.004
+      },
+      "point_conditioned": {
+        "enabled": true,
+        "weight": 0.65,
+        "minimum_weight": 0.6,
+        "maximum_weight": 0.7
+      },
+      "protection": {
+        "loss_raise_at": 3,
+        "loss_multiplier": 1.2,
+        "cooldown_at": 5,
+        "cooldown_hands": 9,
+        "win_relief_at": 3,
+        "win_relief": 0.03
+      },
+      "volume": {
+        "enabled": true,
+        "window": 16,
+        "min_history": 8,
+        "target": {
+          "early": 0.05,
+          "middle": 0.3,
+          "late": 0.35
+        },
+        "band_multiplier": 1.1
+      },
+      "estimated_burn_min": 2,
+      "estimated_burn_max": 11,
+      "validation_status": "candidate_not_promoted",
+      "backtest_goal_action_rate": [
+        0.2,
+        0.35
+      ]
+    },
+    "source_sha256": {
+      "physics_priority_runtime.js": "b3f23a726bfc09244da4b0e146cee159637c8eb05a7e2db2529060ad96dc24e8",
+      "point_conditioned_pf.js": "b3806a3cb792a5f4899d73c3a458dea3565b668b550696934f31b5f67d872a2b",
+      "final_probability_runtime.js": "d7d866be1102bc37a93adfc0a5b900ce42d4896a96a98c9357dfa0fdb4f69038",
+      "cardcount_profile.json": "674f39b4acf79be8561846fc4ef17e1210e546ffdaa896ab2802d94b328893fd",
+      "app256forward.js": "79d43e0be7b23f77e631909cd7c6808fc668df488df0171fe5cc4722e8597064",
+      "app256continuation.js": "d3302c7d09db8932f7ab9ea7c722f394c6aa566d0654962e79bba751f30bf006",
+      "physics_multitask_model.json": "3ec0d60251cb5b3fcb40bd67fec1334cb64d37becebbe0b040efbae871071138",
+      "final_probability_model.json": "862347a6937b30ac9a8a3ece8f0eb9927569c97dee799e53cbb418e6c10be2f9",
+      "particle_filter_runtime.js": "4c11f9122b9474ec1798ae38e2751de6f72115167fa2537affdf2cd4ae704d18",
+      "macro_ema.js": "aef47f2b6d82f86b35cd41cf0ff98b583c665ed7fb94aae0c2268f2003815b58",
+      "browser_calibration.js": "1080ecf9af81f24fffa14035c21f633c8241eeeb1352a097f2be35aedc2b78e3",
+      "research/priority_runtime.cjs": "8fc388c8878c45c8f005d6a3dc5bdc4b2f01ecda4e0587a4ded19989289173b9",
+      "research/priority_backtest.cjs": "5e46f88957487b0d2b2fd683fe4c6967c9ae6a1ccf5650f0209e00df1245d41c"
+    }
+  },
+  "shoes": 10000,
+  "all_hands_and_recommendations": {
+    "all": {
+      "next": {
+        "hands": 802717,
+        "recommendations": 57173,
+        "wins": 26013,
+        "losses": 25677,
+        "pushes": 5483,
+        "profit": -547.7999999998003,
+        "B": 38578,
+        "P": 18595,
+        "skip": 745544,
+        "action_rate": 0.07122435428675361,
+        "hit_on_recommendations_excluding_ties": 0.5032501450957632,
+        "wins_per_all_hands": 0.03240619047559725,
+        "EV_per_recommendation": -0.009581445787343683,
+        "EV_per_opportunity": -0.0006824322893370893
+      },
+      "old": {
+        "hands": 802717,
+        "recommendations": 117271,
+        "wins": 53185,
+        "losses": 52732,
+        "pushes": 11354,
+        "profit": -772.6499999995142,
+        "B": 53164,
+        "P": 64107,
+        "skip": 685446,
+        "action_rate": 0.14609258306476627,
+        "hit_on_recommendations_excluding_ties": 0.5021384669127713,
+        "wins_per_all_hands": 0.06625622728807289,
+        "EV_per_recommendation": -0.006588585413269386,
+        "EV_per_opportunity": -0.0009625434617673653
+      },
+      "always_B": {
+        "hands": 802717,
+        "recommendations": 802717,
+        "wins": 367557,
+        "losses": 358713,
+        "pushes": 76447,
+        "profit": -9533.849999997523,
+        "B": 802717,
+        "P": 0,
+        "skip": 0,
+        "action_rate": 1.0,
+        "hit_on_recommendations_excluding_ties": 0.5060886447189062,
+        "wins_per_all_hands": 0.4578911372251989,
+        "EV_per_recommendation": -0.011876975322557668,
+        "EV_per_opportunity": -0.011876975322557668
+      },
+      "always_B_on_new_schedule": {
+        "hands": 802717,
+        "recommendations": 57173,
+        "wins": 26156,
+        "losses": 25534,
+        "pushes": 5483,
+        "profit": -685.7999999999715,
+        "B": 57173,
+        "P": 0,
+        "skip": 745544,
+        "action_rate": 0.07122435428675361,
+        "hit_on_recommendations_excluding_ties": 0.506016637647514,
+        "wins_per_all_hands": 0.03258433545072548,
+        "EV_per_recommendation": -0.011995172546481234,
+        "EV_per_opportunity": -0.0008543484191813199
+      }
+    },
+    "1-20": {
+      "next": {
+        "hands": 200000,
+        "recommendations": 5,
+        "wins": 2,
+        "losses": 3,
+        "pushes": 0,
+        "profit": -1.05,
+        "B": 3,
+        "P": 2,
+        "skip": 199995,
+        "action_rate": 2.5e-05,
+        "hit_on_recommendations_excluding_ties": 0.4,
+        "wins_per_all_hands": 1e-05,
+        "EV_per_recommendation": -0.21000000000000002,
+        "EV_per_opportunity": -5.2500000000000006e-06
+      },
+      "old": {
+        "hands": 200000,
+        "recommendations": 10758,
+        "wins": 4828,
+        "losses": 4874,
+        "pushes": 1056,
+        "profit": -96.45000000000057,
+        "B": 2203,
+        "P": 8555,
+        "skip": 189242,
+        "action_rate": 0.05379,
+        "hit_on_recommendations_excluding_ties": 0.49762935477221193,
+        "wins_per_all_hands": 0.02414,
+        "EV_per_recommendation": -0.008965421081985551,
+        "EV_per_opportunity": -0.00048225000000000286
+      },
+      "always_B": {
+        "hands": 200000,
+        "recommendations": 200000,
+        "wins": 91444,
+        "losses": 89331,
+        "pushes": 19225,
+        "profit": -2459.2000000018015,
+        "B": 200000,
+        "P": 0,
+        "skip": 0,
+        "action_rate": 1.0,
+        "hit_on_recommendations_excluding_ties": 0.505844281565482,
+        "wins_per_all_hands": 0.45722,
+        "EV_per_recommendation": -0.012296000000009008,
+        "EV_per_opportunity": -0.012296000000009008
+      },
+      "always_B_on_new_schedule": {
+        "hands": 200000,
+        "recommendations": 5,
+        "wins": 2,
+        "losses": 3,
+        "pushes": 0,
+        "profit": -1.0999999999999999,
+        "B": 5,
+        "P": 0,
+        "skip": 199995,
+        "action_rate": 2.5e-05,
+        "hit_on_recommendations_excluding_ties": 0.4,
+        "wins_per_all_hands": 1e-05,
+        "EV_per_recommendation": -0.21999999999999997,
+        "EV_per_opportunity": -5.499999999999999e-06
+      }
+    },
+    "21-50": {
+      "next": {
+        "hands": 300000,
+        "recommendations": 33958,
+        "wins": 15417,
+        "losses": 15237,
+        "pushes": 3304,
+        "profit": -412.5500000000952,
+        "B": 25946,
+        "P": 8012,
+        "skip": 266042,
+        "action_rate": 0.11319333333333334,
+        "hit_on_recommendations_excluding_ties": 0.5029359953024075,
+        "wins_per_all_hands": 0.05139,
+        "EV_per_recommendation": -0.012148830908772461,
+        "EV_per_opportunity": -0.0013751666666669841
+      },
+      "old": {
+        "hands": 300000,
+        "recommendations": 65263,
+        "wins": 29548,
+        "losses": 29378,
+        "pushes": 6337,
+        "profit": -685.1999999996642,
+        "B": 37204,
+        "P": 28059,
+        "skip": 234737,
+        "action_rate": 0.21754333333333334,
+        "hit_on_recommendations_excluding_ties": 0.5014424871873197,
+        "wins_per_all_hands": 0.09849333333333334,
+        "EV_per_recommendation": -0.01049905765900532,
+        "EV_per_opportunity": -0.0022839999999988807
+      },
+      "always_B": {
+        "hands": 300000,
+        "recommendations": 300000,
+        "wins": 137605,
+        "losses": 134025,
+        "pushes": 28370,
+        "profit": -3300.2500000064306,
+        "B": 300000,
+        "P": 0,
+        "skip": 0,
+        "action_rate": 1.0,
+        "hit_on_recommendations_excluding_ties": 0.5065898464823473,
+        "wins_per_all_hands": 0.45868333333333333,
+        "EV_per_recommendation": -0.011000833333354769,
+        "EV_per_opportunity": -0.011000833333354769
+      },
+      "always_B_on_new_schedule": {
+        "hands": 300000,
+        "recommendations": 33958,
+        "wins": 15563,
+        "losses": 15091,
+        "pushes": 3304,
+        "profit": -306.1500000000854,
+        "B": 33958,
+        "P": 0,
+        "skip": 266042,
+        "action_rate": 0.11319333333333334,
+        "hit_on_recommendations_excluding_ties": 0.5076988321263131,
+        "wins_per_all_hands": 0.05187666666666667,
+        "EV_per_recommendation": -0.009015548618884664,
+        "EV_per_opportunity": -0.0010205000000002846
+      }
+    },
+    "51+": {
+      "next": {
+        "hands": 302717,
+        "recommendations": 23210,
+        "wins": 10594,
+        "losses": 10437,
+        "pushes": 2179,
+        "profit": -134.20000000001502,
+        "B": 12629,
+        "P": 10581,
+        "skip": 279507,
+        "action_rate": 0.076672271461464,
+        "hit_on_recommendations_excluding_ties": 0.5037325852313251,
+        "wins_per_all_hands": 0.034996382760135704,
+        "EV_per_recommendation": -0.0057819905213276615,
+        "EV_per_opportunity": -0.00044331834683884627
+      },
+      "old": {
+        "hands": 302717,
+        "recommendations": 41250,
+        "wins": 18809,
+        "losses": 18480,
+        "pushes": 3961,
+        "profit": 8.999999999999746,
+        "B": 13757,
+        "P": 27493,
+        "skip": 261467,
+        "action_rate": 0.13626588529881045,
+        "hit_on_recommendations_excluding_ties": 0.5044114886427633,
+        "wins_per_all_hands": 0.06213394028085638,
+        "EV_per_recommendation": 0.00021818181818181203,
+        "EV_per_opportunity": 2.9730738610648712e-05
+      },
+      "always_B": {
+        "hands": 302717,
+        "recommendations": 302717,
+        "wins": 138508,
+        "losses": 135357,
+        "pushes": 28852,
+        "profit": -3774.400000006255,
+        "B": 302717,
+        "P": 0,
+        "skip": 0,
+        "action_rate": 1.0,
+        "hit_on_recommendations_excluding_ties": 0.5057528344257207,
+        "wins_per_all_hands": 0.4575494603870942,
+        "EV_per_recommendation": -0.012468411090246849,
+        "EV_per_opportunity": -0.012468411090246849
+      },
+      "always_B_on_new_schedule": {
+        "hands": 302717,
+        "recommendations": 23210,
+        "wins": 10591,
+        "losses": 10440,
+        "pushes": 2179,
+        "profit": -378.55000000009176,
+        "B": 23210,
+        "P": 0,
+        "skip": 279507,
+        "action_rate": 0.076672271461464,
+        "hit_on_recommendations_excluding_ties": 0.5035899386619752,
+        "wins_per_all_hands": 0.03498647251393215,
+        "EV_per_recommendation": -0.016309780267130192,
+        "EV_per_opportunity": -0.001250507900118235
+      }
+    }
+  },
+  "streaks": {
+    "next": {
+      "placed": {
+        "winning": {
+          "maximum": 10,
+          "histogram": {
+            "1": 8844,
+            "2": 3794,
+            "3": 1633,
+            "4": 677,
+            "5": 231,
+            "6": 93,
+            "7": 24,
+            "8": 8,
+            "9": 1,
+            "10": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 2669,
+              "mean_run_length": 3.5897339827650807,
+              "overlapping_windows": 4243,
+              "windows_per_1000_non_tie_recommendations": 82.0855097697814
+            },
+            "5": {
+              "maximal_run_count": 359,
+              "mean_run_length": 5.4986072423398324,
+              "overlapping_windows": 538,
+              "windows_per_1000_non_tie_recommendations": 10.40820274714645
+            },
+            "7": {
+              "maximal_run_count": 35,
+              "mean_run_length": 7.457142857142857,
+              "overlapping_windows": 51,
+              "windows_per_1000_non_tie_recommendations": 0.9866511897852582
+            }
+          }
+        },
+        "losing": {
+          "maximum": 7,
+          "histogram": {
+            "1": 9085,
+            "2": 3765,
+            "3": 1641,
+            "4": 597,
+            "5": 265,
+            "6": 64,
+            "7": 6
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 2573,
+              "mean_run_length": 3.5219588029537503,
+              "overlapping_windows": 3916,
+              "windows_per_1000_non_tie_recommendations": 75.75933449409943
+            },
+            "5": {
+              "maximal_run_count": 335,
+              "mean_run_length": 5.226865671641791,
+              "overlapping_windows": 411,
+              "windows_per_1000_non_tie_recommendations": 7.951247823563552
+            },
+            "7": {
+              "maximal_run_count": 6,
+              "mean_run_length": 7.0,
+              "overlapping_windows": 6,
+              "windows_per_1000_non_tie_recommendations": 0.11607661056297155
+            }
+          }
+        }
+      },
+      "clock": {
+        "winning": {
+          "maximum": 5,
+          "histogram": {
+            "1": 21770,
+            "2": 1841,
+            "3": 165,
+            "4": 14,
+            "5": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 181,
+              "mean_run_length": 3.0994475138121547,
+              "overlapping_windows": 199,
+              "windows_per_1000_non_tie_recommendations": 3.849874250338557
+            },
+            "5": {
+              "maximal_run_count": 2,
+              "mean_run_length": 5.0,
+              "overlapping_windows": 2,
+              "windows_per_1000_non_tie_recommendations": 0.03869220352099052
+            },
+            "7": {
+              "maximal_run_count": 0,
+              "mean_run_length": null,
+              "overlapping_windows": 0,
+              "windows_per_1000_non_tie_recommendations": 0.0
+            }
+          }
+        },
+        "losing": {
+          "maximum": 5,
+          "histogram": {
+            "1": 21768,
+            "2": 1714,
+            "3": 141,
+            "4": 12,
+            "5": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 155,
+              "mean_run_length": 3.1032258064516127,
+              "overlapping_windows": 171,
+              "windows_per_1000_non_tie_recommendations": 3.3081834010446896
+            },
+            "5": {
+              "maximal_run_count": 2,
+              "mean_run_length": 5.0,
+              "overlapping_windows": 2,
+              "windows_per_1000_non_tie_recommendations": 0.03869220352099052
+            },
+            "7": {
+              "maximal_run_count": 0,
+              "mean_run_length": null,
+              "overlapping_windows": 0,
+              "windows_per_1000_non_tie_recommendations": 0.0
+            }
+          }
+        }
+      },
+      "chronological_across_shoes": {
+        "winning": {
+          "maximum": 16,
+          "histogram": {
+            "1": 6358,
+            "2": 3205,
+            "3": 1603,
+            "4": 843,
+            "5": 418,
+            "6": 221,
+            "7": 105,
+            "8": 55,
+            "9": 13,
+            "10": 12,
+            "11": 11,
+            "12": 6,
+            "13": 1,
+            "14": 1,
+            "16": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 3290,
+              "mean_run_length": 4.025835866261398,
+              "overlapping_windows": 6665,
+              "windows_per_1000_non_tie_recommendations": 128.9417682337009
+            },
+            "5": {
+              "maximal_run_count": 844,
+              "mean_run_length": 6.0,
+              "overlapping_windows": 1688,
+              "windows_per_1000_non_tie_recommendations": 32.656219771715996
+            },
+            "7": {
+              "maximal_run_count": 205,
+              "mean_run_length": 8.039024390243902,
+              "overlapping_windows": 418,
+              "windows_per_1000_non_tie_recommendations": 8.086670535887018
+            }
+          }
+        },
+        "losing": {
+          "maximum": 16,
+          "histogram": {
+            "1": 6515,
+            "2": 3130,
+            "3": 1628,
+            "4": 745,
+            "5": 417,
+            "6": 196,
+            "7": 106,
+            "8": 52,
+            "9": 36,
+            "10": 16,
+            "11": 6,
+            "13": 3,
+            "14": 1,
+            "16": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 3207,
+              "mean_run_length": 4.023074524477705,
+              "overlapping_windows": 6488,
+              "windows_per_1000_non_tie_recommendations": 125.51750822209326
+            },
+            "5": {
+              "maximal_run_count": 834,
+              "mean_run_length": 6.040767386091127,
+              "overlapping_windows": 1702,
+              "windows_per_1000_non_tie_recommendations": 32.92706519636293
+            },
+            "7": {
+              "maximal_run_count": 221,
+              "mean_run_length": 8.040723981900452,
+              "overlapping_windows": 451,
+              "windows_per_1000_non_tie_recommendations": 8.725091893983363
+            }
+          }
+        }
+      }
+    },
+    "old": {
+      "placed": {
+        "winning": {
+          "maximum": 13,
+          "histogram": {
+            "1": 15864,
+            "2": 7197,
+            "3": 3299,
+            "4": 1480,
+            "5": 703,
+            "6": 318,
+            "7": 125,
+            "8": 60,
+            "9": 19,
+            "10": 6,
+            "11": 8,
+            "13": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 6019,
+              "mean_run_length": 3.809104502409038,
+              "overlapping_windows": 10889,
+              "windows_per_1000_non_tie_recommendations": 102.80691484841904
+            },
+            "5": {
+              "maximal_run_count": 1240,
+              "mean_run_length": 5.733870967741935,
+              "overlapping_windows": 2150,
+              "windows_per_1000_non_tie_recommendations": 20.298913300036823
+            },
+            "7": {
+              "maximal_run_count": 219,
+              "mean_run_length": 7.703196347031963,
+              "overlapping_windows": 373,
+              "windows_per_1000_non_tie_recommendations": 3.5216254236808067
+            }
+          }
+        },
+        "losing": {
+          "maximum": 12,
+          "histogram": {
+            "1": 15996,
+            "2": 7295,
+            "3": 3242,
+            "4": 1464,
+            "5": 650,
+            "6": 282,
+            "7": 134,
+            "8": 50,
+            "9": 21,
+            "10": 5,
+            "11": 3,
+            "12": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 5852,
+              "mean_run_length": 3.784347231715653,
+              "overlapping_windows": 10442,
+              "windows_per_1000_non_tie_recommendations": 98.58662915301603
+            },
+            "5": {
+              "maximal_run_count": 1146,
+              "mean_run_length": 5.727748691099476,
+              "overlapping_windows": 1980,
+              "windows_per_1000_non_tie_recommendations": 18.69388294608042
+            },
+            "7": {
+              "maximal_run_count": 214,
+              "mean_run_length": 7.579439252336448,
+              "overlapping_windows": 338,
+              "windows_per_1000_non_tie_recommendations": 3.191177997866254
+            }
+          }
+        }
+      },
+      "clock": {
+        "winning": {
+          "maximum": 5,
+          "histogram": {
+            "1": 43825,
+            "2": 3870,
+            "3": 446,
+            "4": 58,
+            "5": 10
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 514,
+              "mean_run_length": 3.151750972762646,
+              "overlapping_windows": 592,
+              "windows_per_1000_non_tie_recommendations": 5.589282173777581
+            },
+            "5": {
+              "maximal_run_count": 10,
+              "mean_run_length": 5.0,
+              "overlapping_windows": 10,
+              "windows_per_1000_non_tie_recommendations": 0.0944135502327294
+            },
+            "7": {
+              "maximal_run_count": 0,
+              "mean_run_length": null,
+              "overlapping_windows": 0,
+              "windows_per_1000_non_tie_recommendations": 0.0
+            }
+          }
+        },
+        "losing": {
+          "maximum": 6,
+          "histogram": {
+            "1": 43684,
+            "2": 3930,
+            "3": 348,
+            "4": 28,
+            "5": 4,
+            "6": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 382,
+              "mean_run_length": 3.1099476439790577,
+              "overlapping_windows": 424,
+              "windows_per_1000_non_tie_recommendations": 4.003134529867727
+            },
+            "5": {
+              "maximal_run_count": 6,
+              "mean_run_length": 5.333333333333333,
+              "overlapping_windows": 8,
+              "windows_per_1000_non_tie_recommendations": 0.07553084018618351
+            },
+            "7": {
+              "maximal_run_count": 0,
+              "mean_run_length": null,
+              "overlapping_windows": 0,
+              "windows_per_1000_non_tie_recommendations": 0.0
+            }
+          }
+        }
+      },
+      "chronological_across_shoes": {
+        "winning": {
+          "maximum": 20,
+          "histogram": {
+            "1": 13349,
+            "2": 6616,
+            "3": 3332,
+            "4": 1635,
+            "5": 863,
+            "6": 424,
+            "7": 202,
+            "8": 106,
+            "9": 50,
+            "10": 14,
+            "11": 18,
+            "12": 7,
+            "13": 2,
+            "14": 1,
+            "15": 1,
+            "20": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 6656,
+              "mean_run_length": 3.9969951923076925,
+              "overlapping_windows": 13292,
+              "windows_per_1000_non_tie_recommendations": 125.49449096934391
+            },
+            "5": {
+              "maximal_run_count": 1689,
+              "mean_run_length": 5.960923623445826,
+              "overlapping_windows": 3312,
+              "windows_per_1000_non_tie_recommendations": 31.26976783707998
+            },
+            "7": {
+              "maximal_run_count": 402,
+              "mean_run_length": 7.982587064676617,
+              "overlapping_windows": 797,
+              "windows_per_1000_non_tie_recommendations": 7.524759953548533
+            }
+          }
+        },
+        "losing": {
+          "maximum": 18,
+          "histogram": {
+            "1": 13415,
+            "2": 6688,
+            "3": 3292,
+            "4": 1630,
+            "5": 808,
+            "6": 400,
+            "7": 197,
+            "8": 95,
+            "9": 45,
+            "10": 23,
+            "11": 19,
+            "12": 3,
+            "13": 3,
+            "14": 1,
+            "15": 1,
+            "18": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 6518,
+              "mean_run_length": 3.9799018103712793,
+              "overlapping_windows": 12905,
+              "windows_per_1000_non_tie_recommendations": 121.84068657533729
+            },
+            "5": {
+              "maximal_run_count": 1596,
+              "mean_run_length": 5.980576441102757,
+              "overlapping_windows": 3161,
+              "windows_per_1000_non_tie_recommendations": 29.844123228565763
+            },
+            "7": {
+              "maximal_run_count": 388,
+              "mean_run_length": 8.00257731958763,
+              "overlapping_windows": 777,
+              "windows_per_1000_non_tie_recommendations": 7.335932853083074
+            }
+          }
+        }
+      }
+    },
+    "always_B": {
+      "placed": {
+        "winning": {
+          "maximum": 18,
+          "histogram": {
+            "1": 91550,
+            "2": 46085,
+            "3": 22766,
+            "4": 11556,
+            "5": 5793,
+            "6": 2880,
+            "7": 1427,
+            "8": 712,
+            "9": 371,
+            "10": 199,
+            "11": 87,
+            "12": 38,
+            "13": 25,
+            "14": 10,
+            "15": 5,
+            "16": 1,
+            "17": 3,
+            "18": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 45875,
+              "mean_run_length": 4.007346049046322,
+              "overlapping_windows": 92087,
+              "windows_per_1000_non_tie_recommendations": 126.79444283806298
+            },
+            "5": {
+              "maximal_run_count": 11553,
+              "mean_run_length": 5.999740327187744,
+              "overlapping_windows": 23103,
+              "windows_per_1000_non_tie_recommendations": 31.810483704407453
+            },
+            "7": {
+              "maximal_run_count": 2880,
+              "mean_run_length": 8.010416666666666,
+              "overlapping_windows": 5790,
+              "windows_per_1000_non_tie_recommendations": 7.97224172828287
+            }
+          }
+        },
+        "losing": {
+          "maximum": 18,
+          "histogram": {
+            "1": 93988,
+            "2": 45664,
+            "3": 22504,
+            "4": 10882,
+            "5": 5314,
+            "6": 2639,
+            "7": 1235,
+            "8": 652,
+            "9": 313,
+            "10": 155,
+            "11": 72,
+            "12": 36,
+            "13": 20,
+            "14": 7,
+            "15": 4,
+            "16": 3,
+            "17": 1,
+            "18": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 43838,
+              "mean_run_length": 3.9554039874081846,
+              "overlapping_windows": 85721,
+              "windows_per_1000_non_tie_recommendations": 118.02910763214783
+            },
+            "5": {
+              "maximal_run_count": 10452,
+              "mean_run_length": 5.966035208572522,
+              "overlapping_windows": 20549,
+              "windows_per_1000_non_tie_recommendations": 28.29388519421152
+            },
+            "7": {
+              "maximal_run_count": 2499,
+              "mean_run_length": 7.9843937575030015,
+              "overlapping_windows": 4959,
+              "windows_per_1000_non_tie_recommendations": 6.828039158990458
+            }
+          }
+        }
+      },
+      "clock": {
+        "winning": {
+          "maximum": 17,
+          "histogram": {
+            "1": 109381,
+            "2": 49961,
+            "3": 22493,
+            "4": 10277,
+            "5": 4763,
+            "6": 2061,
+            "7": 905,
+            "8": 447,
+            "9": 198,
+            "10": 102,
+            "11": 34,
+            "12": 16,
+            "13": 8,
+            "14": 4,
+            "15": 2,
+            "17": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 41311,
+              "mean_run_length": 3.830795671854954,
+              "overlapping_windows": 75632,
+              "windows_per_1000_non_tie_recommendations": 104.13757968799483
+            },
+            "5": {
+              "maximal_run_count": 8541,
+              "mean_run_length": 5.8151270343051165,
+              "overlapping_windows": 15503,
+              "windows_per_1000_non_tie_recommendations": 21.34605587453702
+            },
+            "7": {
+              "maximal_run_count": 1717,
+              "mean_run_length": 7.854397204426325,
+              "overlapping_windows": 3184,
+              "windows_per_1000_non_tie_recommendations": 4.384044501356245
+            }
+          }
+        },
+        "losing": {
+          "maximum": 17,
+          "histogram": {
+            "1": 111918,
+            "2": 49093,
+            "3": 21757,
+            "4": 9697,
+            "5": 4235,
+            "6": 1904,
+            "7": 819,
+            "8": 411,
+            "9": 176,
+            "10": 67,
+            "11": 32,
+            "12": 12,
+            "13": 6,
+            "14": 5,
+            "15": 1,
+            "17": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 39123,
+              "mean_run_length": 3.7985072719372237,
+              "overlapping_windows": 70363,
+              "windows_per_1000_non_tie_recommendations": 96.88270202541754
+            },
+            "5": {
+              "maximal_run_count": 7669,
+              "mean_run_length": 5.809101577780676,
+              "overlapping_windows": 13874,
+              "windows_per_1000_non_tie_recommendations": 19.10308838310821
+            },
+            "7": {
+              "maximal_run_count": 1530,
+              "mean_run_length": 7.811111111111111,
+              "overlapping_windows": 2771,
+              "windows_per_1000_non_tie_recommendations": 3.8153854627067068
+            }
+          }
+        }
+      },
+      "chronological_across_shoes": {
+        "winning": {
+          "maximum": 18,
+          "histogram": {
+            "1": 89129,
+            "2": 45417,
+            "3": 22732,
+            "4": 11700,
+            "5": 5932,
+            "6": 3033,
+            "7": 1509,
+            "8": 761,
+            "9": 405,
+            "10": 215,
+            "11": 93,
+            "12": 45,
+            "13": 26,
+            "14": 12,
+            "15": 7,
+            "16": 1,
+            "17": 4,
+            "18": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 46477,
+              "mean_run_length": 4.036276007487574,
+              "overlapping_windows": 94640,
+              "windows_per_1000_non_tie_recommendations": 130.30966444986024
+            },
+            "5": {
+              "maximal_run_count": 12045,
+              "mean_run_length": 6.0272312162723125,
+              "overlapping_windows": 24418,
+              "windows_per_1000_non_tie_recommendations": 33.62110509865477
+            },
+            "7": {
+              "maximal_run_count": 3080,
+              "mean_run_length": 8.032467532467532,
+              "overlapping_windows": 6260,
+              "windows_per_1000_non_tie_recommendations": 8.619383975656437
+            }
+          }
+        },
+        "losing": {
+          "maximum": 18,
+          "histogram": {
+            "1": 91554,
+            "2": 45055,
+            "3": 22404,
+            "4": 11045,
+            "5": 5514,
+            "6": 2777,
+            "7": 1295,
+            "8": 704,
+            "9": 341,
+            "10": 173,
+            "11": 81,
+            "12": 40,
+            "13": 22,
+            "14": 7,
+            "15": 6,
+            "16": 2,
+            "17": 2,
+            "18": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 44414,
+              "mean_run_length": 3.986333138199667,
+              "overlapping_windows": 88221,
+              "windows_per_1000_non_tie_recommendations": 121.47135362881573
+            },
+            "5": {
+              "maximal_run_count": 10965,
+              "mean_run_length": 5.987870497036024,
+              "overlapping_windows": 21797,
+              "windows_per_1000_non_tie_recommendations": 30.012254395748137
+            },
+            "7": {
+              "maximal_run_count": 2674,
+              "mean_run_length": 8.012341062079281,
+              "overlapping_windows": 5381,
+              "windows_per_1000_non_tie_recommendations": 7.409090283228001
+            }
+          }
+        }
+      }
+    },
+    "always_B_on_new_schedule": {
+      "placed": {
+        "winning": {
+          "maximum": 12,
+          "histogram": {
+            "1": 9017,
+            "2": 3906,
+            "3": 1565,
+            "4": 643,
+            "5": 245,
+            "6": 90,
+            "7": 26,
+            "8": 8,
+            "9": 3,
+            "10": 1,
+            "12": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 2582,
+              "mean_run_length": 3.6123160340821068,
+              "overlapping_windows": 4163,
+              "windows_per_1000_non_tie_recommendations": 80.53782162894177
+            },
+            "5": {
+              "maximal_run_count": 374,
+              "mean_run_length": 5.508021390374331,
+              "overlapping_windows": 564,
+              "windows_per_1000_non_tie_recommendations": 10.911201392919327
+            },
+            "7": {
+              "maximal_run_count": 39,
+              "mean_run_length": 7.564102564102564,
+              "overlapping_windows": 61,
+              "windows_per_1000_non_tie_recommendations": 1.1801122073902108
+            }
+          }
+        },
+        "losing": {
+          "maximum": 10,
+          "histogram": {
+            "1": 8943,
+            "2": 3812,
+            "3": 1600,
+            "4": 610,
+            "5": 212,
+            "6": 79,
+            "7": 19,
+            "8": 4,
+            "9": 2,
+            "10": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 2527,
+              "mean_run_length": 3.548476454293629,
+              "overlapping_windows": 3913,
+              "windows_per_1000_non_tie_recommendations": 75.70129618881795
+            },
+            "5": {
+              "maximal_run_count": 317,
+              "mean_run_length": 5.44794952681388,
+              "overlapping_windows": 459,
+              "windows_per_1000_non_tie_recommendations": 8.879860708067325
+            },
+            "7": {
+              "maximal_run_count": 26,
+              "mean_run_length": 7.423076923076923,
+              "overlapping_windows": 37,
+              "windows_per_1000_non_tie_recommendations": 0.7158057651383246
+            }
+          }
+        }
+      },
+      "clock": {
+        "winning": {
+          "maximum": 5,
+          "histogram": {
+            "1": 21999,
+            "2": 1806,
+            "3": 161,
+            "4": 13,
+            "5": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 176,
+              "mean_run_length": 3.096590909090909,
+              "overlapping_windows": 193,
+              "windows_per_1000_non_tie_recommendations": 3.7337976397755854
+            },
+            "5": {
+              "maximal_run_count": 2,
+              "mean_run_length": 5.0,
+              "overlapping_windows": 2,
+              "windows_per_1000_non_tie_recommendations": 0.03869220352099052
+            },
+            "7": {
+              "maximal_run_count": 0,
+              "mean_run_length": null,
+              "overlapping_windows": 0,
+              "windows_per_1000_non_tie_recommendations": 0.0
+            }
+          }
+        },
+        "losing": {
+          "maximum": 5,
+          "histogram": {
+            "1": 21478,
+            "2": 1790,
+            "3": 134,
+            "4": 16,
+            "5": 2
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 152,
+              "mean_run_length": 3.1315789473684212,
+              "overlapping_windows": 172,
+              "windows_per_1000_non_tie_recommendations": 3.327529502805185
+            },
+            "5": {
+              "maximal_run_count": 2,
+              "mean_run_length": 5.0,
+              "overlapping_windows": 2,
+              "windows_per_1000_non_tie_recommendations": 0.03869220352099052
+            },
+            "7": {
+              "maximal_run_count": 0,
+              "mean_run_length": null,
+              "overlapping_windows": 0,
+              "windows_per_1000_non_tie_recommendations": 0.0
+            }
+          }
+        }
+      },
+      "chronological_across_shoes": {
+        "winning": {
+          "maximum": 17,
+          "histogram": {
+            "1": 6390,
+            "2": 3284,
+            "3": 1564,
+            "4": 829,
+            "5": 457,
+            "6": 214,
+            "7": 108,
+            "8": 45,
+            "9": 28,
+            "10": 12,
+            "11": 7,
+            "12": 1,
+            "13": 1,
+            "14": 1,
+            "17": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 3268,
+              "mean_run_length": 4.038555691554468,
+              "overlapping_windows": 6662,
+              "windows_per_1000_non_tie_recommendations": 128.88372992841943
+            },
+            "5": {
+              "maximal_run_count": 875,
+              "mean_run_length": 5.9314285714285715,
+              "overlapping_windows": 1690,
+              "windows_per_1000_non_tie_recommendations": 32.69491197523699
+            },
+            "7": {
+              "maximal_run_count": 204,
+              "mean_run_length": 7.946078431372549,
+              "overlapping_windows": 397,
+              "windows_per_1000_non_tie_recommendations": 7.680402398916618
+            }
+          }
+        },
+        "losing": {
+          "maximum": 16,
+          "histogram": {
+            "1": 6553,
+            "2": 3266,
+            "3": 1585,
+            "4": 799,
+            "5": 346,
+            "6": 194,
+            "7": 97,
+            "8": 49,
+            "9": 24,
+            "10": 15,
+            "11": 7,
+            "12": 4,
+            "13": 2,
+            "16": 1
+          },
+          "thresholds": {
+            "3": {
+              "maximal_run_count": 3123,
+              "mean_run_length": 3.9862311879602945,
+              "overlapping_windows": 6203,
+              "windows_per_1000_non_tie_recommendations": 120.0038692203521
+            },
+            "5": {
+              "maximal_run_count": 739,
+              "mean_run_length": 6.086603518267929,
+              "overlapping_windows": 1542,
+              "windows_per_1000_non_tie_recommendations": 29.831688914683692
+            },
+            "7": {
+              "maximal_run_count": 199,
+              "mean_run_length": 8.06030150753769,
+              "overlapping_windows": 410,
+              "windows_per_1000_non_tie_recommendations": 7.931901721803056
+            }
+          }
+        }
+      }
+    }
+  },
+  "common_recommendations": {
+    "opportunities": 46038,
+    "conflicting_directions": 20,
+    "new_wins": 21046,
+    "old_wins": 21046
+  },
+  "skip_reasons": {
+    "probability_band": 656863,
+    "nonpositive_or_insufficient_ev": 548659,
+    "ess_low_or_missing": 200628,
+    "particle_quality_low_or_missing": 408471,
+    "loss_cooldown": 3222
+  },
+  "whole_shoe_bootstrap": {
+    "samples": 2000,
+    "seed": 2026102914,
+    "new_hit95": [
+      0.49887475301752543,
+      0.507598007756983
+    ],
+    "conditional_hit_change_vs_old95": [
+      -0.00262195058838864,
+      0.004694674854059121
+    ],
+    "conditional_hit_change_vs_scheduled_B95": [
+      -0.0073979754153153335,
+      0.0021732953764153425
+    ],
+    "EV_per_opportunity_change_vs_old95": [
+      -0.00038952532408754087,
+      0.0009140514178147159
+    ],
+    "EV_per_recommendation_change_vs_old95": [
+      -0.009700140744261797,
+      0.003349267072990088
+    ]
+  },
+  "gate": {
+    "passed": false,
+    "failures": [
+      "出手率未落在建議20–35%",
+      "整靴配對區間未證實條件命中率提升",
+      "未證實優於相同推薦時機的固定莊",
+      "每次推薦扣佣EV未優於舊版或推薦不足以估計",
+      "跨靴每千次非和推薦的三連錯頻率未下降"
+    ],
+    "production_deployed": false
+  },
+  "notes": [
+    "Placed streaks ignore Skip and push ties. Cooldown does not reset the recommended losing sequence.",
+    "Clock streaks break at any Skip or tie; do not use this alone to claim fewer losses.",
+    "Threshold event counts are maximal runs; overlapping windows and rate/1000 resolved recommendations are also reported.",
+    "Maximum streaks are within a shoe, not concatenated across independent shoes.",
+    "Full holdout is BPT button mode only. Point-mode functionality is tested separately, not claimed as a 10000-shoe point-mode benefit.",
+    "No ground-truth ranks/composition/points/card counts are fed to this BPT holdout.",
+    "Original PF may exhaust hypotheses near a14-card cut; new gate fails closed on missing ESS. Legacy behavior is preserved for comparison.",
+    "EV uses a flat1 unit for every recommendation in both policies, not the legacy variable stake multiplier.",
+    "chronological_across_shoes additionally concatenates placed non-tie recommendations by generation shoe_id, WITHOUT resetting at shoe boundaries. Runtime protection itself still resets per shoe."
+  ],
+  "environment": {
+    "python": "3.10.11",
+    "numpy": "1.24.3"
+  },
+  "reporter_sha256": "4007ff5ce730bef9881a49722ff317b3d0b886e041a7c37f739ce9a27578b9c4",
+  "raw_predictions_sha256": "54e79033ecc5d347e21e0f1d3e6be3228f7cf91b003ad851853bfda043b709e1",
+  "simulation": {
+    "seed": 2026102911,
+    "decks": 8,
+    "cut_from_end": 14,
+    "burn": "reveal1 + burn point value; zero=10",
+    "full_shoes": true,
+    "max_hands_cap": null,
+    "latent_card_composition_input": false,
+    "point_input_in_holdout": false
+  }
+}
