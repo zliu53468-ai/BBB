@@ -2,6 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('fs'),{runtime,settle}=require('./priority_runtime.cjs');
 (async()=>{
  const old=await runtime({legacy:true}),next=await runtime(),plain=await runtime({memoized:false});
+ if(next.api.getCardcountProfile().physics_priority_v1.early_mid_conservative_v2)next.api.getCardcountProfile().physics_priority_v1.early_mid_conservative_v2.enabled=false;
  next.api.getCardcountProfile().physics_priority_v1.enabled=false;
  for(const h of ['', 'B','P','T','BBPPBTBP','BPT'.repeat(13)]){
   const seq=h.split('');for(const r of [old,next,plain]){r.data.clear();r.data.set('bgs_xgb_final_shoe_id_v5','parity');}

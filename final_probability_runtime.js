@@ -17,7 +17,7 @@ const EXPERIMENT_CALIBRATION=LOCAL_CALIBRATION_API?.createClient(typeof localSto
   removeItem:key=>localStorage.removeItem("bgs_no_skip_experiment_"+key)
 }:null)||null;
 
-const localCalibrationConfig=()=>cardcountProfile?.local_calibration||{};
+const localCalibrationConfig=()=>{const c=cardcountProfile?.local_calibration||{};return cardcountProfile?.physics_priority_v1?.enabled===true&&cardcountProfile?.physics_priority_v1?.early_mid_conservative_v2?.enabled===true?{...c,min_samples:Math.max(30,c.min_samples||0)}:c;};
 const MACRO=(typeof window!=="undefined")?window.__BGS_MACRO_EMA__:null;
 if(!CORE||typeof CORE.hazardChoose!=="function")return;
 
@@ -706,7 +706,10 @@ function applyFinalPrediction(seq,corePrediction=null,enablePriority=true){
       // Keep Direct Physics as a safe fallback if the optional particle layer fails.
       if(PARTICLE500&&typeof PARTICLE500.estimate==="function"){
         try{
-          const estimate=PARTICLE500.estimate(seq,physicsDirect,"quality",cardcountProfile?.enabled?{...cardcountProfile.pf,max_blend:profileValue("pf_max",seq.length+1),forecast_draws:cardcountProfile.anchors?.pf_draws?profileValue("pf_draws",seq.length+1):cardcountProfile.pf.forecast_draws}:{});
+          const pfConfig=cardcountProfile?.enabled?{...cardcountProfile.pf,max_blend:profileValue("pf_max",seq.length+1),forecast_draws:cardcountProfile.anchors?.pf_draws?profileValue("pf_draws",seq.length+1):cardcountProfile.pf.forecast_draws}:{};
+          const earlyLimits=priorityEnabled?PRIORITY_API?.limits(seq.length+1,cardcountProfile.physics_priority_v1):null;
+          if(earlyLimits){pfConfig.max_blend=Math.min(pfConfig.max_blend??.16,earlyLimits.pf_max);pfConfig.min_blend=Math.min(pfConfig.min_blend??.06,pfConfig.max_blend);}
+          const estimate=PARTICLE500.estimate(seq,physicsDirect,"quality",pfConfig);
           if(!Array.isArray(estimate?.physics)||estimate.physics.length!==PHYSICS_DIM||!estimate.physics.every(Number.isFinite))throw new Error("invalid particle physics");
           physics=estimate.physics;particleDiagnostics=estimate.diagnostics;
           executionOrder.push("particle_filter");
@@ -864,11 +867,12 @@ function applyFinalPrediction(seq,corePrediction=null,enablePriority=true){
 
 function applyPhysicsPriority(result,history,physics,particleDiagnostics){
   const config=cardcountProfile.physics_priority_v1;
+  const earlyLimits=PRIORITY_API?.limits(history.length+1,config);
   if(!PRIORITY){result.direction=result.bet_direction='Skip';result.final_direction='觀望 Skip';result.confidence=0;result.entry_tier='skip';result.stake_multiplier=0;Object.assign(result.finalProbability,{active:false,finalDirection:'觀望 Skip',stake_multiplier:0,error:'physics_priority_module_missing'});result.physics_priority={eligible:false,direction:'Skip',confidence_level:'低',reasons:['physics_priority_module_missing']};return result;}
   let used=physics?.slice(),diagnostics=particleDiagnostics,pointWeight=0,pointError=null;
   const events=macroJournal?.shoe_id===getShoeId()?macroJournal.events.slice(0,history.length):[];
   const hasPoint=events.some((e,i)=>e.outcome===history[i]&&Number.isInteger(e.player_score)&&Number.isInteger(e.banker_score));
-  if(hasPoint&&config.point_conditioned?.enabled!==false&&used){
+  if(hasPoint&&config.point_conditioned?.enabled!==false&&used&&(!earlyLimits||earlyLimits.point_weight_max>0)){
     try{
       const pointApi=typeof window!=="undefined"?window.__BBB_POINT_PF__:null;
       if(!pointApi)throw new Error("point_posterior_module_missing");
@@ -878,13 +882,17 @@ function applyPhysicsPriority(result,history,physics,particleDiagnostics){
       if(!point.diagnostics?.point_observations_processed||point.diagnostics.score_update_enabled===false)throw new Error("point_posterior_failed");
       const pc={...PRIORITY_API.DEFAULTS.point_conditioned,...config.point_conditioned};
       pointWeight=clip(pc.weight,Math.max(.60,pc.minimum_weight),Math.min(.70,pc.maximum_weight));
+      if(earlyLimits)pointWeight=Math.min(pointWeight,earlyLimits.point_weight_max);
       used=used.map((v,i)=>(1-pointWeight)*v+pointWeight*point.physics[i]);diagnostics=point.diagnostics;
     }catch(error){pointError=String(error?.message||error);window.__BBB_POINT_PF__?.reset?.();}
   }
+  let residual=null;
+  const direct=result.finalProbability.physicsDirect;
+  if(earlyLimits&&used&&direct){const dm=direct[23]+direct[24],um=used[23]+used[24];if(dm>0&&um>0){const base=direct[23]/dm,raw=used[23]/um,limited=clip(raw,Math.max(0,base-earlyLimits.residual_max_delta),Math.min(1,base+earlyLimits.residual_max_delta));used[23]=um*limited;used[24]=um*(1-limited);used[39]=.95*used[23]-used[24];used[40]=used[24]-used[23];used[41]=used[39]-used[40];residual={raw_delta:raw-base,applied_delta:limited-base,cap:earlyLimits.residual_max_delta};}}
   const mass=used?(used[23]+used[24]+used[25]):0,probs=mass>0?{B:used[23]/mass,P:used[24]/mass,T:used[25]/mass}:null;
   const audit=PRIORITY.predict({history,shoe_id:getShoeId(),probabilities:probs,
     noise:used?physicsNoiseScore(used,history.length+1):null,uncertainty:used?.[42],ess_ratio:diagnostics?.recent_ess_ratio,particle_quality:diagnostics?.particle_quality,clip_limits:result.finalProbability.bounds?[result.finalProbability.bounds.low,result.finalProbability.bounds.high]:null,
-    legacy_ev_floor:Math.max(result.activation_ev||0,result.finalProbability.physics_activation_ev||0),point_weight:pointWeight,point_diagnostics:pointWeight?diagnostics:null,point_error:pointError},config);
+    legacy_ev_floor:Math.max(result.activation_ev||0,result.finalProbability.physics_activation_ev||0),residual,point_weight:pointWeight,point_diagnostics:pointWeight?diagnostics:null,point_error:pointError},config);
   const direction=audit.direction,q=audit.smoothed_q??.5;
   result.base_raw_next_hand_forecast=result.base_raw_next_hand_forecast||result.raw_next_hand_forecast;
   if(used)result.raw_next_hand_forecast=nextHandForecast(used);
@@ -1088,7 +1096,7 @@ function renderPrediction(p,n){
   if(noSkipTestActive&&ready&&p.experimental_no_skip?.active&&el("message"))el("message").textContent="未驗證實驗版：每局更新下一局方向，不保證勝率；不列入正式下注"+(f.directional.B===f.directional.P?"；五五波以莊作研究方向，沒有機率優勢":"");
   const a=p.physics_priority,box=el('physicsPriorityStatus');if(box){box.hidden=!a;if(a)box.textContent='信心：'+a.confidence_level+'｜'+(a.eligible?'已達出手門檻':a.uncertainty_skip?'不確定性過高，觀望':'未達出手門檻，觀望')+'｜估計剩餘 '+(a.remaining_cards_interval?.join('–')??'未知')+' 張（非已知牌階）'+(Number.isFinite(a.probability_band)?'｜推薦機率差門檻 '+(200*a.probability_band).toFixed(2)+'pp':'')+(a.reasons.includes('loss_cooldown')?'｜連錯保護冷卻中':'');}
   if(el('priorityPointInputs'))el('priorityPointInputs').hidden=cardcountProfile?.physics_priority_v1?.enabled!==true;
-  if(a&&!noSkipTestActive){const reasonText={noise_high:'物理噪音偏高',uncertainty_high:'物理不確定性偏高',ess_low_or_missing:'有效粒子不足或未就緒',particle_quality_low_or_missing:'粒子品質不足',probability_band:'機率差不足',nonpositive_or_insufficient_ev:'扣佣EV未過門檻',loss_cooldown:'連錯冷卻中',point_posterior_unavailable:'點數後驗未就緒',storage_error:'本機儲存異常',physics_unavailable:'物理模型未就緒',physics_priority_module_missing:'推薦模組未就緒'};if(el('modePill'))el('modePill').textContent='純算牌優先／選擇性推薦';if(el('regime'))el('regime').textContent=a.eligible?'已達門檻：'+(a.direction==='B'?'莊':'閒'):'觀望：'+a.reasons.map(r=>reasonText[r]||r).join('、');if(el('message'))el('message').textContent='第 '+(n+1)+' 局｜'+(a.remaining_note||'目前無法估計剩餘張數')+'；目標降低弱訊號出手，不保證命中率';}
+  if(a&&!noSkipTestActive){const reasonText={noise_high:'物理噪音偏高',uncertainty_high:'物理不確定性偏高',ess_low_or_missing:'有效粒子不足或未就緒',particle_quality_low_or_missing:'粒子品質不足',probability_band:'訊號不足，建議觀望',nonpositive_or_insufficient_ev:'扣佣EV未過門檻',loss_cooldown:'連錯冷卻中',point_posterior_unavailable:'點數後驗未就緒',storage_error:'本機儲存異常',physics_unavailable:'物理模型未就緒',physics_priority_module_missing:'推薦模組未就緒'};if(el('modePill'))el('modePill').textContent='純算牌優先／選擇性推薦';if(el('regime'))el('regime').textContent=a.eligible?'已達門檻：'+(a.direction==='B'?'莊':'閒'):'觀望：'+a.reasons.map(r=>reasonText[r]||r).join('、');if(el('message'))el('message').textContent='第 '+(n+1)+' 局｜'+(a.remaining_note||'目前無法估計剩餘張數')+'；目標降低弱訊號出手，不保證命中率';}
 }
 function installUI(){
   if(typeof document==="undefined")return;const old=document.getElementById("btnStart");if(!old)return;const btn=old.cloneNode(true);old.replaceWith(btn);

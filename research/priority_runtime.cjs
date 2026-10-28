@@ -2,17 +2,17 @@
 // Headless adapter, using the actual browser functions. Frozen sources untouched.
 const fs=require('fs'),path=require('path'),cp=require('child_process'),ROOT=path.resolve(__dirname,'..');
 const BASE='c6f4a0afbf9fc9de3806ae662319471daadfb405';
-const source=(file,legacy)=>legacy&&['cardcount_profile.json','final_probability_runtime.js'].includes(file)?cp.execFileSync('git',['show',BASE+':'+file],{cwd:ROOT,encoding:'utf8'}):fs.readFileSync(path.join(ROOT,file),'utf8');
-async function runtime({legacy=false,memoized=true,fastIO=true}={}){
+const source=(file,legacy,revision)=>((legacy||revision)&&['cardcount_profile.json','final_probability_runtime.js','physics_priority_runtime.js'].includes(file))?cp.execFileSync('git',['show',(revision||BASE)+':'+file],{cwd:ROOT,encoding:'utf8'}):fs.readFileSync(path.join(ROOT,file),'utf8');
+async function runtime({legacy=false,memoized=true,fastIO=true,revision=null}={}){
  const data=new Map(),win={},doc={getElementById:()=>null},storage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,String(v)),removeItem:k=>data.delete(k)};
- const fetch=async f=>({ok:true,json:async()=>JSON.parse(source(String(f).split('?')[0],legacy))});
+ const fetch=async f=>({ok:true,json:async()=>JSON.parse(source(String(f).split('?')[0],legacy,revision))});
  let rowShoe=null,rows=[],canonical=new WeakSet();
  function rowReset(){const shoe=data.get('bgs_xgb_final_shoe_id_v5');if(shoe!==rowShoe){rowShoe=shoe;rows=[];canonical=new WeakSet();}}
  win.__labReadRows=()=>{rowReset();return rows.slice();};
  win.__labWriteRows=input=>{rowReset();rows=input.map(r=>{if(canonical.has(r))return r;const copy=JSON.parse(JSON.stringify(r));canonical.add(copy);return copy;});};
  win.__labPosteriorCache=new Map();
  for(const f of ['app256forward.js','app256continuation.js','particle_filter_runtime.js','macro_ema.js','browser_calibration.js',...(!legacy?['point_conditioned_pf.js','physics_priority_runtime.js']:[]),'final_probability_runtime.js']){
-  let code=source(f,legacy);
+  let code=source(f,legacy,revision);
   if(f==='particle_filter_runtime.js'&&memoized){
    const start=code.indexOf('  const rng=rng32(seedFromHistory(seq));'),end=code.indexOf('  const winner=normalizeBlock(posterior.slice(23,26));',start);if(start<0||end<0)throw Error('PF memo anchor mismatch');
    const original=code.slice(start,end);
