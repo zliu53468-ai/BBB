@@ -1,0 +1,20 @@
+name: 最新單局粒子隔離檢查
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  latest-hand:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check final_probability_runtime.js && node --check particle_filter_runtime.js
+      - run: node test_latest_hand_pf.js
+      - run: node test_pf_primary_runtime.js && node test_final_probability_runtime.js
+      - run: node test_bbb_button_only.js && node test_end_analysis_reload.js && node test_license_storage.mjs

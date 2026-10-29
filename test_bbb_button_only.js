@@ -63,7 +63,7 @@ assert.equal(stored().length,26);
 report("btnNoSkipTest");assert.equal(el("btnNoSkipTest")["aria-pressed"],"true");
 assert.equal(el("directionText").textContent,"未就緒");
 assert.match(el("message").textContent,/模型未就緒/);
-const fs=require("node:fs");global.fetch=async file=>({ok:true,json:async()=>JSON.parse(fs.readFileSync(file,"utf8"))});
+const fs=require("node:fs");global.fetch=async file=>({ok:true,json:async()=>{const p=JSON.parse(fs.readFileSync(file,"utf8"));if(file==="cardcount_profile.json"&&p.latest_hand_pf_v1)p.latest_hand_pf_v1.enabled=false;return p;}});
 await global.__BGS_FINAL56__.loadModels();
 const api=global.__BGS_FINAL56__,tie={available:true,directional:{B:.5,P:.5}};
 assert.equal(api.noSkipTestDirection(tie),"Balanced");assert.equal(api.noSkipTestDirection({available:false}),null);
