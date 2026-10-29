@@ -1,4 +1,6 @@
-> 可選PF主導測試：網址加 `?pf_primary=1`；預設維持Physics主導。小樣本未見改善，不自動晉升。見 [PF_PRIMARY_TEST_MODE.md](PF_PRIMARY_TEST_MODE.md)。
+> 目前預設為「牌路主導／Physics＋PF微調」實驗版；上下文不足時由原算牌暫代。未驗證命中率提升，可一鍵回滾。見 [ROAD_PRIMARY_TEST.md](ROAD_PRIMARY_TEST.md)。
+
+> 可選PF主導測試：網址加 `?pf_primary=1`；原PR75曾預設Physics主導；目前預設改為牌路主導，可用road_primary_v1.enabled=false回復。PF小樣本未見改善，不自動晉升。見 [PF_PRIMARY_TEST_MODE.md](PF_PRIMARY_TEST_MODE.md)。
 
 > 目前EMA與PF混合上限均由低到高：EMA 42%→54%→62%、PF上限10%→14%→16%；點數張數修正保留。見 [ASCENDING_WEIGHT_EMA_V4.md](ASCENDING_WEIGHT_EMA_V4.md)。
 

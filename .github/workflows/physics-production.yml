@@ -63,7 +63,7 @@ jobs:
       - name: Browser runtime preflight
         run: |
           node --check final_probability_runtime.js
-          node test_final_probability_runtime.js
+          node --require ./legacy_profile_fixture.cjs test_final_probability_runtime.js
 
       - name: Train browser physics multi-task model
         run: |
@@ -96,7 +96,7 @@ jobs:
             --probability-bounds 0.40 0.60
 
       - name: Browser production smoke test
-        run: BGS_USE_GENERATED_MODEL=1 node test_final_probability_runtime.js
+        run: BGS_USE_GENERATED_MODEL=1 node --require ./legacy_profile_fixture.cjs test_final_probability_runtime.js
 
       - name: Show model sizes
         run: |

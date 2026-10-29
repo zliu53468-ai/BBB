@@ -36,4 +36,4 @@ jobs:
       - name: PR56 production contract (later EV-led diagnostics are archived)
         run: |
           node --check final_probability_runtime.js
-          node test_pr56_restore.js
+          node --require ./legacy_profile_fixture.cjs test_pr56_restore.js

@@ -563,5 +563,24 @@
     "max_physics_uncertainty": 0.7,
     "conflict_gap": 0.04,
     "accuracy_validated": false
+  },
+  "road_primary_v1": {
+    "schema_version": 1,
+    "version": "ROAD_PRIMARY_PHYSICS_ADJUSTMENT_V1",
+    "enabled": true,
+    "order": 2,
+    "window": 200,
+    "min_observations": 12,
+    "prior_strength": 24,
+    "prior": {
+      "B": 0.45,
+      "P": 0.45,
+      "T": 0.1
+    },
+    "physics_weight": 0.1,
+    "max_physics_weight": 0.15,
+    "max_delta": 0.004,
+    "max_physics_uncertainty": 0.7,
+    "accuracy_validated": false
   }
 }
