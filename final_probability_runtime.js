@@ -653,7 +653,6 @@ function rememberExperimentalPrediction(prediction,n){
   if(paper)try{localStorage.setItem(EXPERIMENT_PENDING_KEY,JSON.stringify(paper));}catch(_){experimentalStorageError="pending_write_failed";}
 }
 function prepareDisplayCalibrationTickets(history,baseRaw){
-  if(cardcountProfile?.independent_round_v1?.enabled===true)return null;
   const shoe=getShoeId(),context=experimentalContext();
   const normal=LOCAL_CALIBRATION&&browserCalibrationTag!=="unready"?LOCAL_CALIBRATION.prepare(history,baseRaw,shoe,browserCalibrationTag):null;
   let experimental=null,paper=getExperimentalPending(history);
@@ -667,7 +666,6 @@ function getExperimentalRows(history=readHistory()){
   }catch(_){experimentalStorageError="read_failed";return[];}
 }
 function commitDisplayCalibrationTickets(tickets,actual,history){
-  if(cardcountProfile?.independent_round_v1?.enabled===true)return null;
   if(!tickets)return;
   if(tickets.normal?.model===browserCalibrationTag)LOCAL_CALIBRATION?.commit(tickets.normal,actual,history,localCalibrationConfig());
   const context=experimentalContext();if(context&&tickets.experimental?.model===context.tag)context.client.commit(tickets.experimental,actual,history,localCalibrationConfig());
@@ -684,21 +682,7 @@ function refreshNoSkipLabels(){
 function setNoSkipTestMode(active){noSkipTestActive=active===true;refreshNoSkipLabels();}
 function getExperimentalStatus(history=readHistory()){const c=experimentalContext();return {enabled:!!c,active:noSkipTestActive&&!!c,unvalidated:true,version:c?.config.version||null,tag:c?.tag||null,calibration:c?c.client.inspect(history,getShoeId(),c.tag,localCalibrationConfig()):null,audit_storage_error:experimentalStorageError};}
 
-// 無歷史獨立A：不接受來自UI的歷史、局數、Core結果或本機殘差。
-function independentRoundPrediction(){
- const diagnostic={version:'INDEPENDENT_A_NO_HISTORY_V1',enabled:true,history_used:0,prior_predictions_used:0,progress_source:'fixed_first_hand',core_xgb_role:'not_executed',markov_weight:0,smoothing:false,local_calibration:false,notice:'無當局牌面輸入，僅為空歷史模型先驗；相同輸入會得到相同機率，不是剩餘牌組算牌'};
- let direct=null,physics=null,particleDiagnostics=null,error='';
- try{if(!physicsBundle?.trained)throw Error('physics_unavailable');direct=predictPhysics([]);physics=direct.slice();if(PARTICLE500?.estimate){const r=PARTICLE500.estimate([],direct,'quality',{...cardcountProfile?.pf,max_blend:profileValue('pf_max',1),forecast_draws:profileValue('pf_draws',1)});physics=r.physics;particleDiagnostics=r.diagnostics;}}catch(e){error=String(e.message||e);}
- const forecast=nextHandForecast(physics),ready=forecast.available===true,prob=forecast.probabilities||{B:.45,P:.45,T:.10},q=forecast.directional?.B??.5;
- const evB=.95*prob.B-prob.P,evP=prob.P-prob.B,candidate=evB>evP?'B':evP>evB?'P':'Balanced';
- const gate=ready?hitrateGate(candidate,evB,evP,1,physicsNoiseScore(physics,1),physics[42],particleDiagnostics?.particle_quality):{passed:false,reasons:['physics_unavailable']};
- const direction=gate.passed?candidate:'Skip';
- return {independent_round:diagnostic,direction,bet_direction:direction,final_direction:direction==='Skip'?'觀望 Skip':direction==='B'?'莊 B':'閒 P',confidence:ready?Math.abs(q-.5)*2:0,probabilities:{B:q,P:1-q},ev_banker:evB,ev_player:evP,entry_tier:gate.passed?'qualified':'skip',stake_multiplier:gate.passed?1:0,volume_guard_active:false,regime:'無歷史獨立A／固定先驗',browser_calibration:{enabled:false,directional_samples:0,applied:false},raw_next_hand_forecast:forecast,next_hand_forecast:forecast,forecast_direction:forecast.direction,
- finalProbability:{version:VERSION,active:ready,mode:'independent_no_history',independent_round:diagnostic,physicsDirect:direct,physics,particleDiagnostics,finalPB:q,rawPB:q,smoothedPB:q,filteredPB:q,smoothingAlpha:1,smoothingProfile:'off',xgb_influence:0,route_weight:0,core_aux_p_b:null,xgb_aux_p_b:null,original7:null,extended:null,finalDirection:direction,ev_banker:evB,ev_player:evP,p_tie:prob.T,entry_tier:gate.passed?'qualified':'skip',stake_multiplier:gate.passed?1:0,gate,error,execution_order:['empty_history_physics','fresh_empty_history_pf','unconditional_ev','current_prior_gate']}};
-}
-
 function applyFinalPrediction(seq,corePrediction=null){
-  if(cardcountProfile?.independent_round_v1?.enabled===true)return independentRoundPrediction();
   // B/P/T -> Direct Physics 213D->48D -> stateless PF500 -> Physical EV -> Physics candidate
   // -> Clip/EMA -> Frozen Core + 57D XGB -> Final EV Guard -> Volume Guard.
   const hitrate=hitrateConfig();let markov=null,hitrateAudit=null;
@@ -948,7 +932,6 @@ function readRows(){try{const r=JSON.parse(localStorage.getItem(TRAINING_KEY)||"
 function writeRows(rows){try{localStorage.setItem(TRAINING_KEY,JSON.stringify(rows.slice(-MAX_TRAINING_ROWS)));}catch(_){}}
 function cloneFiniteVector(values,dimension){return Array.isArray(values)&&values.length===dimension&&values.every(value=>Number.isFinite(+value))?values.map(value=>+value):null;}
 function registerPrediction(seq,prediction){
-  if(cardcountProfile?.independent_round_v1?.enabled===true)return null;
   if(prediction.experimental_no_skip?.display_only===true)return;
   const r=prediction.finalProbability||{},f=r.original7||buildOriginal7(seq,prediction);
   const createdAt=Date.now(),shoeId=getShoeId(),quality=r.dataQuality||dataQuality(seq),errorCorrectionSnapshot=null;
@@ -1012,7 +995,6 @@ async function loadModels(){
   const next=valid?candidate:null;
   if(JSON.stringify(next)!==JSON.stringify(cardcountProfile))macroState=null;
   cardcountProfile=next;
-  noSkipTestActive=next?.independent_round_v1?.enabled===true;
   const gapControl=typeof document!=="undefined"?document.getElementById("forecastGap"):null;
   if(gapControl){gapControl.disabled=!cardcountProfile?.enabled;if(displayGapOverride===null)gapControl.value=String(cardcountProfile?.enabled?cardcountProfile.display_gap:0);}
   if(!valid)status.errors.push("cardcount_profile_fallback");
@@ -1058,8 +1040,6 @@ function renderPrediction(p,n){
   if(!noSkipTestActive&&ready&&shownDirection==="Skip"&&el("message"))el("message").textContent+="；機率差未達 "+((displayGapOverride??cardcountProfile.display_gap)*100).toFixed(1)+" 個百分點，方向觀望";
   if(noSkipTestActive&&el("message"))el("message").textContent=ready?"不觀望測試：每次報結果後自動更新下一局；不列入正式下注"+(f.directional.B===f.directional.P?(hitrateConfig()?"；五五波顯示均衡，不虛構方向":"；五五波固定以莊作測試方向，無機率優勢"):""):"不觀望測試：模型未就緒，暫無測試方向";
   if(noSkipTestActive&&ready&&p.experimental_no_skip?.active&&el("message"))el("message").textContent="未驗證實驗版：每局更新下一局方向，不保證勝率；不列入正式下注"+(f.directional.B===f.directional.P?"；五五波以莊作研究方向，沒有機率優勢":"");
-  if(p.independent_round?.enabled&&el("message"))el("message").textContent="無歷史獨立A：每次只使用空歷史先驗；沒有當局牌面時機率通常相同，不代表已知剩餘牌組。參考方向不等於下注資格。";
-  if(p.independent_round?.enabled&&el("modePill"))el("modePill").textContent="無歷史獨立A／固定先驗";
 }
 function installUI(){
   if(typeof document==="undefined")return;const old=document.getElementById("btnStart");if(!old)return;const btn=old.cloneNode(true);old.replaceWith(btn);
@@ -1067,7 +1047,7 @@ function installUI(){
   const setTestMode=active=>setNoSkipTestMode(active);
   const refreshTest=()=>{const h=readHistory();renderPrediction(applyFinalPrediction(h),h.length);};
   if(testButton)testButton.addEventListener("click",()=>{setTestMode(!noSkipTestActive);refreshTest();});
-  btn.addEventListener("click",()=>{setTestMode(cardcountProfile?.independent_round_v1?.enabled===true);const history=readHistory();if(!history.length&&cardcountProfile?.independent_round_v1?.enabled!==true){const m=document.getElementById("message");if(m)m.textContent="請先輸入牌局紀錄";return;}
+  btn.addEventListener("click",()=>{setTestMode(false);const history=readHistory();if(!history.length){const m=document.getElementById("message");if(m)m.textContent="請先輸入牌局紀錄";return;}
     const p=applyFinalPrediction(history);saveSelection(p.direction);registerPrediction(history,p);renderPrediction(p,history.length);});
   const gapControl=document.getElementById("forecastGap");
   if(gapControl)gapControl.addEventListener("change",()=>{

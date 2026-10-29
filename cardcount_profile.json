@@ -325,7 +325,7 @@
     }
   },
   "local_calibration": {
-    "enabled": false,
+    "enabled": true,
     "min_samples": 24,
     "min_validation": 16,
     "prior_strength": 100,
@@ -420,7 +420,7 @@
     "enabled": true,
     "xgb_influence": 0,
     "markov": {
-      "enabled": false,
+      "enabled": true,
       "order": 2,
       "mix_weight": 0.08,
       "max_weight": 0.12,
@@ -444,7 +444,7 @@
   },
   "experimental_no_skip_v1": {
     "schema_version": 1,
-    "enabled": false,
+    "enabled": true,
     "release_status": "user_accepted_unvalidated_experiment",
     "applies_to": "no_skip_test_only",
     "version": "bounded_platt_1_20261028",
@@ -474,14 +474,5 @@
       "upper_bound_is_not_a_model_setting": true
     },
     "expected_model_fingerprint": "46ed64c2"
-  },
-  "independent_round_v1": {
-    "schema_version": 1,
-    "version": "INDEPENDENT_A_NO_HISTORY_V1",
-    "enabled": true,
-    "default_reference_direction": true,
-    "history_input": "empty",
-    "fixed_progress": "first_hand",
-    "warning": "no_current_card_input_same_prior_each_round"
   }
 }
