@@ -16,6 +16,6 @@ jobs:
         with:
           node-version: '22'
       - run: node --check final_probability_runtime.js && node --check road_primary_runtime.js && node --check auth-client.js
-      - run: node test_context_bayesian.js && node test_adaptive_road_v2.js && node test_road_primary.js && node test_road_primary_runtime.js
+      - run: node test_adaptive_pipeline.js && node test_context_bayesian.js && node test_adaptive_road_v2.js && node test_road_primary.js && node test_road_primary_runtime.js
       - run: node --require ./legacy_profile_fixture.cjs test_final_probability_runtime.js
       - run: node test_license_storage.mjs && node test_end_analysis_reload.js

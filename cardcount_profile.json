@@ -566,7 +566,7 @@
   },
   "road_primary_v1": {
     "schema_version": 1,
-    "version": "ROAD_PRIMARY_CONTEXT_BAYES_V4",
+    "version": "ROAD_PRIMARY_ADAPTIVE_PIPELINE_V5",
     "enabled": true,
     "order": 3,
     "window": 200,
@@ -614,6 +614,13 @@
       "enabled": true,
       "extra_prior_strength": 24,
       "support_scale": 12
+    },
+    "adaptive_pipeline_v1": {
+      "schema_version": 1,
+      "version": "ADAPTIVE_PIPELINE_V1",
+      "enabled": true,
+      "ema_min_multiplier": 0.65,
+      "max_ev_uplift": 0.004
     }
   }
 }
