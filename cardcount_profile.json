@@ -478,9 +478,9 @@
   },
   "pf_release": {
     "schema_version": 1,
-    "version": "PF1000_STATELESS_V1",
-    "particle_count": 1000,
-    "prior_particle_count": 500,
+    "version": "PF10000_STATELESS_V1",
+    "particle_count": 10000,
+    "prior_particle_count": 1000,
     "accuracy_validated": false
   }
 }

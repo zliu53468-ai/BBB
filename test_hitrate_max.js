@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('fs'),vm=require('vm');
 function make(options={}){
  const store=new Map(),ctx={console,document:{getElementById:()=>null},localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},fetch:async file=>({ok:true,json:async()=>{const m=JSON.parse(fs.readFileSync(file,'utf8'));if(file==='cardcount_profile.json'){if(options.disabled)m.hitrate_max_v1.enabled=false;if(options.markovOff)m.hitrate_max_v1.markov.enabled=false;}if(file==='final_probability_model.json'&&options.xgbUnavailable)m.trained=false;if(file==='final_probability_model.json'&&options.xgb!==undefined){m.base_margin=options.xgb;m.trees=[];m.calibration={method:'identity'};}return m;}})};
- ctx.window=ctx;vm.createContext(ctx);for(const f of ['app256forward.js','app256continuation.js','particle_filter_runtime.js','macro_ema.js','browser_calibration.js','final_probability_runtime.js'])vm.runInContext(options.legacy500&&f==='particle_filter_runtime.js'?fs.readFileSync(f,'utf8').replace('const PARTICLE_COUNT=1000;','const PARTICLE_COUNT=500;'):fs.readFileSync(f,'utf8'),ctx);return ctx.__BGS_FINAL56__;
+ ctx.window=ctx;vm.createContext(ctx);for(const f of ['app256forward.js','app256continuation.js','particle_filter_runtime.js','macro_ema.js','browser_calibration.js','final_probability_runtime.js'])vm.runInContext(options.legacy500&&f==='particle_filter_runtime.js'?fs.readFileSync(f,'utf8').replace('const PARTICLE_COUNT=10000;','const PARTICLE_COUNT=500;'):fs.readFileSync(f,'utf8'),ctx);return ctx.__BGS_FINAL56__;
 }
 const plain=v=>JSON.parse(JSON.stringify(v));
 (async()=>{
