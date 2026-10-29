@@ -566,9 +566,9 @@
   },
   "road_primary_v1": {
     "schema_version": 1,
-    "version": "ROAD_PRIMARY_FIVE_LEVEL_V6",
+    "version": "ROAD_PRIMARY_PR78_FIRST_ORDER_AUX_V1",
     "enabled": true,
-    "order": 5,
+    "order": 3,
     "window": 200,
     "min_observations": 12,
     "prior_strength": 24,
@@ -608,45 +608,12 @@
         0.56
       ]
     ],
-    "adaptive_bayesian_v1": {
-      "schema_version": 1,
-      "version": "CONTEXT_ADAPTIVE_BAYES_V1",
-      "enabled": true,
-      "extra_prior_strength": 24,
-      "support_scale": 12
-    },
-    "adaptive_pipeline_v1": {
-      "schema_version": 1,
-      "version": "ADAPTIVE_PIPELINE_V1",
-      "enabled": true,
-      "ema_min_multiplier": 0.65,
-      "max_ev_uplift": 0.004
-    },
-    "five_level_v1": {
+    "first_order_aux_v1": {
       "schema_version": 1,
       "enabled": true,
-      "reliability_anchors": [
-        [
-          0,
-          0
-        ],
-        [
-          0.25,
-          0.15
-        ],
-        [
-          0.5,
-          0.35
-        ],
-        [
-          0.75,
-          0.6
-        ],
-        [
-          1,
-          1
-        ]
-      ]
+      "min_observations": 12,
+      "mix_weight": 0.02,
+      "max_delta": 0.001
     }
   }
 }
