@@ -563,5 +563,14 @@
     "max_physics_uncertainty": 0.7,
     "conflict_gap": 0.04,
     "accuracy_validated": false
+  },
+  "latest_hand_pf_v1": {
+    "schema_version": 1,
+    "version": "LATEST_HAND_PF_PHYSICS_LIGHT_V1",
+    "enabled": true,
+    "physics_weight": 0.08,
+    "max_physics_weight": 0.12,
+    "max_delta": 0.004,
+    "accuracy_validated": false
   }
 }

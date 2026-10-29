@@ -25,6 +25,8 @@ global.fetch=async function(url){
   const name=String(url).replace(/^\.\//,"");
   try{
     const payload=JSON.parse(fs.readFileSync(name,"utf8"));
+    if(name==="cardcount_profile.json"&&payload.latest_hand_pf_v1)payload.latest_hand_pf_v1.enabled=false; // Legacy regression; new mode tested separately.
+    if(name==="cardcount_profile.json"&&payload.latest_hand_pf_v1)payload.latest_hand_pf_v1.enabled=false; // Legacy-mode regression; new mode has its own suite.
     if(name==="physics_multitask_model.json"&&!useGeneratedBundle){
       // Preflight runs before retraining, so reinterpret the checked-in legacy
       // 48D bundle as a direct-Physics ABI fixture only for runtime mechanics.
