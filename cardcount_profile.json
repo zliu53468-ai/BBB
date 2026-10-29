@@ -566,7 +566,7 @@
   },
   "road_primary_v1": {
     "schema_version": 1,
-    "version": "ROAD_PRIMARY_EARLY_BAYES_V3",
+    "version": "ROAD_PRIMARY_CONTEXT_BAYES_V4",
     "enabled": true,
     "order": 3,
     "window": 200,
@@ -608,17 +608,10 @@
         0.56
       ]
     ],
-    "early_bayesian_v1": {
+    "adaptive_bayesian_v1": {
       "schema_version": 1,
-      "version": "EARLY_CONTEXT_BAYES_V1",
+      "version": "CONTEXT_ADAPTIVE_BAYES_V1",
       "enabled": true,
-      "end_round": 20,
-      "taper_start": 10,
-      "min_observations_by_order": {
-        "1": 6,
-        "2": 10,
-        "3": 14
-      },
       "extra_prior_strength": 24,
       "support_scale": 12
     }
