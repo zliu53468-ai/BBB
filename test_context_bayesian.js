@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('assert/strict'),fs=require('fs'),R=require('./road_primary_runtime'),old=require('./validation/road_primary_pr78.cjs'),{make,plain}=require('./test_pf_primary_runtime');
-const c=require('./cardcount_profile.json').road_primary_v1,off={...c,adaptive_bayesian_v1:{...c.adaptive_bayesian_v1,enabled:false}};
+const c={...require('./cardcount_profile.json').road_primary_v1,order:3,five_level_v1:{enabled:false}},off={...c,adaptive_bayesian_v1:{...c.adaptive_bayesian_v1,enabled:false}};
 assert(!c.early_bayesian_v1);assert(!fs.readFileSync('road_primary_runtime.js','utf8').includes('end_round'));
 let seed=42;
 for(let length=0;length<=80;length++){const h=Array.from({length},()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return ['B','P','T'][seed%3];});assert.deepEqual(R.estimate(h,off),old.estimate(h,c));}

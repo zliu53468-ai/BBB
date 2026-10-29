@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('assert/strict'),R=require('./road_primary_runtime'),old=require('./validation/road_primary_pr80.cjs'),{make,plain}=require('./test_pf_primary_runtime');
-const c=require('./cardcount_profile.json').road_primary_v1;
+const c={...require('./cardcount_profile.json').road_primary_v1,order:3,five_level_v1:{enabled:false}};
 const vector=q=>{const v=Array(48).fill(.1);v[23]=.9*q;v[24]=.9*(1-q);v[25]=.1;v[42]=.2;return v;};
 const good={particle_quality:.9,recent_ess_ratio:.9},bad={particle_quality:.3,recent_ess_ratio:.4};
 const road=R.estimate(Array(30).fill('B'),c),v=vector(.8),copy=v.slice();
