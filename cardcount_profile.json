@@ -627,17 +627,17 @@
     }
   },
   "relative_baseline_v1": {
-    "schema_version": 2,
-    "version": "BIDIRECTIONAL_ADVISORY_V2",
+    "schema_version": 1,
+    "version": "RELATIVE_BASELINE_ADVISORY_V1",
     "enabled": true,
     "display_only": true,
-    "recent_window": 8,
-    "reference_window": 16,
-    "min_recent": 6,
-    "min_reference": 8,
-    "prior_strength": 6,
-    "min_shift": 0.12,
+    "baseline": {
+      "B": 0.458597,
+      "P": 0.446247,
+      "T": 0.095156
+    },
     "max_raw_gap": 0.02,
+    "min_relative_gap": 0.001,
     "validated": false
   }
 }
