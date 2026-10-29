@@ -15,7 +15,8 @@ const scripts=[
   "macro_ema.js?v=20261023-middle-late-v2",
   "browser_calibration.js?v=20261028-pr56-restore",
   "pf_display_smoothing.js?v=20261029-pf10000-tuned",
-  "final_probability_runtime.js?v=20261029-point-card-v2"
+  "pf_primary_runtime.js?v=20261029-pf-primary-v1",
+  "final_probability_runtime.js?v=20261029-pf-primary-v1"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}

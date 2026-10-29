@@ -1,3 +1,5 @@
+> 可選PF主導測試：網址加 `?pf_primary=1`；預設維持Physics主導。小樣本未見改善，不自動晉升。見 [PF_PRIMARY_TEST_MODE.md](PF_PRIMARY_TEST_MODE.md)。
+
 > 目前EMA與PF混合上限均由低到高：EMA 42%→54%→62%、PF上限10%→14%→16%；點數張數修正保留。見 [ASCENDING_WEIGHT_EMA_V4.md](ASCENDING_WEIGHT_EMA_V4.md)。
 
 > 新增點數／4–6張聯合模擬與不匹配樣本排除；仍為未驗證勝率的PF10,000實驗版。見 [POINT_CARD_SAMPLING_V2.md](POINT_CARD_SAMPLING_V2.md)。
