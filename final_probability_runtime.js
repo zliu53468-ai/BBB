@@ -24,7 +24,7 @@ const VERSION=EV_CONSISTENCY_V1
   ?"PHYSICS_57D_V14_8_FORECAST_FIRST_EVC1"
   :"PHYSICS_57D_V14_8_FORECAST_FIRST";
 const PHYSICS_URL="physics_multitask_model.json";
-let cardcountProfile=null,displayGapOverride=null,gruAuxModel=null;
+let cardcountProfile=null,displayGapOverride=null;
 function roadPrimaryConfig(){const c=cardcountProfile?.road_primary_v1;const pfQuery=typeof window!=="undefined"&&/(?:^\?|&)pf_primary=1(?:&|$)/.test(String(window.location?.search||""));return c?.enabled===true&&!pfQuery?c:null;}
 function pfPrimaryConfig(){if(roadPrimaryConfig())return null;const c=cardcountProfile?.pf_primary_v1;if(!c)return null;const query=c.allow_query_test===true&&typeof window!=="undefined"&&/(?:^\?|&)pf_primary=1(?:&|$)/.test(String(window.location?.search||""));return c.enabled===true||query?c:null;}
 function pfPrimaryTag(){const road=roadPrimaryConfig();if(road)return "road:"+JSON.stringify(road);const c=pfPrimaryConfig();return c?JSON.stringify(c):null;}
@@ -710,7 +710,7 @@ function applyFinalPrediction(seq,corePrediction=null){
 
   try{
     if(physicsBundle?.trained){
-      if(roadConfig){if(!window.__BBB_ROAD_PRIMARY__)throw Error("road_module_unavailable");executionOrder.push("road_primary_candidate");roadCandidate=window.__BBB_ROAD_PRIMARY__.estimate(seq,roadConfig);if(roadConfig.sequence_aux_v1?.enabled&&roadConfig.sequence_aux_v1.gru?.enabled){const aux=window.__BBB_SEQUENCE_AUX__;let forecast;try{forecast=aux?aux.predict(seq,gruAuxModel):{available:false,reason:'gru_module_unavailable'};}catch(e){forecast={available:false,reason:'gru_runtime_error'};}roadCandidate=aux?aux.apply(roadCandidate,forecast,roadConfig.sequence_aux_v1.gru):{...roadCandidate,gru_aux:{enabled:true,...forecast,applied:false,weight:0,delta:0}};}}
+      if(roadConfig){if(!window.__BBB_ROAD_PRIMARY__)throw Error("road_module_unavailable");executionOrder.push("road_primary_candidate");roadCandidate=window.__BBB_ROAD_PRIMARY__.estimate(seq,roadConfig);}
       if(pfFirst){
         if(!PARTICLE500?.estimate||!window.__BBB_PF_PRIMARY__)throw Error('pf_primary_module_unavailable');
         executionOrder.push('pf_primary_posterior');
@@ -1027,8 +1027,6 @@ async function loadModels(){
   const next=valid?candidate:null;
   if(JSON.stringify(next)!==JSON.stringify(cardcountProfile))macroState=null;
   cardcountProfile=next;
-  gruAuxModel=null;
-  if(next?.road_primary_v1?.sequence_aux_v1?.enabled&&next.road_primary_v1.sequence_aux_v1.gru?.enabled){try{const model=await fetchBundle('gru_aux_candidate.json');window.__BBB_SEQUENCE_AUX__.validate(model);if(model.version!==next.road_primary_v1.sequence_aux_v1.gru.expected_model_version)throw Error('gru_version_mismatch');gruAuxModel=model;}catch(e){status.errors.push('gru_aux_unavailable');}}
   const gapControl=typeof document!=="undefined"?document.getElementById("forecastGap"):null;
   if(gapControl){gapControl.disabled=!cardcountProfile?.enabled;if(displayGapOverride===null)gapControl.value=String(cardcountProfile?.enabled?cardcountProfile.display_gap:0);}
   if(!valid)status.errors.push("cardcount_profile_fallback");
@@ -1075,7 +1073,6 @@ function renderPrediction(p,n){
   if(noSkipTestActive&&el("message"))el("message").textContent=ready?"不觀望測試：每次報結果後自動更新下一局；不列入正式下注"+(f.directional.B===f.directional.P?(hitrateConfig()?"；五五波顯示均衡，不虛構方向":"；五五波固定以莊作測試方向，無機率優勢"):""):"不觀望測試：模型未就緒，暫無測試方向";
   if(noSkipTestActive&&ready&&p.experimental_no_skip?.active&&el("message"))el("message").textContent="未驗證實驗版：每局更新下一局方向，不保證勝率；不列入正式下注"+(f.directional.B===f.directional.P?"；五五波以莊作研究方向，沒有機率優勢":"");
   if(p.road_primary?.enabled&&el("modePill"))el("modePill").textContent=p.road_primary.available?"牌路主導／算牌微調測試":"算牌暫代／牌路樣本不足";
-  if(p.road_primary?.road?.gru_aux&&el("message")){const g=p.road_primary.road.gru_aux;el("message").textContent+="；GRU "+(g.applied?"介入 "+(g.weight*100).toFixed(2)+"%":"診斷／閘門未開")+(g.available?"（莊 "+(g.probabilities.B*100).toFixed(2)+"%、閒 "+(g.probabilities.P*100).toFixed(2)+"%、和 "+(g.probabilities.T*100).toFixed(2)+"%）":"／"+g.reason);}
   if(p.road_primary?.enabled&&el("message"))el("message").textContent+="；牌路主導實驗版，未驗證命中率提升";
   if(p.pf_primary?.enabled&&el("modePill"))el("modePill").textContent="PF主導／Physics輔助測試";
   if(p.pf_primary?.enabled&&el("message"))el("message").textContent+="；PF主導測試，未證實命中率改善";
