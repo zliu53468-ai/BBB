@@ -22,8 +22,8 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install -r requirements-no-skip-calibration.txt
       - run: python -m unittest test_fit_no_skip_calibrator
-      - run: node test_no_skip_calibration_candidate.js
+      - run: node --require ./legacy_profile_fixture.cjs test_no_skip_calibration_candidate.js
       - run: node --check tools/no_skip_validation.js
-      - run: node test_no_skip_validation.js
+      - run: node --require ./legacy_profile_fixture.cjs test_no_skip_validation.js
       - run: node --check tools/no_skip_parameter_search.js
-      - run: node test_no_skip_parameter_search.js
+      - run: node --require ./legacy_profile_fixture.cjs test_no_skip_parameter_search.js

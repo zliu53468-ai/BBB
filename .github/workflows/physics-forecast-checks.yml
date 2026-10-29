@@ -17,13 +17,13 @@ jobs:
         with:
           node-version: '22'
       - run: node --check final_probability_runtime.js && node --check auth-client.js
-      - run: node test_pf_primary.js && node test_pf_primary_runtime.js && node test_pf_primary_rollback.js
-      - run: node test_point_card_sampling.js && node test_point_card_rollback.js
-      - run: node test_physics_forecast_first.js
-      - run: node test_final_probability_runtime.js
-      - run: node test_macro_runtime.js
-      - run: node test_bbb_button_only.js
-      - run: node test_cardcount_profile.js
-      - run: node --check browser_calibration.js && node test_browser_calibration.js
+      - run: node --require ./legacy_profile_fixture.cjs test_pf_primary.js && node --require ./legacy_profile_fixture.cjs test_pf_primary_runtime.js && node --require ./legacy_profile_fixture.cjs test_pf_primary_rollback.js
+      - run: node --require ./legacy_profile_fixture.cjs test_point_card_sampling.js && node --require ./legacy_profile_fixture.cjs test_point_card_rollback.js
+      - run: node --require ./legacy_profile_fixture.cjs test_physics_forecast_first.js
+      - run: node --require ./legacy_profile_fixture.cjs test_final_probability_runtime.js
+      - run: node --require ./legacy_profile_fixture.cjs test_macro_runtime.js
+      - run: node --require ./legacy_profile_fixture.cjs test_bbb_button_only.js
+      - run: node --require ./legacy_profile_fixture.cjs test_cardcount_profile.js
+      - run: node --check browser_calibration.js && node --require ./legacy_profile_fixture.cjs test_browser_calibration.js
 
-      - run: node test_middle_late_upgrade.js
+      - run: node --require ./legacy_profile_fixture.cjs test_middle_late_upgrade.js

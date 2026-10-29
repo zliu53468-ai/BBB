@@ -23,21 +23,21 @@ jobs:
           python-version: "3.11"
       - run: node --check final_probability_runtime.js && node --check macro_ema.js
       - run: python -m unittest -v test_macro_ema.py
-      - run: node --check test_bbb_result_persistence.js && node test_bbb_result_persistence.js
-      - run: node test_final_probability_runtime.js
-      - run: BGS_USE_GENERATED_MODEL=1 node test_final_probability_runtime.js
-      - run: node test_macro_runtime.js
-      - run: node --check calibrate_macro_direction.js && node --check evaluate_macro_replay.js && node test_macro_direction_calibration.js
+      - run: node --check test_bbb_result_persistence.js && node --require ./legacy_profile_fixture.cjs test_bbb_result_persistence.js
+      - run: node --require ./legacy_profile_fixture.cjs test_final_probability_runtime.js
+      - run: BGS_USE_GENERATED_MODEL=1 node --require ./legacy_profile_fixture.cjs test_final_probability_runtime.js
+      - run: node --require ./legacy_profile_fixture.cjs test_macro_runtime.js
+      - run: node --check calibrate_macro_direction.js && node --check evaluate_macro_replay.js && node --require ./legacy_profile_fixture.cjs test_macro_direction_calibration.js
       - name: V15-B offline causal shadow smoke (no auto-promote)
         run: |
           node --check v15_balanced_replay.js
           node -e 'const p=require("./v15_candidate_policies.json");if(p.mode!=="offline_shadow_only"||p.hard_limits.auto_activate!==false)process.exit(1)'
-          node v15_balanced_replay.js --synthetic 5 /tmp/v15_balanced_smoke.json
+          node --require ./legacy_profile_fixture.cjs v15_balanced_replay.js --synthetic 5 /tmp/v15_balanced_smoke.json
           node -e 'const r=require("/tmp/v15_balanced_smoke.json"); if(r.promotion.eligible||r.promotion.auto_activate||r.total_shoes!==5||r.splits.train.baseline.all.eligible<1||r.splits.holdout.baseline.all.eligible<1)process.exit(1); for(const split of Object.values(r.splits))if(!split.baseline.all||!split.baseline.rounds_2_5)process.exit(1); console.log(JSON.stringify({v15_shadow_ok:true,selected:r.selection,promotion:r.promotion,baseline:r.splits.holdout.baseline.all}));'
 
       - run: node calibrate_macro_direction.js --synthetic 3000 /tmp/macro_direction_3000.json > /tmp/macro_direction_output.txt && node -e 'const r=require("/tmp/macro_direction_3000.json"); console.log(JSON.stringify({shoes:r.shoes,hands:r.completed_hands,coefficients:r.candidate_coefficients,features:Object.fromEntries(Object.entries(r.analysis).map(([k,v])=>[k,{train:v.train.pearson_r,calibration:v.calibration.pearson_r,holdout:v.holdout.pearson_r}]))}))'
       - name: Shadow coefficient replay safety
         run: |
           node -e 'const c=require("./calibrate_macro_direction.js"),fs=require("fs");fs.writeFileSync("/tmp/macro_shadow_hands.json",JSON.stringify({rows:c.synthetic(5).filter(x=>["sim-000000","sim-000001"].includes(x.shoe_id))}))'
-          node evaluate_macro_replay.js /tmp/macro_shadow_hands.json /tmp/macro_shadow_report.json --candidate-coefficients '{"six_card":-0.01,"low_score":-0.01,"point_diff":0.01}' > /tmp/macro_shadow_stdout.txt
+          node --require ./legacy_profile_fixture.cjs evaluate_macro_replay.js /tmp/macro_shadow_hands.json /tmp/macro_shadow_report.json --candidate-coefficients '{"six_card":-0.01,"low_score":-0.01,"point_diff":0.01}' > /tmp/macro_shadow_stdout.txt
           node -e 'const r=require("/tmp/macro_shadow_report.json");if(r.current.no_flip_violations!==0||r.candidate.no_flip_violations!==0||r.candidate.max_macro_delta>.03000000001)process.exit(1);console.log(JSON.stringify({shadow_ok:true,shoes:r.shoes,eligible:r.current.metrics.all.eligible_hands,baseline:r.current.metrics.all,candidate:r.candidate.metrics.all,max_macro_delta:r.candidate.max_macro_delta,no_flip_violations:r.candidate.no_flip_violations}))'

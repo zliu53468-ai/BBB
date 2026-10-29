@@ -1,0 +1,21 @@
+name: 牌路主導與算牌微調檢查
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  road-primary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check final_probability_runtime.js && node --check road_primary_runtime.js && node --check auth-client.js
+      - run: node test_road_primary.js && node test_road_primary_runtime.js
+      - run: node --require ./legacy_profile_fixture.cjs test_final_probability_runtime.js
+      - run: node test_license_storage.mjs && node test_end_analysis_reload.js
