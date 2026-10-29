@@ -566,9 +566,9 @@
   },
   "road_primary_v1": {
     "schema_version": 1,
-    "version": "ROAD_PRIMARY_ADAPTIVE_PIPELINE_V5",
+    "version": "ROAD_PRIMARY_FIVE_LEVEL_V6",
     "enabled": true,
-    "order": 3,
+    "order": 5,
     "window": 200,
     "min_observations": 12,
     "prior_strength": 24,
@@ -621,6 +621,32 @@
       "enabled": true,
       "ema_min_multiplier": 0.65,
       "max_ev_uplift": 0.004
+    },
+    "five_level_v1": {
+      "schema_version": 1,
+      "enabled": true,
+      "reliability_anchors": [
+        [
+          0,
+          0
+        ],
+        [
+          0.25,
+          0.15
+        ],
+        [
+          0.5,
+          0.35
+        ],
+        [
+          0.75,
+          0.6
+        ],
+        [
+          1,
+          1
+        ]
+      ]
     }
   }
 }

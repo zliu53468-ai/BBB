@@ -8,7 +8,7 @@ function estimate(seq,c={}){
  const b=c.adaptive_bayesian_v1,active=b?.enabled===true;
  const finite=(v,f,lo,hi)=>Number.isFinite(v)?clamp(v,lo,hi):f;
  const history=seq.slice(-Math.max(4,Math.min(500,c.window??200))),minimum=Math.max(1,Math.floor(c.min_observations??12)),strength=Math.max(1,c.prior_strength??24);
- const backoff=[];let counts={B:0,P:0,T:0},n=0,order=Math.max(1,Math.min(3,c.order??2));
+ const backoff=[];let counts={B:0,P:0,T:0},n=0,order=Math.max(1,Math.min(c.five_level_v1?.enabled===true?5:3,Math.floor(c.order??2)));
  for(;order>=1;order--){counts={B:0,P:0,T:0};n=0;const context=history.slice(-order).join('');for(let i=order;i<history.length;i++)if(history.slice(i-order,i).join('')===context){counts[history[i]]++;n++;}backoff.push({order,observations:n,eligible:n>=minimum});if(n>=minimum)break;}
  if(n<minimum)return {available:false,reason:'insufficient_road_context',history_rounds:seq.length,observations:n,minimum,backoff,order:Math.max(1,order),counts};
  const supportScale=finite(b?.support_scale,12,1,100);
@@ -24,8 +24,14 @@ function reliability(physical,diagnostics,noise,c={}){
  const uncertainty=Number.isFinite(physical?.[42])?clamp(physical[42]):1;
  const quality=unit(diagnostics?.particle_quality),ess=unit(diagnostics?.recent_ess_ratio);
  const noiseScore=Number.isFinite(noise)?clamp(noise):1;
- const value=Math.min(1-uncertainty,1-noiseScore,quality,ess);
- return {enabled:true,version:b.version||'ADAPTIVE_PIPELINE_V1',reliability:value,uncertainty,noise:noiseScore,particle_quality:quality,ess_ratio:ess,missing_diagnostics:!Number.isFinite(diagnostics?.particle_quality)||!Number.isFinite(diagnostics?.recent_ess_ratio),probability_shrink_count:1};
+ const rawValue=Math.min(1-uncertainty,1-noiseScore,quality,ess);
+ const configured=c.five_level_v1?.reliability_anchors;
+ const valid=Array.isArray(configured)&&configured.length===5&&configured.every((v,i,a)=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)&&v[0]===i/4&&v[1]>=0&&v[1]<=v[0]&&(!i||v[1]>=a[i-1][1]));
+ const points=valid?configured:[[0,0],[.25,.15],[.5,.35],[.75,.60],[1,1]];
+ const five=c.five_level_v1?.enabled===true,segment=Math.min(3,Math.floor(rawValue*4)),fraction=(rawValue-points[segment][0])/.25;
+ const value=five?points[segment][1]+fraction*(points[segment+1][1]-points[segment][1]):rawValue;
+ const levels=five?{five_level:{enabled:true,raw_reliability:rawValue,lower_level:segment+1,upper_level:segment+2,fraction,nearest_level:Math.min(5,1+Math.round(rawValue*4)),mapped_reliability:value,anchors:points}}:{};
+ return {enabled:true,version:b.version||'ADAPTIVE_PIPELINE_V1',reliability:value,...levels,uncertainty,noise:noiseScore,particle_quality:quality,ess_ratio:ess,missing_diagnostics:!Number.isFinite(diagnostics?.particle_quality)||!Number.isFinite(diagnostics?.recent_ess_ratio),probability_shrink_count:1};
 }
 function combine(road,physical,c={},diagnostics=null,noise=null){
  if(!Array.isArray(physical)||physical.length!==48||!physical.every(Number.isFinite))throw Error('road_invalid_physics');
