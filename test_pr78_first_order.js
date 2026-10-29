@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('assert/strict'),R=require('./road_primary_runtime'),old=require('./validation/road_primary_pr78.cjs'),{make,plain}=require('./test_pf_primary_runtime');
-const c=require('./cardcount_profile.json').road_primary_v1,off={...c,first_order_aux_v1:{...c.first_order_aux_v1,enabled:false}};
+const c={...require('./cardcount_profile.json').road_primary_v1,sequence_aux_v1:{enabled:false}},off={...c,first_order_aux_v1:{...c.first_order_aux_v1,enabled:false}};
 assert.equal(c.order,3);for(const key of ['early_bayesian_v1','adaptive_bayesian_v1','adaptive_pipeline_v1','five_level_v1'])assert(!c[key]);
 for(const n of [0,10,15,30,60]){const h=Array(n).fill('B');assert.deepEqual(R.estimate(h,off),old.estimate(h,c));assert.deepEqual(R.combine(R.estimate(h,off),Array(48).fill(.1),off),old.combine(old.estimate(h,c),Array(48).fill(.1),c));}
 const h=[...Array(20).fill('B'),...Array(15).fill('P'),...Array(5).fill('B')],r=R.estimate(h,c),counts={B:0,P:0,T:0};for(let i=1;i<h.length;i++)if(h[i-1]===h.at(-1))counts[h[i]]++;const n=Object.values(counts).reduce((a,b)=>a+b);assert(r.available);assert.deepEqual(r.first_order_aux.counts,counts);for(const t of ['B','P','T'])assert.equal(r.first_order_aux.probabilities[t],counts[t]/n);assert.equal(r.first_order_aux.prior_strength,0);assert.equal(r.first_order_aux.shrinkage,false);assert(Math.abs(r.first_order_aux.delta)<=.001);assert.equal(r.direction,old.estimate(h,c).direction);assert.equal(r.probabilities.T,old.estimate(h,c).probabilities.T);

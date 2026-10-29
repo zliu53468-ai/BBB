@@ -1,0 +1,152 @@
+{
+  "training": {
+    "data_kind": "fresh_synthetic_8_decks_cut14_fixed_burn14_cap70",
+    "seed": 20261030,
+    "shoes": 1000,
+    "train_shoes": 600,
+    "validation_shoes": 200,
+    "test_shoes": 200,
+    "epochs": 8,
+    "selected_epoch": 8,
+    "split": "generation_order_whole_shoe_60_20_20",
+    "trained_all_gru_parameters": true,
+    "selection": "validation_log_loss_only",
+    "dataset_sha256": "a627c7141e6c70ab604e21ec6bf2ad8afe4d4b69167b98f373a1d795105e8a4c"
+  },
+  "validation": {
+    "validation": {
+      "gru": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5839875217378686,
+        "log_loss": 0.9468932747840881,
+        "reference_hit_rate": 0.5138133806723622
+      },
+      "constant": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5839835503401362,
+        "log_loss": 0.9468691024745285,
+        "reference_hit_rate": 0.5138133806723622
+      },
+      "markov_bayes_proxy": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5869025550203509,
+        "log_loss": 0.9517255937362996,
+        "reference_hit_rate": 0.5069344280483745
+      }
+    },
+    "test": {
+      "gru": {
+        "rows": 10000,
+        "non_tie_rows": 9004,
+        "multiclass_brier": 0.5847274788632533,
+        "log_loss": 0.9483910202980042,
+        "reference_hit_rate": 0.5041092847623279
+      },
+      "constant": {
+        "rows": 10000,
+        "non_tie_rows": 9004,
+        "multiclass_brier": 0.584716050340136,
+        "log_loss": 0.9483661406474625,
+        "reference_hit_rate": 0.5041092847623279
+      },
+      "markov_bayes_proxy": {
+        "rows": 10000,
+        "non_tie_rows": 9004,
+        "multiclass_brier": 0.5880987533126782,
+        "log_loss": 0.9542063704145496,
+        "reference_hit_rate": 0.4956685917370058
+      }
+    },
+    "standalone_gate_passed": false,
+    "full_runtime_validated": false,
+    "real_world_validated": false,
+    "promotion_approved": false,
+    "reason": "standalone_holdout_not_better_than_both_references",
+    "warning": "reference_hit_rate is all-row auxiliary direction, not placed-bet hit rate; no Physics/PF in proxy"
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "validation": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5840630622938652,
+        "log_loss": 0.9469830989837646,
+        "reference_hit_rate": 0.5037168534339288
+      }
+    },
+    {
+      "epoch": 2,
+      "validation": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5840305450492614,
+        "log_loss": 0.946953535079956,
+        "reference_hit_rate": 0.5122600687895262
+      }
+    },
+    {
+      "epoch": 3,
+      "validation": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5840173275347618,
+        "log_loss": 0.9469382762908936,
+        "reference_hit_rate": 0.5138133806723622
+      }
+    },
+    {
+      "epoch": 4,
+      "validation": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5840086609075361,
+        "log_loss": 0.9469259977340698,
+        "reference_hit_rate": 0.5138133806723622
+      }
+    },
+    {
+      "epoch": 5,
+      "validation": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5840020294422026,
+        "log_loss": 0.9469157457351685,
+        "reference_hit_rate": 0.5138133806723622
+      }
+    },
+    {
+      "epoch": 6,
+      "validation": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5839964169955297,
+        "log_loss": 0.9469069242477417,
+        "reference_hit_rate": 0.5138133806723622
+      }
+    },
+    {
+      "epoch": 7,
+      "validation": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5839915486736301,
+        "log_loss": 0.9468994140625,
+        "reference_hit_rate": 0.5138133806723622
+      }
+    },
+    {
+      "epoch": 8,
+      "validation": {
+        "rows": 10000,
+        "non_tie_rows": 9013,
+        "multiclass_brier": 0.5839875217378686,
+        "log_loss": 0.9468932747840881,
+        "reference_hit_rate": 0.5138133806723622
+      }
+    }
+  ]
+}
