@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "mode": "dynamic",
+  "road_weight": 0.5,
+  "temperature": 1.2,
+  "training": {
+    "train_shoes": 3,
+    "validation_shoes": 2,
+    "test_shoes": 2,
+    "selection": "road_weight train Brier; temperature validation Brier; no test tuning"
+  },
+  "promotion_approved": false
+}
