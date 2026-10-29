@@ -625,5 +625,19 @@
       "authorization": "explicit_user_request",
       "requires_original_entry_guards": true
     }
+  },
+  "relative_baseline_v1": {
+    "schema_version": 1,
+    "version": "RELATIVE_BASELINE_ADVISORY_V1",
+    "enabled": true,
+    "display_only": true,
+    "baseline": {
+      "B": 0.458597,
+      "P": 0.446247,
+      "T": 0.095156
+    },
+    "max_raw_gap": 0.02,
+    "min_relative_gap": 0.001,
+    "validated": false
   }
 }
