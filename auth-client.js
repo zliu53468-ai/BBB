@@ -16,8 +16,8 @@ const scripts=[
   "browser_calibration.js?v=20261028-pr56-restore",
   "pf_display_smoothing.js?v=20261029-pf10000-tuned",
   "pf_primary_runtime.js?v=20261029-pf-primary-v1",
-  "road_primary_runtime.js?v=20261030-early-bayes-v3",
-  "final_probability_runtime.js?v=20261030-early-bayes-v3"
+  "road_primary_runtime.js?v=20261030-context-bayes-v4",
+  "final_probability_runtime.js?v=20261030-context-bayes-v4"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
