@@ -1,3 +1,5 @@
+> EMA已改前高後低：1–20局60%、45局52%、70局44%，PF權重不變。見 [EMA_DESCENDING_V2.md](EMA_DESCENDING_V2.md)。
+
 > 已啟用可回滾的PF權重／平滑實驗組：前期PF上限12%、最高16%；詳見 [PF10000_WEIGHT_SMOOTHING.md](PF10000_WEIGHT_SMOOTHING.md)，未驗證勝率提升。
 
 > 目前PF10,000粒子測試版：其他出手條件不放寬，手機耗時需實測，沒有命中率提升保證。見 [PF10000_UPGRADE.md](PF10000_UPGRADE.md)。

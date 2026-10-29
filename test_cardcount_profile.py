@@ -9,9 +9,9 @@ from xgb_final_probability import balanced_sample_weights, build_parser, train_c
 
 class CardcountProfileTests(unittest.TestCase):
     def test_continuous_boundaries(self):
-        self.assertEqual(interpolate("decision_alpha", 10), .42)
-        self.assertEqual(interpolate("decision_alpha", 30), .48)
-        self.assertAlmostEqual(interpolate("decision_alpha", 60), .595)
+        self.assertEqual(interpolate("decision_alpha", 10), .60)
+        self.assertAlmostEqual(interpolate("decision_alpha", 30), .568)
+        self.assertAlmostEqual(interpolate("decision_alpha", 60), .472)
         for boundary in (20, 45):
             self.assertLess(abs(interpolate("decision_alpha", boundary+.001)-interpolate("decision_alpha", boundary-.001)), .001)
 

@@ -485,7 +485,7 @@
   },
   "pf_weight_smoothing_v1": {
     "schema_version": 1,
-    "version": "PF10000_MODERATE_WEIGHT_SMOOTH_V1",
+    "version": "PF10000_DESCENDING_EMA_V2",
     "enabled": true,
     "accuracy_validated": false,
     "anchors": {
@@ -514,27 +514,19 @@
       "decision_alpha": [
         [
           1,
-          0.42
+          0.6
         ],
         [
           20,
-          0.42
-        ],
-        [
-          30,
-          0.48
+          0.6
         ],
         [
           45,
-          0.54
-        ],
-        [
-          50,
-          0.57
+          0.52
         ],
         [
           70,
-          0.62
+          0.44
         ]
       ]
     },

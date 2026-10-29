@@ -25,7 +25,7 @@ function make(enabled=true){
   js.forEach((row,i)=>row.forEach((v,j)=>assert(Math.abs(v-py[i][j])<1e-12,"Python/browser schedule mismatch")));
   const emaPy=JSON.parse(cp.execFileSync("python",["-c","import json;from cardcount_profile import decision_alpha;print(json.dumps([decision_alpha(r,.8,.7) for r in "+JSON.stringify(rounds)+"]))"],{encoding:"utf8"}));
   rounds.forEach((r,i)=>assert(Math.abs(api.dynamicEmaAlpha(r,.8,{},null,{physics_uncertainty:.7})-emaPy[i])<1e-12,"Python/browser alpha mismatch"));
-  assert(api.dynamicEmaAlpha(15,.4,{},null,{physics_uncertainty:.2})<api.dynamicEmaAlpha(55,.4,{},null,{physics_uncertainty:.2}));
+  assert(api.dynamicEmaAlpha(15,.4,{},null,{physics_uncertainty:.2})>api.dynamicEmaAlpha(55,.4,{},null,{physics_uncertainty:.2}));
   assert(api.dynamicEmaAlpha(55,.95,{},null,{physics_uncertainty:.9})<api.dynamicEmaAlpha(55,.4,{},null,{physics_uncertainty:.2}));
   const h="BBBBPBPPTBP".split(""),prediction=api.applyFinalPrediction(h),diag=prediction.finalProbability.particleDiagnostics;
   assert.equal(diag.particle_count,10000);assert.equal(diag.forecast_draws,3);assert(diag.blend_weight>=.06&&diag.blend_weight<=api.profileValue("pf_max",h.length+1));
