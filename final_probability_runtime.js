@@ -25,6 +25,7 @@ const VERSION=EV_CONSISTENCY_V1
   :"PHYSICS_57D_V14_8_FORECAST_FIRST";
 const PHYSICS_URL="physics_multitask_model.json";
 let cardcountProfile=null,displayGapOverride=null;
+function pointCardSamplingTag(){const p=cardcountProfile?.pf?.point_card_sampling;return p?.enabled===true?JSON.stringify(p):null;}
 function profileValue(key,roundIndex){
   if(!cardcountProfile?.enabled)return null;
   const tuning=cardcountProfile.pf_weight_smoothing_v1,points=tuning?.anchors?.[key],bounds=key==='pf_max'?[.06,.16]:[.35,.75];
@@ -326,7 +327,7 @@ function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWe
   const dynamic=config.method==="dynamic_post_clip_ema"&&config.enabled===true;
   const legacy=config.method==="causal_ema"&&(+config.strength||0)>0;
   const shoeId=getShoeId(),rows=readRows();let previous=null;
-  for(let i=rows.length-1;i>=0;i--){const row=rows[i];if(cardcountProfile?.pf_weight_smoothing_v1?.enabled&&row?.pf_smoothing_profile_version!==cardcountProfile.pf_weight_smoothing_v1.version)continue;if(row?.shoe_id!==shoeId||+row.round_index>=roundIndex)continue;
+  for(let i=rows.length-1;i>=0;i--){const row=rows[i];if((row?.point_card_sampling_tag||null)!==pointCardSamplingTag())continue;if(cardcountProfile?.pf_weight_smoothing_v1?.enabled&&row?.pf_smoothing_profile_version!==cardcountProfile.pf_weight_smoothing_v1.version)continue;if(row?.shoe_id!==shoeId||+row.round_index>=roundIndex)continue;
     const value=Number.isFinite(+row.physics_smoothed_p_b)?+row.physics_smoothed_p_b:(Number.isFinite(+row.primary_smoothed_p_b)?+row.primary_smoothed_p_b:NaN);
     if(Number.isFinite(value)){previous=value;break;}}
   if(previous===null)return {value:clippedPB,alpha:1,strength:0,profile:cardcountProfile?.enabled?cardcountProfile.name:config.profile||"first_round",applied:false};
@@ -633,7 +634,7 @@ function applyExperimentalForecast(raw,config=experimentalSettings()){
 }
 function smoothReferenceForecast(forecast,history){
  const tuning=cardcountProfile?.pf_weight_smoothing_v1;if(!noSkipTestActive||tuning?.enabled!==true||tuning.reference_smoothing?.enabled!==true||!DISPLAY_EMA)return forecast;
- return DISPLAY_EMA.apply(forecast,history,getShoeId(),JSON.stringify(tuning),dynamicEmaAlpha(history.length+1,forecast.uncertainty||0,{},null,lastPhysicsDiagnostics),tuning.reference_smoothing.max_delta);
+ return DISPLAY_EMA.apply(forecast,history,getShoeId(),JSON.stringify([tuning,pointCardSamplingTag()]),dynamicEmaAlpha(history.length+1,forecast.uncertainty||0,{},null,lastPhysicsDiagnostics),tuning.reference_smoothing.max_delta);
 }
 function resolveDisplayForecast(raw,history){
   const context=noSkipTestActive?experimentalContext():null;
@@ -953,7 +954,7 @@ function registerPrediction(seq,prediction){
     primary_raw_p_b:Number.isFinite(+r.physics_raw_p_b)?+r.physics_raw_p_b:null,primary_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,physics_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,
     hitrate_max:r.hitrate_max??null,primary_candidate:r.primary_candidate||"Skip",skip_diagnostics:r.skip_diagnostics||null,xgb_aux_p_b:Number.isFinite(+r.xgb_aux_p_b)?+r.xgb_aux_p_b:null,core_aux_p_b:Number.isFinite(+r.core_aux_p_b)?+r.core_aux_p_b:null,aux_filter:r.aux_filter||null,
     macro_schema_version:1,macro_ema:r.macro_ema??null,macro_adjustment:r.macro_adjustment??null,
-    decision_stage:r.decision_stage,decision_progress:r.decision_progress,dynamic_band:r.dynamic_band??null,runtime_version:VERSION,pf_smoothing_profile_version:cardcountProfile?.pf_weight_smoothing_v1?.enabled?cardcountProfile.pf_weight_smoothing_v1.version:null,
+    decision_stage:r.decision_stage,decision_progress:r.decision_progress,dynamic_band:r.dynamic_band??null,runtime_version:VERSION,point_card_sampling_tag:pointCardSamplingTag(),pf_smoothing_profile_version:cardcountProfile?.pf_weight_smoothing_v1?.enabled?cardcountProfile.pf_weight_smoothing_v1.version:null,
     smoothing_alpha:Number.isFinite(+r.smoothingAlpha)?+r.smoothingAlpha:1,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,smoothing_profile:r.smoothingProfile||"off",final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
     probability_bounds:r.bounds?[r.bounds.low,r.bounds.high]:null,min_ev:Number.isFinite(+r.min_ev)?+r.min_ev:null,
     activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,effective_activation_ev:Number.isFinite(+r.effective_activation_ev)?+r.effective_activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,confidence_band:Number.isFinite(+r.confidence_band)?+r.confidence_band:0,effective_confidence_band:Number.isFinite(+r.effective_confidence_band)?+r.effective_confidence_band:0,volume_guard_active:r.volume_guard_active===true,entry_tier:r.entry_tier||"core",stake_multiplier:Number.isFinite(+r.stake_multiplier)?+r.stake_multiplier:1,decision_policy_enabled:r.decision_policy_enabled===true,decision_policy_profile:r.decision_policy_profile||"hard_ev",
@@ -1007,7 +1008,7 @@ async function loadModels(){
   if(gapControl){gapControl.disabled=!cardcountProfile?.enabled;if(displayGapOverride===null)gapControl.value=String(cardcountProfile?.enabled?cardcountProfile.display_gap:0);}
   if(!valid)status.errors.push("cardcount_profile_fallback");
   if(status.physics&&status.final56&&!modelSemanticsCompatible()){status.final56=false;status.errors.push("feature_semantics_mismatch");}
-  browserCalibrationTag=status.physics&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(VERSION,physicsBundle,final56Bundle,localCalibrationConfig(),PARTICLE500?.version,...(cardcountProfile?.pf_weight_smoothing_v1?.enabled?[cardcountProfile.pf_weight_smoothing_v1]:[])):"unready";
+  browserCalibrationTag=status.physics&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(VERSION,physicsBundle,final56Bundle,localCalibrationConfig(),PARTICLE500?.version,...(cardcountProfile?.pf_weight_smoothing_v1?.enabled?[cardcountProfile.pf_weight_smoothing_v1]:[]),...(pointCardSamplingTag()?[pointCardSamplingTag()]:[])):"unready";
   cachedPhysicsFingerprint=physicsBundle&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(physicsBundle):"";
   refreshNoSkipLabels();
   renderLocalCalibrationStatus(readHistory());

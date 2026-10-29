@@ -14,7 +14,7 @@ Important semantics:
   allowed to flip the Direct Physics B/P side by itself.
 */
 
-const VERSION="PARTICLE10000_STATELESS_V1";
+const VERSION="PARTICLE10000_POINT_CARD_V2";
 const PARTICLE_COUNT=10000;
 const LIKELIHOOD_DRAWS=2;
 const FALLBACK_DRAWS=2;
@@ -78,7 +78,7 @@ function deal(base,rng){
     if(pt<=5){const r=drawRank(counts,rng);ranks.push(r);p3=rankValue(r);pt=(pt+p3)%10;}
     if(bankerDraws(bt,p3)){const r=drawRank(counts,rng);ranks.push(r);bt=(bt+rankValue(r))%10;}
   }
-  return {outcome:bt>pt?"B":pt>bt?"P":"T",playerPoint:pt,bankerPoint:bt,ranks,counts,cardCount:ranks.length};
+  return {outcome:bt>pt?"B":pt>bt?"P":"T",playerPoint:pt,bankerPoint:bt,ranks,counts,cardCount:ranks.length,natural,playerDrew:p3!==null,bankerDrew:ranks.length===6||(ranks.length===5&&p3===null)};
 }
 function normaliseWeights(values){
   let sum=0;for(const v of values)sum+=Math.max(0,+v||0);
@@ -119,14 +119,16 @@ function preserveWinnerDirection(corrected,direct){
   corrected[23]=directionalMass*dir;corrected[24]=directionalMass*(1-dir);corrected[25]=t;
   return blocked;
 }
-function posteriorForecast(particles,consumed,weights,rng,draws=FORECAST_DRAWS){
+function posteriorForecast(particles,consumed,weights,rng,draws=FORECAST_DRAWS,jointEnabled=false){
   const out=Array(48).fill(0);let mass=0;
-  let consumedMean=0,consumedSq=0;
+  let consumedMean=0,consumedSq=0,sampledHands=0,naturalMass=0,playerDrawMass=0,bankerDrawMass=0;
+  const joint=jointEnabled?Array(300).fill(0):null;
   for(let i=0;i<particles.length;i++){
-    const w=weights[i];consumedMean+=w*consumed[i];consumedSq+=w*consumed[i]*consumed[i];
+    const w=weights[i];if(jointEnabled&&w<=0)continue;consumedMean+=w*consumed[i];consumedSq+=w*consumed[i]*consumed[i];
     for(let d=0;d<draws;d++){
       const hand=deal(particles[i],rng),m=w/draws;mass+=m;
       out[{4:0,5:1,6:2}[hand.cardCount]]+=m;
+      if(joint){joint[(hand.cardCount-4)*100+hand.playerPoint*10+hand.bankerPoint]+=m;sampledHands++;if(hand.natural)naturalMass+=m;if(hand.playerDrew)playerDrawMass+=m;if(hand.bankerDrew)bankerDrawMass+=m;}
       out[3+hand.playerPoint]+=m;out[13+hand.bankerPoint]+=m;
       out[23+(hand.outcome==="B"?0:hand.outcome==="P"?1:2)]+=m;
       for(const rank of hand.ranks)out[26+rank]+=m;
@@ -147,7 +149,16 @@ function posteriorForecast(particles,consumed,weights,rng,draws=FORECAST_DRAWS){
   out[44]=total>0?low/total:0;out[45]=total>0?high/total:0;
   out[46]/=mass;out[47]/=mass;
   const variance=Math.max(0,consumedSq-consumedMean*consumedMean);
-  return {physics:out,consumedStd:Math.sqrt(variance)};
+  let pointCard=null;
+  if(joint){
+    const pointsP=Array(10).fill(0),pointsB=Array(10).fill(0),win=Array(3).fill(0),byCards=Array.from({length:3},(_,i)=>({cards:i+4,probability:0,B:0,P:0,T:0}));
+    for(let i=0;i<joint.length;i++){joint[i]/=mass;const cards=Math.floor(i/100),p=Math.floor(i%100/10),b=i%10,v=joint[i],side=b>p?'B':b<p?'P':'T';pointsP[p]+=v;pointsB[b]+=v;win[side==='B'?0:side==='P'?1:2]+=v;byCards[cards].probability+=v;byCards[cards][side]+=v;}
+    let error=0;for(let i=0;i<10;i++)error=Math.max(error,Math.abs(pointsP[i]-out[3+i]),Math.abs(pointsB[i]-out[13+i]));for(let i=0;i<3;i++)error=Math.max(error,Math.abs(byCards[i].probability-out[i]),Math.abs(win[i]-out[23+i]));
+    if(error>1e-9)throw Error('point_card_joint_inconsistent');
+    out[39]=.95*out[23]-out[24];out[40]=out[24]-out[23];out[41]=out[39]-out[40];
+    pointCard={scope:'simulated_particle_posterior_not_observed_cards',sampled_hands:sampledHands,draws_per_particle:draws,card_count:out.slice(0,3),player_points:pointsP,banker_points:pointsB,winner:win,joint_point_card:joint,by_card_count:byCards,natural_probability:naturalMass/mass,player_draw_probability:playerDrawMass/mass,banker_draw_probability:bankerDrawMass/mass,expected_cards:byCards.reduce((a,v)=>a+v.cards*v.probability,0),joint_to_heads_max_error:error,ev_banker:out[39],ev_player:out[40]};
+  }
+  return {physics:out,consumedStd:Math.sqrt(variance),...(pointCard?{pointCard}:{})};
 }
 function estimate(history,directPhysics,mode="quality",config={}){
   const seq=(Array.isArray(history)?history:[]).map(x=>String(x||"").toUpperCase()).filter(x=>OUTCOMES.has(x));
@@ -159,26 +170,38 @@ function estimate(history,directPhysics,mode="quality",config={}){
       policy:"direct_physics_only",persistent_state:false,rebuild_from_scratch:false,
       history_rounds:seq.length,history_fingerprint:seq.join(""),particle_blend_mode:blendMode,blend_weight:0}
   };
+  const policy=config.point_card_sampling||{},enhanced=policy.enabled===true;
+  const likelihoodDraws=enhanced?Math.round(clip(policy.likelihood_draws??4,4,8)):LIKELIHOOD_DRAWS;
+  const fallbackDraws=enhanced?Math.round(clip(policy.fallback_draws??8,8,16)):FALLBACK_DRAWS;
+  const tieFallbackDraws=enhanced?Math.round(clip(policy.tie_fallback_draws??32,16,64)):FALLBACK_DRAWS;
+  let unmatchedDropped=0,positiveUnmatched=0,lastDropped=0;const updates=[];
   const rng=rng32(seedFromHistory(seq));
   let particles=Array.from({length:PARTICLE_COUNT},()=>Array(RANKS).fill(INITIAL_PER_RANK));
   let consumed=Array(PARTICLE_COUNT).fill(0),weights=Array(PARTICLE_COUNT).fill(1/PARTICLE_COUNT);
   let resamplingCount=0,lastEssRatio=1,tieUpdates=0;
 
   for(const actual of seq){
+    let dropped=0,matchedMass=0,activeParticles=0;
     const next=Array(PARTICLE_COUNT),nextConsumed=Array(PARTICLE_COUNT),rawWeights=Array(PARTICLE_COUNT);
     for(let i=0;i<PARTICLE_COUNT;i++){
       const base=particles[i],proposals=[],matches=[];
-      for(let d=0;d<LIKELIHOOD_DRAWS;d++){const hand=deal(base,rng);proposals.push(hand);if(hand.outcome===actual)matches.push(hand);}
+      if(enhanced&&weights[i]<=0){next[i]=base;nextConsumed[i]=consumed[i];rawWeights[i]=0;continue;}
+      activeParticles++;
+      for(let d=0;d<likelihoodDraws;d++){const hand=deal(base,rng);proposals.push(hand);if(hand.outcome===actual)matches.push(hand);}
       const matchCount=matches.length;
-      let likelihood=(matchCount+.20)/(LIKELIHOOD_DRAWS+.60);
+      let likelihood=(matchCount+.20)/(likelihoodDraws+.60);
       if(!matches.length){
-        for(let d=0;d<FALLBACK_DRAWS;d++){const hand=deal(base,rng);if(hand.outcome===actual){matches.push(hand);break;}}
+        for(let d=0;d<(actual==="T"?tieFallbackDraws:fallbackDraws);d++){const hand=deal(base,rng);if(hand.outcome===actual){matches.push(hand);break;}}
       }
+      if(enhanced&&!matches.length){next[i]=base;nextConsumed[i]=consumed[i];rawWeights[i]=0;dropped++;unmatchedDropped++;continue;}
       const chosen=matches.length?matches[Math.floor(rng()*matches.length)]:proposals[Math.floor(rng()*proposals.length)];
       if(!matches.length)likelihood=Math.max(likelihood,.015);
       if(actual==="T"){likelihood=(1-TIE_LIKELIHOOD_INFLUENCE)+TIE_LIKELIHOOD_INFLUENCE*likelihood;tieUpdates++;}
       next[i]=chosen.counts;nextConsumed[i]=consumed[i]+chosen.cardCount;rawWeights[i]=weights[i]*Math.max(1e-8,likelihood);
+      matchedMass+=rawWeights[i];if(!matches.length&&rawWeights[i]>0)positiveUnmatched++;
     }
+    if(enhanced&&!(matchedMass>0))throw Error('point_card_conditioning_unavailable');
+    if(enhanced){lastDropped=dropped;updates.push({round:updates.length+1,outcome:actual,active_particles:activeParticles,unmatched_dropped:dropped,unmatched_positive_weight:0});}
     weights=normaliseWeights(rawWeights);particles=next;consumed=nextConsumed;
     let sq=0;for(const w of weights)sq+=w*w;lastEssRatio=clip((1/Math.max(1e-12,sq))/PARTICLE_COUNT);
     if(lastEssRatio<ESS_RESAMPLE_THRESHOLD){
@@ -186,8 +209,8 @@ function estimate(history,directPhysics,mode="quality",config={}){
     }
   }
 
-  const forecastDraws=Math.round(clip(config.forecast_draws??FORECAST_DRAWS,1,5));
-  const forecast=posteriorForecast(particles,consumed,weights,rng,forecastDraws),posterior=forecast.physics;
+  const forecastDraws=Math.round(clip(enhanced?5:(config.forecast_draws??FORECAST_DRAWS),1,5));
+  const forecast=posteriorForecast(particles,consumed,weights,rng,forecastDraws,enhanced),posterior=forecast.physics;
   const winner=normalizeBlock(posterior.slice(23,26));
   const spread=clip(forecast.consumedStd/18);
   const posteriorUncertainty=clip(.55*entropy3(winner)+.30*(1-lastEssRatio)+.15*spread);
@@ -226,10 +249,11 @@ function estimate(history,directPhysics,mode="quality",config={}){
     physics:corrected,
     posterior,
     diagnostics:{
+      ...(enhanced?{point_card_sampling:{version:'POINT_CARD_CONDITIONAL_V2',enabled:true,likelihood_draws:likelihoodDraws,fallback_draws:fallbackDraws,tie_fallback_draws:tieFallbackDraws,unmatched_dropped:unmatchedDropped,last_unmatched_dropped:lastDropped,unmatched_positive_weight:positiveUnmatched,updates},point_card_forecast:forecast.pointCard}:{}),
       version:VERSION,enabled:true,particle_filter_enabled:true,particle_count:PARTICLE_COUNT,
       policy:"stateless_rebuild_each_prediction",persistent_state:false,rebuild_from_scratch:true,
-      history_rounds:seq.length,history_fingerprint:seq.join(""),likelihood_draws:LIKELIHOOD_DRAWS,
-      fallback_draws:FALLBACK_DRAWS,forecast_draws:forecastDraws,ess_resample_threshold:ESS_RESAMPLE_THRESHOLD,
+      history_rounds:seq.length,history_fingerprint:seq.join(""),likelihood_draws:likelihoodDraws,
+      fallback_draws:fallbackDraws,forecast_draws:forecastDraws,ess_resample_threshold:ESS_RESAMPLE_THRESHOLD,
       resampling_count:resamplingCount,recent_ess_ratio:lastEssRatio,posterior_uncertainty:posteriorUncertainty,
       particle_quality:quality,signal_gate:signalGate,same_direction:sameSide,blend_min:minimum,blend_max:maximum,blend_weight:blendWeight,quality_blend_weight:qualityBlendWeight,particle_blend_mode:blendMode,
       tie_soft_update:true,tie_likelihood_influence:TIE_LIKELIHOOD_INFLUENCE,

@@ -1,3 +1,5 @@
+> 新增點數／4–6張聯合模擬與不匹配樣本排除；仍為未驗證勝率的PF10,000實驗版。見 [POINT_CARD_SAMPLING_V2.md](POINT_CARD_SAMPLING_V2.md)。
+
 > EMA已改前高後低：1–20局60%、45局52%、70局44%，PF權重不變。見 [EMA_DESCENDING_V2.md](EMA_DESCENDING_V2.md)。
 
 > 已啟用可回滾的PF權重／平滑實驗組：前期PF上限12%、最高16%；詳見 [PF10000_WEIGHT_SMOOTHING.md](PF10000_WEIGHT_SMOOTHING.md)，未驗證勝率提升。

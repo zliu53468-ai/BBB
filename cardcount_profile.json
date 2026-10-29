@@ -236,7 +236,15 @@
   "pf": {
     "min_blend": 0.06,
     "signal_gate": true,
-    "forecast_draws": 3
+    "forecast_draws": 3,
+    "point_card_sampling": {
+      "schema_version": 1,
+      "enabled": true,
+      "likelihood_draws": 4,
+      "fallback_draws": 8,
+      "tie_fallback_draws": 32,
+      "forecast_draws": 5
+    }
   },
   "training": {
     "name": "aggressive_cardcount",
@@ -478,14 +486,14 @@
   },
   "pf_release": {
     "schema_version": 1,
-    "version": "PF10000_STATELESS_V1",
+    "version": "PF10000_POINT_CARD_V2",
     "particle_count": 10000,
     "prior_particle_count": 1000,
     "accuracy_validated": false
   },
   "pf_weight_smoothing_v1": {
     "schema_version": 1,
-    "version": "PF10000_DESCENDING_EMA_V2",
+    "version": "PF10000_DESCENDING_EMA_POINT_CARD_V3",
     "enabled": true,
     "accuracy_validated": false,
     "anchors": {

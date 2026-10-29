@@ -10,13 +10,14 @@ permissions:
 jobs:
   forecast:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: node --check final_probability_runtime.js && node --check auth-client.js
+      - run: node test_point_card_sampling.js && node test_point_card_rollback.js
       - run: node test_physics_forecast_first.js
       - run: node test_final_probability_runtime.js
       - run: node test_macro_runtime.js

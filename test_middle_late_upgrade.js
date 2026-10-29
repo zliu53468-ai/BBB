@@ -3,6 +3,7 @@ const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("nod
 const current=JSON.parse(fs.readFileSync("cardcount_profile.json")),baseline=JSON.parse(fs.readFileSync("validation/cardcount_moderate_v1_baseline.json"));
 // This test isolates the inherited smoothing profile; selective entry is tested separately.
 current.hitrate_max_v1.enabled=false;
+if(current.pf.point_card_sampling)current.pf.point_card_sampling.enabled=false;
 if(current.pf_weight_smoothing_v1)current.pf_weight_smoothing_v1.enabled=false; // inherited profile regression; new tuning has its own tests
 const M=require("./browser_calibration.js");
 function make(profile){

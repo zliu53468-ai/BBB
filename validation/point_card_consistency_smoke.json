@@ -1,0 +1,92 @@
+{
+  "passed": true,
+  "data_kind": "structural_and_fresh_shoe_simulation_not_hit_rate_holdout",
+  "reference_hands": 60000,
+  "pf_forecast_hands": 50000,
+  "banker_rule_cases": 110,
+  "results": [
+    {
+      "hands": 0,
+      "ms": 54,
+      "unmatched_positive_weight": 0,
+      "unmatched_dropped": 0,
+      "card_count": [
+        0.38255999999982615,
+        0.30049999999980304,
+        0.3169399999998077
+      ]
+    },
+    {
+      "hands": 5,
+      "ms": 303,
+      "unmatched_positive_weight": 0,
+      "unmatched_dropped": 324,
+      "card_count": [
+        0.3763399999998244,
+        0.30133999999980327,
+        0.3223199999998092
+      ]
+    },
+    {
+      "hands": 30,
+      "ms": 1399,
+      "unmatched_positive_weight": 0,
+      "unmatched_dropped": 1808,
+      "card_count": [
+        0.3784670539222733,
+        0.30580530185205085,
+        0.31572764422579364
+      ]
+    },
+    {
+      "hands": 70,
+      "ms": 3073,
+      "unmatched_positive_weight": 0,
+      "unmatched_dropped": 4227,
+      "card_count": [
+        0.3787999999998251,
+        0.3028399999998037,
+        0.3183599999998081
+      ]
+    },
+    {
+      "legacy_positive_unmatched": 10379
+    }
+  ],
+  "reference": {
+    "cards": [
+      22638,
+      18106,
+      19256
+    ],
+    "P": [
+      5748,
+      4565,
+      4378,
+      4364,
+      4401,
+      4587,
+      8018,
+      8031,
+      7966,
+      7942
+    ],
+    "B": [
+      5317,
+      4148,
+      4238,
+      4328,
+      5546,
+      6075,
+      7280,
+      7613,
+      7774,
+      7681
+    ],
+    "winner": [
+      27555,
+      26648,
+      5797
+    ]
+  }
+}

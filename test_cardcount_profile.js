@@ -28,7 +28,7 @@ function make(enabled=true){
   assert(api.dynamicEmaAlpha(15,.4,{},null,{physics_uncertainty:.2})>api.dynamicEmaAlpha(55,.4,{},null,{physics_uncertainty:.2}));
   assert(api.dynamicEmaAlpha(55,.95,{},null,{physics_uncertainty:.9})<api.dynamicEmaAlpha(55,.4,{},null,{physics_uncertainty:.2}));
   const h="BBBBPBPPTBP".split(""),prediction=api.applyFinalPrediction(h),diag=prediction.finalProbability.particleDiagnostics;
-  assert.equal(diag.particle_count,10000);assert.equal(diag.forecast_draws,3);assert(diag.blend_weight>=.06&&diag.blend_weight<=api.profileValue("pf_max",h.length+1));
+  assert.equal(diag.particle_count,10000);assert.equal(diag.forecast_draws,5);assert(diag.blend_weight>=.06&&diag.blend_weight<=api.profileValue("pf_max",h.length+1));
   assert.equal(diag.persistent_state,false);assert.equal(diag.rebuild_from_scratch,true);
   const physics=prediction.finalProbability.physicsDirect.slice();const directCopy=JSON.stringify(physics);
   const original=ctx.__BGS_PARTICLE500__.estimate(h,physics,"quality");
