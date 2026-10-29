@@ -27,7 +27,9 @@ const PHYSICS_URL="physics_multitask_model.json";
 let cardcountProfile=null,displayGapOverride=null;
 function profileValue(key,roundIndex){
   if(!cardcountProfile?.enabled)return null;
-  return interpAnchors(clip(roundIndex,1,70),cardcountProfile.anchors[key]);
+  const tuning=cardcountProfile.pf_weight_smoothing_v1,points=tuning?.anchors?.[key],bounds=key==='pf_max'?[.06,.16]:[.35,.75];
+  const valid=['pf_max','decision_alpha'].includes(key)&&Array.isArray(points)&&points.length>=2&&points.every((v,i,a)=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)&&v[0]>=1&&v[0]<=70&&v[1]>=bounds[0]&&v[1]<=bounds[1]&&(!i||v[0]>a[i-1][0]));
+  return interpAnchors(clip(roundIndex,1,70),tuning?.enabled&&valid?points:cardcountProfile.anchors[key]);
 }
 function displayDirection(f){
   if(!f?.available)return null;
@@ -40,6 +42,7 @@ function macroUpdate(state,hand){
   return MACRO.update(state,hand,cardcountProfile?.enabled?{short_alpha:profileValue("macro_short",r),long_alpha:profileValue("macro_long",r)}:{});
 }
 const FINAL56_URL="final_probability_model.json";
+const DISPLAY_EMA=typeof window!=="undefined"?window.__BBB_PF_DISPLAY_EMA__?.createClient(typeof localStorage!=="undefined"?localStorage:null):null;
 const ORIGINAL7_NAMES=["core_p_b","round_index","estimated_total_hands","remaining_ratio","sx_markov_p_same","stage","depth"];
 // Keep the trained 48D/57D ABI: legacy particle_uncertainty at slot 42
 // contains Physics uncertainty; feature order stays unchanged.
@@ -323,7 +326,7 @@ function applyDynamicSmoothing(clippedPB,roundIndex,noiseScore,bounds,progressWe
   const dynamic=config.method==="dynamic_post_clip_ema"&&config.enabled===true;
   const legacy=config.method==="causal_ema"&&(+config.strength||0)>0;
   const shoeId=getShoeId(),rows=readRows();let previous=null;
-  for(let i=rows.length-1;i>=0;i--){const row=rows[i];if(row?.shoe_id!==shoeId||+row.round_index>=roundIndex)continue;
+  for(let i=rows.length-1;i>=0;i--){const row=rows[i];if(cardcountProfile?.pf_weight_smoothing_v1?.enabled&&row?.pf_smoothing_profile_version!==cardcountProfile.pf_weight_smoothing_v1.version)continue;if(row?.shoe_id!==shoeId||+row.round_index>=roundIndex)continue;
     const value=Number.isFinite(+row.physics_smoothed_p_b)?+row.physics_smoothed_p_b:(Number.isFinite(+row.primary_smoothed_p_b)?+row.primary_smoothed_p_b:NaN);
     if(Number.isFinite(value)){previous=value;break;}}
   if(previous===null)return {value:clippedPB,alpha:1,strength:0,profile:cardcountProfile?.enabled?cardcountProfile.name:config.profile||"first_round",applied:false};
@@ -628,11 +631,15 @@ function applyExperimentalForecast(raw,config=experimentalSettings()){
   const diagnostics={active:true,display_only:true,unvalidated:true,version:config.version,stage:"bounded_mapping_before_local_gate",base_p_b:p,calibrated_p_b:b,delta:b-p};
   return {forecast:{...raw,source:"unvalidated_bounded_platt_experiment",direction:b===.5?"Balanced":b>.5?"B":"P",directional:{B:b,P:1-b},probabilities:{B:mass*b,P:mass*(1-b),T:t},weak_signal:Math.abs(b-.5)<.005,experimental_no_skip:diagnostics},diagnostics};
 }
+function smoothReferenceForecast(forecast,history){
+ const tuning=cardcountProfile?.pf_weight_smoothing_v1;if(!noSkipTestActive||tuning?.enabled!==true||tuning.reference_smoothing?.enabled!==true||!DISPLAY_EMA)return forecast;
+ return DISPLAY_EMA.apply(forecast,history,getShoeId(),JSON.stringify(tuning),dynamicEmaAlpha(history.length+1,forecast.uncertainty||0,{},null,lastPhysicsDiagnostics),tuning.reference_smoothing.max_delta);
+}
 function resolveDisplayForecast(raw,history){
   const context=noSkipTestActive?experimentalContext():null;
-  if(context){const mapped=applyExperimentalForecast(raw,context.config),calibrated=context.client.apply(mapped.forecast,history,getShoeId(),context.tag,localCalibrationConfig());return {raw:mapped.forecast,forecast:calibrated.forecast,calibration:calibrated.status,experimental:{...mapped.diagnostics,history_fingerprint:history.join(""),round_index:history.length+1,model:context.tag}};}
+  if(context){const mapped=applyExperimentalForecast(raw,context.config),calibrated=context.client.apply(mapped.forecast,history,getShoeId(),context.tag,localCalibrationConfig());return {raw:mapped.forecast,forecast:smoothReferenceForecast(calibrated.forecast,history),calibration:calibrated.status,experimental:{...mapped.diagnostics,history_fingerprint:history.join(""),round_index:history.length+1,model:context.tag}};}
   const calibrated=LOCAL_CALIBRATION?.apply(raw,history,getShoeId(),browserCalibrationTag,localCalibrationConfig());
-  return {raw,forecast:calibrated?.forecast||raw,calibration:calibrated?.status||null,experimental:null};
+  return {raw,forecast:smoothReferenceForecast(calibrated?.forecast||raw,history),calibration:calibrated?.status||null,experimental:null};
 }
 function makeExperimentalPaper(history,baseRaw,context,wasShown=false){
   const mapped=applyExperimentalForecast(baseRaw,context.config);if(!mapped.forecast?.available)return null;
@@ -868,6 +875,7 @@ const MACRO_KEY="bgs_macro_observations_v1",MACRO_ARCHIVE_KEY="bgs_macro_observa
 let macroJournal=null,macroState=null;
 function readMacroArchive(){try{const value=JSON.parse(localStorage.getItem(MACRO_ARCHIVE_KEY)||"[]");return Array.isArray(value)?value:[];}catch(_){return[];}}
 function rotateShoeId(){
+  DISPLAY_EMA?.clear();
   try{
     const current=macroJournal||JSON.parse(localStorage.getItem(MACRO_KEY)||"null");
     if(current?.events?.length){
@@ -945,7 +953,7 @@ function registerPrediction(seq,prediction){
     primary_raw_p_b:Number.isFinite(+r.physics_raw_p_b)?+r.physics_raw_p_b:null,primary_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,physics_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,
     hitrate_max:r.hitrate_max??null,primary_candidate:r.primary_candidate||"Skip",skip_diagnostics:r.skip_diagnostics||null,xgb_aux_p_b:Number.isFinite(+r.xgb_aux_p_b)?+r.xgb_aux_p_b:null,core_aux_p_b:Number.isFinite(+r.core_aux_p_b)?+r.core_aux_p_b:null,aux_filter:r.aux_filter||null,
     macro_schema_version:1,macro_ema:r.macro_ema??null,macro_adjustment:r.macro_adjustment??null,
-    decision_stage:r.decision_stage,decision_progress:r.decision_progress,dynamic_band:r.dynamic_band??null,runtime_version:VERSION,
+    decision_stage:r.decision_stage,decision_progress:r.decision_progress,dynamic_band:r.dynamic_band??null,runtime_version:VERSION,pf_smoothing_profile_version:cardcountProfile?.pf_weight_smoothing_v1?.enabled?cardcountProfile.pf_weight_smoothing_v1.version:null,
     smoothing_alpha:Number.isFinite(+r.smoothingAlpha)?+r.smoothingAlpha:1,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,smoothing_profile:r.smoothingProfile||"off",final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
     probability_bounds:r.bounds?[r.bounds.low,r.bounds.high]:null,min_ev:Number.isFinite(+r.min_ev)?+r.min_ev:null,
     activation_ev:Number.isFinite(+r.activation_ev)?+r.activation_ev:null,effective_activation_ev:Number.isFinite(+r.effective_activation_ev)?+r.effective_activation_ev:null,soft_band:Number.isFinite(+r.soft_band)?+r.soft_band:0,confidence_band:Number.isFinite(+r.confidence_band)?+r.confidence_band:0,effective_confidence_band:Number.isFinite(+r.effective_confidence_band)?+r.effective_confidence_band:0,volume_guard_active:r.volume_guard_active===true,entry_tier:r.entry_tier||"core",stake_multiplier:Number.isFinite(+r.stake_multiplier)?+r.stake_multiplier:1,decision_policy_enabled:r.decision_policy_enabled===true,decision_policy_profile:r.decision_policy_profile||"hard_ev",
@@ -999,7 +1007,7 @@ async function loadModels(){
   if(gapControl){gapControl.disabled=!cardcountProfile?.enabled;if(displayGapOverride===null)gapControl.value=String(cardcountProfile?.enabled?cardcountProfile.display_gap:0);}
   if(!valid)status.errors.push("cardcount_profile_fallback");
   if(status.physics&&status.final56&&!modelSemanticsCompatible()){status.final56=false;status.errors.push("feature_semantics_mismatch");}
-  browserCalibrationTag=status.physics&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(VERSION,physicsBundle,final56Bundle,localCalibrationConfig(),PARTICLE500?.version):"unready";
+  browserCalibrationTag=status.physics&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(VERSION,physicsBundle,final56Bundle,localCalibrationConfig(),PARTICLE500?.version,...(cardcountProfile?.pf_weight_smoothing_v1?.enabled?[cardcountProfile.pf_weight_smoothing_v1]:[])):"unready";
   cachedPhysicsFingerprint=physicsBundle&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(physicsBundle):"";
   refreshNoSkipLabels();
   renderLocalCalibrationStatus(readHistory());

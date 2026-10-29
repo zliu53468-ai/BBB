@@ -1,10 +1,19 @@
 """Shared opt-in training settings; browser reads the same JSON."""
 import json
+import math
 from pathlib import Path
 PROFILE = json.loads(Path(__file__).with_name("cardcount_profile.json").read_text(encoding="utf-8"))
 
 def interpolate(key, round_index):
     anchors = PROFILE["anchors"][key]
+    tuning = PROFILE.get("pf_weight_smoothing_v1", {})
+    points = tuning.get("anchors", {}).get(key)
+    low, high = (.06, .16) if key == "pf_max" else (.35, .75)
+    valid = key in ("pf_max", "decision_alpha") and isinstance(points, list) and len(points) >= 2
+    if valid:
+        valid = all(isinstance(v, list) and len(v) == 2 and all(isinstance(x, (int, float)) and math.isfinite(x) for x in v) and 1 <= v[0] <= 70 and low <= v[1] <= high and (not i or v[0] > points[i-1][0]) for i, v in enumerate(points))
+    if tuning.get("enabled") and valid:
+        anchors = points
     r = max(1.0, min(70.0, float(round_index)))
     for (a, x), (b, y) in zip(anchors, anchors[1:]):
         if r <= b:

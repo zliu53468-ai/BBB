@@ -12,11 +12,12 @@ from xgb_final_probability import balanced_sample_weights, train_command, select
 class MiddleLateTests(unittest.TestCase):
     def test_early_anchors_and_physics_loss_are_preserved(self):
         old=json.loads(Path(__file__).with_name("validation").joinpath("cardcount_moderate_v1_baseline.json").read_text(encoding="utf8"))
-        for r in range(1,21):
-            for key,anchors in old["anchors"].items():
-                expected=float(np.interp(r,[x for x,_ in anchors],[v for _,v in anchors]))
-                self.assertAlmostEqual(interpolate(key,r),expected,places=14)
-            self.assertAlmostEqual(interpolate("focus_training_weight",r),interpolate("training_weight",r),places=14)
+        with patch.dict(PROFILE.get("pf_weight_smoothing_v1", {}), {"enabled": False}):
+            for r in range(1,21):
+                for key,anchors in old["anchors"].items():
+                    expected=float(np.interp(r,[x for x,_ in anchors],[v for _,v in anchors]))
+                    self.assertAlmostEqual(interpolate(key,r),expected,places=14)
+                self.assertAlmostEqual(interpolate("focus_training_weight",r),interpolate("training_weight",r),places=14)
         np.testing.assert_array_equal(PhysicsFeatureExtractor(training_profile="aggressive_cardcount").loss_scale,PhysicsFeatureExtractor(training_profile="middle_late_focus").loss_scale)
 
     def test_train_only_resampling_is_deterministic_and_never_duplicates_early(self):

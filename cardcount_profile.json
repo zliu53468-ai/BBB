@@ -482,5 +482,65 @@
     "particle_count": 10000,
     "prior_particle_count": 1000,
     "accuracy_validated": false
+  },
+  "pf_weight_smoothing_v1": {
+    "schema_version": 1,
+    "version": "PF10000_MODERATE_WEIGHT_SMOOTH_V1",
+    "enabled": true,
+    "accuracy_validated": false,
+    "anchors": {
+      "pf_max": [
+        [
+          1,
+          0.12
+        ],
+        [
+          20,
+          0.12
+        ],
+        [
+          30,
+          0.14
+        ],
+        [
+          45,
+          0.16
+        ],
+        [
+          70,
+          0.16
+        ]
+      ],
+      "decision_alpha": [
+        [
+          1,
+          0.42
+        ],
+        [
+          20,
+          0.42
+        ],
+        [
+          30,
+          0.48
+        ],
+        [
+          45,
+          0.54
+        ],
+        [
+          50,
+          0.57
+        ],
+        [
+          70,
+          0.62
+        ]
+      ]
+    },
+    "reference_smoothing": {
+      "enabled": true,
+      "max_delta": 0.006
+    }
   }
 }

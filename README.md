@@ -1,3 +1,5 @@
+> 已啟用可回滾的PF權重／平滑實驗組：前期PF上限12%、最高16%；詳見 [PF10000_WEIGHT_SMOOTHING.md](PF10000_WEIGHT_SMOOTHING.md)，未驗證勝率提升。
+
 > 目前PF10,000粒子測試版：其他出手條件不放寬，手機耗時需實測，沒有命中率提升保證。見 [PF10000_UPGRADE.md](PF10000_UPGRADE.md)。
 
 > PF1000測試版：每次獨立重建1,000粒子；原500粒子專用實驗校準暫停，未證明命中率提升。見 [PF1000_UPGRADE.md](PF1000_UPGRADE.md)。

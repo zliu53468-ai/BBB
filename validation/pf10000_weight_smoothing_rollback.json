@@ -1,0 +1,83 @@
+{
+  "source_commit": "dd66e354f8473f12393faf4a25d257a52231120b",
+  "rows": [
+    {
+      "history": "",
+      "direction": "Skip",
+      "ev_banker": -0.026238366875800945,
+      "ev_player": 0.003838469225260821,
+      "probabilities": {
+        "B": 0.4978671245893403,
+        "P": 0.5021328754106598
+      },
+      "next_hand_forecast": {
+        "available": true,
+        "source": "direct_physics_particle500_winner_head",
+        "direction": "P",
+        "probabilities": {
+          "B": 0.44757665760803,
+          "P": 0.4522577176388358,
+          "T": 0.10016562475313412
+        },
+        "directional": {
+          "B": 0.49739893242602473,
+          "P": 0.5026010675739753
+        },
+        "uncertainty": 0.2894027419904658,
+        "weak_signal": true
+      }
+    },
+    {
+      "history": "BPTBP",
+      "direction": "Skip",
+      "ev_banker": -0.01894555496307221,
+      "ev_player": -0.0037626004797503,
+      "probabilities": {
+        "B": 0.5020797876501264,
+        "P": 0.4979202123498736
+      },
+      "next_hand_forecast": {
+        "available": true,
+        "source": "direct_physics_particle500_winner_head",
+        "direction": "B",
+        "probabilities": {
+          "B": 0.45457607720178805,
+          "P": 0.4499875400313609,
+          "T": 0.09543638276685108
+        },
+        "directional": {
+          "B": 0.5025363264025932,
+          "P": 0.49746367359740684
+        },
+        "uncertainty": 0.3266378162460033,
+        "weak_signal": true
+      }
+    },
+    {
+      "history": "BPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBPBP",
+      "direction": "Skip",
+      "ev_banker": 0.032304393651866437,
+      "ev_player": -0.05621854779086055,
+      "probabilities": {
+        "B": 0.5312204678955958,
+        "P": 0.46877953210440415
+      },
+      "next_hand_forecast": {
+        "available": true,
+        "source": "direct_physics_particle500_winner_head",
+        "direction": "B",
+        "probabilities": {
+          "B": 0.4782830827798824,
+          "P": 0.42206453498902186,
+          "T": 0.09965238223109568
+        },
+        "directional": {
+          "B": 0.5312204678955958,
+          "P": 0.46877953210440415
+        },
+        "uncertainty": 0.3558260399904294,
+        "weak_signal": false
+      }
+    }
+  ]
+}
