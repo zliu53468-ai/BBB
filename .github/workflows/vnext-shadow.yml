@@ -12,5 +12,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check vnext/dual_core_fusion_runtime.js && node --check vnext/replay.cjs && node vnext/test_dual_core.cjs
+      - run: node --check vnext/dual_core_fusion_runtime.js && node --check vnext/replay.cjs && node vnext/test_dual_core.cjs && node vnext/test_live_runtime.cjs
       - run: node test_license_storage.mjs && node test_end_analysis_reload.js
