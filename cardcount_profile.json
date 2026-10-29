@@ -2,7 +2,7 @@
   "schema_version": 1,
   "name": "cardcount_middle_late_v2",
   "enabled": true,
-  "display_gap": 0.02,
+  "display_gap": 0.005,
   "stages": [
     {
       "name": "early",
@@ -566,9 +566,9 @@
   },
   "road_primary_v1": {
     "schema_version": 1,
-    "version": "ROAD_PRIMARY_PHYSICS_ADJUSTMENT_V1",
+    "version": "ROAD_PRIMARY_ADAPTIVE_3_2_1_V2",
     "enabled": true,
-    "order": 2,
+    "order": 3,
     "window": 200,
     "min_observations": 12,
     "prior_strength": 24,
@@ -581,6 +581,32 @@
     "max_physics_weight": 0.15,
     "max_delta": 0.004,
     "max_physics_uncertainty": 0.7,
-    "accuracy_validated": false
+    "accuracy_validated": false,
+    "decision_alpha_anchors": [
+      [
+        1,
+        0.38
+      ],
+      [
+        20,
+        0.38
+      ],
+      [
+        30,
+        0.44
+      ],
+      [
+        45,
+        0.48
+      ],
+      [
+        50,
+        0.51
+      ],
+      [
+        70,
+        0.56
+      ]
+    ]
   }
 }

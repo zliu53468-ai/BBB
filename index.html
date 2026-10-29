@@ -78,7 +78,7 @@
       <p id="localCalibrationStatus" role="status" aria-live="polite">本機校準：等待模型就緒</p>
       <label for="forecastGap">一般方向門檻（莊閒機率差）</label>
       <select id="forecastGap" aria-label="一般方向機率差距門檻" disabled>
-        <option value="0.02" selected>2 個百分點（51%／49%）</option>
+        <option value="0.005" selected>0.5 個百分點（50.25%／49.75%）</option>
       </select>
       <div class="action-buttons">
         <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
@@ -95,7 +95,7 @@
   </main>
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
-  <script src="auth-client.js?v=20261029-road-primary-v1"></script>
+  <script src="auth-client.js?v=20261030-adaptive-road-v2"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
