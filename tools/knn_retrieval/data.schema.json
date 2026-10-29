@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bbb:knn:replay:v1",
+  "title": "BBB KNN complete chronological hands",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "data_kind",
+    "seed",
+    "source",
+    "chronological_order",
+    "rows"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "data_kind": {
+      "enum": [
+        "SYNTHETIC",
+        "real_observations"
+      ]
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chronological_order": {
+      "const": "oldest_to_newest"
+    },
+    "warning": {
+      "type": "string"
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "data_kind",
+          "shoe_id",
+          "shoe_start",
+          "round_index",
+          "outcome",
+          "initial_counts_after_burn",
+          "remaining_counts_before",
+          "consumed_counts",
+          "composition_source",
+          "composition_through_round",
+          "composition_evidence"
+        ],
+        "properties": {
+          "data_kind": {
+            "enum": [
+              "SYNTHETIC",
+              "real_observations"
+            ]
+          },
+          "shoe_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "shoe_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "round_index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "outcome": {
+            "enum": [
+              "B",
+              "P",
+              "T"
+            ]
+          },
+          "initial_counts_after_burn": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "remaining_counts_before": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "consumed_counts": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "composition_source": {
+            "enum": [
+              "observed_prefix",
+              "synthetic_fully_observed_prefix"
+            ]
+          },
+          "composition_through_round": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "composition_evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "card_count": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 6
+          },
+          "player_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9
+          },
+          "banker_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "data_kind": {
+            "const": "SYNTHETIC"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "warning"
+        ],
+        "properties": {
+          "warning": {
+            "type": "string",
+            "pattern": "合成資料"
+          },
+          "rows": {
+            "items": {
+              "properties": {
+                "data_kind": {
+                  "const": "SYNTHETIC"
+                },
+                "shoe_id": {
+                  "pattern": "SYNTHETIC"
+                },
+                "composition_source": {
+                  "const": "synthetic_fully_observed_prefix"
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "rows": {
+            "items": {
+              "properties": {
+                "data_kind": {
+                  "const": "real_observations"
+                },
+                "composition_source": {
+                  "const": "observed_prefix"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
