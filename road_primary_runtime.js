@@ -2,19 +2,23 @@
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.__BBB_ROAD_PRIMARY__=api;})(typeof window!=='undefined'?window:null,function(){
 'use strict';const tokens=['B','P','T'],clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v)),side=x=>Math.abs(x)<1e-12?'Balanced':x>0?'B':'P';
 function firstOrderAux(seq,base,c={}){
- const cfg=c.first_order_aux_v1;if(cfg?.enabled!==true||!base.available)return base;
+ const bayes=c.sequence_aux_v1?.enabled===true&&c.sequence_aux_v1.bayes_first_order?.enabled===true;
+ const cfg=bayes?c.sequence_aux_v1.bayes_first_order:c.first_order_aux_v1;if(cfg?.enabled!==true||!base.available)return base;
  const limit=(v,f,max)=>Number.isFinite(v)?clamp(v,0,max):f;
  const history=seq.slice(-Math.max(4,Math.min(500,c.window??200))),context=history.at(-1),counts={B:0,P:0,T:0};
  for(let i=1;i<history.length;i++)if(history[i-1]===context)counts[history[i]]++;
  const n=counts.B+counts.P+counts.T,minimum=Number.isFinite(cfg.min_observations)?Math.max(12,Math.floor(cfg.min_observations)):12;
- const probabilities=n?Object.fromEntries(tokens.map(t=>[t,counts[t]/n])):null,mass=probabilities?probabilities.B+probabilities.P:0;
- const audit={enabled:true,order:1,observations:n,minimum,counts,probabilities,prior_strength:0,shrinkage:false,available:n>=minimum&&mass>0};
+ const prior=bayes?(cfg.prior||{B:.45,P:.45,T:.10}):null;
+ if(bayes&&(!tokens.every(t=>Number.isFinite(prior[t])&&prior[t]>=0)||Math.abs(tokens.reduce((a,t)=>a+prior[t],0)-1)>1e-9))throw Error('first_order_invalid_prior');
+ const strength=bayes?(Number.isFinite(cfg.prior_strength)?clamp(cfg.prior_strength,1,100):24):0;
+ const probabilities=n?Object.fromEntries(tokens.map(t=>[t,(counts[t]+strength*(prior?.[t]||0))/(n+strength)])):null,mass=probabilities?probabilities.B+probabilities.P:0;
+ const audit={enabled:true,order:1,observations:n,minimum,counts,probabilities,prior_strength:strength,shrinkage:bayes,...(bayes?{prior:{...prior},method:"fixed_prior_bayesian_order1"}:{}),available:n>=minimum&&mass>0};
  if(!audit.available)return {...base,first_order_aux:{...audit,applied:false,delta:0,reason:'insufficient_first_order_support'}};
  const q=probabilities.B/mass,weight=limit(cfg.mix_weight,.02,.05),maxDelta=limit(cfg.max_delta,.001,.002);
  let delta=clamp(weight*(q-base.directional_pb),-maxDelta,maxDelta);
  if(base.direction==='Balanced'||side(2*(base.directional_pb+delta)-1)!==base.direction)delta=0;
  const bq=base.directional_pb+delta,dm=base.probabilities.B+base.probabilities.P;
- return {...base,probabilities:{B:dm*bq,P:dm*(1-bq),T:base.probabilities.T},directional_pb:bq,first_order_aux:{...audit,applied:delta!==0,base_directional_pb:base.directional_pb,raw_directional_pb:q,mix_weight:weight,max_delta:maxDelta,delta,reason:'bounded_first_order_no_prior'}};
+ return {...base,probabilities:{B:dm*bq,P:dm*(1-bq),T:base.probabilities.T},directional_pb:bq,first_order_aux:{...audit,applied:delta!==0,base_directional_pb:base.directional_pb,raw_directional_pb:q,mix_weight:weight,max_delta:maxDelta,delta,reason:bayes?'bounded_first_order_fixed_prior':'bounded_first_order_no_prior'}};
 }
 function estimate(seq,c={}){
  if(!Array.isArray(seq)||!seq.every(x=>tokens.includes(x)))throw Error('road_invalid_history');
