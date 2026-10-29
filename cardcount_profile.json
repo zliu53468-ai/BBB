@@ -566,7 +566,7 @@
   },
   "road_primary_v1": {
     "schema_version": 1,
-    "version": "CONTEXT_RECENCY_CONFLICT_V1",
+    "version": "ROAD_PRIMARY_ADAPTIVE_3_2_1_V2",
     "enabled": true,
     "order": 3,
     "window": 200,
@@ -607,37 +607,6 @@
         70,
         0.56
       ]
-    ],
-    "first_order_aux_v1": {
-      "schema_version": 1,
-      "enabled": true,
-      "min_observations": 12,
-      "mix_weight": 0.02,
-      "max_delta": 0.001
-    },
-    "context_mixture_v1": {
-      "schema_version": 1,
-      "enabled": true,
-      "order_priors": [
-        0.6,
-        0.3,
-        0.1
-      ],
-      "learning_rate": 0.25,
-      "evidence_cap": 8,
-      "support_strength": 24
-    },
-    "history_adaptation_v1": {
-      "schema_version": 1,
-      "enabled": true,
-      "count_decay": 0.97,
-      "score_decay": 0.96,
-      "short_window": 16,
-      "short_min_context": 6,
-      "min_extra_history": 8,
-      "short_prior_strength": 6,
-      "direction_margin": 0.015,
-      "disagreement_gap": 0.06
-    }
+    ]
   }
 }

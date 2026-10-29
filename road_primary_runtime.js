@@ -1,23 +1,7 @@
 /* Road/Markov primary candidate; Physics+PF is a bounded secondary correction. */
-(function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./context_mixture_runtime'):root?.__BBB_CONTEXT_MIXTURE__);if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.__BBB_ROAD_PRIMARY__=api;})(typeof window!=='undefined'?window:null,function(MIXTURE){
+(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.__BBB_ROAD_PRIMARY__=api;})(typeof window!=='undefined'?window:null,function(){
 'use strict';const tokens=['B','P','T'],clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v)),side=x=>Math.abs(x)<1e-12?'Balanced':x>0?'B':'P';
-function firstOrderAux(seq,base,c={}){
- const cfg=c.first_order_aux_v1;if(cfg?.enabled!==true||!base.available)return base;
- const limit=(v,f,max)=>Number.isFinite(v)?clamp(v,0,max):f;
- const history=seq.slice(-Math.max(4,Math.min(500,c.window??200))),context=history.at(-1),counts={B:0,P:0,T:0};
- for(let i=1;i<history.length;i++)if(history[i-1]===context)counts[history[i]]++;
- const n=counts.B+counts.P+counts.T,minimum=Number.isFinite(cfg.min_observations)?Math.max(12,Math.floor(cfg.min_observations)):12;
- const probabilities=n?Object.fromEntries(tokens.map(t=>[t,counts[t]/n])):null,mass=probabilities?probabilities.B+probabilities.P:0;
- const audit={enabled:true,order:1,observations:n,minimum,counts,probabilities,prior_strength:0,shrinkage:false,available:n>=minimum&&mass>0};
- if(!audit.available)return {...base,first_order_aux:{...audit,applied:false,delta:0,reason:'insufficient_first_order_support'}};
- const q=probabilities.B/mass,weight=limit(cfg.mix_weight,.02,.05),maxDelta=limit(cfg.max_delta,.001,.002);
- let delta=clamp(weight*(q-base.directional_pb),-maxDelta,maxDelta);
- if(base.direction==='Balanced'||side(2*(base.directional_pb+delta)-1)!==base.direction)delta=0;
- const bq=base.directional_pb+delta,dm=base.probabilities.B+base.probabilities.P;
- return {...base,probabilities:{B:dm*bq,P:dm*(1-bq),T:base.probabilities.T},directional_pb:bq,first_order_aux:{...audit,applied:delta!==0,base_directional_pb:base.directional_pb,raw_directional_pb:q,mix_weight:weight,max_delta:maxDelta,delta,reason:'bounded_first_order_no_prior'}};
-}
 function estimate(seq,c={}){
- if(c.context_mixture_v1?.enabled===true){if(!MIXTURE)throw Error('context_mixture_module_unavailable');return MIXTURE.estimate(seq,c);}
  if(!Array.isArray(seq)||!seq.every(x=>tokens.includes(x)))throw Error('road_invalid_history');
  const prior=c.prior||{B:.45,P:.45,T:.10},values=tokens.map(t=>prior[t]);if(!values.every(v=>Number.isFinite(v)&&v>=0)||Math.abs(values.reduce((a,b)=>a+b,0)-1)>1e-9)throw Error('road_invalid_prior');
  const history=seq.slice(-Math.max(4,Math.min(500,c.window??200))),minimum=Math.max(1,Math.floor(c.min_observations??12)),strength=Math.max(1,c.prior_strength??24);
@@ -25,7 +9,7 @@ function estimate(seq,c={}){
  for(;order>=1;order--){counts={B:0,P:0,T:0};n=0;const context=history.slice(-order).join('');for(let i=order;i<history.length;i++)if(history.slice(i-order,i).join('')===context){counts[history[i]]++;n++;}backoff.push({order,observations:n,eligible:n>=minimum});if(n>=minimum)break;}
  if(n<minimum)return {available:false,reason:'insufficient_road_context',history_rounds:seq.length,observations:n,minimum,backoff,order:Math.max(1,order),counts};
  const probabilities=Object.fromEntries(tokens.map(t=>[t,(counts[t]+strength*prior[t])/(n+strength)])),mass=probabilities.B+probabilities.P,q=probabilities.B/mass;
- return firstOrderAux(seq,{available:true,reason:'road_candidate_ready',history_rounds:seq.length,observations:n,minimum,backoff,order,counts,prior:{...prior},prior_strength:strength,probabilities,directional_pb:q,direction:side(2*q-1)},c);
+ return {available:true,reason:'road_candidate_ready',history_rounds:seq.length,observations:n,minimum,backoff,order,counts,prior:{...prior},prior_strength:strength,probabilities,directional_pb:q,direction:side(2*q-1)};
 }
 function combine(road,physical,c={}){
  if(!Array.isArray(physical)||physical.length!==48||!physical.every(Number.isFinite))throw Error('road_invalid_physics');
@@ -38,5 +22,5 @@ function combine(road,physical,c={}){
  const effective=Math.abs(pq-q)>1e-12?Math.abs(delta/(pq-q)):0;
  return {physics:out,audit:{enabled:true,version:'ROAD_PRIMARY_PHYSICS_ADJUSTMENT_V1',available:true,fallback:null,reason:'road_primary_physics_secondary',road,road_direction:road.direction,road_directional_pb:q,physical_probabilities:base,physical_directional_pb:pq,physics_trusted:trusted,physics_weight_requested:requested,physics_weight_effective:effective,road_weight_effective:1-effective,delta,max_delta:limit,mixed_probabilities:{B:out[23],P:out[24],T:out[25]},tie_mass_source:'physics_pf',ev_banker:out[39],ev_player:out[40]}};
 }
-return {estimate,combine,firstOrderAux};
+return {estimate,combine};
 });
