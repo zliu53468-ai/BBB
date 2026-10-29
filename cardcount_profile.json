@@ -566,7 +566,7 @@
   },
   "road_primary_v1": {
     "schema_version": 1,
-    "version": "ROAD_PRIMARY_PR78_FIRST_ORDER_AUX_V1",
+    "version": "PR83_CAUSAL_CONTEXT_MIXTURE_V1",
     "enabled": true,
     "order": 3,
     "window": 200,
@@ -614,6 +614,18 @@
       "min_observations": 12,
       "mix_weight": 0.02,
       "max_delta": 0.001
+    },
+    "context_mixture_v1": {
+      "schema_version": 1,
+      "enabled": true,
+      "order_priors": [
+        0.6,
+        0.3,
+        0.1
+      ],
+      "learning_rate": 0.25,
+      "evidence_cap": 8,
+      "support_strength": 24
     }
   }
 }

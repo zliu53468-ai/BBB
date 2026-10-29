@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('assert/strict'),R=require('./road_primary_runtime'),{make}=require('./test_pf_primary_runtime');
-const c=require('./cardcount_profile.json').road_primary_v1;
+const c={...require('./cardcount_profile.json').road_primary_v1,context_mixture_v1:{enabled:false}};
 assert.equal(c.order,3);
 const a=R.estimate(Array(30).fill('B'),c);assert.equal(a.order,3);assert.equal(a.backoff.length,1);
 let seed=12345,seen=new Set();

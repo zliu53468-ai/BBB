@@ -1,5 +1,5 @@
 /* Road/Markov primary candidate; Physics+PF is a bounded secondary correction. */
-(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.__BBB_ROAD_PRIMARY__=api;})(typeof window!=='undefined'?window:null,function(){
+(function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./context_mixture_runtime'):root?.__BBB_CONTEXT_MIXTURE__);if(typeof module==='object'&&module.exports)module.exports=api;if(root)root.__BBB_ROAD_PRIMARY__=api;})(typeof window!=='undefined'?window:null,function(MIXTURE){
 'use strict';const tokens=['B','P','T'],clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v)),side=x=>Math.abs(x)<1e-12?'Balanced':x>0?'B':'P';
 function firstOrderAux(seq,base,c={}){
  const cfg=c.first_order_aux_v1;if(cfg?.enabled!==true||!base.available)return base;
@@ -17,6 +17,7 @@ function firstOrderAux(seq,base,c={}){
  return {...base,probabilities:{B:dm*bq,P:dm*(1-bq),T:base.probabilities.T},directional_pb:bq,first_order_aux:{...audit,applied:delta!==0,base_directional_pb:base.directional_pb,raw_directional_pb:q,mix_weight:weight,max_delta:maxDelta,delta,reason:'bounded_first_order_no_prior'}};
 }
 function estimate(seq,c={}){
+ if(c.context_mixture_v1?.enabled===true){if(!MIXTURE)throw Error('context_mixture_module_unavailable');return MIXTURE.estimate(seq,c);}
  if(!Array.isArray(seq)||!seq.every(x=>tokens.includes(x)))throw Error('road_invalid_history');
  const prior=c.prior||{B:.45,P:.45,T:.10},values=tokens.map(t=>prior[t]);if(!values.every(v=>Number.isFinite(v)&&v>=0)||Math.abs(values.reduce((a,b)=>a+b,0)-1)>1e-9)throw Error('road_invalid_prior');
  const history=seq.slice(-Math.max(4,Math.min(500,c.window??200))),minimum=Math.max(1,Math.floor(c.min_observations??12)),strength=Math.max(1,c.prior_strength??24);
