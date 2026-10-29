@@ -1,0 +1,607 @@
+{
+  "schema_version": 1,
+  "data_kind": "synthetic_checkpoint_smoke_not_complete_shoe_holdout",
+  "seed": 2026102913,
+  "shoes": 5,
+  "checkpoints": [
+    10,
+    30,
+    50,
+    70
+  ],
+  "cases": 20,
+  "full_shoe_backtest": false,
+  "cold_checkpoint_evaluation": true,
+  "promotion_allowed": false,
+  "reason": "20 isolated checkpoints cannot establish accuracy improvement or streak stability",
+  "baseline": {
+    "cases": 20,
+    "reference_directions": {
+      "B": 12,
+      "P": 8,
+      "Balanced": 0,
+      "unavailable": 0
+    },
+    "bets": 2,
+    "bet_wins": 2,
+    "bet_losses": 0,
+    "bet_pushes": 0,
+    "profit": 2,
+    "reference_wins": 8,
+    "reference_resolved": 19,
+    "brier_sum": 4.662856080067106,
+    "brier_n": 19,
+    "action_rate": 0.1,
+    "reference_hit_rate": 0.42105263157894735,
+    "bet_hit_rate": 1,
+    "realized_ev_per_bet": 1,
+    "realized_ev_per_opportunity": 0.1,
+    "brier": 0.24541347789826876
+  },
+  "pf_primary": {
+    "cases": 20,
+    "reference_directions": {
+      "B": 20,
+      "P": 0,
+      "Balanced": 0,
+      "unavailable": 0
+    },
+    "bets": 0,
+    "bet_wins": 0,
+    "bet_losses": 0,
+    "bet_pushes": 0,
+    "profit": 0,
+    "reference_wins": 8,
+    "reference_resolved": 19,
+    "brier_sum": 4.764376696770426,
+    "brier_n": 19,
+    "action_rate": 0,
+    "reference_hit_rate": 0.42105263157894735,
+    "bet_hit_rate": null,
+    "realized_ev_per_bet": null,
+    "realized_ev_per_opportunity": 0,
+    "brier": 0.25075666825107507
+  },
+  "rows": [
+    {
+      "shoe_id": 0,
+      "round": 10,
+      "actual": "P",
+      "baseline": {
+        "direction": "P",
+        "reference": "P",
+        "probabilities": {
+          "B": 0.43113135575107675,
+          "P": 0.45928687480490665,
+          "T": 0.1095817694440167
+        },
+        "q": 0.48418972226329565
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4577595809374865,
+          "P": 0.4473291788341426,
+          "T": 0.09491124022837094
+        },
+        "q": 0.505762087966917,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 0,
+      "round": 30,
+      "actual": "P",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.459246902442906,
+          "P": 0.4472463340616004,
+          "T": 0.0935067634954936
+        },
+        "q": 0.506619226651696
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.45922995230781966,
+          "P": 0.4451540995251923,
+          "T": 0.095615948166988
+        },
+        "q": 0.5077820107254757,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 0,
+      "round": 50,
+      "actual": "B",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.46180498798522457,
+          "P": 0.4405357470787353,
+          "T": 0.09765926493604006
+        },
+        "q": 0.5117855927810805
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4622876910989091,
+          "P": 0.44192761370996925,
+          "T": 0.09578469519112172
+        },
+        "q": 0.5112584233426812,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 0,
+      "round": 70,
+      "actual": "B",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "P",
+        "probabilities": {
+          "B": 0.4434803686907914,
+          "P": 0.44605699497445456,
+          "T": 0.1104626363347541
+        },
+        "q": 0.4985517042965759
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.45755923877902266,
+          "P": 0.44608332366721853,
+          "T": 0.09635743755375883
+        },
+        "q": 0.5063498088673124,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 1,
+      "round": 10,
+      "actual": "P",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4528414555143447,
+          "P": 0.4509315177470263,
+          "T": 0.09622702673862907
+        },
+        "q": 0.5010566468703009
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4595544159753125,
+          "P": 0.4464229188901409,
+          "T": 0.09402266513454668
+        },
+        "q": 0.5072471443709581,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 1,
+      "round": 30,
+      "actual": "P",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4626967964518974,
+          "P": 0.44458857750199793,
+          "T": 0.09271462604610474
+        },
+        "q": 0.5099793402769103
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4565874813137527,
+          "P": 0.4519589910046018,
+          "T": 0.0914535276816456
+        },
+        "q": 0.5025471951354015,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 1,
+      "round": 50,
+      "actual": "B",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4677421060328094,
+          "P": 0.4268819606268994,
+          "T": 0.10537593334029112
+        },
+        "q": 0.52283648905091
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4580148723150837,
+          "P": 0.4460682465857267,
+          "T": 0.09591688109918962
+        },
+        "q": 0.5066070394854191,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 1,
+      "round": 70,
+      "actual": "P",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "P",
+        "probabilities": {
+          "B": 0.40247386082835257,
+          "P": 0.5023891457356892,
+          "T": 0.09513699343595822
+        },
+        "q": 0.444789827751531
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4634277479618959,
+          "P": 0.44120377589410975,
+          "T": 0.09536847614399434
+        },
+        "q": 0.5122834388818643,
+        "raw_direction": "B",
+        "conflict": true
+      }
+    },
+    {
+      "shoe_id": 2,
+      "round": 10,
+      "actual": "P",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4616151445309575,
+          "P": 0.448051631391473,
+          "T": 0.0903332240775695
+        },
+        "q": 0.5074552096979307
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4606118155420742,
+          "P": 0.44736066125122276,
+          "T": 0.09202752320670306
+        },
+        "q": 0.5072971123186745,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 2,
+      "round": 30,
+      "actual": "B",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4559178354762745,
+          "P": 0.4493596192756384,
+          "T": 0.09472254524808717
+        },
+        "q": 0.5036222133701724
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4606878954632451,
+          "P": 0.4459015002347427,
+          "T": 0.09341060430201223
+        },
+        "q": 0.5081549570834757,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 2,
+      "round": 50,
+      "actual": "T",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4610053130468709,
+          "P": 0.4354179781672873,
+          "T": 0.10357670878584177
+        },
+        "q": 0.5142719043170593
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4583643564931272,
+          "P": 0.4491180039911578,
+          "T": 0.09251763951571508
+        },
+        "q": 0.5050945081164084,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 2,
+      "round": 70,
+      "actual": "P",
+      "baseline": {
+        "direction": "P",
+        "reference": "P",
+        "probabilities": {
+          "B": 0.43896729837584264,
+          "P": 0.46826855541851137,
+          "T": 0.09276414620564598
+        },
+        "q": 0.4838513563368768
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4607694655887054,
+          "P": 0.4454057567133651,
+          "T": 0.09382477769792955
+        },
+        "q": 0.5084772285189557,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 3,
+      "round": 10,
+      "actual": "B",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "P",
+        "probabilities": {
+          "B": 0.44718555823007794,
+          "P": 0.4524787872863217,
+          "T": 0.10033565448360035
+        },
+        "q": 0.49705822005583344
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.45678379278671405,
+          "P": 0.4464190901107498,
+          "T": 0.09679711710253618
+        },
+        "q": 0.5057377488891058,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 3,
+      "round": 30,
+      "actual": "B",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "P",
+        "probabilities": {
+          "B": 0.4390946050948649,
+          "P": 0.46124016455952077,
+          "T": 0.09966523034561423
+        },
+        "q": 0.48770148604104396
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4633737010100285,
+          "P": 0.44275715123090187,
+          "T": 0.09386914775906965
+        },
+        "q": 0.5113761438141855,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 3,
+      "round": 50,
+      "actual": "P",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4645154267748601,
+          "P": 0.44513692257598786,
+          "T": 0.09034765064915207
+        },
+        "q": 0.5106515990491869
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4597582690174903,
+          "P": 0.4442017309825351,
+          "T": 0.09603999999997453
+        },
+        "q": 0.5086046606237857,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 3,
+      "round": 70,
+      "actual": "P",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.45515787862484514,
+          "P": 0.4468711338870518,
+          "T": 0.09797098748810311
+        },
+        "q": 0.5045933914668205
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.45947667069789355,
+          "P": 0.44517918388745303,
+          "T": 0.09534414541465347
+        },
+        "q": 0.5079021689507519,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 4,
+      "round": 10,
+      "actual": "B",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.459145028580882,
+          "P": 0.44861897912266613,
+          "T": 0.09223599229645182
+        },
+        "q": 0.5057977896065986
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.46004054365606883,
+          "P": 0.4438498249833456,
+          "T": 0.09610963136058556
+        },
+        "q": 0.5089561296560192,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 4,
+      "round": 30,
+      "actual": "P",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "P",
+        "probabilities": {
+          "B": 0.4327753550717859,
+          "P": 0.47385222660297804,
+          "T": 0.0933724183252361
+        },
+        "q": 0.4773463369295951
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4541805840626195,
+          "P": 0.45029398056341796,
+          "T": 0.0955254353739626
+        },
+        "q": 0.5021485421764229,
+        "raw_direction": "B",
+        "conflict": true
+      }
+    },
+    {
+      "shoe_id": 4,
+      "round": 50,
+      "actual": "P",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4585054391078854,
+          "P": 0.45131185931326295,
+          "T": 0.09018270157885161
+        },
+        "q": 0.5039533100805546
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4582922965206648,
+          "P": 0.44699541913482893,
+          "T": 0.09471228434450635
+        },
+        "q": 0.5062393851095484,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    },
+    {
+      "shoe_id": 4,
+      "round": 70,
+      "actual": "B",
+      "baseline": {
+        "direction": "Skip",
+        "reference": "P",
+        "probabilities": {
+          "B": 0.4529439371726799,
+          "P": 0.45372711672604343,
+          "T": 0.09332894610127673
+        },
+        "q": 0.4995681016009082
+      },
+      "pf_primary": {
+        "direction": "Skip",
+        "reference": "B",
+        "probabilities": {
+          "B": 0.4550800000000154,
+          "P": 0.44674000000000996,
+          "T": 0.09817999999997461
+        },
+        "q": 0.5046239826129412,
+        "raw_direction": "B",
+        "conflict": false
+      }
+    }
+  ]
+}

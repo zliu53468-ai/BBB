@@ -550,5 +550,18 @@
       "enabled": true,
       "max_delta": 0.006
     }
+  },
+  "pf_primary_v1": {
+    "schema_version": 1,
+    "version": "PF_PRIMARY_PHYSICS_SECONDARY_V1",
+    "enabled": false,
+    "allow_query_test": true,
+    "physics_weight": 0.08,
+    "max_physics_weight": 0.12,
+    "max_delta": 0.004,
+    "max_physics_noise": 0.7,
+    "max_physics_uncertainty": 0.7,
+    "conflict_gap": 0.04,
+    "accuracy_validated": false
   }
 }

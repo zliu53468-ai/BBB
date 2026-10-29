@@ -17,6 +17,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --check final_probability_runtime.js && node --check auth-client.js
+      - run: node test_pf_primary.js && node test_pf_primary_runtime.js && node test_pf_primary_rollback.js
       - run: node test_point_card_sampling.js && node test_point_card_rollback.js
       - run: node test_physics_forecast_first.js
       - run: node test_final_probability_runtime.js
