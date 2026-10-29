@@ -5,11 +5,11 @@ function estimate(seq,c={}){
  if(!Array.isArray(seq)||!seq.every(x=>tokens.includes(x)))throw Error('road_invalid_history');
  const prior=c.prior||{B:.45,P:.45,T:.10},values=tokens.map(t=>prior[t]);if(!values.every(v=>Number.isFinite(v)&&v>=0)||Math.abs(values.reduce((a,b)=>a+b,0)-1)>1e-9)throw Error('road_invalid_prior');
  const history=seq.slice(-Math.max(4,Math.min(500,c.window??200))),minimum=Math.max(1,Math.floor(c.min_observations??12)),strength=Math.max(1,c.prior_strength??24);
- let counts={B:0,P:0,T:0},n=0,order=Math.max(1,Math.min(2,c.order??2));
- for(;order>=1;order--){counts={B:0,P:0,T:0};n=0;const context=history.slice(-order).join('');for(let i=order;i<history.length;i++)if(history.slice(i-order,i).join('')===context){counts[history[i]]++;n++;}if(n>=minimum)break;}
- if(n<minimum)return {available:false,reason:'insufficient_road_context',history_rounds:seq.length,observations:n,minimum,order:Math.max(1,order),counts};
+ const backoff=[];let counts={B:0,P:0,T:0},n=0,order=Math.max(1,Math.min(3,c.order??2));
+ for(;order>=1;order--){counts={B:0,P:0,T:0};n=0;const context=history.slice(-order).join('');for(let i=order;i<history.length;i++)if(history.slice(i-order,i).join('')===context){counts[history[i]]++;n++;}backoff.push({order,observations:n,eligible:n>=minimum});if(n>=minimum)break;}
+ if(n<minimum)return {available:false,reason:'insufficient_road_context',history_rounds:seq.length,observations:n,minimum,backoff,order:Math.max(1,order),counts};
  const probabilities=Object.fromEntries(tokens.map(t=>[t,(counts[t]+strength*prior[t])/(n+strength)])),mass=probabilities.B+probabilities.P,q=probabilities.B/mass;
- return {available:true,reason:'road_candidate_ready',history_rounds:seq.length,observations:n,minimum,order,counts,prior:{...prior},prior_strength:strength,probabilities,directional_pb:q,direction:side(2*q-1)};
+ return {available:true,reason:'road_candidate_ready',history_rounds:seq.length,observations:n,minimum,backoff,order,counts,prior:{...prior},prior_strength:strength,probabilities,directional_pb:q,direction:side(2*q-1)};
 }
 function combine(road,physical,c={}){
  if(!Array.isArray(physical)||physical.length!==48||!physical.every(Number.isFinite))throw Error('road_invalid_physics');

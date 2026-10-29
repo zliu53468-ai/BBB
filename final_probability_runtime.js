@@ -31,6 +31,8 @@ function pfPrimaryTag(){const road=roadPrimaryConfig();if(road)return "road:"+JS
 function pointCardSamplingTag(){const p=cardcountProfile?.pf?.point_card_sampling;return p?.enabled===true?JSON.stringify(p):null;}
 function profileValue(key,roundIndex){
   if(!cardcountProfile?.enabled)return null;
+  const roadAnchors=roadPrimaryConfig()?.decision_alpha_anchors;
+  if(key==='decision_alpha'&&Array.isArray(roadAnchors)&&roadAnchors.length>=2&&roadAnchors.every((v,i,a)=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)&&v[0]>=1&&v[0]<=70&&v[1]>=.35&&v[1]<=.75&&(!i||v[0]>a[i-1][0])))return interpAnchors(clip(roundIndex,1,70),roadAnchors);
   const tuning=cardcountProfile.pf_weight_smoothing_v1,points=tuning?.anchors?.[key],bounds=key==='pf_max'?[.06,.16]:[.35,.75];
   const valid=['pf_max','decision_alpha'].includes(key)&&Array.isArray(points)&&points.length>=2&&points.every((v,i,a)=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)&&v[0]>=1&&v[0]<=70&&v[1]>=bounds[0]&&v[1]<=bounds[1]&&(!i||v[0]>a[i-1][0]));
   return interpAnchors(clip(roundIndex,1,70),tuning?.enabled&&valid?points:cardcountProfile.anchors[key]);
@@ -1086,7 +1088,7 @@ function installUI(){
   const gapControl=document.getElementById("forecastGap");
   if(gapControl)gapControl.addEventListener("change",()=>{
     const value=Number(gapControl.value);
-    if([.01,.02,.03].includes(value)){displayGapOverride=value;refreshTest();}
+    if([.005,.01,.02,.03].includes(value)){displayGapOverride=value;refreshTest();}
   });
   const fieldIds=["macroCardCount","macroPlayerScore","macroBankerScore"];
   const clearFields=()=>{for(const id of fieldIds){const e=document.getElementById(id);if(e)e.value="";}};
