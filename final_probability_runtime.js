@@ -813,6 +813,8 @@ function applyFinalPrediction(seq,corePrediction=null){
     const aligned=candidate==="B"?finalPB>.5:candidate==="P"?finalPB<.5:false;
     const basePass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=baseBand&&candidateEdge>baseActivation;
 
+    const historyWatch=roadConfig?.history_adaptation_v1?.enabled?window.__BBB_CONTEXT_MIXTURE__?.assess(seq,roadConfig,{available:true,directional_pb:finalPB}):null;
+    if(historyWatch&&roadAudit)roadAudit.history_adaptation=historyWatch;
     executionOrder.push("volume_guard");
     const measuredGuard=volumeGuardState(roundIndex,finalPB,policy);
     const guard=hitrate?{...measuredGuard,active:false,bandRelief:0,evRelief:0}:measuredGuard;
@@ -821,7 +823,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     if(hitrate)hitrateAudit=hitrateGate(pfPrimary?.raw_pf_direction??markov?.direction??"Balanced",evBanker,evPlayer,roundIndex,primary.noise,primary.uncertainty,particleDiagnostics?.particle_quality,hitrate);
     if(pfPrimary?.forced_skip_by_conflict){if(!hitrateAudit)hitrateAudit={passed:false,reasons:[]};hitrateAudit.passed=false;hitrateAudit.reasons.push('pf_physics_conflict');}
     if(hitrateAudit)hitrateAudit.volume_guard={...measuredGuard,selective_only:true,relief_applied:false};
-    const direction=(basePass||guardedPass)&&(!hitrate||hitrateAudit.passed)&&pfPrimary?.forced_skip_by_conflict!==true?candidate:"Skip";
+    const direction=(basePass||guardedPass)&&(!hitrate||hitrateAudit.passed)&&pfPrimary?.forced_skip_by_conflict!==true&&historyWatch?.forced_skip!==true?candidate:"Skip";
     const entryTier=direction==="Skip"?"skip":distance>=effectiveBand+policy.strongMargin?"strong":"weak";
     evDecision={
       pTie:primary.pT,pPlayer,evBanker,evPlayer,
@@ -1073,6 +1075,7 @@ function renderPrediction(p,n){
   if(noSkipTestActive&&el("message"))el("message").textContent=ready?"不觀望測試：每次報結果後自動更新下一局；不列入正式下注"+(f.directional.B===f.directional.P?(hitrateConfig()?"；五五波顯示均衡，不虛構方向":"；五五波固定以莊作測試方向，無機率優勢"):""):"不觀望測試：模型未就緒，暫無測試方向";
   if(noSkipTestActive&&ready&&p.experimental_no_skip?.active&&el("message"))el("message").textContent="未驗證實驗版：每局更新下一局方向，不保證勝率；不列入正式下注"+(f.directional.B===f.directional.P?"；五五波以莊作研究方向，沒有機率優勢":"");
   if(p.road_primary?.enabled&&el("modePill"))el("modePill").textContent=p.road_primary.available?"牌路主導／算牌微調測試":"算牌暫代／牌路樣本不足";
+  if(p.road_primary?.history_adaptation?.forced_skip&&el("message"))el("message").textContent+="；正式下注觀望：近期與整體訊號分歧";
   if(p.road_primary?.enabled&&el("message"))el("message").textContent+="；牌路主導實驗版，未驗證命中率提升";
   if(p.pf_primary?.enabled&&el("modePill"))el("modePill").textContent="PF主導／Physics輔助測試";
   if(p.pf_primary?.enabled&&el("message"))el("message").textContent+="；PF主導測試，未證實命中率改善";

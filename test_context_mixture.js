@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('assert/strict'),M=require('./context_mixture_runtime'),R=require('./road_primary_runtime'),old=require('./validation/road_primary_pr83.cjs'),{make,plain}=require('./test_pf_primary_runtime');
-const c=require('./cardcount_profile.json').road_primary_v1,off={...c,context_mixture_v1:{...c.context_mixture_v1,enabled:false}};
+const c={...require('./cardcount_profile.json').road_primary_v1,history_adaptation_v1:{enabled:false}},off={...c,context_mixture_v1:{...c.context_mixture_v1,enabled:false}};
 for(const n of [0,13,15,30,70])assert.deepEqual(R.estimate(Array(n).fill('B'),off),old.estimate(Array(n).fill('B'),c));
 const h=Array(30).fill('B'),r=M.estimate(h,c);assert(r.available);assert(!r.first_order_aux);assert.equal(r.context_mixture.first_order_aux_bypassed,true);const experts=r.context_mixture.experts;assert(Math.abs(experts.reduce((s,e)=>s+e.weight,0)-1)<1e-12);for(const t of ['B','P','T'])assert(Math.abs(r.probabilities[t]-experts.reduce((s,e)=>s+e.weight*e.probabilities[t],0))<1e-12);assert(experts.every(e=>Math.abs(e.log_evidence)<=8));assert(!experts.some(e=>e.weight===1));
 const x=M.estimate(Array(14).fill('B'),c).context_mixture.experts;assert.equal(x[0].evaluated_predictions,1);assert(Math.abs(x[0].log_evidence-Math.log(((12+24*.45)/36)/.45))<1e-12);assert.equal(x[1].evaluated_predictions,0);assert.equal(x[2].evaluated_predictions,0);
