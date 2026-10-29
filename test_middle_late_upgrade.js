@@ -36,7 +36,7 @@ function memory(){const map=new Map();return {getItem:k=>map.get(k)??null,setIte
   for(const r of [24,45,50,60,70]){
     assert(a.api.dynamicEmaAlpha(r,.4,{},null,{physics_uncertainty:.3})>b.api.dynamicEmaAlpha(r,.4,{},null,{physics_uncertainty:.3}));
     const h=Array.from({length:r-1},(_,i)=>"BBPPT"[i%5]),p=a.api.applyFinalPrediction(h),d=p.finalProbability.particleDiagnostics;
-    assert.equal(d.forecast_draws,r<48?4:5);assert(d.blend_weight<=.16);assert.equal(d.particle_count,500);assert.equal(d.persistent_state,false);
+    assert.equal(d.forecast_draws,r<48?4:5);assert(d.blend_weight<=.16);assert.equal(d.particle_count,1000);assert.equal(d.persistent_state,false);
     assert.equal(p.finalProbability.physics.length,48);assert.equal(p.finalProbability.extended.length,57);
     assert(p.direction==="Skip"||p.direction===p.finalProbability.primary_candidate);
     if(p.direction!=="Skip")assert((p.direction==="B"?p.ev_banker:p.ev_player)>0);

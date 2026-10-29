@@ -2,10 +2,10 @@
 "use strict";
 
 /*
-Fixed-500 stateless baccarat particle posterior for the browser runtime.
+Fixed-1000 stateless baccarat particle posterior for the browser runtime.
 
 Important semantics:
-- Every prediction call starts from 500 fresh eight-deck particles.
+- Every prediction call starts from 1000 fresh eight-deck particles.
 - No particle array, weights, ESS, or resampling state is carried from the
   previous prediction. The current B/P/T history is replayed from scratch.
 - B/P/T is the only observation. Hidden ranks/points are conditional
@@ -14,8 +14,8 @@ Important semantics:
   allowed to flip the Direct Physics B/P side by itself.
 */
 
-const VERSION="PARTICLE500_STATELESS_V1";
-const PARTICLE_COUNT=500;
+const VERSION="PARTICLE1000_STATELESS_V1";
+const PARTICLE_COUNT=1000;
 const LIKELIHOOD_DRAWS=2;
 const FALLBACK_DRAWS=2;
 const FORECAST_DRAWS=1;

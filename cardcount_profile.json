@@ -444,7 +444,7 @@
   },
   "experimental_no_skip_v1": {
     "schema_version": 1,
-    "enabled": true,
+    "enabled": false,
     "release_status": "user_accepted_unvalidated_experiment",
     "applies_to": "no_skip_test_only",
     "version": "bounded_platt_1_20261028",
@@ -473,6 +473,14 @@
       "statistical_checks_passed": false,
       "upper_bound_is_not_a_model_setting": true
     },
-    "expected_model_fingerprint": "46ed64c2"
+    "expected_model_fingerprint": "46ed64c2",
+    "disabled_reason": "500-particle calibrator not validated for 1000 particles; preserve weights without bypassing fingerprint"
+  },
+  "pf_release": {
+    "schema_version": 1,
+    "version": "PF1000_STATELESS_V1",
+    "particle_count": 1000,
+    "prior_particle_count": 500,
+    "accuracy_validated": false
   }
 }

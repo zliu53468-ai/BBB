@@ -1,3 +1,5 @@
+> PF1000測試版：每次獨立重建1,000粒子；原500粒子專用實驗校準暫停，未證明命中率提升。見 [PF1000_UPGRADE.md](PF1000_UPGRADE.md)。
+
 > 最新：中後段分段平滑、PF 抽樣與本機校準升級，前 1～20 局對照鎖定；完整重訓另有 middle_late_focus 候選設定，正式權重未替換。見 [MIDDLE_LATE_UPGRADE.md](MIDDLE_LATE_UPGRADE.md)。
 
 > 最新：所有開通成功的瀏覽器自動逐局累積本機校準，資料留在各瀏覽器；這不是完整模型重訓。詳見 [BROWSER_LOCAL_CALIBRATION.md](BROWSER_LOCAL_CALIBRATION.md)。

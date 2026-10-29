@@ -683,7 +683,7 @@ function setNoSkipTestMode(active){noSkipTestActive=active===true;refreshNoSkipL
 function getExperimentalStatus(history=readHistory()){const c=experimentalContext();return {enabled:!!c,active:noSkipTestActive&&!!c,unvalidated:true,version:c?.config.version||null,tag:c?.tag||null,calibration:c?c.client.inspect(history,getShoeId(),c.tag,localCalibrationConfig()):null,audit_storage_error:experimentalStorageError};}
 
 function applyFinalPrediction(seq,corePrediction=null){
-  // B/P/T -> Direct Physics 213D->48D -> stateless PF500 -> Physical EV -> Physics candidate
+  // B/P/T -> Direct Physics 213D->48D -> stateless PF1000 -> Physical EV -> Physics candidate
   // -> Clip/EMA -> Frozen Core + 57D XGB -> Final EV Guard -> Volume Guard.
   const hitrate=hitrateConfig();let markov=null,hitrateAudit=null;
   let particleDiagnostics=null;
@@ -698,7 +698,7 @@ function applyFinalPrediction(seq,corePrediction=null){
       executionOrder.push("direct_physics");
       physicsDirect=predictPhysics(seq);
       physics=physicsDirect;
-      // Each estimate creates 500 new particles and replays this history only.
+      // Each estimate creates 1000 new particles and replays this history only.
       // Keep Direct Physics as a safe fallback if the optional particle layer fails.
       if(PARTICLE500&&typeof PARTICLE500.estimate==="function"){
         try{
@@ -999,7 +999,7 @@ async function loadModels(){
   if(gapControl){gapControl.disabled=!cardcountProfile?.enabled;if(displayGapOverride===null)gapControl.value=String(cardcountProfile?.enabled?cardcountProfile.display_gap:0);}
   if(!valid)status.errors.push("cardcount_profile_fallback");
   if(status.physics&&status.final56&&!modelSemanticsCompatible()){status.final56=false;status.errors.push("feature_semantics_mismatch");}
-  browserCalibrationTag=status.physics&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(VERSION,physicsBundle,final56Bundle,localCalibrationConfig()):"unready";
+  browserCalibrationTag=status.physics&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(VERSION,physicsBundle,final56Bundle,localCalibrationConfig(),PARTICLE500?.version):"unready";
   cachedPhysicsFingerprint=physicsBundle&&LOCAL_CALIBRATION_API?LOCAL_CALIBRATION_API.fingerprint(physicsBundle):"";
   refreshNoSkipLabels();
   renderLocalCalibrationStatus(readHistory());
@@ -1034,7 +1034,7 @@ function renderPrediction(p,n){
   el("regime").textContent=!ready?"模型未就緒":noSkipTestActive?(p.experimental_no_skip?.active?"未驗證實驗方向（不列入正式下注）":"測試方向（不列入正式下注）"):p.direction==="Skip"?"下注觀望（仍有機率方向）":p.direction==="B"?"下注條件：莊":"下注條件：閒";
   el("strength").textContent=ready?(f.probabilities.T*100).toFixed(2)+"%":"—";
   orb.className="direction-orb "+(!ready||!isB&&!isP?"":isB?"banker":"player");
-  if(el("modePill"))el("modePill").textContent=noSkipTestActive?(p.experimental_no_skip?.active?"未驗證實驗版":"全程不觀望測試"):ready?(f.source==="direct_physics_particle500_winner_head"?"Physics＋PF500 機率方向":"Direct Physics 機率方向"):"模型未就緒";
+  if(el("modePill"))el("modePill").textContent=noSkipTestActive?(p.experimental_no_skip?.active?"未驗證實驗版":"全程不觀望測試"):ready?(f.source==="direct_physics_particle500_winner_head"?"Physics＋PF1000 機率方向":"Direct Physics 機率方向"):"模型未就緒";
   if(el("roundCount"))el("roundCount").textContent=n;
   if(el("message"))el("message").textContent="第 "+(n+1)+" 局分析完成"+(ready?(f.weak_signal?"；莊閒接近五五波":"；莊閒百分比已排除和局，和局另列")+(f.uncertainty>=.85?"；模型不確定性偏高":""):"");
   if(!noSkipTestActive&&ready&&shownDirection==="Skip"&&el("message"))el("message").textContent+="；機率差未達 "+((displayGapOverride??cardcountProfile.display_gap)*100).toFixed(1)+" 個百分點，方向觀望";
