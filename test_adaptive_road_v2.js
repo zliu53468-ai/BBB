@@ -10,6 +10,6 @@ const two=R.estimate(Array.from({length:50},(_,i)=>i%2?'P':'B'),{...c,min_observ
 assert.equal(R.estimate(['B','P'],c).available,false);assert.deepEqual(R.estimate(Array(30).fill('B'),c),a);
 (async()=>{const {api}=await make({road:true});assert.equal(api.profileValue('decision_alpha',1),.38);assert.equal(api.profileValue('decision_alpha',70),.56);assert(Math.abs(api.profileValue('decision_alpha',25)-.41)<1e-12);
 const f=q=>({available:true,directional:{B:q,P:1-q},direction:q>.5?'B':'P'});
-assert.equal(api.displayDirection(f(.5024)),'Skip');assert.equal(api.displayDirection(f(.5025)),'B');assert.equal(api.displayDirection(f(.4975)),'P');
+assert.equal(api.displayDirection(f(.5049)),'Skip');assert.equal(api.displayDirection(f(.505)),'B');assert.equal(api.displayDirection(f(.495)),'P');
 const off=await make();assert.equal(off.api.roadPrimaryConfig(),null);assert.equal(off.api.profileValue('decision_alpha',1),.42);
-console.log('PASS adaptive 3/2/1, causal rebuild, EMA anchors, 0.5pp and rollback');})().catch(e=>{console.error(e);process.exitCode=1;});
+console.log('PASS adaptive 3/2/1, causal rebuild, EMA anchors, 1pp and rollback');})().catch(e=>{console.error(e);process.exitCode=1;});
