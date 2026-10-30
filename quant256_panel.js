@@ -70,7 +70,11 @@ function scoreTwoArms(vector,quant=null){
 function context256(seq){
   const frozen=root.__BGS256_TEST__;
   if(!frozen||typeof frozen.context256!=="function")throw Error("missing frozen 256D diagnostics");
-  const old=frozen.context256(seq),engine=Engine.fromHistory(seq);
+  const old=frozen.context256(seq),rows=root.__BBB_QUANT256_OBSERVED_ROUNDS__;
+  if(rows!==undefined&&(!Array.isArray(rows)||rows.length!==seq.length||
+    rows.some((r,i)=>!r||r.outcome!==seq[i]||!Array.isArray(r.observation?.cards))))
+    throw Error("observed_rounds_do_not_match_current_shoe");
+  const engine=Engine.fromHistory(rows===undefined?seq:rows);
   root.__BBB_SHOE_QUANT_ENGINE__=engine;
   // V5 explicitly decouples both 128D blocks. The old vector is only a
   // diagnostic baseline. No road coordinate can reach LinUCB on this panel.
@@ -135,7 +139,17 @@ if(start)start.addEventListener("click",function(e){
   try{run();}catch(err){const m=el("message");if(m)m.textContent="Quant256 計算失敗："+err.message;}
 },true);
 root.__BBB_QUANT256_TEST__={
-  context256,scoreTwoArms,run,history,mode:"experimental_v6_cpsi_hazard",
+  context256,scoreTwoArms,run,history,
+  // Caller supplies a complete shoe-aligned list of {outcome,observation:{cards}}
+  // with 4..6 observed 0..9 points; rows remain memory-only and are
+  // discarded at the end-of-shoe reload. Do not fabricate missing cards.
+  setObservedRounds(rows){
+    if(rows===null){delete root.__BBB_QUANT256_OBSERVED_ROUNDS__;return;}
+    if(!Array.isArray(rows)||rows.some(r=>!r||!["B","P","T"].includes(r.outcome)||
+      !Array.isArray(r.observation?.cards)))throw Error("invalid_observed_rounds");
+    root.__BBB_QUANT256_OBSERVED_ROUNDS__=JSON.parse(JSON.stringify(rows));
+  },
+  mode:"experimental_v6_cpsi_hazard",
   wager_recommendation_validated:false
 };
 })(typeof window!=="undefined"?window:null);
