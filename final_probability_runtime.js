@@ -27,10 +27,10 @@ const VERSION=EV_CONSISTENCY_V1
 const PHYSICS_URL="physics_multitask_model.json";
 let cardcountProfile=null,displayGapOverride=null,dualFusionModel=null,dualPF=null,dualPFTag="",pfLightCache=null;
 function bayesMarkovConfig(){const c=cardcountProfile?.bayes_markov_final_v1;return c?.enabled===true?c:null;}
-function bayesPipelineTag(){const c={...bayesMarkovConfig()};if(c.pf_light_v1?.enabled!==true)delete c.pf_light_v1;if(c.physics_correction_v1?.enabled!==true)delete c.physics_correction_v1;if(c.xgb_adaptive_v1?.enabled!==true){delete c.xgb_adaptive_v1;c.xgb_influence=0;}return JSON.stringify(c.pf_light_v1?.enabled===true?[c,cachedPhysicsFingerprint,cachedXgbFingerprint,PARTICLE500?.version]:c.xgb_adaptive_v1?.enabled===true?[c,cachedPhysicsFingerprint,cachedXgbFingerprint]:c);}
+function bayesPipelineTag(){const c={...bayesMarkovConfig()};if(c.single_fusion_v1?.enabled===true)return JSON.stringify(["single_fusion",c.single_fusion_v1,c.prior_strength,c.min_support,cachedPhysicsFingerprint,cachedXgbFingerprint,PARTICLE500?.version,cardcountProfile.pf]);delete c.single_fusion_v1;if(c.pf_light_v1?.enabled!==true)delete c.pf_light_v1;if(c.physics_correction_v1?.enabled!==true)delete c.physics_correction_v1;if(c.xgb_adaptive_v1?.enabled!==true){delete c.xgb_adaptive_v1;c.xgb_influence=0;}return JSON.stringify(c.pf_light_v1?.enabled===true?[c,cachedPhysicsFingerprint,cachedXgbFingerprint,PARTICLE500?.version]:c.xgb_adaptive_v1?.enabled===true?[c,cachedPhysicsFingerprint,cachedXgbFingerprint]:c);}
 function xgbAdaptiveTag(){const c=bayesMarkovConfig(),parts=[c?.xgb_adaptive_v1,cachedPhysicsFingerprint,cachedXgbFingerprint];if(c?.physics_correction_v1?.enabled===true)parts.push(c.physics_correction_v1);if(c?.pf_light_v1?.enabled===true)parts.push([c.pf_light_v1,PARTICLE500?.version]);return JSON.stringify(parts);}
-function estimatePfLight(seq,physics){
- if(!PARTICLE500?.estimate||!window.__BBB_PF_LIGHT__)throw Error('pf_light_module_unavailable');
+function estimatePfLight(seq,physics,requireLightModule=true){
+ if(!PARTICLE500?.estimate||(requireLightModule&&!window.__BBB_PF_LIGHT__))throw Error('pf_light_module_unavailable');
  const key=JSON.stringify([getShoeId(),seq,cachedPhysicsFingerprint,PARTICLE500.version,cardcountProfile.pf]);
  if(pfLightCache?.key===key)return pfLightCache.estimate;
  const estimate=PARTICLE500.estimate(seq,physics,'uncertainty_only',{...cardcountProfile.pf,min_blend:0,max_blend:0});
@@ -718,13 +718,21 @@ function getExperimentalStatus(history=readHistory()){const c=experimentalContex
 // Alternate final-probability provider at the former XGB output seam.
 // Disabled => original PR94 path below is left intact.
 function applyBayesMarkovPrediction(seq,corePrediction=null){
- const config=bayesMarkovConfig(),roundIndex=seq.length+1;
+ const config=bayesMarkovConfig(),roundIndex=seq.length+1,single=config.single_fusion_v1?.enabled===true;
  let core=corePrediction||{},original7=null,physics=null,extended=null,audit=null,error='',rawPB=.5,clippedPB=.5,finalPB=.5,noise=1,bounds=null,smoothing={alpha:1,strength:0,profile:'off'},macro=null,policy=null,guard={active:false,bandRelief:0,evRelief:0},evB=0,evP=0,pT=0,direction='Skip',confidence=0,effectiveBand=0,effectiveActivation=0;
- const execution=['frozen_core','direct_physics','bayesian_markov_1_3'];
+ const execution=single?['sequence_estimator','frozen_core','direct_physics']:['frozen_core','direct_physics','bayesian_markov_1_3'];
  try{
-  if(!window.__BBB_BAYES_MARKOV__||!physicsBundle?.trained)throw Error('bayes_markov_or_physics_unavailable');
+  if(!(single?window.__BBB_SINGLE_FUSION__:window.__BBB_BAYES_MARKOV__)||!physicsBundle?.trained)throw Error(single?'single_fusion_or_physics_unavailable':'bayes_markov_or_physics_unavailable');
+  if(single)audit=window.__BBB_SINGLE_FUSION__.sequence(seq,config,config.single_fusion_v1);
   core=corePrediction||CORE.hazardChoose(seq);original7=buildOriginal7(seq,core);physics=predictPhysics(seq);
   extended=buildExtended(original7.core_p_b,original7,physics);noise=clip(extended.at(-1));
+  if(single){
+   let pf=null,xgb=null,pfError='',xgbError='';
+   try{pf=estimatePfLight(seq,physics,false);}catch(e){pfError=String(e?.message||e);}
+   try{if(!final56Bundle?.trained||!modelSemanticsCompatible())throw Error('xgb_model_unavailable');xgb=predictFinalProbability(final56Bundle,extended,final56Bundle.feature_names||EXTENDED_NAMES);}catch(e){xgbError=String(e?.message||e);}
+   execution.push('raw_pf_estimate','raw_xgb_estimate','single_probability_fusion');
+   const fused=window.__BBB_SINGLE_FUSION__.fuse(audit,original7.core_p_b,physics,pf,xgb,readRows(),seq,getShoeId(),pfPrimaryTag(),noise,config.single_fusion_v1);rawPB=fused.value;audit.single_fusion={...fused.audit,pf_error:pfError,xgb_error:xgbError};
+  }else{
   audit=window.__BBB_BAYES_MARKOV__.estimate(seq,original7.core_p_b,physics,config);rawPB=audit.raw_pb;
   if(config.physics_correction_v1?.enabled===true){
    if(window.__BBB_PHYSICS_CORRECTION__){const correction=window.__BBB_PHYSICS_CORRECTION__.apply(rawPB,physics,config.physics_correction_v1);rawPB=correction.value;audit.physics_correction=correction.audit;}
@@ -745,6 +753,7 @@ function applyBayesMarkovPrediction(seq,corePrediction=null){
    else audit.xgb_adaptive={enabled:true,model_tag:xgbAdaptiveTag(),base_pb:rawPB,xgb_pb:xgbPB,weight:0,delta:0,reason:'adaptive_module_unavailable',validated:false};
    execution.push('xgb_adaptive_prequential_mix');
   }
+  }
   const features=getMacroFeatures(seq);macro=MACRO?MACRO.adjustment(rawPB,features,clip(roundIndex/getEstimatedTotalHands()),noise,{...(final56Bundle?.decision_policy?.macro_ema||{}),...(cardcountProfile?.enabled?cardcountProfile.macro:{})}):{value:rawPB,delta:0};
   bounds=applyProbabilityBounds(macro.value,roundIndex,noise,extended[1]);clippedPB=bounds.value;
   smoothing=applyDynamicSmoothing(clippedPB,roundIndex,noise,bounds,extended[1]);finalPB=smoothing.value;
@@ -756,11 +765,11 @@ function applyBayesMarkovPrediction(seq,corePrediction=null){
   if(Math.abs(finalPB-.5)>=effectiveBand&&edge>effectiveActivation)direction=candidate;
   confidence=direction==='Skip'?0:softConfidence(edge,{...policy,activationEv:effectiveActivation});
  }catch(e){error=String(e?.message||e);direction='Skip';}
- const available=!!audit&&!error,mass=1-pT,forecast=available?{available:true,source:'bayesian_markov_final_probability',direction:finalPB===.5?'Balanced':finalPB>.5?'B':'P',directional:{B:finalPB,P:1-finalPB},probabilities:{B:mass*finalPB,P:mass*(1-finalPB),T:pT},uncertainty:noise,weak_signal:Math.abs(finalPB-.5)<.005}:{available:false,source:'bayesian_markov_final_probability',direction:null,directional:null,probabilities:null};
+ const available=!!audit&&!error,mass=1-pT,forecast=available?{available:true,source:single?'parallel_single_fusion':'bayesian_markov_final_probability',direction:finalPB===.5?'Balanced':finalPB>.5?'B':'P',directional:{B:finalPB,P:1-finalPB},probabilities:{B:mass*finalPB,P:mass*(1-finalPB),T:pT},uncertainty:noise,weak_signal:Math.abs(finalPB-.5)<.005}:{available:false,source:single?'parallel_single_fusion':'bayesian_markov_final_probability',direction:null,directional:null,probabilities:null};
  const strong=direction!=='Skip'&&Math.abs(finalPB-.5)>=effectiveBand+(policy?.strongMargin||0),tier=direction==='Skip'?'skip':strong?'strong':'weak',text=direction==='B'?'莊 B':direction==='P'?'閒 P':'觀望 Skip';
  const diagnostic={...audit,error,display_calibration_bypassed:true,old_pf_road_fusion_bypassed:true};
- return {...core,direction,bet_direction:direction,forecast_direction:forecast.direction,final_direction:text,confidence,probabilities:{B:finalPB,P:1-finalPB},ev_banker:evB,ev_player:evP,min_ev:policy?.minEv??null,activation_ev:policy?.activationEv??null,effective_activation_ev:effectiveActivation,soft_band:policy?.softBand||0,confidence_band:policy?.confidenceBand||0,effective_confidence_band:effectiveBand,volume_guard_active:guard.active,entry_tier:tier,stake_multiplier:direction==='Skip'?0:strong?1:.5,decision_policy_enabled:policy?.enabled||false,decision_policy_profile:policy?.profile||'hard_ev',regime:'貝葉斯＋馬可夫1–3階',bayes_markov:diagnostic,raw_next_hand_forecast:forecast,next_hand_forecast:forecast,browser_calibration:null,
- finalProbability:{version:config.pf_light_v1?.enabled===true?'BAYES_MARKOV_PHYSICS_PF_XGB_V1':config.physics_correction_v1?.enabled===true?'BAYES_MARKOV_PHYSICS_XGB_V1':config.xgb_adaptive_v1?.enabled===true?'BAYES_MARKOV_XGB_ADAPTIVE_V1':'BAYES_MARKOV_FINAL_V1',active:available,mode:'bayes_markov_final',primary_source:'bayesian_markov_final_probability',primary_candidate:direction,bayes_markov:diagnostic,xgb_influence:audit?.xgb_adaptive?.weight||0,xgb_role:config.xgb_adaptive_v1?.enabled===true?'bounded_prequential_brier_adaptive':'replaced_no_execution',core_aux_p_b:original7?.core_p_b??null,rawPB,clippedPB,smoothedPB:finalPB,filteredPB:finalPB,finalPB,bounds,smoothingAlpha:smoothing.alpha,smoothingStrength:smoothing.strength,smoothingProfile:smoothing.profile,physics_raw_p_b:rawPB,physics_clipped_p_b:clippedPB,physics_smoothed_p_b:finalPB,original7,extended,physics,physicsDirect:physics,physicsForecast:physics?unpackPhysicsForecast(physics):null,physicsIntegrity:physics?physicsIntegrity(physics):null,physicsDiagnostics:lastPhysicsDiagnostics,dataQuality:dataQuality(seq),particleDiagnostics:audit?.pf_light?.diagnostics||null,execution_order:execution,p_tie:pT,p_player:mass*(1-finalPB),ev_banker:evB,ev_player:evP,min_ev:policy?.minEv??null,activation_ev:policy?.activationEv??null,effective_activation_ev:effectiveActivation,soft_band:policy?.softBand||0,confidence_band:policy?.confidenceBand||0,effective_confidence_band:effectiveBand,volume_guard_active:guard.active,entry_tier:tier,stake_multiplier:direction==='Skip'?0:strong?1:.5,decision_policy_enabled:policy?.enabled||false,decision_policy_profile:policy?.profile||'hard_ev',decision_stage:policy?.stage,decision_progress:clip(roundIndex/getEstimatedTotalHands()),macro_adjustment:macro,coreDirection:core.direction,finalDirection:text,error}};
+ return {...core,direction,bet_direction:direction,forecast_direction:forecast.direction,final_direction:text,confidence,probabilities:{B:finalPB,P:1-finalPB},ev_banker:evB,ev_player:evP,min_ev:policy?.minEv??null,activation_ev:policy?.activationEv??null,effective_activation_ev:effectiveActivation,soft_band:policy?.softBand||0,confidence_band:policy?.confidenceBand||0,effective_confidence_band:effectiveBand,volume_guard_active:guard.active,entry_tier:tier,stake_multiplier:direction==='Skip'?0:strong?1:.5,decision_policy_enabled:policy?.enabled||false,decision_policy_profile:policy?.profile||'hard_ev',regime:single?'各路估計／單次融合':'貝葉斯＋馬可夫1–3階',bayes_markov:diagnostic,raw_next_hand_forecast:forecast,next_hand_forecast:forecast,browser_calibration:null,
+ finalProbability:{version:single?'SINGLE_FUSION_V1':config.pf_light_v1?.enabled===true?'BAYES_MARKOV_PHYSICS_PF_XGB_V1':config.physics_correction_v1?.enabled===true?'BAYES_MARKOV_PHYSICS_XGB_V1':config.xgb_adaptive_v1?.enabled===true?'BAYES_MARKOV_XGB_ADAPTIVE_V1':'BAYES_MARKOV_FINAL_V1',active:available,mode:'bayes_markov_final',primary_source:single?'parallel_single_fusion':'bayesian_markov_final_probability',primary_candidate:direction,bayes_markov:diagnostic,xgb_influence:single?(audit?.single_fusion?.weights?.xgb||0):(audit?.xgb_adaptive?.weight||0),xgb_role:single?'single_fusion_adaptive_source':config.xgb_adaptive_v1?.enabled===true?'bounded_prequential_brier_adaptive':'replaced_no_execution',core_aux_p_b:original7?.core_p_b??null,rawPB,clippedPB,smoothedPB:finalPB,filteredPB:finalPB,finalPB,bounds,smoothingAlpha:smoothing.alpha,smoothingStrength:smoothing.strength,smoothingProfile:smoothing.profile,physics_raw_p_b:rawPB,physics_clipped_p_b:clippedPB,physics_smoothed_p_b:finalPB,original7,extended,physics,physicsDirect:physics,physicsForecast:physics?unpackPhysicsForecast(physics):null,physicsIntegrity:physics?physicsIntegrity(physics):null,physicsDiagnostics:lastPhysicsDiagnostics,dataQuality:dataQuality(seq),particleDiagnostics:single?audit?.single_fusion?.pf_diagnostics||null:audit?.pf_light?.diagnostics||null,execution_order:execution,p_tie:pT,p_player:mass*(1-finalPB),ev_banker:evB,ev_player:evP,min_ev:policy?.minEv??null,activation_ev:policy?.activationEv??null,effective_activation_ev:effectiveActivation,soft_band:policy?.softBand||0,confidence_band:policy?.confidenceBand||0,effective_confidence_band:effectiveBand,volume_guard_active:guard.active,entry_tier:tier,stake_multiplier:direction==='Skip'?0:strong?1:.5,decision_policy_enabled:policy?.enabled||false,decision_policy_profile:policy?.profile||'hard_ev',decision_stage:policy?.stage,decision_progress:clip(roundIndex/getEstimatedTotalHands()),macro_adjustment:macro,coreDirection:core.direction,finalDirection:text,error}};
 }
 
 function applyFinalPrediction(seq,corePrediction=null){
@@ -1158,7 +1167,7 @@ function renderPrediction(p,n){
   if(noSkipTestActive&&ready&&p.experimental_no_skip?.active&&el("message"))el("message").textContent="未驗證實驗版：每局更新下一局方向，不保證勝率；不列入正式下注"+(f.directional.B===f.directional.P?"；五五波以莊作研究方向，沒有機率優勢":"");
   if(p.road_primary?.enabled&&el("modePill"))el("modePill").textContent=p.road_primary.available?"牌路主導／算牌微調測試":"算牌暫代／牌路樣本不足";
   if(p.bayes_markov&&el("localCalibrationStatus"))el("localCalibrationStatus").textContent="同靴上下文：第 "+(p.bayes_markov.selected_order||0)+" 階；有效支持 "+(p.bayes_markov.selected_support||0)+"；非完整重訓";
-  if(p.bayes_markov&&el("modePill"))el("modePill").textContent=p.bayes_markov.xgb_adaptive?"貝葉斯＋馬可夫＋自適應XGB":"貝葉斯＋馬可夫1–3階";
+  if(p.bayes_markov&&el("modePill"))el("modePill").textContent=p.bayes_markov.single_fusion?"各路估計／單次融合":p.bayes_markov.xgb_adaptive?"貝葉斯＋馬可夫＋自適應XGB":"貝葉斯＋馬可夫1–3階";
   if(p.bayes_markov&&el("message"))el("message").textContent+="；全靴上下文自動選階，未驗證勝率提升";
   if(p.road_primary?.enabled&&el("message"))el("message").textContent+="；牌路主導實驗版，未驗證命中率提升";
   if(p.road_primary?.dual_core?.enabled&&el("modePill"))el("modePill").textContent="VNext 雙核心實驗預測";
