@@ -36,16 +36,17 @@ function scoreTwoArms(vector,quant=null){
   const dim=256,ridge=1,alpha=.5;
   const theta=new Array(dim).fill(0);
   theta[0]=.028;theta[1]=.045;theta[2]=.018;theta[3]=.008;
-  // Include contextual rank densities and progress with intentionally
-  // small directional priors. Without fit data these remain diagnostics.
-  for(let i=4;i<128;i++)theta[i]=(i%2?-1:1)*.0001;
-  for(let i=128;i<256;i++)theta[i]=(i%2?-1:1)*.00025;
+  // No trained coefficients exist for the remaining dimensions. Keep all
+  // 256 input coordinates for diagnostics, but give road (128..255) ZERO
+  // directional weight AND ZERO LinUCB uncertainty ownership. Do not
+  // invent sign priors for ratios or B/P/T history windows.
+  for(let i=4;i<256;i++)theta[i]=0;
   let projected=0,variance=0,shoeContribution=0,roadContribution=0;
   for(let i=0;i<dim;i++){
     const term=vector[i]*theta[i]/ridge;
     projected+=term;
     if(i<128)shoeContribution+=term;else roadContribution+=term;
-    variance+=(vector[i]*vector[i])/ridge;
+    if(i<4)variance+=(vector[i]*vector[i])/ridge;
   }
   const uncertainty=alpha*Math.sqrt(variance);
   const rawDirection=projected>=0?"B":"P";
