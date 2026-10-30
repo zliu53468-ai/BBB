@@ -17,6 +17,7 @@ const signature=p=>plain({p:p.finalProbability.finalPB,d:p.direction,b:p.ev_bank
 for(const seq of [[],h,Array(50).fill('B'),Array(50).fill('P'),Array(70).fill('T')]){
 const p=on.api.applyFinalPrediction(seq),r=p.finalProbability;assert.equal(r.mode,'bayes_markov_final');assert.equal(r.xgb_influence,0);assert.equal(r.particleDiagnostics,null);assert.equal(r.physics.length,48);assert.equal(r.extended.length,57);assert(p.next_hand_forecast.available);assert.deepEqual(signature(hi.api.applyFinalPrediction(seq)),signature(lo.api.applyFinalPrediction(seq)));assert(Math.abs(p.ev_banker-(1-r.p_tie)*(.95*r.finalPB-(1-r.finalPB)))<1e-12);assert(Math.abs(p.ev_player-(1-r.p_tie)*(1-2*r.finalPB))<1e-12);assert.deepEqual(signature(on.api.applyFinalPrediction(seq)),signature(p));
 }
+const oldSchedule=await make({road:true,firstOrder:true,dualLive:true,bias:true});for(const n of [1,20,30,45,50,70])assert.equal(on.api.profileValue('decision_alpha',n),oldSchedule.api.profileValue('decision_alpha',n));
 const before=on.api.applyFinalPrediction(h);on.api.applyFinalPrediction([...h,'P']);assert.deepEqual(signature(on.api.applyFinalPrediction(h)),signature(before));
 on.api.registerPrediction(h,before);on.api.settlePending('T',null,h);assert(JSON.parse(on.api.exportTrainingData()).rows.at(-1).bayes_markov.causal);
 const module=on.ctx.__BBB_BAYES_MARKOV__;on.ctx.__BBB_BAYES_MARKOV__=null;assert.equal(on.api.applyFinalPrediction(h).direction,'Skip');on.ctx.__BBB_BAYES_MARKOV__=module;
