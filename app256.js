@@ -34,7 +34,7 @@ const QUANT256_MODE = typeof window!=="undefined" && !!window.location &&
   typeof URLSearchParams==="function" && new URLSearchParams(window.location.search||"").get("quant256")==="1";
 function quantEngineFor(seq){
   if(!QUANT256_MODE)return null;
-  const Engine=typeof window!=="undefined"&&window.BBBQuantEngine;
+  const Engine=typeof window!=="undefined"&&(window.BBBShoeQuantEngine||window.BBBQuantEngine);
   if(typeof Engine!=="function")return null;
   return Engine.fromHistory(seq);
 }
@@ -419,7 +419,20 @@ function buildRoadVector(seq) {
   return{vector:road,candidates:cand,bigRoad:cand.road};
 }
 
-function context256(seq){const quant=quantEngineFor(seq),shoe=quant?quant.generateShoeContext():buildShoeVector(seq),roadData=buildRoadVector(seq),vector=[...shoe,...roadData.vector];if(vector.length!==DIM||!vector.every(Number.isFinite))throw new Error(`context mismatch ${vector.length}`);return{vector,candidates:roadData.candidates,bigRoad:roadData.bigRoad,quant:quant?quant.predictNext():null,feature_schema:quant?"BBB_QUANT_128_V2":"FROZEN_ORIGINAL_128"};}
+function context256(seq){
+  const quant=quantEngineFor(seq),shoe=buildShoeVector(seq),roadData=buildRoadVector(seq);
+  const vector=[...shoe,...roadData.vector];
+  if(quant){
+    window.__BBB_SHOE_QUANT_ENGINE__=quant;
+    const dynamic=quant.generateShoeContext();
+    if(dynamic.length!==SHOE_DIM)throw Error("quant shoe must be 128D");
+    // Index 0..127 are the new quant schema, 128..255 are untouched road slots.
+    for(let i=0;i<SHOE_DIM;i++)vector[i]=dynamic[i];
+  }
+  if(vector.length!==DIM||!vector.every(Number.isFinite))throw new Error(`context mismatch ${vector.length}`);
+  return {vector,candidates:roadData.candidates,bigRoad:roadData.bigRoad,
+    quant:quant?quant.predictNext():null,feature_schema:quant?"BBB_SHOE_QUANT_128_V3":"FROZEN_ORIGINAL_128"};
+}
 
 function frozenPrior(){
   const A={B:Array(DIM).fill(RIDGE),P:Array(DIM).fill(RIDGE)},b={B:Array(DIM).fill(0),P:Array(DIM).fill(0)};
@@ -432,12 +445,24 @@ function frozenPrior(){
   return{A,b};
 }
 
+function countDominantPrior(){
+  const prior=frozenPrior();
+  // Experimental frozen two-arm LinUCB coefficients — NOT trained weights.
+  // New 128D schema must NOT reuse old frozen prior coefficients.
+  for(let i=0;i<SHOE_DIM;i++){
+    const w=i===0?.028:i===1?.045:i===2?.018:i===3?.008:(i%2?-.0001:.0001);
+    prior.b.B[i]=w;prior.b.P[i]=-w;
+  }
+  // Road-model weights are diagnostics; keep the count block dominant.
+  for(let i=SHOE_DIM;i<DIM;i++){prior.b.B[i]*=.05;prior.b.P[i]*=.05;}
+  return prior;
+}
 function modelX(raw){return raw.map(v=>Number.isFinite(+v)?+v:0);}
 function scoreArm(arm,x,prior){const A=prior.A[arm],b=prior.b[arm];let mean=0,uncertaintySquared=0;for(let i=0;i<DIM;i++){const a=Math.max(1e-9,A[i]);mean+=x[i]*(b[i]/a);uncertaintySquared+=(x[i]*x[i])/a;}const uncertainty=Math.sqrt(Math.max(0,uncertaintySquared));return{mean,uncertainty,score:mean+ALPHA*uncertainty,effectiveAlpha:ALPHA};}
 function deterministicTie(seq){let h=0;const token="FROZEN256_BIGROAD_6X15_SENSITIVE_V17|"+seq.join("");for(let i=0;i<token.length;i++)h=(h*31+token.charCodeAt(i))>>>0;return h%2?"B":"P";}
 
 function choose(seq){
-  const ctx=context256(seq),x=modelX(ctx.vector),prior=frozenPrior(),scores={B:scoreArm("B",x,prior),P:scoreArm("P",x,prior)},gap=scores.B.score-scores.P.score;
+  const ctx=context256(seq),x=modelX(ctx.vector),prior=ctx.quant?countDominantPrior():frozenPrior(),scores={B:scoreArm("B",x,prior),P:scoreArm("P",x,prior)},gap=scores.B.score-scores.P.score;
   let direction,reason;if(Math.abs(gap)<=SCORE_TIE_EPS){direction=deterministicTie(seq);reason="固定歷史平手判定";}else{direction=gap>0?"B":"P";reason="256維＋6×15即時雙臂判斷";}
   const rawPB=1/(1+Math.exp(-Math.max(-8,Math.min(8,gap/SCORE_TEMP)))),pB=clip(rawPB,PROB_MIN,PROB_MAX),pP=1-pB,confidence=direction==="B"?pB:pP;
   const previous=state.last_selected;state.selection_streak=previous===direction?(state.selection_streak||0)+1:1;state.last_selected=direction;
@@ -476,7 +501,7 @@ function renderPrediction(){const p=state.active?state.lastPrediction:null,orb=e
     el("strength").textContent="0% 注碼";
     orb.className="direction-orb idle";
     return;
-  }const isB=p.direction==="B";el("directionText").textContent=isB?"莊":"閒";el("directionCode").textContent=isB?"BANKER":"PLAYER";el("confidence").textContent=(p.confidence*100).toFixed(1)+"%";el("regime").textContent=p.regime;el("strength").textContent=p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isB?"banker":"player");}
+  }const isB=p.direction==="B";el("directionText").textContent=isB?"莊":"閒";el("directionCode").textContent=isB?"BANKER":"PLAYER";el("confidence").textContent=(p.confidence*100).toFixed(1)+"%";el("regime").textContent=p.quant?"算牌模型未校準（研究方向）":p.regime;el("strength").textContent=p.quant?`模擬凱利 ${(p.quant.simulated_bet_fraction*100).toFixed(1)}%（非下注建議）`:p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isB?"banker":"player");}
 function render(){if(el("roundPill"))el("roundPill").textContent=`${state.history.length} 局`;if(el("modePill"))el("modePill").textContent=state.active?"分析完成":"準備中";if(el("roundCount"))el("roundCount").textContent=state.history.length;renderPrediction();renderHistory();}
 
 if(el("btnB"))el("btnB").addEventListener("click",()=>addOutcome("B"));
