@@ -1,183 +1,272 @@
 /**
- * BBBQuantEngine V2: causal 8-deck composition estimator and observed-rank counter.
- * Outcomes B/P/T alone cannot reveal dealt ranks. Proxies are labelled uncalibrated;
- * no betting signal is emitted without card observations for the complete shoe.
- * This module does NOT replace __BBB_BAYES_MARKOV__.estimate().
+ * BBBShoeQuantEngine V3 — isolated, deterministic 256D experimental engine.
+ *
+ * This models an *assumed* distribution when only B/P/T outcomes are provided.
+ * Actual deck ranks, shoe penetration, pairs and Lucky Six are unobservable
+ * from B/P/T. Inferred counts, EV and Kelly fractions are NOT calibrated
+ * probabilities or evidence of a wagering edge.
+ *
+ * The production Bayesian Markov estimate() API and Frozen Core are untouched.
  */
 (function(root,factory){
+  "use strict";
   const api=factory();
-  if(typeof module==="object"&&module.exports)Object.assign(module.exports,api);
-  if(root)root.BBBQuantEngine=api.BBBQuantEngine;
+  if(typeof module==="object"&&module.exports)module.exports=api;
+  if(root){
+    root.BBBShoeQuantEngine=api.BBBShoeQuantEngine;
+    root.BBBQuantEngine=api.BBBShoeQuantEngine; // previous experimental adapter
+  }
 })(typeof window!=="undefined"?window:null,function(){
-"use strict";
-const INITIAL=Object.freeze({zero:128,low:128,neutral:32,six:32,mid:96});
-const GROUPS=Object.keys(INITIAL),TOTAL=416,BASE=Object.freeze({B:0.458597,P:0.446247,T:0.095156});
-const ALPHA=0.0045,SCHEMA="BBB_QUANT_128_V2",EPS=1e-9;
-const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),finite=Number.isFinite;
-const TAG=Object.freeze({zero:0,low:1,neutral:0,six:-1,mid:-1});
-function group(rank){
-  if(!Number.isInteger(rank)||rank<0||rank>9)throw Error("card point must be 0..9");
-  if(rank===0)return "zero";
-  if(rank<=4)return "low";
-  if(rank===5)return "neutral";
-  if(rank===6)return "six";
-  return "mid";
-}
-class BBBQuantEngine{
-  constructor(){this.shoeNumber=0;this.reset();}
-  reset(){
-    this.shoeNumber++;this.counts={...INITIAL};this.remainingCards=TOTAL;
-    this.runningCount=0;this.trueCount=0;this.observedRounds=0;this.estimatedRounds=0;
-    this.pairObserved=0;this.bankerPairs=0;this.playerPairs=0;
-    this.luckySixObserved=0;this.luckySixHits=0;this.history=[];
-    this.lastSide=null;this.streak=0;this.lastUpdate=null;this._ratios();return this;
+  "use strict";
+
+  // 8 decks: each point 1..9 has 32 cards; 0 (10/J/Q/K) has 128.
+  // "mid" is specifically 5,7,8. Nine is tracked separately: it accounts
+  // for the 32 otherwise missing cards in the requested four-group scheme.
+  const INITIAL=Object.freeze({low:128,mid:96,six:32,zero:128,nine:32});
+  const GROUPS=Object.freeze(Object.keys(INITIAL));
+  const TOTAL=416;
+  const BASE=Object.freeze({B:0.4586,P:0.4462,T:0.0952});
+  const COUNTS=Object.freeze({low:1,mid:-1,six:0,zero:0,nine:0});
+  const ALPHA=0.0045;
+  const SCHEMA="BBB_SHOE_QUANT_128_V3";
+  const SMALL=1e-9,clamp=(x,min,max)=>Math.max(min,Math.min(max,x));
+  const finite=Number.isFinite;
+  function groupOf(point){
+    if(!Number.isInteger(point)||point<0||point>9)throw Error("card point must be 0..9");
+    if(point===0)return "zero";
+    if(point<=4)return "low";
+    if(point===6)return "six";
+    if(point===9)return "nine";
+    return "mid";
   }
-  _ratios(){
-    this.remainingCards=GROUPS.reduce((s,k)=>s+this.counts[k],0);
-    this.cardRatios=Object.fromEntries(GROUPS.map(k=>[k,this.counts[k]/INITIAL[k]]));
-    this.cardDensities=Object.fromEntries(GROUPS.map(k=>[k,this.remainingCards?this.counts[k]/this.remainingCards:0]));
-    this.trueCount=this.runningCount/Math.max(1,this.remainingCards/52);
+  function assertOutcome(outcome){
+    if(!["B","P","T"].includes(outcome))throw Error("outcome must be B, P or T");
   }
-  _consume(draws,tilt){
-    let left=Math.min(draws,this.remainingCards);
-    const taken=Object.fromEntries(GROUPS.map(k=>[k,0]));
-    for(let step=0;step<32&&left>EPS;step++){
-      const available=GROUPS.filter(k=>this.counts[k]>EPS);
-      if(!available.length)break;
-      const weights=available.map(k=>this.counts[k]*Math.max(0,tilt[k]??1));
-      let den=weights.reduce((a,b)=>a+b,0);
-      if(den<=EPS){for(let i=0;i<available.length;i++)weights[i]=this.counts[available[i]];den=weights.reduce((a,b)=>a+b,0);}
-      const pass=left;
-      for(let i=0;i<available.length;i++){
-        const k=available[i],take=Math.min(this.counts[k],pass*weights[i]/den);
-        this.counts[k]-=take;taken[k]+=take;left-=take;
+  function own(obj,key){return Object.prototype.hasOwnProperty.call(obj,key);}
+  function validateBoolean(observation,key){
+    if(own(observation,key)&&observation[key]!==undefined&&typeof observation[key]!=="boolean")
+      throw Error(key+" must be a boolean when observed");
+  }
+  class BBBShoeQuantEngine {
+    constructor(){this.shoeNumber=0;this.reset();}
+    reset(){
+      this.shoeNumber++;
+      this.estimatedCounts={...INITIAL};this.remainingCards=TOTAL;
+      this.runningCount=0;this.trueCount=0;this.pairCount=0;this.l6Index=0;
+      this.history=[];this.lastSide=null;this.streak=0;this.estimatedRounds=0;this.observedRounds=0;
+      this.pairKnownRounds=0;this.bankerPairs=0;this.playerPairs=0;
+      this.l6KnownRounds=0;this.l6ObservedHits=0;this.lastUpdate=null;
+      this._refresh();return this;
+    }
+    get countSource(){
+      return this.estimatedRounds===0&&this.observedRounds>0?"observed":
+        this.observedRounds>0?"mixed":"estimated";
+    }
+    _refresh(){
+      this.remainingCards=GROUPS.reduce((s,k)=>s+this.estimatedCounts[k],0);
+      this.cardRatios=Object.fromEntries(GROUPS.map(k=>[k,this.estimatedCounts[k]/INITIAL[k]]));
+      this.cardDensities=Object.fromEntries(GROUPS.map(k=>[k,
+        this.remainingCards>0?this.estimatedCounts[k]/this.remainingCards:0]));
+      this.trueCount=clamp(this.runningCount/Math.max(this.remainingCards/52,SMALL),-8,8);
+    }
+    /** Expected fractional removal with capacity reallocation, no negative decks. */
+    _consume(draws,distribution){
+      const removed=Object.fromEntries(GROUPS.map(k=>[k,0]));
+      let left=Math.min(draws,this.remainingCards);
+      for(let step=0;step<32&&left>SMALL;step++){
+        const avail=GROUPS.filter(k=>this.estimatedCounts[k]>SMALL);
+        if(!avail.length)break;
+        let weights=avail.map(k=>Math.max(0,distribution[k]||0));
+        let weightSum=weights.reduce((a,b)=>a+b,0);
+        if(weightSum<SMALL){
+          weights=avail.map(k=>this.estimatedCounts[k]);
+          weightSum=weights.reduce((a,b)=>a+b,0);
+        }
+        const allocation=left;
+        for(let i=0;i<avail.length;i++){
+          const key=avail[i],take=Math.min(this.estimatedCounts[key],allocation*weights[i]/weightSum);
+          this.estimatedCounts[key]-=take;removed[key]+=take;left-=take;
+        }
       }
+      if(left>1e-6)throw Error("card_mass_conservation_failed");
+      return removed;
     }
-    if(left>1e-6)throw Error("expected_card_conservation_failed");
-    return taken;
+    /**
+     * One round, with optional actual observation. B/P/T-only deduction is a
+     * heuristic—not card counting. Annealing cuts estimated DRAW size by 30%
+     * from the fourth identical non-tie result, as requested. This is a model
+     * assumption, not a change in actual physical cards dealt by the casino.
+     */
+    updateRound(outcome,observation={}){
+      assertOutcome(outcome);
+      if(!observation||typeof observation!=="object")throw Error("invalid observation");
+      for(const key of ["bankerPair","playerPair","luckySix"])validateBoolean(observation,key);
+      const cards=observation.cards;
+      if(cards!==undefined&&(!Array.isArray(cards)||cards.length<4||cards.length>6||
+        !cards.every(x=>Number.isInteger(x)&&x>=0&&x<=9)))throw Error("cards must contain 4..6 observed card points");
+      if(outcome!=="T"){
+        this.streak=outcome===this.lastSide?this.streak+1:1;
+        this.lastSide=outcome;
+      }
+      const anneal=outcome!=="T"&&this.streak>3&&!cards?0.7:1;
+      const nominal=outcome==="T"?4.5:4.94,draws=cards?cards.length:nominal*anneal;
+      let removed,source;
+      if(cards){
+        removed=Object.fromEntries(GROUPS.map(k=>[k,0]));
+        for(const point of cards)removed[groupOf(point)]++;
+        for(const k of GROUPS)if(removed[k]>this.estimatedCounts[k]+SMALL)throw Error("observed_count_exceeds_remaining_"+k);
+        for(const k of GROUPS)this.estimatedCounts[k]-=removed[k];
+        this.observedRounds++;source="observed";
+      }else{
+        const distribution=outcome==="B"?
+          {low:.45,mid:.35,zero:.20,six:0,nine:0}:
+          outcome==="P"?
+          {low:.40,mid:.45,zero:.15,six:0,nine:0}:
+          {low:.30,mid:.30,zero:.40,six:0,nine:0};
+        removed=this._consume(draws,distribution);
+        this.estimatedRounds++;source="estimated";
+      }
+      // Exact requested +/- low vs mid proxy. With a P round at 4.94 cards:
+      // 4.94*.40 - 4.94*.45 = -0.247. With B it is +0.494.
+      this.runningCount+=GROUPS.reduce((s,k)=>s+removed[k]*COUNTS[k],0);
+      if(typeof observation.bankerPair==="boolean"||typeof observation.playerPair==="boolean"){
+        this.pairKnownRounds++;
+        if(observation.bankerPair)this.bankerPairs++;
+        if(observation.playerPair)this.playerPairs++;
+        this.pairCount=this.bankerPairs+this.playerPairs;
+      }
+      if(typeof observation.luckySix==="boolean"){
+        this.l6KnownRounds++;
+        if(observation.luckySix)this.l6ObservedHits++;
+      }
+      // l6Index without card totals is only an opaque diagnostic heuristic.
+      this.l6Index+=(outcome==="B"?.10:outcome==="P"?-.05:0);
+      this.history.push(outcome);
+      this._refresh();
+      const update={outcome,source,estimated_only:source!=="observed",nominal_draws:nominal,
+        expected_draws:draws,anneal_factor:anneal,deducted:removed,
+        remaining_after:this.remainingCards,true_count:this.trueCount,
+        reset_triggered:this.remainingCards<=60,reset_reason:null};
+      if(update.reset_triggered){
+        update.reset_reason="estimated_penetration_threshold_not_confirmed_shuffle";
+        this.reset(); // requested auto reset; user must also reset on a real shuffle.
+      }
+      this.lastUpdate=update;
+      return update;
+    }
+    /** Exact 128-slot schema, intentionally incompatible with Frozen Core V18. */
+    generateShoeContext(){
+      const tc=this.trueCount,n=this.history.length,rr=this.remainingCards/TOTAL,progress=1-rr;
+      const v=[
+        Math.pow(tc,2)*Math.sign(tc),tc,Math.tanh(tc/3),Math.sign(tc)*Math.log1p(tc*tc),
+        rr,progress,clamp(n/80,0,1),Math.tanh(this.runningCount/32),
+        Math.tanh(this.pairCount/8),Math.tanh(this.l6Index/8),
+        this.observedRounds/Math.max(1,n),this.estimatedRounds/Math.max(1,n),
+        clamp(this.streak/12,0,1),this.history.at(-1)==="B"?1:this.history.at(-1)==="P"?-1:0,
+        this.cardDensities.low-this.cardDensities.mid,
+        this.history.length?this.history.slice(-8).filter(x=>x==="T").length/Math.min(8,n):0
+      ];
+      for(const k of GROUPS){
+        const ratio=this.cardRatios[k],density=this.cardDensities[k],initial=INITIAL[k]/TOTAL;
+        v.push(ratio,density,density/initial,this.estimatedCounts[k]/TOTAL,
+          ratio*ratio,density*density,density-initial,1-ratio);
+      }
+      for(const center of [-7,-5,-3,-1,1,3,5,7]){
+        const z=(tc-center)/2;
+        v.push(clamp(1-Math.abs(z),0,1),Math.exp(-.5*z*z),clamp((tc-center)/16,-1,1));
+      }
+      for(let i=0;i<8;i++){
+        const center=(i+.5)/8,z=(progress-center)*8;
+        v.push(clamp(1-Math.abs(z),0,1),Math.exp(-.5*z*z),clamp((progress-center)*2,-1,1));
+      }
+      for(const win of [3,5,8,12,16,24,48,70]){
+        const h=this.history.slice(-win);
+        for(const side of ["B","P","T"])
+          v.push(h.length?h.filter(x=>x===side).length/h.length:0);
+      }
+      if(v.length!==128||!v.every(finite))throw Error("invalid_quant_128D");
+      return v;
+    }
+    injectShoeContext(context256,{experimental=false,allowUncalibrated=false}={}){
+      if(!experimental&&!allowUncalibrated)throw Error("quant schema incompatible with frozen weights; opt in to research adapter");
+      if(!Array.isArray(context256)||context256.length!==256||!context256.every(finite))throw Error("expected finite 256D");
+      const vector=context256.slice();
+      const shoe=this.generateShoeContext();
+      for(let i=0;i<128;i++)vector[i]=shoe[i];
+      return vector;
+    }
+    static fractionalKelly(win,loss,payout){
+      if(![win,loss,payout].every(finite)||win<0||loss<0||win+loss>1+SMALL||payout<=0)throw Error("invalid Kelly");
+      const ev=win*payout-loss;
+      const quarter=ev>0?0.25*ev/(payout*(win+loss)):0;
+      return {ev,raw_fraction:quarter,bet_fraction:ev>0?clamp(quarter,.05,.30):0,
+        minimum_clip_applied:ev>0&&quarter<.05};
+    }
+    _sideIndicator(name,signal,events,known,reason){
+      return {name,signal:!!signal,known_rounds:known,observed_events:events,
+        bet_allowed:false,bet_fraction:0,calibrated:false,reason};
+    }
+    predictNext(){
+      const tc=this.trueCount;
+      const w_count=Math.min(.75,Math.abs(tc)*.18);
+      const adjustment=clamp(tc*ALPHA,-.16,.16);
+      const count_probability={B:BASE.B+adjustment,P:BASE.P-adjustment,T:BASE.T};
+      const probabilities={
+        B:BASE.B*(1-w_count)+count_probability.B*w_count,
+        P:BASE.P*(1-w_count)+count_probability.P*w_count,
+        T:BASE.T
+      };
+      const b=BBBShoeQuantEngine.fractionalKelly(probabilities.B,probabilities.P,.95);
+      const p=BBBShoeQuantEngine.fractionalKelly(probabilities.P,probabilities.B,1);
+      const selected=b.ev>=p.ev?"B":"P",value=selected==="B"?b:p;
+      const gateCount=Math.abs(tc)>=1.5,gateEV=value.ev>0;
+      const direction=gateCount&&gateEV?selected:"Skip";
+      const source=this.countSource;
+      const tieRecent=this.history.slice(-12),tieHits=tieRecent.filter(x=>x==="T").length;
+      const tieSignal=tieRecent.length>=8&&tieHits/tieRecent.length>.20;
+      const pairSignal=this.pairKnownRounds>=10&&this.pairCount/this.pairKnownRounds>.17;
+      const l6Signal=this.l6KnownRounds>=10&&this.l6ObservedHits/this.l6KnownRounds>.12;
+      return {
+        version:"BBB_SHOE_QUANT_V3",context_schema:SCHEMA,experimental:true,validated:false,
+        alpha:ALPHA,count_weight:w_count,count_source:source,
+        baseline_probabilities:{...BASE},count_probability,probabilities,
+        ev_banker:b.ev,ev_player:p.ev,ev_selected:value.ev,direction,
+        direction_text:direction==="Skip"?"觀望":direction==="B"?"莊":"閒",
+        reason:!gateCount?"true_count_below_1_5":!gateEV?"nonpositive_expected_value":"estimated_EV_gate_passed",
+        // Simulated Kelly amount is deliberately separate from an actionable stake:
+        // B/P/T-only pseudo-counts and unvalidated alpha do not establish true EV.
+        bet_fraction:0,simulated_bet_fraction:direction==="Skip"?0:value.bet_fraction,
+        kelly_raw_fraction:direction==="Skip"?0:value.raw_fraction,
+        minimum_clip_applied:direction!=="Skip"&&value.minimum_clip_applied,
+        side_bets:{
+          banker_pair:this._sideIndicator("banker_pair",pairSignal,this.bankerPairs,this.pairKnownRounds,"observed_pair_rate_not_calibrated"),
+          player_pair:this._sideIndicator("player_pair",pairSignal,this.playerPairs,this.pairKnownRounds,"observed_pair_rate_not_calibrated"),
+          tie:this._sideIndicator("tie",tieSignal,tieHits,tieRecent.length,"outcome_window_only_not_calibrated"),
+          lucky_six:this._sideIndicator("lucky_six",l6Signal,this.l6ObservedHits,this.l6KnownRounds,"observed_lucky_six_rate_not_calibrated")
+        },
+        estimated_shoe:{
+          remaining_cards:this.remainingCards,runningCount:this.runningCount,trueCount:tc,
+          cardRatios:{...this.cardRatios},cardDensities:{...this.cardDensities},
+          pairCount:this.pairCount,l6Index:this.l6Index,
+          estimatedRounds:this.estimatedRounds,observedRounds:this.observedRounds,
+          estimated_only:source!=="observed"
+        },
+        gates:{true_count_abs_min:1.5,ev_min_exclusive:0,simulated:true},
+        notice:"B/P/T-only expected removal is an uncalibrated heuristic, not observed card counting. Simulated EV and Kelly are not an actionable betting advantage."
+      };
+    }
+    static fromHistory(history){
+      if(!Array.isArray(history))throw Error("history must be array");
+      const engine=new BBBShoeQuantEngine();
+      for(const row of history){
+        if(typeof row==="string")engine.updateRound(row);
+        else if(row&&typeof row==="object")engine.updateRound(row.outcome,row.observation||{});
+        else throw Error("invalid history row");
+      }
+      return engine;
+    }
   }
-  updateRound(outcome,observation={}){
-    if(!["B","P","T"].includes(outcome))throw Error("outcome must be B/P/T");
-    if(!observation||typeof observation!=="object")throw Error("invalid_observation");
-    const cards=observation.cards;
-    if(cards!==undefined&&(!Array.isArray(cards)||cards.length<4||cards.length>6||!cards.every(x=>Number.isInteger(x)&&x>=0&&x<=9)))throw Error("cards must contain 4..6 observed points");
-    for(const k of ["bankerPair","playerPair","luckySix"]){
-      if(observation[k]!==undefined&&typeof observation[k]!=="boolean")throw Error(k+" must be boolean");
-    }
-    if(outcome!=="T"){this.streak=outcome===this.lastSide?this.streak+1:1;this.lastSide=outcome;}
-    let deducted,draws,source;
-    if(cards){
-      draws=cards.length;const occurrences=Object.fromEntries(GROUPS.map(k=>[k,0]));
-      for(const rank of cards)occurrences[group(rank)]++;
-      for(const k of GROUPS)if(occurrences[k]>this.counts[k]+EPS)throw Error("observed_count_exceeds_remaining_"+k);
-      deducted={...occurrences};
-      for(const k of GROUPS)this.counts[k]-=deducted[k];
-      this.observedRounds++;source="observed";
-    }else{
-      draws=outcome==="T"?4.5:4.94;
-      const factors=outcome==="B"?{low:1.12,mid:0.88,six:1.06,neutral:0.96,zero:1.04}:
-        outcome==="P"?{low:0.90,mid:1.08,six:0.96,neutral:1.02,zero:1.00}:
-        {zero:1,low:1,neutral:1,six:1,mid:1};
-      const impact=outcome!=="T"&&this.streak>3?0.7:1;
-      const tilt=Object.fromEntries(GROUPS.map(k=>[k,1+impact*(factors[k]-1)]));
-      deducted=this._consume(draws,tilt);this.estimatedRounds++;source="estimated";
-    }
-    this.runningCount+=GROUPS.reduce((s,k)=>s+deducted[k]*TAG[k],0);
-    if(typeof observation.bankerPair==="boolean"||typeof observation.playerPair==="boolean"){
-      this.pairObserved++;if(observation.bankerPair)this.bankerPairs++;
-      if(observation.playerPair)this.playerPairs++;
-    }
-    if(typeof observation.luckySix==="boolean"){
-      this.luckySixObserved++;if(observation.luckySix)this.luckySixHits++;
-    }
-    this.history.push(outcome);this._ratios();
-    const beforeReset=this.remainingCards;
-    const update={outcome,source,estimated_only:source==="estimated",deducted,draws,remaining_after:beforeReset,
-      true_count:this.trueCount,reset_triggered:beforeReset<=60};
-    // A depletion threshold is NOT evidence that a real casino shuffled.
-    // Require explicit reset at shuffle; refuse further card depletion past zero.
-    this.lastUpdate=update;return update;
-  }
-  get countSource(){return this.estimatedRounds===0&&this.observedRounds>0?"observed":this.observedRounds?"mixed":"estimated";}
-  generateShoeContext(){
-    const tc=this.trueCount,rr=this.remainingCards/TOTAL,progress=1-rr,n=this.history.length;
-    const v=[
-      Math.pow(tc,2)*Math.sign(tc),tc/8,Math.tanh(tc/4),Math.tanh(this.runningCount/32),
-      rr,progress,clamp(n/70,0,1),this.observedRounds/Math.max(1,n),
-      this.countSource==="observed"?1:0,this.countSource==="estimated"?1:0,
-      Math.tanh((this.bankerPairs-this.playerPairs)/6),Math.tanh(this.luckySixHits/4),
-      this.history.at(-1)==="B"?1:this.history.at(-1)==="P"?-1:0,
-      clamp(this.streak/12,0,1),this.pairObserved/Math.max(1,n),this.luckySixObserved/Math.max(1,n)
-    ];
-    for(const k of GROUPS){
-      const r=this.cardRatios[k],d=this.cardDensities[k],initial=INITIAL[k]/TOTAL;
-      v.push(r,d,d/initial,this.counts[k]/TOTAL,r*r,d*d,d-initial,(1-r));
-    }
-    for(const center of [-7,-5,-3,-1,1,3,5,7]){
-      const z=(tc-center)/2;v.push(clamp(1-Math.abs(z),0,1),Math.exp(-.5*z*z),clamp((tc-center)/16,-1,1));
-    }
-    for(let i=0;i<8;i++){
-      const center=(i+0.5)/8,z=(progress-center)*8;
-      v.push(clamp(1-Math.abs(z),0,1),Math.exp(-.5*z*z),clamp((progress-center)*2,-1,1));
-    }
-    for(const w of [3,5,8,12,16,24,48,70]){
-      const h=this.history.slice(-w);
-      for(const side of ["B","P","T"])v.push(h.length?h.filter(x=>x===side).length/h.length:0);
-    }
-    if(v.length!==128||!v.every(finite))throw Error("quant_128_invalid");
-    return v;
-  }
-  injectShoeContext(context256,{experimental=false}={}){
-    if(!experimental)throw Error("quant V2 feature schema incompatible with frozen weights");
-    if(!Array.isArray(context256)||context256.length!==256||!context256.every(finite))throw Error("expected 256D");
-    return [...this.generateShoeContext(),...context256.slice(128)];
-  }
-  static fractionalKelly(win,loss,payout){
-    if(![win,loss,payout].every(finite)||win<0||loss<0||win+loss>1+EPS||payout<=0)throw Error("invalid_kelly");
-    const ev=payout*win-loss,raw=ev>0?0.25*ev/(payout*(win+loss)):0;
-    return {ev,raw_fraction:raw,bet_fraction:ev>0?clamp(raw,0.05,0.30):0,
-      minimum_clip_applied:ev>0&&raw<0.05};
-  }
-  _rate(events,known,prior){return known?{observed_events:events,observed_rounds:known,rate:(events+prior*16)/(known+16),calibrated:false}:{observed_events:0,observed_rounds:0,rate:null,calibrated:false};}
-  predictNext(){
-    const tc=this.trueCount,weight=Math.min(0.7,Math.abs(tc)*0.15);
-    const shift=clamp(tc*ALPHA,-0.15,0.15);
-    const countProbability={B:BASE.B+shift,P:BASE.P-shift,T:BASE.T};
-    const probabilities={B:BASE.B*(1-weight)+countProbability.B*weight,
-      P:BASE.P*(1-weight)+countProbability.P*weight,T:BASE.T};
-    const banker=BBBQuantEngine.fractionalKelly(probabilities.B,probabilities.P,0.95);
-    const player=BBBQuantEngine.fractionalKelly(probabilities.P,probabilities.B,1);
-    const choice=banker.ev>=player.ev?"B":"P",selected=choice==="B"?banker:player;
-    const gateTC=Math.abs(tc)>=2,gateEV=selected.ev>0.005;
-    const completeObserved=this.countSource==="observed";
-    const allowed=gateTC&&gateEV&&completeObserved,reason=!gateTC?"true_count_below_2":
-      !gateEV?"ev_below_0_005":!completeObserved?"unobserved_card_composition":"observed_gate_passed";
-    const theoretical=gateTC&&gateEV?choice:"Skip";
-    const direction=allowed?choice:"Skip";
-    return {
-      version:"BBB_QUANT_V2",context_schema:SCHEMA,experimental:true,validated:false,
-      alpha:ALPHA,count_weight:weight,count_source:this.countSource,
-      probabilities,count_probability:countProbability,baseline_probabilities:{...BASE},
-      ev_banker:banker.ev,ev_player:player.ev,source_reliability:completeObserved?"observed_card_points":"uncalibrated_outcome_proxy",
-      direction,direction_text:direction==="Skip"?"觀望":direction==="B"?"莊":"閒",
-      theoretical_direction:theoretical,reason,bet_fraction:allowed?selected.bet_fraction:0,
-      hypothetical_fraction:theoretical!=="Skip"?selected.bet_fraction:0,
-      kelly_raw_fraction:allowed?selected.raw_fraction:0,minimum_clip_applied:allowed&&selected.minimum_clip_applied,
-      side_bets:{
-        banker_pair:this._rate(this.bankerPairs,this.pairObserved,0.074),
-        player_pair:this._rate(this.playerPairs,this.pairObserved,0.074),
-        tie:this._rate(this.history.filter(x=>x==="T").length,this.history.length,BASE.T),
-        lucky_six:this._rate(this.luckySixHits,this.luckySixObserved,0.054)
-      },
-      side_bet_stake_fraction:0,
-      estimated_shoe:{remaining_cards:this.remainingCards,cardRatios:{...this.cardRatios},
-        cardDensities:{...this.cardDensities},runningCount:this.runningCount,trueCount:tc,
-        observedRounds:this.observedRounds,estimatedRounds:this.estimatedRounds,estimated_only:!completeObserved},
-      gates:{true_count_abs_min:2,ev_min_exclusive:0.005,observed_cards_required:true},
-      notice:"No rank/side-bet inference is possible from B/P/T alone. Model coefficients are uncalibrated and not evidence of positive expected value."
-    };
-  }
-  static fromHistory(history){const e=new BBBQuantEngine();for(const x of history)e.updateRound(x);return e;}
-}
-return {BBBQuantEngine,QUANT_CONTEXT_SCHEMA:SCHEMA,QUANT_INITIAL_COUNTS:INITIAL};
+  return {BBBShoeQuantEngine,BBBQuantEngine:BBBShoeQuantEngine,
+    QUANT_CONTEXT_SCHEMA:SCHEMA,QUANT_INITIAL_COUNTS:INITIAL,
+    BASE_PROBABILITIES:BASE};
 });
