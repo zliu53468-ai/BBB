@@ -821,7 +821,7 @@ function applyFinalPrediction(seq,corePrediction=null){
         }else{const combined=window.__BBB_ROAD_PRIMARY__.combine(roadCandidate,physics,roadConfig);physics=combined.physics;roadAudit=combined.audit;}
         const gap=dualLive?physics[41]:roadCandidate?.available?1.95*roadCandidate.probabilities.B-2*roadCandidate.probabilities.P:1.95*before.probabilities.B-2*before.probabilities.P;
         markov={model:"road_primary",base:before.probabilities,direction:hitrateSide(gap),probability_direction:roadCandidate?.direction||before.direction,markov_direction:roadCandidate?.direction||"Balanced",probabilities:roadCandidate?.probabilities||null,weight:roadCandidate?.available?1:0,observations:roadCandidate?.observations||0,order:roadCandidate?.order||0,reason:roadAudit.reason};executionOrder.push("physics_pf_adjustment");
-      }else if(hitrate){markov=markovAdjustment(physics,seq,hitrate);physics=markov.physics;executionOrder.push("markov_prior");}
+      }else if(hitrate){markov=markovAdjustment(physics,seq,hitrate);physics=markov.physics;executionOrder.push(hitrate.markov?.enabled===true?"markov_prior":"physics_pf_direction_anchor");}
       physicsForecast=unpackPhysicsForecast(physics);
       physicsIntegrityReport=physicsIntegrity(physics);
       physicalEv=physicsForecast?.physicalEv||null;
