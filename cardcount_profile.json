@@ -637,5 +637,25 @@
     "noise_start": 0.55,
     "noise_stop": 0.85,
     "validated": false
+  },
+  "bayes_markov_final_v1": {
+    "schema_version": 1,
+    "version": "BAYES_MARKOV_1_3_V1",
+    "enabled": true,
+    "orders": [
+      1,
+      2,
+      3
+    ],
+    "prior_strength": 12,
+    "physics_prior_weight": 0.75,
+    "min_support": {
+      "1": 4,
+      "2": 5,
+      "3": 6
+    },
+    "whole_shoe": true,
+    "xgb_influence": 0,
+    "validated": false
   }
 }

@@ -1,0 +1,25 @@
+{
+  "seed": 20261030,
+  "data_kind": "SYNTHETIC_FUNCTIONAL_SMOKE_NOT_REAL_HOLDOUT",
+  "shoes": 200,
+  "opportunities": 11945,
+  "bets": 8983,
+  "non_tie_bets": 8111,
+  "correct_bets": 4065,
+  "profit": -78.54999999999596,
+  "display_recommendations": 10003,
+  "banker_forecasts": 6527,
+  "player_forecasts": 5418,
+  "orders": {
+    "0": 2780,
+    "1": 4138,
+    "2": 4319,
+    "3": 708
+  },
+  "errors": 0,
+  "validated": false,
+  "action_rate": 0.75203013813311,
+  "hit_rate_on_bets": 0.5011712489212181,
+  "realized_ev_per_bet": -0.008744294779026602,
+  "elapsed_ms": 53812
+}
