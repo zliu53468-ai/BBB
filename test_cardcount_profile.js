@@ -10,14 +10,14 @@ function make(enabled=true){
 (async()=>{
   const {api,ctx}=make();await api.loadModels();
   const f=b=>({available:true,direction:b===.5?"Balanced":b>.5?"B":"P",directional:{B:b,P:1-b},probabilities:{B:b*.9,P:(1-b)*.9,T:.1}});
-  assert.equal(api.displayDirection(f(.5024)),"Skip");assert.equal(api.displayDirection(f(.5025)),"B");
-  assert.equal(api.displayDirection(f(.4975)),"P");assert.equal(api.displayDirection(f(.5)),"Skip");
+  assert.equal(api.displayDirection(f(.5049)),"Skip");assert.equal(api.displayDirection(f(.505)),"B");
+  assert.equal(api.displayDirection(f(.495)),"P");assert.equal(api.displayDirection(f(.5)),"Skip");
   assert.equal(api.noSkipTestDirection(f(.5)),"Balanced");assert.equal(api.displayDirection({available:false}),null);
   const ids=["directionOrb","directionText","directionCode","confidence","regime","strength","modePill","roundCount","message"];
   const nodes=Object.fromEntries(ids.map(id=>[id,{textContent:"",className:""}]));ctx.document.getElementById=id=>nodes[id]||null;
-  api.renderPrediction({next_hand_forecast:f(.5024),direction:"Skip"},10);
-  assert.equal(nodes.directionText.textContent,"觀望");assert.match(nodes.confidence.textContent,/50.24/);
-  api.renderPrediction({next_hand_forecast:f(.5025),direction:"Skip"},10);assert.equal(nodes.directionText.textContent,"莊");
+  api.renderPrediction({next_hand_forecast:f(.5049),direction:"Skip"},10);
+  assert.equal(nodes.directionText.textContent,"觀望");assert.match(nodes.confidence.textContent,/50.49/);
+  api.renderPrediction({next_hand_forecast:f(.505),direction:"Skip"},10);assert.equal(nodes.directionText.textContent,"莊");
   const rounds=[1,18,20,21,23,43,45,46,48,70];
   const keys=Object.keys(profile.anchors);
   const js=rounds.map(r=>keys.map(k=>api.profileValue(k,r)));
