@@ -2,7 +2,7 @@
   "schema_version": 1,
   "name": "cardcount_middle_late_v2",
   "enabled": true,
-  "display_gap": 0.005,
+  "display_gap": 0.01,
   "stages": [
     {
       "name": "early",
@@ -627,17 +627,15 @@
     }
   },
   "relative_baseline_v1": {
-    "schema_version": 1,
-    "version": "RELATIVE_BASELINE_ADVISORY_V1",
+    "schema_version": 3,
+    "version": "BIDIRECTIONAL_RESIDUAL_DISPLAY_V1",
     "enabled": true,
     "display_only": true,
-    "baseline": {
-      "B": 0.458597,
-      "P": 0.446247,
-      "T": 0.095156
-    },
-    "max_raw_gap": 0.02,
-    "min_relative_gap": 0.001,
+    "min_samples": 25,
+    "prior_strength": 100,
+    "max_delta": 0.0025,
+    "noise_start": 0.55,
+    "noise_stop": 0.85,
     "validated": false
   }
 }
