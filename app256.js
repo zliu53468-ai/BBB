@@ -36,6 +36,16 @@ function quantEngineFor(seq){
   if(!QUANT256_MODE)return null;
   const Engine=typeof window!=="undefined"&&(window.BBBShoeQuantEngine||window.BBBQuantEngine);
   if(typeof Engine!=="function")return null;
+  // Optional explicit observed-point research rows. Never infer or invent
+  // full cards from B/P/T, never reuse stale rows from a different history.
+  const rows=window.__BBB_QUANT256_OBSERVED_ROUNDS__;
+  if(rows!==undefined){
+    if(!Array.isArray(rows)||rows.length!==seq.length||
+      rows.some((r,i)=>!r||typeof r!=="object"||r.outcome!==seq[i]||
+        !Array.isArray(r.observation?.cards)))
+      throw Error("observed_rounds_do_not_match_current_shoe");
+    return Engine.fromHistory(rows);
+  }
   return Engine.fromHistory(seq);
 }
 
@@ -433,10 +443,19 @@ function context256(seq){
     // Road geometry remains separately available as diagnostics.
     for(let i=0;i<SHOE_DIM;i++)vector[i]=dynamic[i];
     for(let i=SHOE_DIM;i<DIM;i++)vector[i]=0;
+    // V6: 17..32 and 129..144 map the same survival indicators.
+    // All old road coordinates are disconnected; 145..256 remain zero.
+    const survival=quant.survivalFeatures();
+    if(survival.length!==16||!survival.every(Number.isFinite))
+      throw Error("invalid_survival_context");
+    for(let i=0;i<16;i++){
+      vector[16+i]=survival[i];
+      vector[128+i]=survival[i];
+    }
   }
   if(vector.length!==DIM||!vector.every(Number.isFinite))throw new Error(`context mismatch ${vector.length}`);
   return {vector,candidates:roadData.candidates,bigRoad:roadData.bigRoad,
-    quant:quant?quant.predictNext():null,feature_schema:quant?"BBB_SHOE_QUANT_128_V5_ZERO_ROAD":"FROZEN_ORIGINAL_128"};
+    quant:quant?quant.predictNext():null,feature_schema:quant?"BBB_SHOE_QUANT_128_V6_CPSI":"FROZEN_ORIGINAL_128"};
 }
 
 function frozenPrior(){
@@ -497,8 +516,10 @@ function choose(seq){
       candidates:c,bigRoad:{rows:BIG_ROAD_ROWS,cols:BIG_ROAD_COLS,viewStartCol:ctx.bigRoad.viewStartCol,viewEndCol:ctx.bigRoad.viewEndCol,maxCol:ctx.bigRoad.maxCol,grid:ctx.bigRoad.grid},
       hard_gate:{count_passed:q.gates?.count_passed===true,ev_passed:q.gates?.ev_passed===true,
         ev_is_diagnostic_only:true,threshold_exclusive:2.5,
-        direction_owner:"absoluteCountVeto",road_override_allowed:false,
-        road_feature_max_abs:0,simulated_only:true,stake_fraction:0},
+        direction_owner:q.gates?.direction_owner||"absoluteCountVeto",
+        cpsi:q.survival?.cpsi||0,hazard_rate:q.survival?.hazard_rate||0,
+        raw_road_zeroed:true,cpsi_slots:[16,31,128,143],
+        road_override_allowed:false,simulated_only:true,stake_fraction:0},
       frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM,feature_schema:ctx.feature_schema,quant_shadow_scores_only:true}};
   }
   return{direction,reason,x,scores,gap,confidence,probabilities:{B:pB,P:pP},regime,strength,candidates:c,bigRoad:{rows:BIG_ROAD_ROWS,cols:BIG_ROAD_COLS,viewStartCol:ctx.bigRoad.viewStartCol,viewEndCol:ctx.bigRoad.viewEndCol,maxCol:ctx.bigRoad.maxCol,grid:ctx.bigRoad.grid},frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM}};
@@ -521,7 +542,7 @@ function renderPrediction(){const p=state.active?state.lastPrediction:null,orb=e
     el("strength").textContent="0% 注碼";
     orb.className="direction-orb idle";
     return;
-  }const isB=p.direction==="B";el("directionText").textContent=isB?"莊":"閒";el("directionCode").textContent=isB?"BANKER":"PLAYER";el("confidence").textContent=p.quant?`代理TC ${p.quant.estimated_shoe.trueCount.toFixed(2)}（非勝率）`:(p.confidence*100).toFixed(1)+"%";el("regime").textContent=p.quant?"絕對TC閘門／未校準研究訊號":p.regime;el("strength").textContent=p.quant?`模擬比率 ${(p.quant.simulated_bet_fraction*100).toFixed(1)}%（實際注碼 0%）`:p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isB?"banker":"player");}
+  }const isB=p.direction==="B";el("directionText").textContent=isB?"莊":"閒";el("directionCode").textContent=isB?"BANKER":"PLAYER";el("confidence").textContent=p.quant?`代理TC ${p.quant.estimated_shoe.trueCount.toFixed(2)}（非勝率）`:(p.confidence*100).toFixed(1)+"%";el("regime").textContent=p.quant?"TC／CPSI 長龍研究訊號（未校準）":p.regime;el("strength").textContent=p.quant?`模擬比率 ${(p.quant.simulated_bet_fraction*100).toFixed(1)}%（實際注碼 0%）`:p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isB?"banker":"player");}
 function render(){if(el("roundPill"))el("roundPill").textContent=`${state.history.length} 局`;if(el("modePill"))el("modePill").textContent=state.active?"分析完成":"準備中";if(el("roundCount"))el("roundCount").textContent=state.history.length;renderPrediction();renderHistory();}
 
 if(el("btnB"))el("btnB").addEventListener("click",()=>addOutcome("B"));

@@ -70,7 +70,11 @@ function scoreTwoArms(vector,quant=null){
 function context256(seq){
   const frozen=root.__BGS256_TEST__;
   if(!frozen||typeof frozen.context256!=="function")throw Error("missing frozen 256D diagnostics");
-  const old=frozen.context256(seq),engine=Engine.fromHistory(seq);
+  const old=frozen.context256(seq),rows=root.__BBB_QUANT256_OBSERVED_ROUNDS__;
+  if(rows!==undefined&&(!Array.isArray(rows)||rows.length!==seq.length||
+    rows.some((r,i)=>!r||r.outcome!==seq[i]||!Array.isArray(r.observation?.cards))))
+    throw Error("observed_rounds_do_not_match_current_shoe");
+  const engine=Engine.fromHistory(rows===undefined?seq:rows);
   root.__BBB_SHOE_QUANT_ENGINE__=engine;
   // V5 explicitly decouples both 128D blocks. The old vector is only a
   // diagnostic baseline. No road coordinate can reach LinUCB on this panel.
@@ -79,10 +83,20 @@ function context256(seq){
   if(vector.length!==256||shoe.length!==128)throw Error("quant 128D layout mismatch");
   for(let i=0;i<128;i++)vector[i]=shoe[i];
   for(let i=128;i<256;i++)vector[i]=0;
+  const features=engine.survivalFeatures();
+  if(features.length!==16||!features.every(Number.isFinite))
+    throw Error("invalid_survival_feature_schema");
+  // Old big-eye/small/cockroach windows do NOT enter these slots:
+  // 17..32 (16..31) and 129..144 (128..143) contain CPSI/HSMM data.
+  for(let i=0;i<16;i++){
+    vector[16+i]=features[i];
+    vector[128+i]=features[i];
+  }
   const quant=engine.predictNext(),arms=scoreTwoArms(vector,quant);
   return {vector,baseline:old,quant,arms,
-    road_masked:true,raw_road_diagnostics:old.vector.slice(128),
-    schema:"BBB_SHOE_QUANT_128_V5_ZERO_ROAD"};
+    cpsi_features:features,road_masked:true,
+    raw_road_diagnostics:old.vector.slice(128),
+    schema:"BBB_SHOE_QUANT_128_V6_CPSI"};
 }
 function run(){
   const seq=history(),message=el("message");
@@ -100,15 +114,18 @@ function run(){
   if(strength)strength.textContent=skip?"0%（觀望）":
     "模擬比率 "+(q.simulated_bet_fraction*100).toFixed(1)+"%（實際注碼 0%）";
   if(orb)orb.className="direction-orb "+(skip?"idle":finalDirection==="B"?"banker":"player");
-  const mode=el("modePill");if(mode)mode.textContent="QUANT256 V5 絕對算牌測試";
+  const mode=el("modePill");if(mode)mode.textContent="QUANT256 V6 長龍生存測試";
   // Side bets are independent research indicators; do not treat unobserved
   // pairs/Lucky6 as physical evidence or automatically recommend a stake.
   const sideNames={banker_pair:"莊對",player_pair:"閒對",tie:"和局",lucky_six:"幸運六"};
   const sideSummary=Object.entries(q.side_bets).map(([key,v])=>
     sideNames[key]+":"+(v.signal?"觀察訊號":"資料不足／無訊號")).join("、");
   if(message)message.textContent="代理TC "+q.estimated_shoe.trueCount.toFixed(2)+
-    "｜±2.5硬閘門 "+(skip?"觀望":"僅研究方向")+
-    "｜路單特徵 128D 全零"+
+    "｜長龍 "+q.survival.run_length+" 局／"+q.survival.reason+
+    "｜CPSI "+q.survival.cpsi.toFixed(3)+
+    "／Hazard指標 "+q.survival.hazard_rate.toFixed(3)+
+    "｜PF條件重採樣 "+(q.particle_survival.active?"觀測牌值研究":"未啟動")+
+    "｜原始牌路特徵不參與模型"+
     "｜診斷EV莊 "+(q.ev_banker*100).toFixed(2)+"%／閒 "+(q.ev_player*100).toFixed(2)+"%"+
     "｜兩臂差 "+result.arms.gap.toFixed(2)+
     "｜邊注觀察："+sideSummary+
@@ -122,7 +139,17 @@ if(start)start.addEventListener("click",function(e){
   try{run();}catch(err){const m=el("message");if(m)m.textContent="Quant256 計算失敗："+err.message;}
 },true);
 root.__BBB_QUANT256_TEST__={
-  context256,scoreTwoArms,run,history,mode:"experimental_v5_absolute_veto",
+  context256,scoreTwoArms,run,history,
+  // Caller supplies a complete shoe-aligned list of {outcome,observation:{cards}}
+  // with 4..6 observed 0..9 points; rows remain memory-only and are
+  // discarded at the end-of-shoe reload. Do not fabricate missing cards.
+  setObservedRounds(rows){
+    if(rows===null){delete root.__BBB_QUANT256_OBSERVED_ROUNDS__;return;}
+    if(!Array.isArray(rows)||rows.some(r=>!r||!["B","P","T"].includes(r.outcome)||
+      !Array.isArray(r.observation?.cards)))throw Error("invalid_observed_rounds");
+    root.__BBB_QUANT256_OBSERVED_ROUNDS__=JSON.parse(JSON.stringify(rows));
+  },
+  mode:"experimental_v6_cpsi_hazard",
   wager_recommendation_validated:false
 };
 })(typeof window!=="undefined"?window:null);

@@ -45,4 +45,65 @@ function absoluteCountVeto(trueCount){
   bet_fraction:0,simulated_bet_fraction
  });
 }
-return {estimate,absoluteCountVeto};});
+/**
+ * Quant256 V6 experimental CPSI + run-length hazard.
+ *
+ * This is a scenario/risk INDICATOR, not a physical law, calibrated hazard,
+ * estimated win probability or staking recommendation. For B/P/T-only shoes,
+ * observedRankEvidence=false and the module never issues follow/break orders.
+ * The zero density criterion is a model input, not proof that 0s favour B.
+ * No dependence on Bayesian Markov estimate() or any road features.
+ */
+function countSurvivalHazard({history=[],trueCount=0,zeroRatio=1,countSource='estimated'}={}){
+ if(!Array.isArray(history)||history.some(x=>!['B','P','T'].includes(x)))
+  throw Error('invalid_survival_history');
+ if(!Number.isFinite(trueCount)||!Number.isFinite(zeroRatio)||zeroRatio<0)
+  throw Error('invalid_survival_shoe');
+ const tc=clamp(trueCount,-8,8),z=clamp(zeroRatio,0,2),observed=countSource==='observed';
+ // Ties are neutral interruptions: count the most recent B/P streak over T.
+ let side=null,n=0;
+ for(let i=history.length-1;i>=0;i--){
+  const outcome=history[i];
+  if(outcome==='T')continue;
+  if(side===null){side=outcome;n=1;}
+  else if(side===outcome)n++;
+  else break;
+ }
+ const active=n>=4&&side!==null,sign=side==='B'?1:side==='P'?-1:0;
+ const aligned=sign*tc;
+ const conflict=active&&aligned<=-3;
+ const supportive=active&&aligned>=1.5&&z>=.75;
+ const blurry=Math.abs(tc)<=1.5;
+ // These are stress multipliers. They may only be applied to particles
+ // when every prior round has actual observed card POINTS, not B/P/T alone.
+ let follow=1,breakFactor=1;
+ if(active&&observed&&aligned>3){follow=1.5;}
+ if(active&&observed&&aligned< -2.5){follow=.4;breakFactor=2;}
+ const depth=clamp((n-3)/9,0,1);
+ const advantage=clamp((aligned-1.5)/4,0,1);
+ const cpsi=active?clamp((.2+.8*advantage)*(.6+.4*clamp(z,0,1)),0,1):0;
+ const hazard=active?clamp(.55+.35*depth-.4*cpsi+
+  (conflict ? .30 : 0),0,1):0;
+ let signal='Skip',reason='inactive';
+ if(!active)reason='run_length_below_4';
+ else if(!observed)reason='no_observed_card_points';
+ else if(conflict){signal=side==='B'?'P':'B';reason='observed_count_conflict_break_scenario';}
+ else if(blurry)reason='count_ambiguous_skip';
+ else if(supportive){signal=side;reason='observed_count_aligned_follow_scenario';}
+ else reason='insufficient_count_or_zero_density';
+ const continuation=signal!=='Skip'&&signal===side;
+ const simulated_fraction=signal==='Skip'?0:
+  continuation?clamp(.15+.01*(n-4),.15,.25):.15;
+ return Object.freeze({
+  version:'BBB_CPSI_HAZARD_V6',active,run_length:n,run_side:side,
+  observed_card_evidence:observed,count_source:countSource,tc,
+  zero_ratio:z,aligned_tc:aligned,cpsi,hazard_rate:hazard,
+  follow_multiplier:follow,break_multiplier:breakFactor,
+  direction:signal,direction_text:signal==='Skip'?'觀望':signal==='B'?'莊':'閒',
+  reason,uncalibrated:true,simulated_only:true,
+  bet_fraction:0,simulated_bet_fraction:simulated_fraction,
+  road_override_allowed:false,pf_weighting_allowed:active&&observed,
+  risk_is_probability:false
+ });
+}
+return {estimate,absoluteCountVeto,countSurvivalHazard};});

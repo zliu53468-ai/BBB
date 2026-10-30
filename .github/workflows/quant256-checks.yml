@@ -3,6 +3,10 @@ on:
   push:
     branches: [main]
     paths:
+      - "run_survival_pf_runtime.js"
+      - "run_length_hazard.py"
+      - "test_run_length_hazard.py"
+      - "bayes_markov_runtime.js"
       - "quant256_runtime.js"
       - "quant256_panel.js"
       - "app256.js"
@@ -13,6 +17,10 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - "run_survival_pf_runtime.js"
+      - "run_length_hazard.py"
+      - "test_run_length_hazard.py"
+      - "bayes_markov_runtime.js"
       - "quant256_runtime.js"
       - "quant256_panel.js"
       - "app256.js"
@@ -32,7 +40,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: node --check bayes_markov_runtime.js && node --check app256.js && node --check app256forward.js && node --check quant256_runtime.js && node --check quant256_panel.js && node --check test_quant256.js
+      - run: node --check bayes_markov_runtime.js && node --check app256.js && node --check app256forward.js && node --check quant256_runtime.js && node --check run_survival_pf_runtime.js && node --check quant256_panel.js && node --check test_quant256.js
       - run: node test_quant256.js
+      - run: python3 -m unittest -v test_run_length_hazard.py
       - run: node experimental/quant_engine/test_engine.cjs
       - run: node --require ./legacy_profile_fixture.cjs test_bayes_markov_final.js
