@@ -12,5 +12,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check bayes_markov_runtime.js && node test_bayes_markov_final.js && node --check xgb_adaptive_runtime.js && node test_xgb_adaptive.js && node --check vnext/dual_core_fusion_runtime.js && node --check vnext/replay.cjs && node vnext/test_dual_core.cjs && node vnext/test_live_runtime.cjs && node vnext/test_relative_baseline.cjs && node test_browser_calibration.js
+      - run: node --check bayes_markov_runtime.js && node test_bayes_markov_final.js && node --check xgb_adaptive_runtime.js && node test_xgb_adaptive.js && node --check physics_correction_runtime.js && node test_physics_correction.js && node --check vnext/dual_core_fusion_runtime.js && node --check vnext/replay.cjs && node vnext/test_dual_core.cjs && node vnext/test_live_runtime.cjs && node vnext/test_relative_baseline.cjs && node test_browser_calibration.js
       - run: node test_license_storage.mjs && node test_end_analysis_reload.js

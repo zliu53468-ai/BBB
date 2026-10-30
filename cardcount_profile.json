@@ -671,6 +671,18 @@
       "noise_start": 0.55,
       "noise_stop": 0.85,
       "validated": false
+    },
+    "physics_correction_v1": {
+      "schema_version": 1,
+      "version": "PHYSICS_BOUNDED_CORRECTION_V1",
+      "enabled": true,
+      "min_weight": 0.1,
+      "max_weight": 0.2,
+      "max_delta": 0.005,
+      "uncertainty_low": 0.35,
+      "uncertainty_high": 0.65,
+      "signal_scale": 0.05,
+      "validated": false
     }
   }
 }
