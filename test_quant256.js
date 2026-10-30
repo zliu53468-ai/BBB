@@ -1,7 +1,7 @@
 "use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
 const legacy=require("./bayes_markov_runtime");
-const E=legacy.BBBQuantEngine;
+const E=require("./quant256_runtime.js").BBBQuantEngine;
 assert.equal(typeof legacy.estimate,"function");
 assert.equal(typeof E,"function");
 const empty=new E(),p0=empty.predictNext();
@@ -55,15 +55,33 @@ function panel(file,enabled){
   return sandbox.window.__BGS256_TEST__;
 }
 const seq="BPPBTBBPPTBBPPBTBPBPPBP".split("");
-for(const file of ["app256.js","app256forward.js"]){
-  const baseline=panel(file,false),quant=panel(file,true);
-  const a=baseline.context256(seq),b=quant.context256(seq);
-  assert.equal(a.vector.length,256);
-  assert.equal(b.vector.length,256);
-  assert.deepEqual(Array.from(b.vector.slice(128)),Array.from(a.vector.slice(128)),"last 128 road slots must remain unchanged");
-  assert.deepEqual(Array.from(b.vector.slice(0,128)),E.fromHistory(seq).generateShoeContext());
-  assert.equal(b.feature_schema,"BBB_QUANT_128_V2");
-  assert.equal(quant.choose(seq).direction,"Skip","B/P/T alone must never produce a fake observed TC");
-  assert(["B","P"].includes(baseline.choose(seq).direction));
-}
-console.log("PASS quant V2: legacy API, observed/estimated separation, EV/TC gates, Kelly, 128D signed TC², conservation, 256D road slice and no default production changes");
+const frozen=panel("app256forward.js",false),frozenWithQuery=panel("app256forward.js",true);
+const original=frozen.context256(seq),unchanged=frozenWithQuery.context256(seq);
+assert.deepEqual(Array.from(unchanged.vector),Array.from(original.vector),"pinned forward cannot be modified");
+const baseline=panel("app256.js",false),quant=panel("app256.js",true);
+const a=baseline.context256(seq),b=quant.context256(seq);
+assert.equal(a.vector.length,256);assert.equal(b.vector.length,256);
+assert.deepEqual(Array.from(b.vector.slice(128)),Array.from(a.vector.slice(128)));
+assert.deepEqual(Array.from(b.vector.slice(0,128)),E.fromHistory(seq).generateShoeContext());
+assert.equal(b.feature_schema,"BBB_QUANT_128_V2");
+assert.equal(quant.choose(seq).direction,"Skip");
+assert(["B","P"].includes(baseline.choose(seq).direction));
+const node={};const ids=["btnStart","message","directionText","directionCode","confidence","regime","strength","directionOrb","modePill"];
+for(const id of ids)node[id]={textContent:"",className:"",handlers:[],addEventListener(type,fn,capture){this.handlers.push({type,fn,capture});}};
+const storage=new Map([["bgs256d_frozen_6x15_forward_v18",JSON.stringify({history:seq})]]);
+const sb={URLSearchParams,document:{getElementById:id=>node[id]||null},
+  localStorage:{getItem:k=>storage.get(k)||null},console};
+sb.window={location:{search:"?quant256=1"},BBBQuantEngine:E,__BGS256_TEST__:frozen};
+vm.runInNewContext(fs.readFileSync("quant256_panel.js","utf8"),sb);
+const adapter=sb.window.__BBB_QUANT256_TEST__;
+assert(adapter&&adapter.wager_recommendation_validated===false);
+const over=adapter.context256(seq),actual=adapter.run();
+assert.equal(over.vector.length,256);
+assert.deepEqual(Array.from(over.vector.slice(128)),Array.from(original.vector.slice(128)));
+assert.equal(actual.quant.bet_fraction,0);
+assert.equal(node.directionText.textContent,"觀望");
+assert.equal(node.strength.textContent,"0.0% 注碼");
+assert(node.regime.textContent.includes("B/P/T"));
+assert.equal(node.btnStart.handlers.length,1);
+assert.equal(node.btnStart.handlers[0].capture,true);
+console.log("PASS quant V2: legacy API, observed/estimated separation, EV/TC gates, Kelly, 128D signed TC², conservation, 256D road slice and immutable production legacy guard");
