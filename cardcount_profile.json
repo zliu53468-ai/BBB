@@ -697,41 +697,6 @@
       "uncertainty_low": 0.55,
       "uncertainty_high": 0.8,
       "validated": false
-    },
-    "single_fusion_v1": {
-      "schema_version": 1,
-      "version": "SINGLE_FUSION_V1",
-      "enabled": true,
-      "sequence_prior": 0.5068243807772389,
-      "weights": {
-        "sequence": 0.5,
-        "core": 0.1,
-        "physics": 0.25,
-        "pf": 0.05,
-        "xgb": 0.1
-      },
-      "max_pf_weight": 0.06,
-      "max_xgb_weight": 0.25,
-      "physics_uncertainty_low": 0.35,
-      "physics_uncertainty_high": 0.65,
-      "pf_gate": {
-        "quality_low": 0.55,
-        "quality_high": 0.8,
-        "ess_low": 0.4,
-        "ess_high": 0.8,
-        "uncertainty_low": 0.55,
-        "uncertainty_high": 0.8
-      },
-      "xgb_gate": {
-        "min_samples": 12,
-        "window": 24,
-        "prior_samples": 12,
-        "min_brier_gain": 0.0005,
-        "target_brier_gain": 0.02,
-        "noise_start": 0.55,
-        "noise_stop": 0.85
-      },
-      "validated": false
     }
   }
 }
