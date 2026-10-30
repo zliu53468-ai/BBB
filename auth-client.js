@@ -21,7 +21,7 @@ const scripts=[
   "pf_light_runtime.js?v=20261030-pf-light-v1",
   "physics_correction_runtime.js?v=20261030-pf-light-v1",
   "xgb_adaptive_runtime.js?v=20261030-pf-light-v1",
-  "bayes_markov_runtime.js?v=20261030-pf-light-v1",
+  "bayes_markov_runtime.js?v=20261030-quant256-v2",
   "vnext/relative_baseline_runtime.js?v=20261030-pf-light-v1",
   "final_probability_runtime.js?v=20261030-pf-light-v1"
 ];
