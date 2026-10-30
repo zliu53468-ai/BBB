@@ -1,5 +1,5 @@
 /**
- * BBBShoeQuantEngine V3 — isolated, deterministic 256D experimental engine.
+ * BBBShoeQuantEngine V4 — isolated, deterministic 256D experimental engine.
  *
  * This models an *assumed* distribution when only B/P/T outcomes are provided.
  * Actual deck ranks, shoe penetration, pairs and Lucky Six are unobservable
@@ -28,7 +28,7 @@
   const BASE=Object.freeze({B:0.4586,P:0.4462,T:0.0952});
   const COUNTS=Object.freeze({low:1,mid:-1,six:0,zero:0,nine:0});
   const ALPHA=0.0045;
-  const SCHEMA="BBB_SHOE_QUANT_128_V3";
+  const SCHEMA="BBB_SHOE_QUANT_128_V4";
   const SMALL=1e-9,clamp=(x,min,max)=>Math.max(min,Math.min(max,x));
   const finite=Number.isFinite;
   function groupOf(point){
@@ -54,7 +54,7 @@
       this.estimatedCounts={...INITIAL};this.remainingCards=TOTAL;
       this.runningCount=0;this.trueCount=0;this.pairCount=0;this.l6Index=0;
       this.history=[];this.lastSide=null;this.streak=0;this.estimatedRounds=0;this.observedRounds=0;
-      this.pairKnownRounds=0;this.bankerPairs=0;this.playerPairs=0;
+      this.pairKnownRounds=0;this.bankerPairKnownRounds=0;this.playerPairKnownRounds=0;this.bankerPairs=0;this.playerPairs=0;
       this.l6KnownRounds=0;this.l6ObservedHits=0;this.lastUpdate=null;
       this._refresh();return this;
     }
@@ -129,12 +129,19 @@
       // Exact requested +/- low vs mid proxy. With a P round at 4.94 cards:
       // 4.94*.40 - 4.94*.45 = -0.247. With B it is +0.494.
       this.runningCount+=GROUPS.reduce((s,k)=>s+removed[k]*COUNTS[k],0);
-      if(typeof observation.bankerPair==="boolean"||typeof observation.playerPair==="boolean"){
-        this.pairKnownRounds++;
+      // Pair events are distinct markets: do not infer the player pair rate from
+      // banker-pair observations or vice versa. Missing is not a false event.
+      if(typeof observation.bankerPair==="boolean"){
+        this.bankerPairKnownRounds++;
         if(observation.bankerPair)this.bankerPairs++;
-        if(observation.playerPair)this.playerPairs++;
-        this.pairCount=this.bankerPairs+this.playerPairs;
       }
+      if(typeof observation.playerPair==="boolean"){
+        this.playerPairKnownRounds++;
+        if(observation.playerPair)this.playerPairs++;
+      }
+      if(typeof observation.bankerPair==="boolean"||typeof observation.playerPair==="boolean")
+        this.pairKnownRounds++;
+      this.pairCount=this.bankerPairs+this.playerPairs;
       if(typeof observation.luckySix==="boolean"){
         this.l6KnownRounds++;
         if(observation.luckySix)this.l6ObservedHits++;
@@ -157,8 +164,13 @@
     /** Exact 128-slot schema, intentionally incompatible with Frozen Core V18. */
     generateShoeContext(){
       const tc=this.trueCount,n=this.history.length,rr=this.remainingCards/TOTAL,progress=1-rr;
+      // The first four coordinates are intentionally NONLINEAR, signed
+      // count-only features; road data never enters these slots. Scaling
+      // alone does not create predictive information from unobserved ranks.
+      const sign=Math.sign(tc),square=tc*tc;
       const v=[
-        Math.pow(tc,2)*Math.sign(tc),tc,Math.tanh(tc/3),Math.sign(tc)*Math.log1p(tc*tc),
+        square*sign,sign*square/(1+Math.abs(tc)),
+        sign*Math.pow(Math.tanh(tc/3),2),sign*Math.log1p(square),
         rr,progress,clamp(n/80,0,1),Math.tanh(this.runningCount/32),
         Math.tanh(this.pairCount/8),Math.tanh(this.l6Index/8),
         this.observedRounds/Math.max(1,n),this.estimatedRounds/Math.max(1,n),
@@ -224,23 +236,28 @@
       const source=this.countSource;
       const tieRecent=this.history.slice(-12),tieHits=tieRecent.filter(x=>x==="T").length;
       const tieSignal=tieRecent.length>=8&&tieHits/tieRecent.length>.20;
-      const pairSignal=this.pairKnownRounds>=10&&this.pairCount/this.pairKnownRounds>.17;
+      const bankerPairSignal=this.bankerPairKnownRounds>=10&&this.bankerPairs/this.bankerPairKnownRounds>.085;
+      const playerPairSignal=this.playerPairKnownRounds>=10&&this.playerPairs/this.playerPairKnownRounds>.085;
       const l6Signal=this.l6KnownRounds>=10&&this.l6ObservedHits/this.l6KnownRounds>.12;
       return {
-        version:"BBB_SHOE_QUANT_V3",context_schema:SCHEMA,experimental:true,validated:false,
+        version:"BBB_SHOE_QUANT_V4",context_schema:SCHEMA,experimental:true,validated:false,
         alpha:ALPHA,count_weight:w_count,count_source:source,
         baseline_probabilities:{...BASE},count_probability,probabilities,
         ev_banker:b.ev,ev_player:p.ev,ev_selected:value.ev,direction,
         direction_text:direction==="Skip"?"觀望":direction==="B"?"莊":"閒",
         reason:!gateCount?"true_count_below_1_5":!gateEV?"nonpositive_expected_value":"estimated_EV_gate_passed",
+        // Hard gate belongs to the count engine; an untrained LinUCB road
+        // score is not authorized to flip it or make a neutral shoe actionable.
+        count_gate_passed:gateCount,ev_gate_passed:gateEV,
+        research_direction_allowed:gateCount&&gateEV,
         // Simulated Kelly amount is deliberately separate from an actionable stake:
         // B/P/T-only pseudo-counts and unvalidated alpha do not establish true EV.
         bet_fraction:0,simulated_bet_fraction:direction==="Skip"?0:value.bet_fraction,
         kelly_raw_fraction:direction==="Skip"?0:value.raw_fraction,
         minimum_clip_applied:direction!=="Skip"&&value.minimum_clip_applied,
         side_bets:{
-          banker_pair:this._sideIndicator("banker_pair",pairSignal,this.bankerPairs,this.pairKnownRounds,"observed_pair_rate_not_calibrated"),
-          player_pair:this._sideIndicator("player_pair",pairSignal,this.playerPairs,this.pairKnownRounds,"observed_pair_rate_not_calibrated"),
+          banker_pair:this._sideIndicator("banker_pair",bankerPairSignal,this.bankerPairs,this.bankerPairKnownRounds,"observed_banker_pair_rate_not_calibrated"),
+          player_pair:this._sideIndicator("player_pair",playerPairSignal,this.playerPairs,this.playerPairKnownRounds,"observed_player_pair_rate_not_calibrated"),
           tie:this._sideIndicator("tie",tieSignal,tieHits,tieRecent.length,"outcome_window_only_not_calibrated"),
           lucky_six:this._sideIndicator("lucky_six",l6Signal,this.l6ObservedHits,this.l6KnownRounds,"observed_lucky_six_rate_not_calibrated")
         },
@@ -251,7 +268,8 @@
           estimatedRounds:this.estimatedRounds,observedRounds:this.observedRounds,
           estimated_only:source!=="observed"
         },
-        gates:{true_count_abs_min:1.5,ev_min_exclusive:0,simulated:true},
+        gates:{true_count_abs_min:1.5,ev_min_exclusive:0,count_passed:gateCount,ev_passed:gateEV,
+          neutral_forced_skip:!gateCount,road_override_allowed:false,simulated:true},
         notice:"B/P/T-only expected removal is an uncalibrated heuristic, not observed card counting. Simulated EV and Kelly are not an actionable betting advantage."
       };
     }
