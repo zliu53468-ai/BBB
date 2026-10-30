@@ -55,9 +55,10 @@ const status=poor.inspect(bad,shoe,model);assert(status.validation_count>=16);as
 const before=poorStore.getItem(M.KEY);for(let i=0;i<5;i++)poor.apply(f,bad,shoe,model);assert.equal(poorStore.getItem(M.KEY),before);
 
 (async()=>{
-  const backing=storage(),ctx={console,localStorage:backing,document:{getElementById:()=>null},fetch:async file=>({ok:true,json:async()=>JSON.parse(fs.readFileSync(file,"utf8"))})};ctx.window=ctx;vm.createContext(ctx);
-  for(const file of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","browser_calibration.js","final_probability_runtime.js"])vm.runInContext(fs.readFileSync(file,"utf8"),ctx,{filename:file});
-  const api=ctx.__BGS_FINAL56__;await api.loadModels();const h=Array(50).fill("B"),baseline=api.applyFinalPrediction(h);
+  // Exercise the unchanged legacy calibration with its feature flag off;
+  // the new display replacement has separate prequential integration tests.
+  const {ctx,api}=await require('./test_pf_primary_runtime').make();
+  const backing=ctx.localStorage;const h=Array(50).fill("B"),baseline=api.applyFinalPrediction(h);
   const local=ctx.__BBB_BROWSER_CALIBRATION__.createClient(backing),shoeId=backing.getItem("bgs_xgb_final_shoe_id_v5");
   const tag=ctx.__BBB_BROWSER_CALIBRATION__.fingerprint(api.version,JSON.parse(fs.readFileSync("physics_multitask_model.json")),JSON.parse(fs.readFileSync("final_probability_model.json")),JSON.parse(fs.readFileSync("cardcount_profile.json")).local_calibration,ctx.__BGS_PARTICLE500__.version,...(api.getCardcountProfile().pf_weight_smoothing_v1?.enabled?[api.getCardcountProfile().pf_weight_smoothing_v1]:[]),...(api.getCardcountProfile().pf.point_card_sampling?.enabled?[JSON.stringify(api.getCardcountProfile().pf.point_card_sampling)]:[]));
   const prefix=[];for(const result of h){const ticket=local.prepare(prefix,f,shoeId,tag);prefix.push(result);local.commit(ticket,result,prefix);}

@@ -25,8 +25,9 @@ const VERSION=EV_CONSISTENCY_V1
   :"PHYSICS_57D_V14_8_FORECAST_FIRST";
 const PHYSICS_URL="physics_multitask_model.json";
 let cardcountProfile=null,displayGapOverride=null,dualFusionModel=null,dualPF=null,dualPFTag="";
-function relativeBaselineConfig(){const c=cardcountProfile?.relative_baseline_v1;return dualCoreLiveConfig()&&c?.enabled===true?c:null;}
-function applyRelativeBaseline(f){const c=relativeBaselineConfig();return c&&window.__BBB_RELATIVE_BASELINE__?window.__BBB_RELATIVE_BASELINE__.apply(f,c):f;}
+function relativeBaselineConfig(){const c=cardcountProfile?.relative_baseline_v1;return dualCoreLiveConfig()&&c?.enabled===true&&typeof window.__BBB_RELATIVE_BASELINE__?.createClient==="function"?c:null;}
+function relativeBiasTag(){return noSkipTestActive?experimentalContext()?.tag||browserCalibrationTag+':test':browserCalibrationTag+':normal';}
+function applyRelativeBaseline(f,history=[]){const c=relativeBaselineConfig();return c&&window.__BBB_RELATIVE_BASELINE__?window.__BBB_RELATIVE_BASELINE__.apply(f,c,history,getShoeId(),relativeBiasTag()):f;}
 function dualCoreLiveConfig(){const c=roadPrimaryConfig()?.vnext_live_v1;return c?.enabled===true?c:null;}
 function roadPrimaryConfig(){const c=cardcountProfile?.road_primary_v1;const pfQuery=typeof window!=="undefined"&&/(?:^\?|&)pf_primary=1(?:&|$)/.test(String(window.location?.search||""));return c?.enabled===true&&!pfQuery?c:null;}
 function pfPrimaryConfig(){if(roadPrimaryConfig())return null;const c=cardcountProfile?.pf_primary_v1;if(!c)return null;const query=c.allow_query_test===true&&typeof window!=="undefined"&&/(?:^\?|&)pf_primary=1(?:&|$)/.test(String(window.location?.search||""));return c.enabled===true||query?c:null;}
@@ -645,10 +646,10 @@ function smoothReferenceForecast(forecast,history){
  return DISPLAY_EMA.apply(forecast,history,getShoeId(),JSON.stringify([tuning,pointCardSamplingTag(),...(pfPrimaryTag()?[pfPrimaryTag()]:[])]),dynamicEmaAlpha(history.length+1,forecast.uncertainty||0,{},null,lastPhysicsDiagnostics),tuning.reference_smoothing.max_delta);
 }
 function resolveDisplayForecast(raw,history){
-  const context=noSkipTestActive?experimentalContext():null;
-  if(context){const mapped=applyExperimentalForecast(raw,context.config),calibrated=context.client.apply(mapped.forecast,history,getShoeId(),context.tag,localCalibrationConfig());return {raw:mapped.forecast,forecast:applyRelativeBaseline(smoothReferenceForecast(calibrated.forecast,history)),calibration:calibrated.status,experimental:{...mapped.diagnostics,history_fingerprint:history.join(""),round_index:history.length+1,model:context.tag}};}
-  const calibrated=LOCAL_CALIBRATION?.apply(raw,history,getShoeId(),browserCalibrationTag,localCalibrationConfig());
-  return {raw,forecast:applyRelativeBaseline(smoothReferenceForecast(calibrated?.forecast||raw,history)),calibration:calibrated?.status||null,experimental:null};
+  const context=noSkipTestActive?experimentalContext():null,bias=relativeBaselineConfig();
+  if(context){const mapped=applyExperimentalForecast(raw,context.config),calibrated=bias?{forecast:mapped.forecast,status:null}:context.client.apply(mapped.forecast,history,getShoeId(),context.tag,localCalibrationConfig()),forecast=applyRelativeBaseline(smoothReferenceForecast(calibrated.forecast,history),history);return {raw:mapped.forecast,forecast,calibration:forecast.relative_baseline||calibrated.status,experimental:{...mapped.diagnostics,history_fingerprint:history.join(""),round_index:history.length+1,model:context.tag}};}
+  const calibrated=bias?{forecast:raw,status:null}:LOCAL_CALIBRATION?.apply(raw,history,getShoeId(),browserCalibrationTag,localCalibrationConfig()),forecast=applyRelativeBaseline(smoothReferenceForecast(calibrated?.forecast||raw,history),history);
+  return {raw,forecast,calibration:forecast.relative_baseline||calibrated?.status||null,experimental:null};
 }
 function makeExperimentalPaper(history,baseRaw,context,wasShown=false){
   const mapped=applyExperimentalForecast(baseRaw,context.config);if(!mapped.forecast?.available)return null;
@@ -675,7 +676,8 @@ function prepareDisplayCalibrationTickets(history,baseRaw){
   let experimental=null,paper=getExperimentalPending(history);
   if(context){const mapped=applyExperimentalForecast(baseRaw,context.config);experimental=context.client.prepare(history,mapped.forecast,shoe,context.tag);
     if(!paper&&noSkipTestActive&&mapped.forecast?.available)paper=makeExperimentalPaper(history,baseRaw,context,false);}
-  return {normal,experimental,paper};
+  const c=relativeBaselineConfig(),bias=c?window.__BBB_RELATIVE_BASELINE__?.prepare(history,resolveDisplayForecast(baseRaw,history).forecast,shoe,relativeBiasTag(),c):null;
+  return {normal,experimental,paper,bias};
 }
 function getExperimentalRows(history=readHistory()){
   try{const rows=JSON.parse(localStorage.getItem(EXPERIMENT_ROWS_KEY)||"[]"),shoe=getShoeId();if(!Array.isArray(rows))return[];
@@ -684,6 +686,7 @@ function getExperimentalRows(history=readHistory()){
 }
 function commitDisplayCalibrationTickets(tickets,actual,history){
   if(!tickets)return;
+  const biasConfig=relativeBaselineConfig();if(biasConfig&&tickets.bias?.shoe===getShoeId()&&tickets.bias?.model===relativeBiasTag())window.__BBB_RELATIVE_BASELINE__?.commit(tickets.bias,actual,history,biasConfig);
   if(tickets.normal?.model===browserCalibrationTag)LOCAL_CALIBRATION?.commit(tickets.normal,actual,history,localCalibrationConfig());
   const context=experimentalContext();if(context&&tickets.experimental?.model===context.tag)context.client.commit(tickets.experimental,actual,history,localCalibrationConfig());
   const p=tickets.paper;
@@ -1094,7 +1097,7 @@ function renderPrediction(p,n){
   if(p.road_primary?.enabled&&el("message"))el("message").textContent+="；牌路主導實驗版，未驗證命中率提升";
   if(p.road_primary?.dual_core?.enabled&&el("modePill"))el("modePill").textContent="VNext 雙核心實驗預測";
   if(p.road_primary?.dual_core?.enabled&&el("message"))el("message").textContent+="；雙核心已參與正式機率，未驗證勝率提升";
-  if(p.next_hand_forecast?.relative_baseline?.applied&&el("message"))el("message").textContent+="；相對基準輔助方向（不改機率及正式下注）";
+  if(p.next_hand_forecast?.relative_baseline?.applied&&el("message"))el("message").textContent+="；同靴雙向誤差校正（僅顯示機率，正式下注不變）";
   if(p.pf_primary?.enabled&&el("modePill"))el("modePill").textContent="PF主導／Physics輔助測試";
   if(p.pf_primary?.enabled&&el("message"))el("message").textContent+="；PF主導測試，未證實命中率改善";
 }
