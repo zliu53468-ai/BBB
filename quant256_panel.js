@@ -55,14 +55,15 @@ function scoreTwoArms(vector,quant=null){
   // flip the count engine's experimental direction.
   const countGate=quant?.gates?.count_passed===true;
   const evGate=quant?.gates?.ev_passed===true;
-  const allowed=countGate&&evGate&&["B","P"].includes(quant.direction);
+  const allowed=countGate&&["B","P"].includes(quant.direction);
   const direction=allowed?quant.direction:"Skip";
   return {B:{mean:projected,score:projected+uncertainty},
     P:{mean:-projected,score:-projected+uncertainty},
     gap:2*projected,shoeContribution,roadContribution,
     alpha,ridge,trained:false,raw_direction:rawDirection,direction,
     hard_gate:{count_passed:countGate,ev_passed:evGate,
-      count_is_authority:true,road_override_allowed:false,
+      count_is_authority:true,threshold_exclusive:2.5,
+      ev_is_diagnostic_only:true,road_override_allowed:false,
       linucb_disagreed:allowed&&rawDirection!==direction,
       simulated_only:true,bet_fraction:0}};
 }
@@ -71,14 +72,17 @@ function context256(seq){
   if(!frozen||typeof frozen.context256!=="function")throw Error("missing frozen 256D diagnostics");
   const old=frozen.context256(seq),engine=Engine.fromHistory(seq);
   root.__BBB_SHOE_QUANT_ENGINE__=engine;
-  // Requirement: literally overwrite slots 0..127, preserve slots 128..255.
+  // V5 explicitly decouples both 128D blocks. The old vector is only a
+  // diagnostic baseline. No road coordinate can reach LinUCB on this panel.
   const vector=old.vector.slice();
   const shoe=engine.generateShoeContext();
   if(vector.length!==256||shoe.length!==128)throw Error("quant 128D layout mismatch");
   for(let i=0;i<128;i++)vector[i]=shoe[i];
+  for(let i=128;i<256;i++)vector[i]=0;
   const quant=engine.predictNext(),arms=scoreTwoArms(vector,quant);
   return {vector,baseline:old,quant,arms,
-    schema:"BBB_SHOE_QUANT_128_V4"};
+    road_masked:true,raw_road_diagnostics:old.vector.slice(128),
+    schema:"BBB_SHOE_QUANT_128_V5_ZERO_ROAD"};
 }
 function run(){
   const seq=history(),message=el("message");
@@ -90,20 +94,26 @@ function run(){
     regime=el("regime"),strength=el("strength"),orb=el("directionOrb");
   if(output)output.textContent=skip?"觀望":finalDirection==="B"?"莊":"閒";
   if(code)code.textContent=skip?"QUANT SKIP":finalDirection==="B"?"BANKER":"PLAYER";
-  if(conf)conf.textContent=skip?"—":(q.probabilities[finalDirection]*100).toFixed(2)+"%（模型假設）";
+  if(conf)conf.textContent=skip?"—":"代理 TC "+q.estimated_shoe.trueCount.toFixed(2)+"（非勝率）";
   if(regime)regime.textContent=q.count_source==="estimated"?
     "估計扣牌／未校準："+(skip?"未達門檻":"僅研究方向"):"觀測卡牌／未經回測校準";
   if(strength)strength.textContent=skip?"0%（觀望）":
-    "模擬凱利 "+(q.simulated_bet_fraction*100).toFixed(1)+"%（非建議注碼）";
+    "模擬比率 "+(q.simulated_bet_fraction*100).toFixed(1)+"%（實際注碼 0%）";
   if(orb)orb.className="direction-orb "+(skip?"idle":finalDirection==="B"?"banker":"player");
-  const mode=el("modePill");if(mode)mode.textContent="QUANT256 V4 實驗";
-  if(message)message.textContent="估計TC "+q.estimated_shoe.trueCount.toFixed(2)+
-    "｜算牌權重 "+(100*q.count_weight).toFixed(0)+"%"+
-    "｜模型EV莊 "+(q.ev_banker*100).toFixed(2)+"%／閒 "+(q.ev_player*100).toFixed(2)+
-    "%｜兩臂分數差 "+result.arms.gap.toFixed(2)+
-    "｜硬閘門 "+(skip?"觀望":"僅研究")+
-    (result.arms.hard_gate.linucb_disagreed?"｜LinUCB方向分歧（不翻轉）":"")+
-    "（非真實勝率）";
+  const mode=el("modePill");if(mode)mode.textContent="QUANT256 V5 絕對算牌測試";
+  // Side bets are independent research indicators; do not treat unobserved
+  // pairs/Lucky6 as physical evidence or automatically recommend a stake.
+  const sideNames={banker_pair:"莊對",player_pair:"閒對",tie:"和局",lucky_six:"幸運六"};
+  const sideSummary=Object.entries(q.side_bets).map(([key,v])=>
+    sideNames[key]+":"+(v.signal?"觀察訊號":"資料不足／無訊號")).join("、");
+  if(message)message.textContent="代理TC "+q.estimated_shoe.trueCount.toFixed(2)+
+    "｜±2.5硬閘門 "+(skip?"觀望":"僅研究方向")+
+    "｜路單特徵 128D 全零"+
+    "｜診斷EV莊 "+(q.ev_banker*100).toFixed(2)+"%／閒 "+(q.ev_player*100).toFixed(2)+"%"+
+    "｜兩臂差 "+result.arms.gap.toFixed(2)+
+    "｜邊注觀察："+sideSummary+
+    (result.arms.hard_gate.linucb_disagreed?"｜LinUCB分歧但無權翻轉":"")+
+    "（未校準；非下注建議）";
   return result;
 }
 const start=el("btnStart");
@@ -112,7 +122,7 @@ if(start)start.addEventListener("click",function(e){
   try{run();}catch(err){const m=el("message");if(m)m.textContent="Quant256 計算失敗："+err.message;}
 },true);
 root.__BBB_QUANT256_TEST__={
-  context256,scoreTwoArms,run,history,mode:"experimental_v4",
+  context256,scoreTwoArms,run,history,mode:"experimental_v5_absolute_veto",
   wager_recommendation_validated:false
 };
 })(typeof window!=="undefined"?window:null);

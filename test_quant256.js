@@ -4,6 +4,22 @@ const legacy=require("./bayes_markov_runtime");
 const exported=require("./quant256_runtime.js"),E=exported.BBBShoeQuantEngine;
 const near=(a,b,tol=1e-9)=>assert(Math.abs(a-b)<=tol,"expected "+a+" ~ "+b);
 assert.equal(typeof legacy.estimate,"function","existing production Bayesian estimator must survive");
+assert.equal(typeof legacy.absoluteCountVeto,"function","experiment must use absolute count-only veto");
+// Strict comparisons: +/-2.5 are neutral, +/-2.50001 are directional.
+for(const tc of [-2.5,-1,0,1,2.5]){
+  const gate=legacy.absoluteCountVeto(tc);
+  assert.equal(gate.direction,"Skip");assert.equal(gate.bet_fraction,0);
+  assert.equal(gate.simulated_bet_fraction,0);
+}
+for(const [tc,want] of [[2.50001,"B"],[-2.50001,"P"],[8,"B"],[-8,"P"]]){
+  const gate=legacy.absoluteCountVeto(tc);
+  assert.equal(gate.direction,want);
+  assert(gate.simulated_bet_fraction>=.15&&gate.simulated_bet_fraction<=.30);
+  assert.equal(gate.bet_fraction,0);
+  assert.equal(gate.road_override_allowed,false);
+  assert.equal(gate.ev_override_allowed,false);
+}
+assert.throws(()=>legacy.absoluteCountVeto(NaN),/invalid_true_count/);
 assert.equal(exported.BBBQuantEngine,E);
 assert.equal(typeof E.fromHistory,"function");
 const empty=new E(),p0=empty.predictNext();
@@ -53,7 +69,9 @@ near(pred.probabilities.B,pred.baseline_probabilities.B*(1-pred.count_weight)+pr
 near(Object.values(pred.probabilities).reduce((a,b)=>a+b,0),1);
 assert.equal(pred.direction,"B");assert(pred.ev_banker>0);
 assert.equal(pred.bet_fraction,0,"uncalibrated probability cannot authorize real stake");
-assert(pred.simulated_bet_fraction>=.05&&pred.simulated_bet_fraction<=.30);
+assert(pred.simulated_bet_fraction>=.15&&pred.simulated_bet_fraction<=.30);
+assert.equal(pred.gates.true_count_abs_strictly_greater_than,2.5);
+assert.equal(pred.gates.ev_is_diagnostic_only,true);
 assert.equal(pred.side_bets.player_pair.known_rounds,8);
 assert.equal(pred.side_bets.banker_pair.known_rounds,8);
 assert.equal(pred.count_gate_passed,true);
@@ -71,16 +89,37 @@ assert.equal(pairOut.player_pair.known_rounds,0);
 assert.equal(pairOut.player_pair.signal,false);
 assert.equal(pairOut.player_pair.bet_allowed,false);
 const context=Array.from({length:256},(_,i)=>i/255),injected=q.injectShoeContext(context,{experimental:true});
-assert.deepEqual(injected.slice(128),context.slice(128));
+assert.deepEqual(injected.slice(128),Array(128).fill(0));
+assert.deepEqual(q.injectShoeContext(context,{experimental:true,maskRoad:false}).slice(128),context.slice(128));
 assert.equal(injected[0],q.trueCount**2*Math.sign(q.trueCount));
 assert.deepEqual(E.fromHistory(["B","P","T"]).generateShoeContext(),m.generateShoeContext());
 assert.equal(E.fractionalKelly(.51,.49,1).bet_fraction,.05);
 assert(E.fractionalKelly(.51,.49,1).minimum_clip_applied);
 assert.equal(E.fractionalKelly(.4,.5,1).bet_fraction,0);
 const strong=E.fromHistory(Array(50).fill("B")),strongPred=strong.predictNext();
-assert(strong.trueCount>=1.5);
+assert(strong.trueCount>2.5);
 assert.equal(strongPred.direction,"B");
-assert(strongPred.simulated_bet_fraction>=.05);
+assert(strongPred.simulated_bet_fraction>=.15&&strongPred.simulated_bet_fraction<=.30);
+// Negative synthetic TC can force P even when the *unvalidated* EV
+// diagnostic disagrees: neither EV nor road features controls direction.
+const negativeProbe=new E();
+negativeProbe.trueCount=-2.51;
+const negativePred=negativeProbe.predictNext();
+assert.equal(negativePred.direction,"P");
+assert.equal(negativePred.count_gate_passed,true);
+assert.equal(negativePred.ev_gate_passed,false);
+assert.equal(negativePred.bet_fraction,0);
+// Observed mid-rank removal supplies genuine negative TC. Pure B/P/T
+// pseudo-depletion can flip unexpectedly when a synthetic group exhausts;
+// never assert that a long Player road inherently means a negative count.
+const negativeObserved=E.fromHistory(Array.from({length:8},()=>({
+  outcome:"P",observation:{cards:[5,7,8,5,7,8]}
+})));
+assert(negativeObserved.trueCount< -2.5);
+assert.equal(negativeObserved.predictNext().direction,"P");
+const outcomeOnly=E.fromHistory(Array(70).fill("P")).predictNext();
+assert.equal(outcomeOnly.direction,
+  legacy.absoluteCountVeto(outcomeOnly.estimated_shoe.trueCount).direction);
 assert.equal(strongPred.bet_fraction,0);
 const long=new E();let resets=0;
 for(let i=0;i<150;i++){resets+=long.updateRound(i%2?"P":"B").reset_triggered;assert(Object.values(long.estimatedCounts).every(x=>x>=-1e-6));}
@@ -98,13 +137,22 @@ assert.deepEqual(Array.from(unchanged.vector),Array.from(original.vector),"pinne
 const baseline=panel("app256.js",false),quant=panel("app256.js",true);
 const a=baseline.context256(seq),b=quant.context256(seq);
 assert.equal(a.vector.length,256);assert.equal(b.vector.length,256);
-assert.deepEqual(Array.from(b.vector.slice(128)),Array.from(a.vector.slice(128)));
+assert.deepEqual(Array.from(b.vector.slice(128)),Array(128).fill(0));
+assert(Array.from(a.vector.slice(128)).some(x=>Math.abs(x)>0));
+assert.deepEqual(JSON.stringify(b.candidates),JSON.stringify(a.candidates),"road geometry remains available separately");
 assert.deepEqual(Array.from(b.vector.slice(0,128)),E.fromHistory(seq).generateShoeContext());
-assert.equal(b.feature_schema,"BBB_SHOE_QUANT_128_V4");
+assert.equal(b.feature_schema,"BBB_SHOE_QUANT_128_V5_ZERO_ROAD");
 assert.equal(quant.choose(seq).direction,"Skip");
 assert(["B","P"].includes(baseline.choose(seq).direction));
 assert.equal(quant.choose(Array(50).fill("B")).direction,"B");
+// B/P/T alone does not prove which physical ranks were removed:
+const p70=quant.choose(Array(70).fill("P"));
+assert.equal(p70.direction,legacy.absoluteCountVeto(p70.quant.estimated_shoe.trueCount).direction);
 const countDecision=quant.choose(Array(50).fill("B"));
+assert(countDecision.x.slice(128).every(x=>x===0));
+assert(countDecision.hard_gate.ev_is_diagnostic_only);
+assert.equal(countDecision.hard_gate.threshold_exclusive,2.5);
+assert.equal(countDecision.hard_gate.road_feature_max_abs,0);
 assert.equal(countDecision.hard_gate.count_passed,true);
 assert.equal(countDecision.hard_gate.road_override_allowed,false);
 const neutralDecision=quant.choose(seq);
@@ -125,6 +173,7 @@ assert.equal(over.arms.hard_gate.count_is_authority,true);
 assert.equal(over.arms.hard_gate.road_override_allowed,false);
 assert.equal(over.arms.hard_gate.bet_fraction,0);
 assert.equal(over.arms.hard_gate.count_passed,false);
+assert.equal(over.arms.hard_gate.threshold_exclusive,2.5);
 assert.equal(over.arms.raw_direction==="B"||over.arms.raw_direction==="P",true);
 const changedRoad=over.vector.slice();
 for(let i=128;i<256;i++)changedRoad[i]=i%2?100:-100;
@@ -133,7 +182,10 @@ near(roadOnly.gap,over.arms.gap,1e-12);
 assert.equal(roadOnly.direction,"Skip","road cannot override count Skip");
 assert.equal(roadOnly.roadContribution,0);
 assert.equal(over.vector.length,256);
-assert.deepEqual(Array.from(over.vector.slice(128)),Array.from(original.vector.slice(128)));
+assert.deepEqual(Array.from(over.vector.slice(128)),Array(128).fill(0));
+assert.deepEqual(Array.from(over.raw_road_diagnostics),Array.from(original.vector.slice(128)));
+assert.equal(over.road_masked,true);
+assert.equal(over.schema,"BBB_SHOE_QUANT_128_V5_ZERO_ROAD");
 assert.equal(actual.quant.bet_fraction,0);
 assert.equal(node.directionText.textContent,"觀望");
 assert.equal(node.strength.textContent,"0%（觀望）");
@@ -152,7 +204,11 @@ const forcedDisagree=adapter.scoreTwoArms(next.vector.map((v,i)=>i<4?-v:v),next.
 assert.equal(forcedDisagree.direction,"B","LinUCB disagreement must never flip the count authority");
 assert.equal(forcedDisagree.hard_gate.linucb_disagreed,true);
 assert.equal(node.directionText.textContent,"莊");
-assert(node.strength.textContent.includes("模擬凱利"));
+assert(node.strength.textContent.includes("模擬比率"));
+assert(node.strength.textContent.includes("實際注碼 0%"));
+assert(node.message.textContent.includes("路單特徵 128D 全零"));
+assert(node.message.textContent.includes("莊對"));
+assert(node.message.textContent.includes("幸運六"));
 assert(next.arms.shoeContribution>0);
 assert(Math.abs(next.arms.shoeContribution)>Math.abs(next.arms.roadContribution));
-console.log("PASS V4 expected removal, anneal, mass, normalized probabilities, forced Skip, TC/EV, 128D signed square, road preservation, count-dominant two-arm shadow, website action and immutable production runtime");
+console.log("PASS V5 strict +/-2.5 absolute veto, synthetic 15-30% with real 0%, both arms, negative-EV counterfactual, front128 injection, rear128 physical zero, side indicators, production estimator preserved");

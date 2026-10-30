@@ -1,5 +1,5 @@
 /**
- * BBBShoeQuantEngine V4 — isolated, deterministic 256D experimental engine.
+ * BBBShoeQuantEngine V5 — isolated, deterministic 256D experimental engine.
  *
  * This models an *assumed* distribution when only B/P/T outcomes are provided.
  * Actual deck ranks, shoe penetration, pairs and Lucky Six are unobservable
@@ -10,13 +10,18 @@
  */
 (function(root,factory){
   "use strict";
-  const api=factory();
+  // The strict research-only veto is supplied by the existing compatibility
+  // runtime. In browsers auth-client loads it before this experimental engine.
+  const countApi=(root&&root.__BBB_BAYES_MARKOV__)||
+    (typeof module==="object"&&module.exports&&typeof require==="function"?
+      require("./bayes_markov_runtime"):null);
+  const api=factory(countApi);
   if(typeof module==="object"&&module.exports)module.exports=api;
   if(root){
     root.BBBShoeQuantEngine=api.BBBShoeQuantEngine;
     root.BBBQuantEngine=api.BBBShoeQuantEngine; // previous experimental adapter
   }
-})(typeof window!=="undefined"?window:null,function(){
+})(typeof window!=="undefined"?window:null,function(countApi){
   "use strict";
 
   // 8 decks: each point 1..9 has 32 cards; 0 (10/J/Q/K) has 128.
@@ -28,7 +33,7 @@
   const BASE=Object.freeze({B:0.4586,P:0.4462,T:0.0952});
   const COUNTS=Object.freeze({low:1,mid:-1,six:0,zero:0,nine:0});
   const ALPHA=0.0045;
-  const SCHEMA="BBB_SHOE_QUANT_128_V4";
+  const SCHEMA="BBB_SHOE_QUANT_128_V5";
   const SMALL=1e-9,clamp=(x,min,max)=>Math.max(min,Math.min(max,x));
   const finite=Number.isFinite;
   function groupOf(point){
@@ -199,12 +204,14 @@
       if(v.length!==128||!v.every(finite))throw Error("invalid_quant_128D");
       return v;
     }
-    injectShoeContext(context256,{experimental=false,allowUncalibrated=false}={}){
+    injectShoeContext(context256,{experimental=false,allowUncalibrated=false,maskRoad=true}={}){
       if(!experimental&&!allowUncalibrated)throw Error("quant schema incompatible with frozen weights; opt in to research adapter");
       if(!Array.isArray(context256)||context256.length!==256||!context256.every(finite))throw Error("expected finite 256D");
       const vector=context256.slice();
       const shoe=this.generateShoeContext();
       for(let i=0;i<128;i++)vector[i]=shoe[i];
+      // The experimental model never consumes road coordinates 128..255.
+      if(maskRoad)for(let i=128;i<256;i++)vector[i]=0;
       return vector;
     }
     static fractionalKelly(win,loss,payout){
@@ -230,9 +237,13 @@
       };
       const b=BBBShoeQuantEngine.fractionalKelly(probabilities.B,probabilities.P,.95);
       const p=BBBShoeQuantEngine.fractionalKelly(probabilities.P,probabilities.B,1);
-      const selected=b.ev>=p.ev?"B":"P",value=selected==="B"?b:p;
-      const gateCount=Math.abs(tc)>=1.5,gateEV=value.ev>0;
-      const direction=gateCount&&gateEV?selected:"Skip";
+      if(!countApi||typeof countApi.absoluteCountVeto!=="function")
+        throw Error("absolute_count_veto_unavailable");
+      // Single-source-of-truth: bayes_markov_runtime's experimental veto.
+      // Existing estimate() remains intact for production compatibility.
+      const veto=countApi.absoluteCountVeto(tc),direction=veto.direction;
+      const value=direction==="B"?b:direction==="P"?p:(b.ev>=p.ev?b:p);
+      const gateCount=veto.count_passed,gateEV=value.ev>0;
       const source=this.countSource;
       const tieRecent=this.history.slice(-12),tieHits=tieRecent.filter(x=>x==="T").length;
       const tieSignal=tieRecent.length>=8&&tieHits/tieRecent.length>.20;
@@ -240,21 +251,19 @@
       const playerPairSignal=this.playerPairKnownRounds>=10&&this.playerPairs/this.playerPairKnownRounds>.085;
       const l6Signal=this.l6KnownRounds>=10&&this.l6ObservedHits/this.l6KnownRounds>.12;
       return {
-        version:"BBB_SHOE_QUANT_V4",context_schema:SCHEMA,experimental:true,validated:false,
+        version:"BBB_SHOE_QUANT_V5",context_schema:SCHEMA,experimental:true,validated:false,
         alpha:ALPHA,count_weight:w_count,count_source:source,
         baseline_probabilities:{...BASE},count_probability,probabilities,
         ev_banker:b.ev,ev_player:p.ev,ev_selected:value.ev,direction,
         direction_text:direction==="Skip"?"觀望":direction==="B"?"莊":"閒",
-        reason:!gateCount?"true_count_below_1_5":!gateEV?"nonpositive_expected_value":"estimated_EV_gate_passed",
-        // Hard gate belongs to the count engine; an untrained LinUCB road
-        // score is not authorized to flip it or make a neutral shoe actionable.
+        reason:veto.reason,
+        // Absolute ±2.5 veto is the SOLE experimental direction authority;
+        // EV is still calculated as a diagnostic but cannot force a bet.
         count_gate_passed:gateCount,ev_gate_passed:gateEV,
-        research_direction_allowed:gateCount&&gateEV,
-        // Simulated Kelly amount is deliberately separate from an actionable stake:
-        // B/P/T-only pseudo-counts and unvalidated alpha do not establish true EV.
-        bet_fraction:0,simulated_bet_fraction:direction==="Skip"?0:value.bet_fraction,
-        kelly_raw_fraction:direction==="Skip"?0:value.raw_fraction,
-        minimum_clip_applied:direction!=="Skip"&&value.minimum_clip_applied,
+        research_direction_allowed:gateCount,
+        bet_fraction:0,simulated_bet_fraction:veto.simulated_bet_fraction,
+        kelly_raw_fraction:0,
+        minimum_clip_applied:false,
         side_bets:{
           banker_pair:this._sideIndicator("banker_pair",bankerPairSignal,this.bankerPairs,this.bankerPairKnownRounds,"observed_banker_pair_rate_not_calibrated"),
           player_pair:this._sideIndicator("player_pair",playerPairSignal,this.playerPairs,this.playerPairKnownRounds,"observed_player_pair_rate_not_calibrated"),
@@ -268,9 +277,11 @@
           estimatedRounds:this.estimatedRounds,observedRounds:this.observedRounds,
           estimated_only:source!=="observed"
         },
-        gates:{true_count_abs_min:1.5,ev_min_exclusive:0,count_passed:gateCount,ev_passed:gateEV,
-          neutral_forced_skip:!gateCount,road_override_allowed:false,simulated:true},
-        notice:"B/P/T-only expected removal is an uncalibrated heuristic, not observed card counting. Simulated EV and Kelly are not an actionable betting advantage."
+        gates:{true_count_abs_strictly_greater_than:2.5,count_passed:gateCount,
+          ev_passed:gateEV,ev_is_diagnostic_only:true,neutral_forced_skip:!gateCount,
+          direction_owner:"absoluteCountVeto",road_override_allowed:false,
+          bet_fraction:0,simulated:true},
+        notice:"V5 research only: TC from B/P/T relies on synthetic removal assumptions, not observed A-K. Forced B/P direction and 15-30% simulated fraction are unvalidated diagnostics, NOT a wager or positive expected value."
       };
     }
     static fromHistory(history){

@@ -18,4 +18,31 @@ function estimate(history,corePB,physics,config={}){
  const selected=orders.slice().reverse().find(x=>x.eligible),raw=selected?selected.bayesian_pb:prior;
  return {enabled:true,version:config.version||'BAYES_MARKOV_1_3_V1',selected_order:selected?.order||0,selected_support:selected?.support||0,raw_pb:raw,prior_pb:prior,physics_prior_weight:pw,orders,fallback:selected?'highest_supported_context':'core_physics_prior',whole_shoe:true,causal:true,shared_evidence_counted_once:true,xgb_influence:0,validated:false};
 }
-return {estimate};});
+/**
+ * Opt-in Quant256 V5: ABSOLUTE COUNT-ONLY RESEARCH VETO.
+ *
+ * Deliberately independent of estimate(): no Markov, roads, Bayesian blend,
+ * probability threshold, or EV hypothesis can override this classification.
+ * TC from B/P/T-only data is heuristic and NOT observed shoe composition;
+ * the 15-30% fraction is a synthetic display metric, NEVER a real stake.
+ *
+ * Strict comparisons: exactly +/- 2.5 is neutral and MUST Skip.
+ */
+function absoluteCountVeto(trueCount){
+ if(!Number.isFinite(trueCount))throw Error('invalid_true_count');
+ const tc=clamp(trueCount,-8,8),abs=Math.abs(tc);
+ const count_passed=abs>2.5;
+ const direction=tc>2.5?'B':tc< -2.5?'P':'Skip';
+ const simulated_bet_fraction=count_passed?
+  clamp(.15+.03*(abs-2.5),.15,.30):0;
+ return Object.freeze({
+  version:'BBB_ABSOLUTE_COUNT_VETO_V5',
+  count_only:true,simulated_only:true,validated:false,
+  tc,threshold_exclusive:2.5,count_passed,
+  direction,direction_text:direction==='Skip'?'觀望':direction==='B'?'莊':'閒',
+  reason:count_passed?'experimental_count_threshold_exceeded':'count_neutral_forced_skip',
+  road_override_allowed:false,ev_override_allowed:false,
+  bet_fraction:0,simulated_bet_fraction
+ });
+}
+return {estimate,absoluteCountVeto};});
