@@ -1,0 +1,17 @@
+name: 動態算牌整合檢查
+on:
+  pull_request:
+    paths: ['experimental/quant_engine/**', 'quant_dynamic_adapter.js', 'test_quant_dynamic.cjs', 'final_probability_runtime.js', 'cardcount_profile.json']
+  push:
+    branches: [main]
+    paths: ['experimental/quant_engine/**', 'quant_dynamic_adapter.js', 'test_quant_dynamic.cjs']
+jobs:
+  quant-dynamic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node test_quant_dynamic.cjs
+      - run: node --check final_probability_runtime.js

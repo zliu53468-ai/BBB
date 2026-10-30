@@ -260,7 +260,7 @@
     },
     "low_uncertainty_gain": 0.18,
     "actionability_gain": 0.08,
-    "pattern_gain": 0.0,
+    "pattern_gain": 0,
     "weight_cap": 1.5,
     "xgb_candidates": [
       {
@@ -339,7 +339,7 @@
     "prior_strength": 100,
     "max_delta": 0.005,
     "validation_window": 32,
-    "min_brier_gain": 5e-05,
+    "min_brier_gain": 0.00005,
     "noise_start": 0.55,
     "noise_stop": 0.85,
     "stage_anchors": {
@@ -698,5 +698,20 @@
       "uncertainty_high": 0.8,
       "validated": false
     }
+  },
+  "quant_dynamic_v2": {
+    "schema_version": 2,
+    "enabled": true,
+    "version": "20261030-dynamic-count-v2",
+    "release_status": "user_requested_unvalidated_experiment",
+    "sensitivity": 0.0045,
+    "max_count_weight": 0.7,
+    "count_weight_gain": 0.15,
+    "min_abs_count": 2,
+    "min_ev_exclusive": 0.005,
+    "kelly_fraction": 0.25,
+    "stake_min": 0.05,
+    "stake_max": 0.3,
+    "context_injection": false
   }
 }

@@ -54,6 +54,7 @@ function profileValue(key,roundIndex){
   return interpAnchors(clip(roundIndex,1,70),tuning?.enabled&&valid?points:cardcountProfile.anchors[key]);
 }
 function displayDirection(f){
+  if(f?.quant_dynamic)return f.direction;
   if(!f?.available)return null;
   const gap=displayGapOverride??(cardcountProfile?.enabled?cardcountProfile.display_gap:0);
   if(Math.abs(f.directional.B-f.directional.P)+1e-12<gap)return "Skip";
@@ -764,6 +765,7 @@ function applyBayesMarkovPrediction(seq,corePrediction=null){
 }
 
 function applyFinalPrediction(seq,corePrediction=null){
+  if(cardcountProfile?.quant_dynamic_v2?.enabled===true&&window.__BBB_QUANT_DYNAMIC__&&window.BBBQuantEngine)return window.__BBB_QUANT_DYNAMIC__.predict(window.BBBQuantEngine,seq,cardcountProfile.quant_dynamic_v2);
   if(bayesMarkovConfig())return applyBayesMarkovPrediction(seq,corePrediction);
   const roadConfig=roadPrimaryConfig(),dualLive=dualCoreLiveConfig();let roadCandidate=null,roadAudit=null;
   const pfConfig=pfPrimaryConfig(),pfFirst=!!pfConfig;let pfPrimary=null;
@@ -1048,7 +1050,7 @@ function registerPrediction(seq,prediction){
   const r=prediction.finalProbability||{},f=r.original7||buildOriginal7(seq,prediction);
   const createdAt=Date.now(),shoeId=getShoeId(),quality=r.dataQuality||dataQuality(seq),errorCorrectionSnapshot=null;
   const pending={...(prediction.bayes_markov?{bayes_markov:prediction.bayes_markov}:{}),...(prediction.relative_baseline?{relative_baseline:prediction.relative_baseline}:{}),road_primary:r.road_primary||null,raw_next_hand_forecast:prediction.raw_next_hand_forecast||null,browser_calibration:prediction.browser_calibration||null,next_hand_forecast:prediction.next_hand_forecast||null,forecast_direction:prediction.forecast_direction||null,bet_direction:prediction.direction||"Skip",schema_version:SNAPSHOT_SCHEMA_VERSION,prediction_id:`${shoeId}:${createdAt}:${seq.join("")}`,shoe_id:shoeId,created_at:createdAt,
-    history_fingerprint:seq.join(""),history_event_count:seq.length,directional_round_count:quality.directionalRounds,data_stage:quality.stage,
+    quant_dynamic:prediction.quant_dynamic||null,history_fingerprint:seq.join(""),history_event_count:seq.length,directional_round_count:quality.directionalRounds,data_stage:quality.stage,
     entry_eligible:quality.entryEligible,preferred_entry:quality.preferredEntry,mode:r.mode||"core",model_versions:{final_probability:final56Bundle?.schema_version??null,physics:physicsBundle?.schema_version??null},
     core_p_b:f.core_p_b,round_index:f.round_index,estimated_total_hands:f.estimated_total_hands,remaining_ratio:f.remaining_ratio,
     sx_markov_p_same:f.sx_markov_p_same,stage:f.stage,depth:f.depth,original_7d:original7Vector(f),physics_48d:cloneFiniteVector(r.physics,PHYSICS_DIM),
@@ -1166,6 +1168,7 @@ function renderPrediction(p,n){
   if(p.next_hand_forecast?.relative_baseline?.applied&&el("message"))el("message").textContent+="；同靴雙向誤差校正（僅顯示機率，正式下注不變）";
   if(p.pf_primary?.enabled&&el("modePill"))el("modePill").textContent="PF主導／Physics輔助測試";
   if(p.pf_primary?.enabled&&el("message"))el("message").textContent+="；PF主導測試，未證實命中率改善";
+  if(p.quant_dynamic)window.__BBB_QUANT_DYNAMIC__.render(document,p.quant_dynamic,noSkipTestActive);
 }
 function installUI(){
   if(typeof document==="undefined")return;const old=document.getElementById("btnStart");if(!old)return;const btn=old.cloneNode(true);old.replaceWith(btn);

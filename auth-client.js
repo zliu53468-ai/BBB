@@ -9,6 +9,8 @@ const message=document.getElementById("licenseMessage"),submit=document.getEleme
 // Public server URL is not a secret; only Cloudflare holds ADMIN_TOKEN and LICENSE_PEPPER.
 const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu53468.workers.dev").replace(/\/+$/,"");
 const scripts=[
+  "experimental/quant_engine/bayes_markov_runtime.js?v=20261030-dynamic-count-v2",
+  "quant_dynamic_adapter.js?v=20261030-dynamic-count-v2",
   "app256forward.js",
   "app256continuation.js",
   "particle_filter_runtime.js?v=20261029-point-card-v2",
@@ -23,7 +25,7 @@ const scripts=[
   "xgb_adaptive_runtime.js?v=20261030-pf-light-v1",
   "bayes_markov_runtime.js?v=20261030-pf-light-v1",
   "vnext/relative_baseline_runtime.js?v=20261030-pf-light-v1",
-  "final_probability_runtime.js?v=20261030-pf-light-v1"
+  "final_probability_runtime.js?v=20261030-dynamic-count-v2"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}

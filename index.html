@@ -68,10 +68,10 @@
     <section class="card side-bet-card" aria-labelledby="sideBetTitle">
       <div class="card-title"><span id="sideBetTitle">本局邊注建議</span><small>SIDE BETS</small></div>
       <div class="metrics" aria-describedby="sideBetNote">
-        <div class="metric"><span>莊對</span><strong>不建議・觀望</strong></div>
-        <div class="metric"><span>閒對</span><strong>不建議・觀望</strong></div>
-        <div class="metric"><span>和局</span><strong>不建議・觀望</strong></div>
-        <div class="metric"><span>幸運六</span><strong>不建議・觀望</strong></div>
+        <div class="metric"><span>莊對</span><strong id="sideBankerPair">不建議・觀望</strong></div>
+        <div class="metric"><span>閒對</span><strong id="sidePlayerPair">不建議・觀望</strong></div>
+        <div class="metric"><span>和局</span><strong id="sideTie">不建議・觀望</strong></div>
+        <div class="metric"><span>幸運六</span><strong id="sideLuckySix">不建議・觀望</strong></div>
       </div>
       <p class="clear-note" id="sideBetNote">目前尚無經校準的逐局邊注機率與實際賠率判定，因此四項維持觀望；此欄不代表已啟用邊注模型。僅輸入莊／閒／和無法確認莊對、閒對或幸運六，主線方向與和局機率顯示不受影響。</p>
     </section>
@@ -106,7 +106,7 @@
   </main>
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
-  <script src="auth-client.js?v=20261030-pf-light-v1"></script>
+  <script src="auth-client.js?v=20261030-dynamic-count-v2"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
