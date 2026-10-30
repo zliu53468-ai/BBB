@@ -15,6 +15,6 @@ assert(/\.brand-hero\{position:fixed;inset:0;z-index:-1;/.test(css));
 assert(css.includes('pointer-events:none;user-select:none'));
 assert(css.includes('object-fit:cover'));
 assert(!css.includes('.bbb-points-row'));
-assert.equal((html.match(/<option /g)||[]).length,1);assert(html.includes('value="0.005" selected'));
-const base=require('./cardcount_profile.json');assert.equal(base.display_gap,.005);assert(!base.point_input);
+assert.equal((html.match(/<option /g)||[]).length,1);assert(html.includes('value="0.01" selected'));
+const base=require('./cardcount_profile.json');assert.equal(base.display_gap,.01);assert(!base.point_input);
 console.log('PR #56 exact prediction files, protected models/auth, B/P/T-only input and full background passed');
