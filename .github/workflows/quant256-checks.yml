@@ -3,7 +3,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "bayes_markov_runtime.js"
+      - "quant256_runtime.js"
+      - "quant256_panel.js"
       - "app256.js"
       - "app256forward.js"
       - "auth-client.js"
@@ -12,7 +13,8 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "bayes_markov_runtime.js"
+      - "quant256_runtime.js"
+      - "quant256_panel.js"
       - "app256.js"
       - "app256forward.js"
       - "auth-client.js"
@@ -30,7 +32,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: node --check bayes_markov_runtime.js && node --check app256.js && node --check app256forward.js && node --check test_quant256.js
+      - run: node --check bayes_markov_runtime.js && node --check app256.js && node --check app256forward.js && node --check quant256_runtime.js && node --check quant256_panel.js && node --check test_quant256.js
       - run: node test_quant256.js
       - run: node experimental/quant_engine/test_engine.cjs
       - run: node --require ./legacy_profile_fixture.cjs test_bayes_markov_final.js
