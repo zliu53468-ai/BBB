@@ -23,7 +23,7 @@ Macro特徵EMA保留，不另增機率平滑。applyDynamicSmoothing呼叫一次
 bayes_markov.single_fusion匯出sources、configured_weights、gates、weights、weight_sum、xgb_evidence、model_tag、PF診斷、fusion_count=1及錯誤。finalProbability.rawPB是融合結果，finalPB是原平滑後機率；未融合序列raw_pb及全部來源另存，不混淆畫面與正式下注。
 
 ## 驗證與回滾
-node test_single_fusion.js：計數／固定先驗、因果XGB評分、權重總和與上限、真10000 PF、一次融合／一次EMA、舊校正禁止呼叫、57D／EV／匯出、撤銷、缺模組Skip、PR98固定輸出雜湊精確回滾。
+node test_single_fusion.js：計數／固定先驗、因果XGB評分、權重總和與上限、真10000 PF、一次融合／一次EMA、舊校正禁止呼叫、57D／EV／匯出、撤銷、缺模組Skip、PR98原始PR98雜湊驗證的逐欄基準回滾（跨平台浮點容忍1e-12，非數值／形狀一致）。
 node test_xgb_adaptive.js：檢查後段函式雜湊不變。其餘既有重要回歸保持執行。
 node tools/smoke_single_fusion.cjs：兩個完整模擬鞋（50與70手）配對煙霧；共用同一確定性PF原始快照僅節省重算，兩路仍各自平滑、評分與結算，不用未來結果。報告validation/single_fusion_smoke.json。不是大樣本／真實hold-out，也不保證提高命中率。
 
