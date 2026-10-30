@@ -79,10 +79,20 @@ function context256(seq){
   if(vector.length!==256||shoe.length!==128)throw Error("quant 128D layout mismatch");
   for(let i=0;i<128;i++)vector[i]=shoe[i];
   for(let i=128;i<256;i++)vector[i]=0;
+  const features=engine.survivalFeatures();
+  if(features.length!==16||!features.every(Number.isFinite))
+    throw Error("invalid_survival_feature_schema");
+  // Old big-eye/small/cockroach windows do NOT enter these slots:
+  // 17..32 (16..31) and 129..144 (128..143) contain CPSI/HSMM data.
+  for(let i=0;i<16;i++){
+    vector[16+i]=features[i];
+    vector[128+i]=features[i];
+  }
   const quant=engine.predictNext(),arms=scoreTwoArms(vector,quant);
   return {vector,baseline:old,quant,arms,
-    road_masked:true,raw_road_diagnostics:old.vector.slice(128),
-    schema:"BBB_SHOE_QUANT_128_V5_ZERO_ROAD"};
+    cpsi_features:features,road_masked:true,
+    raw_road_diagnostics:old.vector.slice(128),
+    schema:"BBB_SHOE_QUANT_128_V6_CPSI"};
 }
 function run(){
   const seq=history(),message=el("message");
@@ -100,15 +110,18 @@ function run(){
   if(strength)strength.textContent=skip?"0%（觀望）":
     "模擬比率 "+(q.simulated_bet_fraction*100).toFixed(1)+"%（實際注碼 0%）";
   if(orb)orb.className="direction-orb "+(skip?"idle":finalDirection==="B"?"banker":"player");
-  const mode=el("modePill");if(mode)mode.textContent="QUANT256 V5 絕對算牌測試";
+  const mode=el("modePill");if(mode)mode.textContent="QUANT256 V6 長龍生存測試";
   // Side bets are independent research indicators; do not treat unobserved
   // pairs/Lucky6 as physical evidence or automatically recommend a stake.
   const sideNames={banker_pair:"莊對",player_pair:"閒對",tie:"和局",lucky_six:"幸運六"};
   const sideSummary=Object.entries(q.side_bets).map(([key,v])=>
     sideNames[key]+":"+(v.signal?"觀察訊號":"資料不足／無訊號")).join("、");
   if(message)message.textContent="代理TC "+q.estimated_shoe.trueCount.toFixed(2)+
-    "｜±2.5硬閘門 "+(skip?"觀望":"僅研究方向")+
-    "｜路單特徵 128D 全零"+
+    "｜長龍 "+q.survival.run_length+" 局／"+q.survival.reason+
+    "｜CPSI "+q.survival.cpsi.toFixed(3)+
+    "／Hazard指標 "+q.survival.hazard_rate.toFixed(3)+
+    "｜PF條件重採樣 "+(q.particle_survival.active?"觀測牌值研究":"未啟動")+
+    "｜原始牌路特徵不參與模型"+
     "｜診斷EV莊 "+(q.ev_banker*100).toFixed(2)+"%／閒 "+(q.ev_player*100).toFixed(2)+"%"+
     "｜兩臂差 "+result.arms.gap.toFixed(2)+
     "｜邊注觀察："+sideSummary+
@@ -122,7 +135,7 @@ if(start)start.addEventListener("click",function(e){
   try{run();}catch(err){const m=el("message");if(m)m.textContent="Quant256 計算失敗："+err.message;}
 },true);
 root.__BBB_QUANT256_TEST__={
-  context256,scoreTwoArms,run,history,mode:"experimental_v5_absolute_veto",
+  context256,scoreTwoArms,run,history,mode:"experimental_v6_cpsi_hazard",
   wager_recommendation_validated:false
 };
 })(typeof window!=="undefined"?window:null);
