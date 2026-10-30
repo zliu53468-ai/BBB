@@ -1208,7 +1208,7 @@ function installUI(){
       }
       if(LOCAL_CALIBRATION&&browserCalibrationTag!=="unready")try{
         const prior=applyFinalPrediction(beforeHistory);
-        calibrationTicket=prepareDisplayCalibrationTickets(beforeHistory,prior.base_raw_next_hand_forecast||prior.raw_next_hand_forecast);
+        if(!prior.quant_dynamic)calibrationTicket=prepareDisplayCalibrationTickets(beforeHistory,prior.base_raw_next_hand_forecast||prior.raw_next_hand_forecast);
       }catch(_){/* Calibration never blocks reporting the actual result. */}
       try{
         const get=id=>document.getElementById(id)?.value??"";
