@@ -81,7 +81,7 @@ function countSurvivalHazard({history=[],trueCount=0,zeroRatio=1,countSource='es
  if(active&&observed&&aligned< -2.5){follow=.4;breakFactor=2;}
  const depth=clamp((n-3)/9,0,1);
  const advantage=clamp((aligned-1.5)/4,0,1);
- const cpsi=active?clamp((.2+.8*advantage)*(.6+.4*clamp(z,0,1))):0;
+ const cpsi=active?clamp((.2+.8*advantage)*(.6+.4*clamp(z,0,1)),0,1):0;
  const hazard=active?clamp(.55+.35*depth-.4*cpsi+
   (conflict?.30:0),0,1):0;
  let signal='Skip',reason='inactive';
