@@ -655,7 +655,22 @@
       "3": 6
     },
     "whole_shoe": true,
-    "xgb_influence": 0,
-    "validated": false
+    "xgb_influence": "adaptive_bounded",
+    "validated": false,
+    "xgb_adaptive_v1": {
+      "schema_version": 1,
+      "version": "XGB_ADAPTIVE_BRIER_V1",
+      "enabled": true,
+      "min_samples": 12,
+      "window": 24,
+      "prior_samples": 12,
+      "max_weight": 0.25,
+      "max_delta": 0.01,
+      "min_brier_gain": 0.0005,
+      "target_brier_gain": 0.02,
+      "noise_start": 0.55,
+      "noise_stop": 0.85,
+      "validated": false
+    }
   }
 }

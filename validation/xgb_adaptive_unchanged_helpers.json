@@ -1,0 +1,8 @@
+{
+  "applyProbabilityBounds": "d795b7183128535c1e7cf609e58fd28f1059ef7fded7b6e6de152bf2a750a621",
+  "applyDynamicSmoothing": "191003d4b869ad6c43c84e4fa2126827530547c76a9c325db67c1b54c40384a4",
+  "dynamicBand": "e2ffeb5f462f8df5e23b991bfab664d59ffce6b29fb0f4ae5ee389bd8c100f7e",
+  "decisionPolicy": "97fcd0a6bd47dbb853805994f7badc6dfb607779c3297acec85c6911c7ebdbe5",
+  "softConfidence": "f8e805822258bdecedfd0674a98a1bead788739abc0339493fe7f9561498b28c",
+  "volumeGuardState": "e7eb46a65569f640274be57521e9f83825d3b072c22edf8ee40f9a9c43d1442c"
+}
