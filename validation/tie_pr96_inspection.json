@@ -1,0 +1,212 @@
+{
+  "baseline": "2bfe3582285597ae2c3f1d1bc8fe4ef369a75952",
+  "kind": "READ_ONLY_PREFIX_DIAGNOSTICS_NOT_WIN_RATE_TEST",
+  "tie_logic_modified": false,
+  "rows": [
+    {
+      "prefix": "BBBBBBBBBBBBBBBBBBBB",
+      "pf_calls": 0,
+      "before": {
+        "direction": "B",
+        "forecast": "B",
+        "display": "B",
+        "pb": 0.58,
+        "raw_pb": 0.8000178283999715,
+        "order": 3,
+        "support": 17,
+        "contexts": [
+          "B",
+          "BB",
+          "BBB"
+        ],
+        "physics_pb": 0.49873551660254345,
+        "tie": 0.09735743457692994,
+        "alpha": 1,
+        "xgb_weight": 0
+      },
+      "after_tie": {
+        "direction": "B",
+        "forecast": "B",
+        "display": "B",
+        "pb": 0.55532759796402,
+        "raw_pb": 0.5170601988878062,
+        "order": 0,
+        "support": 0,
+        "contexts": [
+          "T",
+          "BT",
+          "BBT"
+        ],
+        "physics_pb": 0.49931347560538164,
+        "tie": 0.0963580851707137,
+        "alpha": 0.392,
+        "xgb_weight": 0
+      },
+      "physics_changed": true
+    },
+    {
+      "prefix": "PPPPPPPPPPPPPPPPPPPP",
+      "pf_calls": 0,
+      "before": {
+        "direction": "P",
+        "forecast": "P",
+        "display": "P",
+        "pb": 0.42,
+        "raw_pb": 0.20462907044950104,
+        "order": 3,
+        "support": 17,
+        "contexts": [
+          "P",
+          "PP",
+          "PPP"
+        ],
+        "physics_pb": 0.5140473271841,
+        "tie": 0.12992962530634997,
+        "alpha": 1,
+        "xgb_weight": 0
+      },
+      "after_tie": {
+        "direction": "P",
+        "forecast": "P",
+        "display": "P",
+        "pb": 0.44922815638678704,
+        "raw_pb": 0.49456162343568133,
+        "order": 0,
+        "support": 0,
+        "contexts": [
+          "T",
+          "PT",
+          "PPT"
+        ],
+        "physics_pb": 0.5155420337312631,
+        "tie": 0.10866260494278997,
+        "alpha": 0.392,
+        "xgb_weight": 0
+      },
+      "physics_changed": true
+    },
+    {
+      "prefix": "BPBPBPBPBPBPBPBPBPBP",
+      "pf_calls": 0,
+      "before": {
+        "direction": "B",
+        "forecast": "B",
+        "display": "B",
+        "pb": 0.58,
+        "raw_pb": 0.7063023440895251,
+        "order": 3,
+        "support": 8,
+        "contexts": [
+          "P",
+          "BP",
+          "PBP"
+        ],
+        "physics_pb": 0.4885531410783882,
+        "tie": 0.10659630183872142,
+        "alpha": 1,
+        "xgb_weight": 0
+      },
+      "after_tie": {
+        "direction": "B",
+        "forecast": "B",
+        "display": "B",
+        "pb": 0.5602072341745777,
+        "raw_pb": 0.5295082504453514,
+        "order": 0,
+        "support": 0,
+        "contexts": [
+          "T",
+          "PT",
+          "BPT"
+        ],
+        "physics_pb": 0.5198428711573949,
+        "tie": 0.08463740648527013,
+        "alpha": 0.392,
+        "xgb_weight": 0
+      },
+      "physics_changed": true
+    },
+    {
+      "prefix": "BBPPBBPPBBPPBBPPBBPP",
+      "pf_calls": 0,
+      "before": {
+        "direction": "P",
+        "forecast": "P",
+        "display": "P",
+        "pb": 0.48507553990265556,
+        "raw_pb": 0.48507553990265556,
+        "order": 1,
+        "support": 9,
+        "contexts": [
+          "P",
+          "PP",
+          "BPP"
+        ],
+        "physics_pb": 0.4968209696112456,
+        "tie": 0.09872934915920671,
+        "alpha": 1,
+        "xgb_weight": 0
+      },
+      "after_tie": {
+        "direction": "P",
+        "forecast": "P",
+        "display": "Skip",
+        "pb": 0.49680282728815667,
+        "raw_pb": 0.5149920893554645,
+        "order": 0,
+        "support": 0,
+        "contexts": [
+          "T",
+          "PT",
+          "PPT"
+        ],
+        "physics_pb": 0.4965229116213148,
+        "tie": 0.1018602383924498,
+        "alpha": 0.392,
+        "xgb_weight": 0
+      },
+      "physics_changed": true
+    },
+    {
+      "prefix": "BPTBBPPTBPBPPBBPPTBP",
+      "pf_calls": 0,
+      "before": {
+        "direction": "P",
+        "forecast": "P",
+        "display": "P",
+        "pb": 0.46397431134303374,
+        "raw_pb": 0.46397431134303374,
+        "order": 1,
+        "support": 5,
+        "contexts": [
+          "P",
+          "BP",
+          "TBP"
+        ],
+        "physics_pb": 0.4944961983296978,
+        "tie": 0.10122537016602023,
+        "alpha": 1,
+        "xgb_weight": 0
+      },
+      "after_tie": {
+        "direction": "P",
+        "forecast": "P",
+        "display": "P",
+        "pb": 0.4780136431487314,
+        "raw_pb": 0.49978893329634405,
+        "order": 0,
+        "support": 0,
+        "contexts": [
+          "T",
+          "PT",
+          "BPT"
+        ],
+        "physics_pb": 0.5096007092875616,
+        "tie": 0.08945540863736863,
+        "alpha": 0.392,
+        "xgb_weight": 0
+      },
+      "physics_changed": true
+    }
+  ]
+}

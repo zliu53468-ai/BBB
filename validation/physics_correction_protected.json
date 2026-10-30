@@ -1,0 +1,10 @@
+{
+  "bayes_markov_runtime.js": "97c22e43911f1dfcf31402d5da9b373ad1b422348a7a29f811a03f7da714d1a6",
+  "xgb_adaptive_runtime.js": "47ff190420033f1d91221280ddccfa7d1163531a58fd79f765c2ec180b4d44ac",
+  "macro_ema.js": "aef47f2b6d82f86b35cd41cf0ff98b583c665ed7fb94aae0c2268f2003815b58",
+  "particle_filter_runtime.js": "eee2adfca326fb1fb6e10fe50ad248885cd89f3bf92dc6be4178876eed88c707",
+  "app256forward.js": "79d43e0be7b23f77e631909cd7c6808fc668df488df0171fe5cc4722e8597064",
+  "app256continuation.js": "d3302c7d09db8932f7ab9ea7c722f394c6aa566d0654962e79bba751f30bf006",
+  "physics_multitask_model.json": "3ec0d60251cb5b3fcb40bd67fec1334cb64d37becebbe0b040efbae871071138",
+  "final_probability_model.json": "862347a6937b30ac9a8a3ece8f0eb9927569c97dee799e53cbb418e6c10be2f9"
+}
