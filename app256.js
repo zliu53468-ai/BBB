@@ -29,6 +29,16 @@ const LEGACY_KEYS = [
 ];
 
 const el = id => (typeof document !== "undefined" ? document.getElementById(id) : null);
+/* Isolated opt-in: ?quant256=1. Never reinterpret an old frozen 128D schema silently. */
+const QUANT256_MODE = typeof window!=="undefined" && !!window.location &&
+  new URLSearchParams(window.location.search).get("quant256")==="1";
+function quantEngineFor(seq){
+  if(!QUANT256_MODE)return null;
+  const Engine=typeof window!=="undefined"&&window.BBBQuantEngine;
+  if(typeof Engine!=="function")return null;
+  return Engine.fromHistory(seq);
+}
+
 const clip = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, Number.isFinite(+v) ? +v : lo));
 const signed = v => clip(v, -1, 1);
 const bp = seq => seq.filter(x => x === "B" || x === "P");
@@ -409,7 +419,7 @@ function buildRoadVector(seq) {
   return{vector:road,candidates:cand,bigRoad:cand.road};
 }
 
-function context256(seq){const shoe=buildShoeVector(seq),roadData=buildRoadVector(seq),vector=[...shoe,...roadData.vector];if(vector.length!==DIM)throw new Error(`context mismatch ${vector.length}`);return{vector,candidates:roadData.candidates,bigRoad:roadData.bigRoad};}
+function context256(seq){const quant=quantEngineFor(seq),shoe=quant?quant.generateShoeContext():buildShoeVector(seq),roadData=buildRoadVector(seq),vector=[...shoe,...roadData.vector];if(vector.length!==DIM||!vector.every(Number.isFinite))throw new Error(`context mismatch ${vector.length}`);return{vector,candidates:roadData.candidates,bigRoad:roadData.bigRoad,quant:quant?quant.predictNext():null,feature_schema:quant?"BBB_QUANT_128_V2":"FROZEN_ORIGINAL_128"};}
 
 function frozenPrior(){
   const A={B:Array(DIM).fill(RIDGE),P:Array(DIM).fill(RIDGE)},b={B:Array(DIM).fill(0),P:Array(DIM).fill(0)};
@@ -434,6 +444,18 @@ function choose(seq){
   const c=ctx.candidates;let regime="混合";
   if(c.support>=.24){const currentContinuation=c.currentSide&&direction===c.currentSide;if(Math.abs(c.B-c.P)>=.040||Math.max(c.continueImpulse||0,c.reverseImpulse||0)>=.42)regime=currentContinuation?"大路延續":"大路反轉";else regime="大路觀察";}
   const strength=clip(.40+.30*c.support+.18*Math.max(c.continueImpulse||0,c.reverseImpulse||0)+Math.min(.18,Math.abs(gap)*.72));
+  if(ctx.quant){
+    const q=ctx.quant;
+    // The first 128 features use a NEW schema. Frozen LinUCB scores remain
+    // diagnostics; uncalibrated proxy counts cannot produce a bet.
+    const directionQ=q.direction,confidenceQ=directionQ==="Skip"?0:q.probabilities[directionQ];
+    state.last_selected=directionQ==="Skip"?"":directionQ;
+    state.selection_streak=directionQ==="Skip"?0:(previous===directionQ?(state.selection_streak||0):1);
+    return{direction:directionQ,reason:q.reason,x,scores,gap,confidence:confidenceQ,
+      probabilities:q.probabilities,regime:q.reason,strength:0,quant:q,
+      candidates:c,bigRoad:{rows:BIG_ROAD_ROWS,cols:BIG_ROAD_COLS,viewStartCol:ctx.bigRoad.viewStartCol,viewEndCol:ctx.bigRoad.viewEndCol,maxCol:ctx.bigRoad.maxCol,grid:ctx.bigRoad.grid},
+      frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM,feature_schema:ctx.feature_schema,quant_shadow_scores_only:true}};
+  }
   return{direction,reason,x,scores,gap,confidence,probabilities:{B:pB,P:pP},regime,strength,candidates:c,bigRoad:{rows:BIG_ROAD_ROWS,cols:BIG_ROAD_COLS,viewStartCol:ctx.bigRoad.viewStartCol,viewEndCol:ctx.bigRoad.viewEndCol,maxCol:ctx.bigRoad.maxCol,grid:ctx.bigRoad.grid},frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM}};
 }
 
@@ -446,7 +468,15 @@ function startAnalysis(){if(!state.history.length){setMessage("請先輸入牌�
 function backOne(){if(!state.history.length){setMessage("目前沒有可返回的紀錄",true);return;}state.history.pop();state.active=false;state.lastPrediction=null;save();setMessage("已返回上一局");render();}
 function endAnalysis(){state={history:[],active:false,lastPrediction:null,last_selected:"",selection_streak:0};clearAllStorage();setMessage("本靴資料已清空");render();}
 function renderHistory(){const box=el("historyTrack");if(!box)return;if(!state.history.length){box.innerHTML='<div class="empty-history">尚未輸入牌局</div>';return;}box.innerHTML=state.history.map((v,i)=>`<span class="history-chip ${v}" title="第 ${i+1} 局">${v}</span>`).join("");box.scrollLeft=box.scrollWidth;}
-function renderPrediction(){const p=state.active?state.lastPrediction:null,orb=el("directionOrb");if(!orb)return;if(!p){el("directionText").textContent="—";el("directionCode").textContent="等待分析";el("confidence").textContent="—";el("regime").textContent="—";el("strength").textContent="—";orb.className="direction-orb idle";return;}const isB=p.direction==="B";el("directionText").textContent=isB?"莊":"閒";el("directionCode").textContent=isB?"BANKER":"PLAYER";el("confidence").textContent=(p.confidence*100).toFixed(1)+"%";el("regime").textContent=p.regime;el("strength").textContent=p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isB?"banker":"player");}
+function renderPrediction(){const p=state.active?state.lastPrediction:null,orb=el("directionOrb");if(!orb)return;if(!p){el("directionText").textContent="—";el("directionCode").textContent="等待分析";el("confidence").textContent="—";el("regime").textContent="—";el("strength").textContent="—";orb.className="direction-orb idle";return;}if(p.direction==="Skip"){
+    el("directionText").textContent="觀望";
+    el("directionCode").textContent="NO BET";
+    el("confidence").textContent="—";
+    el("regime").textContent=p.quant?.count_source==="estimated"?"僅B/P/T：無實際扣牌資料":p.quant?.reason||"EV未達門檻";
+    el("strength").textContent="0% 注碼";
+    orb.className="direction-orb idle";
+    return;
+  }const isB=p.direction==="B";el("directionText").textContent=isB?"莊":"閒";el("directionCode").textContent=isB?"BANKER":"PLAYER";el("confidence").textContent=(p.confidence*100).toFixed(1)+"%";el("regime").textContent=p.regime;el("strength").textContent=p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isB?"banker":"player");}
 function render(){if(el("roundPill"))el("roundPill").textContent=`${state.history.length} 局`;if(el("modePill"))el("modePill").textContent=state.active?"分析完成":"準備中";if(el("roundCount"))el("roundCount").textContent=state.history.length;renderPrediction();renderHistory();}
 
 if(el("btnB"))el("btnB").addEventListener("click",()=>addOutcome("B"));
