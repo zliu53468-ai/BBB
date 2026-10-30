@@ -450,7 +450,7 @@ function countDominantPrior(countWeight=0){
   // Experimental frozen two-arm LinUCB coefficients — NOT trained weights.
   // New 128D schema must NOT reuse old frozen prior coefficients.
   for(let i=0;i<SHOE_DIM;i++){
-    const w=i===0?.028:i===1?.045:i===2?.018:i===3?.008:(i%2?-.0001:.0001);
+    const w=i===0?.028:i===1?.045:i===2?.018:i===3?.008:0;
     // The B/P/T-only TC is a proxy; this weight controls experimental
     // scoring sensitivity, not claimed predictive accuracy.
     const dynamic=i<4?1+Math.min(.75,Math.max(0,countWeight)):1;
