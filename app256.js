@@ -426,12 +426,17 @@ function context256(seq){
     window.__BBB_SHOE_QUANT_ENGINE__=quant;
     const dynamic=quant.generateShoeContext();
     if(dynamic.length!==SHOE_DIM)throw Error("quant shoe must be 128D");
-    // Index 0..127 are the new quant schema, 128..255 are untouched road slots.
+    // V5 FEATURE DECOUPLING (only ?quant256=1):
+    // (0..127) overwrite with dynamic shoe/proxy-count context.
+    // (128..255) hard ZERO. Neither big eye, small road, cockroach road
+    // nor short/long-window deltas can enter two-arm score/uncertainty.
+    // Road geometry remains separately available as diagnostics.
     for(let i=0;i<SHOE_DIM;i++)vector[i]=dynamic[i];
+    for(let i=SHOE_DIM;i<DIM;i++)vector[i]=0;
   }
   if(vector.length!==DIM||!vector.every(Number.isFinite))throw new Error(`context mismatch ${vector.length}`);
   return {vector,candidates:roadData.candidates,bigRoad:roadData.bigRoad,
-    quant:quant?quant.predictNext():null,feature_schema:quant?"BBB_SHOE_QUANT_128_V4":"FROZEN_ORIGINAL_128"};
+    quant:quant?quant.predictNext():null,feature_schema:quant?"BBB_SHOE_QUANT_128_V5_ZERO_ROAD":"FROZEN_ORIGINAL_128"};
 }
 
 function frozenPrior(){
@@ -462,7 +467,7 @@ function countDominantPrior(countWeight=0){
   return prior;
 }
 function modelX(raw){return raw.map(v=>Number.isFinite(+v)?+v:0);}
-function scoreArm(arm,x,prior,countOnly=false){const A=prior.A[arm],b=prior.b[arm];let mean=0,uncertaintySquared=0;for(let i=0;i<DIM;i++){if(countOnly&&i>=SHOE_DIM)continue;const a=Math.max(1e-9,A[i]);mean+=x[i]*(b[i]/a);uncertaintySquared+=(x[i]*x[i])/a;}const uncertainty=Math.sqrt(Math.max(0,uncertaintySquared));return{mean,uncertainty,score:mean+ALPHA*uncertainty,effectiveAlpha:ALPHA};}
+function scoreArm(arm,x,prior,countOnly=false){const A=prior.A[arm],b=prior.b[arm];let mean=0,uncertaintySquared=0;for(let i=0;i<DIM;i++){if(countOnly&&i>=4)continue;const a=Math.max(1e-9,A[i]);mean+=x[i]*(b[i]/a);uncertaintySquared+=(x[i]*x[i])/a;}const uncertainty=Math.sqrt(Math.max(0,uncertaintySquared));return{mean,uncertainty,score:mean+ALPHA*uncertainty,effectiveAlpha:ALPHA};}
 function deterministicTie(seq){let h=0;const token="FROZEN256_BIGROAD_6X15_SENSITIVE_V17|"+seq.join("");for(let i=0;i<token.length;i++)h=(h*31+token.charCodeAt(i))>>>0;return h%2?"B":"P";}
 
 function choose(seq){
@@ -480,7 +485,9 @@ function choose(seq){
     const q=ctx.quant;
     // The first 128 features use a NEW schema. Frozen LinUCB scores remain
     // diagnostics; uncalibrated proxy counts cannot produce a bet.
-    const gateOK=q.gates?.count_passed===true&&q.gates?.ev_passed===true;
+    // The threshold is intentionally exclusive: TC exactly +/-2.5 => Skip.
+    // Positive EV is NOT silently implied by count magnitude.
+    const gateOK=q.gates?.count_passed===true;
     const directionQ=gateOK?q.direction:"Skip";
     const confidenceQ=directionQ==="Skip"?0:q.probabilities[directionQ];
     state.last_selected=directionQ==="Skip"?"":directionQ;
@@ -489,7 +496,9 @@ function choose(seq){
       probabilities:q.probabilities,regime:q.reason,strength:0,quant:q,
       candidates:c,bigRoad:{rows:BIG_ROAD_ROWS,cols:BIG_ROAD_COLS,viewStartCol:ctx.bigRoad.viewStartCol,viewEndCol:ctx.bigRoad.viewEndCol,maxCol:ctx.bigRoad.maxCol,grid:ctx.bigRoad.grid},
       hard_gate:{count_passed:q.gates?.count_passed===true,ev_passed:q.gates?.ev_passed===true,
-        direction_owner:"BBBShoeQuantEngine",road_override_allowed:false,simulated_only:true,stake_fraction:0},
+        ev_is_diagnostic_only:true,threshold_exclusive:2.5,
+        direction_owner:"absoluteCountVeto",road_override_allowed:false,
+        road_feature_max_abs:0,simulated_only:true,stake_fraction:0},
       frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM,feature_schema:ctx.feature_schema,quant_shadow_scores_only:true}};
   }
   return{direction,reason,x,scores,gap,confidence,probabilities:{B:pB,P:pP},regime,strength,candidates:c,bigRoad:{rows:BIG_ROAD_ROWS,cols:BIG_ROAD_COLS,viewStartCol:ctx.bigRoad.viewStartCol,viewEndCol:ctx.bigRoad.viewEndCol,maxCol:ctx.bigRoad.maxCol,grid:ctx.bigRoad.grid},frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM}};
@@ -512,7 +521,7 @@ function renderPrediction(){const p=state.active?state.lastPrediction:null,orb=e
     el("strength").textContent="0% 注碼";
     orb.className="direction-orb idle";
     return;
-  }const isB=p.direction==="B";el("directionText").textContent=isB?"莊":"閒";el("directionCode").textContent=isB?"BANKER":"PLAYER";el("confidence").textContent=(p.confidence*100).toFixed(1)+"%";el("regime").textContent=p.quant?"算牌模型未校準（研究方向）":p.regime;el("strength").textContent=p.quant?`模擬凱利 ${(p.quant.simulated_bet_fraction*100).toFixed(1)}%（非下注建議）`:p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isB?"banker":"player");}
+  }const isB=p.direction==="B";el("directionText").textContent=isB?"莊":"閒";el("directionCode").textContent=isB?"BANKER":"PLAYER";el("confidence").textContent=p.quant?`代理TC ${p.quant.estimated_shoe.trueCount.toFixed(2)}（非勝率）`:(p.confidence*100).toFixed(1)+"%";el("regime").textContent=p.quant?"絕對TC閘門／未校準研究訊號":p.regime;el("strength").textContent=p.quant?`模擬比率 ${(p.quant.simulated_bet_fraction*100).toFixed(1)}%（實際注碼 0%）`:p.strength>=.68?"穩定":p.strength>=.52?"中等":"保守";orb.className="direction-orb "+(isB?"banker":"player");}
 function render(){if(el("roundPill"))el("roundPill").textContent=`${state.history.length} 局`;if(el("modePill"))el("modePill").textContent=state.active?"分析完成":"準備中";if(el("roundCount"))el("roundCount").textContent=state.history.length;renderPrediction();renderHistory();}
 
 if(el("btnB"))el("btnB").addEventListener("click",()=>addOutcome("B"));
