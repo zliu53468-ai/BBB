@@ -36,6 +36,16 @@ function quantEngineFor(seq){
   if(!QUANT256_MODE)return null;
   const Engine=typeof window!=="undefined"&&(window.BBBShoeQuantEngine||window.BBBQuantEngine);
   if(typeof Engine!=="function")return null;
+  // Optional explicit observed-point research rows. Never infer or invent
+  // full cards from B/P/T, never reuse stale rows from a different history.
+  const rows=window.__BBB_QUANT256_OBSERVED_ROUNDS__;
+  if(rows!==undefined){
+    if(!Array.isArray(rows)||rows.length!==seq.length||
+      rows.some((r,i)=>!r||typeof r!=="object"||r.outcome!==seq[i]||
+        !Array.isArray(r.observation?.cards)))
+      throw Error("observed_rounds_do_not_match_current_shoe");
+    return Engine.fromHistory(rows);
+  }
   return Engine.fromHistory(seq);
 }
 
