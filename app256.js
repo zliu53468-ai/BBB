@@ -431,7 +431,7 @@ function context256(seq){
   }
   if(vector.length!==DIM||!vector.every(Number.isFinite))throw new Error(`context mismatch ${vector.length}`);
   return {vector,candidates:roadData.candidates,bigRoad:roadData.bigRoad,
-    quant:quant?quant.predictNext():null,feature_schema:quant?"BBB_SHOE_QUANT_128_V3":"FROZEN_ORIGINAL_128"};
+    quant:quant?quant.predictNext():null,feature_schema:quant?"BBB_SHOE_QUANT_128_V4":"FROZEN_ORIGINAL_128"};
 }
 
 function frozenPrior(){
@@ -445,24 +445,31 @@ function frozenPrior(){
   return{A,b};
 }
 
-function countDominantPrior(){
+function countDominantPrior(countWeight=0){
   const prior=frozenPrior();
   // Experimental frozen two-arm LinUCB coefficients — NOT trained weights.
   // New 128D schema must NOT reuse old frozen prior coefficients.
   for(let i=0;i<SHOE_DIM;i++){
     const w=i===0?.028:i===1?.045:i===2?.018:i===3?.008:(i%2?-.0001:.0001);
-    prior.b.B[i]=w;prior.b.P[i]=-w;
+    // The B/P/T-only TC is a proxy; this weight controls experimental
+    // scoring sensitivity, not claimed predictive accuracy.
+    const dynamic=i<4?1+Math.min(.75,Math.max(0,countWeight)):1;
+    prior.b.B[i]=w*dynamic;prior.b.P[i]=-w*dynamic;
   }
-  // Road-model weights are diagnostics; keep the count block dominant.
-  for(let i=SHOE_DIM;i<DIM;i++){prior.b.B[i]*=.05;prior.b.P[i]*=.05;}
+  // Preserve road coordinates in context256 for diagnostics but eliminate
+  // ALL 128 road coefficients in this opt-in score (not production).
+  for(let i=SHOE_DIM;i<DIM;i++){prior.b.B[i]=0;prior.b.P[i]=0;}
   return prior;
 }
 function modelX(raw){return raw.map(v=>Number.isFinite(+v)?+v:0);}
-function scoreArm(arm,x,prior){const A=prior.A[arm],b=prior.b[arm];let mean=0,uncertaintySquared=0;for(let i=0;i<DIM;i++){const a=Math.max(1e-9,A[i]);mean+=x[i]*(b[i]/a);uncertaintySquared+=(x[i]*x[i])/a;}const uncertainty=Math.sqrt(Math.max(0,uncertaintySquared));return{mean,uncertainty,score:mean+ALPHA*uncertainty,effectiveAlpha:ALPHA};}
+function scoreArm(arm,x,prior,countOnly=false){const A=prior.A[arm],b=prior.b[arm];let mean=0,uncertaintySquared=0;for(let i=0;i<DIM;i++){if(countOnly&&i>=SHOE_DIM)continue;const a=Math.max(1e-9,A[i]);mean+=x[i]*(b[i]/a);uncertaintySquared+=(x[i]*x[i])/a;}const uncertainty=Math.sqrt(Math.max(0,uncertaintySquared));return{mean,uncertainty,score:mean+ALPHA*uncertainty,effectiveAlpha:ALPHA};}
 function deterministicTie(seq){let h=0;const token="FROZEN256_BIGROAD_6X15_SENSITIVE_V17|"+seq.join("");for(let i=0;i<token.length;i++)h=(h*31+token.charCodeAt(i))>>>0;return h%2?"B":"P";}
 
 function choose(seq){
-  const ctx=context256(seq),x=modelX(ctx.vector),prior=ctx.quant?countDominantPrior():frozenPrior(),scores={B:scoreArm("B",x,prior),P:scoreArm("P",x,prior)},gap=scores.B.score-scores.P.score;
+  const ctx=context256(seq),x=modelX(ctx.vector),experimental=!!ctx.quant,
+    prior=experimental?countDominantPrior(ctx.quant.count_weight):frozenPrior(),
+    scores={B:scoreArm("B",x,prior,experimental),P:scoreArm("P",x,prior,experimental)},
+    gap=scores.B.score-scores.P.score;
   let direction,reason;if(Math.abs(gap)<=SCORE_TIE_EPS){direction=deterministicTie(seq);reason="固定歷史平手判定";}else{direction=gap>0?"B":"P";reason="256維＋6×15即時雙臂判斷";}
   const rawPB=1/(1+Math.exp(-Math.max(-8,Math.min(8,gap/SCORE_TEMP)))),pB=clip(rawPB,PROB_MIN,PROB_MAX),pP=1-pB,confidence=direction==="B"?pB:pP;
   const previous=state.last_selected;state.selection_streak=previous===direction?(state.selection_streak||0)+1:1;state.last_selected=direction;
@@ -473,12 +480,16 @@ function choose(seq){
     const q=ctx.quant;
     // The first 128 features use a NEW schema. Frozen LinUCB scores remain
     // diagnostics; uncalibrated proxy counts cannot produce a bet.
-    const directionQ=q.direction,confidenceQ=directionQ==="Skip"?0:q.probabilities[directionQ];
+    const gateOK=q.gates?.count_passed===true&&q.gates?.ev_passed===true;
+    const directionQ=gateOK?q.direction:"Skip";
+    const confidenceQ=directionQ==="Skip"?0:q.probabilities[directionQ];
     state.last_selected=directionQ==="Skip"?"":directionQ;
     state.selection_streak=directionQ==="Skip"?0:(previous===directionQ?(state.selection_streak||0):1);
     return{direction:directionQ,reason:q.reason,x,scores,gap,confidence:confidenceQ,
       probabilities:q.probabilities,regime:q.reason,strength:0,quant:q,
       candidates:c,bigRoad:{rows:BIG_ROAD_ROWS,cols:BIG_ROAD_COLS,viewStartCol:ctx.bigRoad.viewStartCol,viewEndCol:ctx.bigRoad.viewEndCol,maxCol:ctx.bigRoad.maxCol,grid:ctx.bigRoad.grid},
+      hard_gate:{count_passed:q.gates?.count_passed===true,ev_passed:q.gates?.ev_passed===true,
+        direction_owner:"BBBShoeQuantEngine",road_override_allowed:false,simulated_only:true,stake_fraction:0},
       frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM,feature_schema:ctx.feature_schema,quant_shadow_scores_only:true}};
   }
   return{direction,reason,x,scores,gap,confidence,probabilities:{B:pB,P:pP},regime,strength,candidates:c,bigRoad:{rows:BIG_ROAD_ROWS,cols:BIG_ROAD_COLS,viewStartCol:ctx.bigRoad.viewStartCol,viewEndCol:ctx.bigRoad.viewEndCol,maxCol:ctx.bigRoad.maxCol,grid:ctx.bigRoad.grid},frozen:{bootstrap:false,walk_forward:false,replay:false,settle_previous:false,update_ab:false,decay:false,alpha:ALPHA,ridge:RIDGE,context_dim:DIM}};
