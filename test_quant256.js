@@ -255,4 +255,26 @@ assert(node.message.textContent.includes("莊對"));
 assert(node.message.textContent.includes("幸運六"));
 assert(next.arms.shoeContribution>0);
 assert(Math.abs(next.arms.shoeContribution)>Math.abs(next.arms.roadContribution));
+// The page can receive real observed cards via a strict shoe-aligned
+// in-memory API. A B/P/T-only shoe must never silently switch evidence type.
+const explicit=Array.from({length:8},()=>({
+  outcome:"B",observation:{cards:[1,2,3,4,1,2]}
+}));
+storage.set("bgs256d_frozen_6x15_forward_v18",JSON.stringify({
+  history:Array(8).fill("B")
+}));
+adapter.setObservedRounds(explicit);
+const observedView=adapter.run();
+assert.equal(observedView.quant.count_source,"observed");
+assert.equal(observedView.quant.survival.direction,"B");
+assert.equal(observedView.quant.particle_survival.resampled,true);
+assert.equal(observedView.arms.direction,"B");
+assert(node.message.textContent.includes("PF條件重採樣 觀測牌值研究"));
+assert.equal(observedView.quant.bet_fraction,0);
+assert.throws(()=>adapter.context256(["B","P"]),/observed_rounds_do_not_match_current_shoe/);
+adapter.setObservedRounds(null);
+const noEvidenceView=adapter.run();
+assert.equal(noEvidenceView.quant.count_source,"estimated");
+assert.equal(noEvidenceView.quant.particle_survival.active,false);
+assert.equal(noEvidenceView.arms.direction,"Skip");
 console.log("PASS V6 CPSI 4+ observed-card requirement, follow/break risk, PF ESS resample, 17-32 and 129-144 slots, 0 actionable stake, no raw roads, production API preserved");
