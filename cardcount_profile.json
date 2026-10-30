@@ -683,6 +683,20 @@
       "uncertainty_high": 0.65,
       "signal_scale": 0.05,
       "validated": false
+    },
+    "pf_light_v1": {
+      "schema_version": 1,
+      "version": "PF_LIGHT_INNOVATION_V1",
+      "enabled": true,
+      "max_weight": 0.06,
+      "max_delta": 0.0025,
+      "quality_low": 0.55,
+      "quality_high": 0.8,
+      "ess_low": 0.4,
+      "ess_high": 0.8,
+      "uncertainty_low": 0.55,
+      "uncertainty_high": 0.8,
+      "validated": false
     }
   }
 }

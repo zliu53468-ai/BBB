@@ -1,5 +1,7 @@
 # Physics 有界校正與和局檢查
 
+> 此文件的PF未執行／和局檢查是PR96基準。後續pf_light_v1啟用後，PF會在Physics校正後小幅介入，見PF_LIGHT_INNOVATION_V1.md；PF核心與和局規則仍未修改。
+
 新增位置：原貝葉斯／馬可夫機率 → Physics校正 → 原自適應XGB → 原Macro／Clip／EMA → 原EV／Volume Guard。其他模型、權重、57D特徵、平滑與出手設定不變。既有Physics已用於先驗，本層是明示且有界的第二次使用同一訊號，不將兩者當成獨立證據相乘，亦不宣稱新增了真實牌階資訊。
 
 配置bayes_markov_final_v1.physics_correction_v1：enabled=true、min_weight=0.10、max_weight=0.20（硬上限）、max_delta=0.005（硬上限）、uncertainty_low=0.35、uncertainty_high=0.65、signal_scale=0.05。
