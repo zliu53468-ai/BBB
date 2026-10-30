@@ -31,7 +31,7 @@ const LEGACY_KEYS = [
 const el = id => (typeof document !== "undefined" ? document.getElementById(id) : null);
 /* Isolated opt-in: ?quant256=1. Never reinterpret an old frozen 128D schema silently. */
 const QUANT256_MODE = typeof window!=="undefined" && !!window.location &&
-  new URLSearchParams(window.location.search).get("quant256")==="1";
+  typeof URLSearchParams==="function" && new URLSearchParams(window.location.search||"").get("quant256")==="1";
 function quantEngineFor(seq){
   if(!QUANT256_MODE)return null;
   const Engine=typeof window!=="undefined"&&window.BBBQuantEngine;
