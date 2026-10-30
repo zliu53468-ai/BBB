@@ -27,3 +27,5 @@ jobs:
       - run: node --check browser_calibration.js && node --require ./legacy_profile_fixture.cjs test_browser_calibration.js
 
       - run: node --require ./legacy_profile_fixture.cjs test_middle_late_upgrade.js
+      - name: Production Physics/PF ownership and EV guard release contract
+        run: node --check test_physics_pf_primary_release.js && node test_physics_pf_primary_release.js

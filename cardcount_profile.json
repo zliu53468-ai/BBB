@@ -428,7 +428,7 @@
     "enabled": true,
     "xgb_influence": 0,
     "markov": {
-      "enabled": true,
+      "enabled": false,
       "order": 2,
       "mix_weight": 0.08,
       "max_weight": 0.12,
@@ -567,7 +567,7 @@
   "road_primary_v1": {
     "schema_version": 1,
     "version": "PR83_VNEXT_LIVE_EXPERIMENT_V1",
-    "enabled": true,
+    "enabled": false,
     "order": 3,
     "window": 200,
     "min_observations": 12,
@@ -641,7 +641,7 @@
   "bayes_markov_final_v1": {
     "schema_version": 1,
     "version": "BAYES_MARKOV_1_3_V1",
-    "enabled": true,
+    "enabled": false,
     "orders": [
       1,
       2,
