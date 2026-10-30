@@ -83,7 +83,7 @@ function countSurvivalHazard({history=[],trueCount=0,zeroRatio=1,countSource='es
  const advantage=clamp((aligned-1.5)/4,0,1);
  const cpsi=active?clamp((.2+.8*advantage)*(.6+.4*clamp(z,0,1)),0,1):0;
  const hazard=active?clamp(.55+.35*depth-.4*cpsi+
-  (conflict?.30:0),0,1):0;
+  (conflict ? .30 : 0),0,1):0;
  let signal='Skip',reason='inactive';
  if(!active)reason='run_length_below_4';
  else if(!observed)reason='no_observed_card_points';
