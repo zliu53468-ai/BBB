@@ -21,11 +21,11 @@ const scripts=[
   "pf_light_runtime.js?v=20261030-pf-light-v1",
   "physics_correction_runtime.js?v=20261030-pf-light-v1",
   "xgb_adaptive_runtime.js?v=20261030-pf-light-v1",
-  "bayes_markov_runtime.js?v=20261030-quant256-v2",
+  "bayes_markov_runtime.js?v=20261031-quant256-v5",
   "vnext/relative_baseline_runtime.js?v=20261030-pf-light-v1",
   "final_probability_runtime.js?v=20261030-pf-light-v1",
-  "quant256_runtime.js?v=20261031-quant256-v4",
-  "quant256_panel.js?v=20261031-quant256-v4"
+  "quant256_runtime.js?v=20261031-quant256-v5",
+  "quant256_panel.js?v=20261031-quant256-v5"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
