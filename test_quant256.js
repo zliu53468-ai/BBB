@@ -60,7 +60,7 @@ assert.deepEqual(E.fromHistory(["B","P","T"]).generateShoeContext(),m.generateSh
 assert.equal(E.fractionalKelly(.51,.49,1).bet_fraction,.05);
 assert(E.fractionalKelly(.51,.49,1).minimum_clip_applied);
 assert.equal(E.fractionalKelly(.4,.5,1).bet_fraction,0);
-const strong=E.fromHistory(Array(40).fill("B")),strongPred=strong.predictNext();
+const strong=E.fromHistory(Array(50).fill("B")),strongPred=strong.predictNext();
 assert(strong.trueCount>=1.5);
 assert.equal(strongPred.direction,"B");
 assert(strongPred.simulated_bet_fraction>=.05);
@@ -86,7 +86,7 @@ assert.deepEqual(Array.from(b.vector.slice(0,128)),E.fromHistory(seq).generateSh
 assert.equal(b.feature_schema,"BBB_SHOE_QUANT_128_V3");
 assert.equal(quant.choose(seq).direction,"Skip");
 assert(["B","P"].includes(baseline.choose(seq).direction));
-assert.equal(quant.choose(Array(40).fill("B")).direction,"B");
+assert.equal(quant.choose(Array(50).fill("B")).direction,"B");
 const node={};const ids=["btnStart","message","directionText","directionCode","confidence","regime","strength","directionOrb","modePill"];
 for(const id of ids)node[id]={textContent:"",className:"",handlers:[],addEventListener(type,fn,capture){this.handlers.push({type,fn,capture});}};
 const storage=new Map([["bgs256d_frozen_6x15_forward_v18",JSON.stringify({history:seq})]]);
@@ -108,7 +108,7 @@ assert.equal(node.btnStart.handlers[0].capture,true);
 const score=adapter.scoreTwoArms(over.vector);
 near(score.gap,score.B.score-score.P.score);
 assert(score.trained===false);
-storage.set("bgs256d_frozen_6x15_forward_v18",JSON.stringify({history:Array(40).fill("B")}));
+storage.set("bgs256d_frozen_6x15_forward_v18",JSON.stringify({history:Array(50).fill("B")}));
 const next=adapter.run();assert.equal(next.quant.direction,"B");
 assert.equal(node.directionText.textContent,"莊");
 assert(node.strength.textContent.includes("模擬凱利"));
