@@ -1,5 +1,5 @@
 /**
- * BBBShoeQuantEngine V5 — isolated, deterministic 256D experimental engine.
+ * BBBShoeQuantEngine V6 — isolated, deterministic 256D experimental engine.
  *
  * This models an *assumed* distribution when only B/P/T outcomes are provided.
  * Actual deck ranks, shoe penetration, pairs and Lucky Six are unobservable
@@ -15,13 +15,16 @@
   const countApi=(root&&root.__BBB_BAYES_MARKOV__)||
     (typeof module==="object"&&module.exports&&typeof require==="function"?
       require("./bayes_markov_runtime"):null);
-  const api=factory(countApi);
+  const pfApi=(root&&root.__BBB_RUN_SURVIVAL_PF__)||
+    (typeof module==="object"&&module.exports&&typeof require==="function"?
+      require("./run_survival_pf_runtime"):null);
+  const api=factory(countApi,pfApi);
   if(typeof module==="object"&&module.exports)module.exports=api;
   if(root){
     root.BBBShoeQuantEngine=api.BBBShoeQuantEngine;
     root.BBBQuantEngine=api.BBBShoeQuantEngine; // previous experimental adapter
   }
-})(typeof window!=="undefined"?window:null,function(countApi){
+})(typeof window!=="undefined"?window:null,function(countApi,pfApi){
   "use strict";
 
   // 8 decks: each point 1..9 has 32 cards; 0 (10/J/Q/K) has 128.
@@ -33,7 +36,7 @@
   const BASE=Object.freeze({B:0.4586,P:0.4462,T:0.0952});
   const COUNTS=Object.freeze({low:1,mid:-1,six:0,zero:0,nine:0});
   const ALPHA=0.0045;
-  const SCHEMA="BBB_SHOE_QUANT_128_V5";
+  const SCHEMA="BBB_SHOE_QUANT_128_V6_CPSI";
   const SMALL=1e-9,clamp=(x,min,max)=>Math.max(min,Math.min(max,x));
   const finite=Number.isFinite;
   function groupOf(point){
@@ -57,6 +60,9 @@
     reset(){
       this.shoeNumber++;
       this.estimatedCounts={...INITIAL};this.remainingCards=TOTAL;
+      // Point-value counts are retained ONLY from explicitly observed hands.
+      // B/P/T inferred fractional consumption never mutates these ranks.
+      this.observedPointCounts=[128,32,32,32,32,32,32,32,32,32];
       this.runningCount=0;this.trueCount=0;this.pairCount=0;this.l6Index=0;
       this.history=[];this.lastSide=null;this.streak=0;this.estimatedRounds=0;this.observedRounds=0;
       this.pairKnownRounds=0;this.bankerPairKnownRounds=0;this.playerPairKnownRounds=0;this.bankerPairs=0;this.playerPairs=0;
@@ -118,9 +124,13 @@
       let removed,source;
       if(cards){
         removed=Object.fromEntries(GROUPS.map(k=>[k,0]));
-        for(const point of cards)removed[groupOf(point)]++;
+        for(const point of cards){
+          removed[groupOf(point)]++;
+          if(this.observedPointCounts[point]<=0)throw Error("observed_point_exceeds_shoe");
+        }
         for(const k of GROUPS)if(removed[k]>this.estimatedCounts[k]+SMALL)throw Error("observed_count_exceeds_remaining_"+k);
         for(const k of GROUPS)this.estimatedCounts[k]-=removed[k];
+        for(const point of cards)this.observedPointCounts[point]--;
         this.observedRounds++;source="observed";
       }else{
         const distribution=outcome==="B"?
@@ -166,7 +176,37 @@
       this.lastUpdate=update;
       return update;
     }
-    /** Exact 128-slot schema, intentionally incompatible with Frozen Core V18. */
+    survivalSignal(){
+      if(!countApi||typeof countApi.countSurvivalHazard!=="function")
+        throw Error("count_survival_hazard_unavailable");
+      return countApi.countSurvivalHazard({
+        history:this.history,trueCount:this.trueCount,
+        zeroRatio:this.cardRatios.zero,countSource:this.countSource
+      });
+    }
+    survivalFeatures(){
+      const s=this.survivalSignal(),last=s.run_side;
+      // Slot definitions shared with run_length_hazard.py.
+      return [s.cpsi,s.hazard_rate,clamp(s.run_length/16,0,1),
+        last==="B"?1:last==="P"?-1:0,
+        clamp(s.aligned_tc/8,-1,1),clamp(s.zero_ratio/2,0,1),
+        +s.observed_card_evidence,+s.active,+(s.direction!=="Skip"),
+        +(s.direction===last&&last!==null),
+        +(s.direction!=="Skip"&&s.direction!==last),
+        s.follow_multiplier-1,s.break_multiplier-1,
+        clamp(s.simulated_bet_fraction/.25,0,1),
+        +s.pf_weighting_allowed,clamp(s.run_length/70,0,1)];
+    }
+    survivalParticleFilter(){
+      const s=this.survivalSignal();
+      if(!pfApi||typeof pfApi.estimate!=="function")
+        throw Error("survival_pf_module_unavailable");
+      return pfApi.estimate({history:this.history,count_source:this.countSource,
+        pointCounts:this.observedPointCounts.slice(),run_side:s.run_side,
+        run_length:s.run_length,follow_multiplier:s.follow_multiplier,
+        break_multiplier:s.break_multiplier});
+    }
+    /** Exact 128-slot schema; V6 registers CPSI slots 16..31. */
     generateShoeContext(){
       const tc=this.trueCount,n=this.history.length,rr=this.remainingCards/TOTAL,progress=1-rr;
       // The first four coordinates are intentionally NONLINEAR, signed
@@ -201,6 +241,10 @@
         for(const side of ["B","P","T"])
           v.push(h.length?h.filter(x=>x===side).length/h.length:0);
       }
+      // Replace, not append: fixed count-conditioned CPSI/hazard slots
+      // (17..32 by one-based indexing), preserving exactly 128D.
+      const survival=this.survivalFeatures();
+      for(let i=0;i<16;i++)v[16+i]=survival[i];
       if(v.length!==128||!v.every(finite))throw Error("invalid_quant_128D");
       return v;
     }
@@ -210,8 +254,13 @@
       const vector=context256.slice();
       const shoe=this.generateShoeContext();
       for(let i=0;i<128;i++)vector[i]=shoe[i];
-      // The experimental model never consumes road coordinates 128..255.
-      if(maskRoad)for(let i=128;i<256;i++)vector[i]=0;
+      // 129..144 are CPSI/HSMM diagnostics, NOT original road features.
+      // 145..256 remain zero. Experimental LinUCB scores only count heads.
+      if(maskRoad){
+        for(let i=128;i<256;i++)vector[i]=0;
+        const h=this.survivalFeatures();
+        for(let i=0;i<16;i++)vector[128+i]=h[i];
+      }
       return vector;
     }
     static fractionalKelly(win,loss,payout){
@@ -243,7 +292,15 @@
       // Existing estimate() remains intact for production compatibility.
       const veto=countApi.absoluteCountVeto(tc),direction=veto.direction;
       const value=direction==="B"?b:direction==="P"?p:(b.ev>=p.ev?b:p);
-      const gateCount=veto.count_passed,gateEV=value.ev>0;
+      const survival=this.survivalSignal();
+      const runPF=this.survivalParticleFilter();
+      // During a long run the survival gate takes precedence over V5's
+      // absolute TC veto. No observed card points => abstain, not fabricate
+      // an edge from the B/P/T streak. In other rounds V5 is unchanged.
+      const inRun=survival.active;
+      const finalDirection=inRun?survival.direction:direction;
+      const gateCount=inRun?finalDirection!=="Skip":veto.count_passed;
+      const gateEV=value.ev>0;
       const source=this.countSource;
       const tieRecent=this.history.slice(-12),tieHits=tieRecent.filter(x=>x==="T").length;
       const tieSignal=tieRecent.length>=8&&tieHits/tieRecent.length>.20;
@@ -251,17 +308,19 @@
       const playerPairSignal=this.playerPairKnownRounds>=10&&this.playerPairs/this.playerPairKnownRounds>.085;
       const l6Signal=this.l6KnownRounds>=10&&this.l6ObservedHits/this.l6KnownRounds>.12;
       return {
-        version:"BBB_SHOE_QUANT_V5",context_schema:SCHEMA,experimental:true,validated:false,
+        version:"BBB_SHOE_QUANT_V6",context_schema:SCHEMA,experimental:true,validated:false,
         alpha:ALPHA,count_weight:w_count,count_source:source,
         baseline_probabilities:{...BASE},count_probability,probabilities,
-        ev_banker:b.ev,ev_player:p.ev,ev_selected:value.ev,direction,
-        direction_text:direction==="Skip"?"觀望":direction==="B"?"莊":"閒",
-        reason:veto.reason,
+        ev_banker:b.ev,ev_player:p.ev,ev_selected:value.ev,direction:finalDirection,
+        direction_text:finalDirection==="Skip"?"觀望":finalDirection==="B"?"莊":"閒",
+        reason:inRun?survival.reason:veto.reason,
+        survival,particle_survival:runPF,
         // Absolute ±2.5 veto is the SOLE experimental direction authority;
         // EV is still calculated as a diagnostic but cannot force a bet.
         count_gate_passed:gateCount,ev_gate_passed:gateEV,
         research_direction_allowed:gateCount,
-        bet_fraction:0,simulated_bet_fraction:veto.simulated_bet_fraction,
+        bet_fraction:0,simulated_bet_fraction:inRun?
+          survival.simulated_bet_fraction:veto.simulated_bet_fraction,
         kelly_raw_fraction:0,
         minimum_clip_applied:false,
         side_bets:{
@@ -279,9 +338,10 @@
         },
         gates:{true_count_abs_strictly_greater_than:2.5,count_passed:gateCount,
           ev_passed:gateEV,ev_is_diagnostic_only:true,neutral_forced_skip:!gateCount,
-          direction_owner:"absoluteCountVeto",road_override_allowed:false,
-          bet_fraction:0,simulated:true},
-        notice:"V5 research only: TC from B/P/T relies on synthetic removal assumptions, not observed A-K. Forced B/P direction and 15-30% simulated fraction are unvalidated diagnostics, NOT a wager or positive expected value."
+          direction_owner:inRun?"countSurvivalHazard":"absoluteCountVeto",
+          physical_count_evidence_required_for_run:true,
+          road_override_allowed:false,bet_fraction:0,simulated:true},
+        notice:"V6 experimental survival only: B/P/T-only count has NO observed card support. CPSI, PF stress weights and forced follow/break scenarios are uncalibrated and NOT true hazard probabilities or a wagering advantage."
       };
     }
     static fromHistory(history){
