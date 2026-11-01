@@ -27,7 +27,7 @@ const scripts=[
   "run_survival_pf_runtime.js?v=20261031-quant256-v6",
   "quant256_runtime.js?v=20261031-quant256-v6",
   "quant256_online_runtime.js?v=20261101-e323-v2-restore",
-  "physics_forecast_first_runtime.js?v=20261101-e323-v2-restore",
+  "physics_forecast_first_runtime.js?v=20261101-e323-v2-mc-seed-v1",
   "quant256_online_panel.js?v=20261101-e323-v2-restore",
   "quant256_bankroll_ui.js?v=20261101-e323-v2-restore"
 ];

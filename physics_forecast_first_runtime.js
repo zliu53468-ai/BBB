@@ -31,9 +31,17 @@ function seeded(seed){
   let x=seed>>>0||0x9E3779B9;
   return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};
 }
-function hashHistory(seq){
+/**
+ * MC 隨機種子由當前虛擬殘牌的 0–9 點數組成決定，不再額外混入
+ * 歷史 B/P/T 字元。合法的結果條件式粒子更新流程保持 V2 原樣。
+ */
+function hashComposition(shoes){
+  const rows=Array.isArray(shoes[0])?shoes:[shoes];
   let x=2166136261;
-  for(const c of seq){x^=c.charCodeAt(0);x=Math.imul(x,16777619);}
+  for(const row of rows){
+    for(const count of row){x^=count;x=Math.imul(x,16777619);}
+    x^=0x9e3779b9;x=Math.imul(x,16777619);
+  }
   return x>>>0;
 }
 function validateCounts(counts,{observed=false}={}){
@@ -128,14 +136,14 @@ function simulate(counts,{samples=2048,seed=0x13877}={}){
     se_gap:seGap,draws_mean:expectedCards/samples,
     payout:{banker_win:.95,player_win:1,tie_push:true}};
 }
-function summarizeHypotheses(physics,history,{samplesPerParticle=64}={}){
+function summarizeHypotheses(physics,_history,{samplesPerParticle=64}={}){
   if(!physics||!Array.isArray(physics.particles))throw Error("invalid_physics_particles");
   if(!Number.isInteger(samplesPerParticle)||samplesPerParticle<8||samplesPerParticle>1024)
     throw Error("invalid_shadow_sample_count");
   const validParticles=physics.particles.filter(c=>Array.isArray(c)&&sum(c)>=6);
   const remaining=physics.particles.map(c=>sum(c));
   const estimates=[];
-  const stableSeed=hashHistory(history);
+  const stableSeed=hashComposition(validParticles);
   for(let i=0;i<validParticles.length;i++){
     const counts=validParticles[i],rng=seeded(stableSeed^Math.imul(i+1,2654435761));
     const tally={B:0,P:0,T:0};let draws=0;
@@ -299,7 +307,7 @@ class PhysicsForecastFirstEngine{
     const observed=this.observedRows!==null;
     const counts=observed?observedCounts(this.observedRows,this.history):null;
     const physics=observed?simulate(counts,{
-      samples:this.observedSamples,seed:hashHistory(this.history)^0xb15f13}):
+      samples:this.observedSamples,seed:hashComposition(counts)^0xb15f13}):
       (this.history.length?summarizeHypotheses(this.quant.physics,this.history,{
         samplesPerParticle:this.simulationsPerParticle}):baselineResult());
     const normalized=observed?
