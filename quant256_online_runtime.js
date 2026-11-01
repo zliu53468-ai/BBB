@@ -13,7 +13,7 @@
 "use strict";
 const DIM=256,SHOE=128,DECK=416,BASE_POINTS=[128,32,32,32,32,32,32,32,32,32];
 const ACTIVE=[...Array.from({length:12},(_,i)=>i),...Array.from({length:24},(_,i)=>128+i)];
-const K=ACTIVE.length,VERSION="BBB_QUANT256_ONLINE_V4_CONDITIONAL_MARGINAL";
+const K=ACTIVE.length,VERSION="BBB_QUANT256_ONLINE_V3_HYPER_MICRO_PAIRWISE";
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const finite=x=>typeof x==="number"&&Number.isFinite(x);
 const valid=s=>s==="B"||s==="P"||s==="T";
@@ -66,42 +66,20 @@ function sampleHand(counts,rng){
  * 這裡僅從合法發牌模擬抽取「符合已知結果的可能路徑」做 latent ensemble；
  * 它不是對真實牌靴的測量，亦不代表已知任何 A~K 殘量。
  */
-/**
- * 條件序貫蒙地卡羅：
- * 1. 每個粒子在原有殘牌上抽多個合法 4/5/6 張候選局；
- * 2. 每個候選局的點數都依真實不放回張數抽，且套用第三張牌規則；
- * 3. 只有符合本局 B/P/T（和已觀測張數）的候選局可成為扣牌轉移；
- * 4. 以「符合結果的候選比例」當觀測 likelihood，再按此權重系統重採樣。
- *
- * 這會避免原本每個粒子必定找一個符合結果的樣本、卻完全忽略
- * P(實際結果 | 可能殘牌) 的偏差。當只有 B/P/T，仍不能知道真實牌張。
- */
 class BlindPhysicsEstimator{
-  constructor({particles=24,seed=0xBBB256,proposalTrials=64}={}){
+  constructor({particles=24,seed=0xBBB256}={}){
     this.size=clamp(Math.floor(particles)||24,8,96);
-    if(!Number.isInteger(proposalTrials)||proposalTrials<16||proposalTrials>256)
-      throw Error("invalid_particle_proposals");
-    this.proposalTrials=proposalTrials;this.seed=seed>>>0;this.reset();
+    this.seed=seed>>>0;this.reset();
   }
   reset(){
     this.rng=seededRng(this.seed);
     this.particles=Array.from({length:this.size},()=>BASE_POINTS.slice());
-    this.drawHistory=[];this.densityHistory=[];this.pairwiseHistory=[];
-    this.lastAcceptance=0;this.lastEss=this.size;this.lastLikelihood=0;
-    this.lastMarginal={
-      method:"conditional_observation_likelihood",
-      point_values:[0,1,2,3,4,5,6,7,8,9],
-      // 權重是條件耗牌的相對過量，不是大小牌對莊/閒固定方向的規則。
-      relative_excess:Array(10).fill(0),
-      expected_conditional:Array(10).fill(0),
-      expected_unconditional:Array(10).fill(0),
-      small_1_4_excess:0,large_5_8_excess:0,
-      likelihood:0,samples:0,identified_cards:false
-    };
+    this.drawHistory=[];this.densityHistory=[];
+    this.pairwiseHistory=[];this.lastAcceptance=0;
     this.lastPairwise={source:"conditional_joint_sampling",observed_cards:false,
-      observed_draw_count:false,matched_particles:0,tie_or_long_hands:0,
-      estimated_key_consumption:0,estimated_key_consumption_ratio:0,
-      estimated_pairwise_key_copresence:0,estimated_draws:0};
+      matched_particles:0,tie_or_long_hands:0,estimated_key_consumption:0,
+      estimated_key_consumption_ratio:0,estimated_pairwise_key_copresence:0,
+      estimated_draws:0};
     return this;
   }
   observe(outcome,options={}){
@@ -109,115 +87,40 @@ class BlindPhysicsEstimator{
     const observedDraws=options.observedDraws??null;
     if(observedDraws!==null&&![4,5,6].includes(observedDraws))
       throw Error("invalid_observed_draw_count");
-    const candidateBanks=[],likelihoods=[];
-    const allDraw=Array(10).fill(0),matchedDraw=Array(10).fill(0);
-    let proposalCount=0,matchedCount=0;
+    let accepted=0,sum=0,keyDraws=0,pairCoPresence=0,longHands=0;
     for(let i=0;i<this.size;i++){
-      const original=this.particles[i];
-      const acceptedBank=[];
-      let matches=0,proposals=0;
-      // Reservoir sampling：從符合條件的所有候選局無偏隨機選一條。
-      for(let j=0;j<this.proposalTrials;j++){
+      const original=this.particles[i];let chosen=null;
+      // 條件抽樣，拒絕不符合本局已知 B/P/T 的虛擬發牌結果。
+      // 不編造實測卡牌；未抽中時不改寫粒子狀態。
+      for(let tries=0;tries<128;tries++){
         const trial=sampleHand(original,this.rng);
-        if(!trial)break;
-        proposals++;proposalCount++;
-        for(let k=0;k<10;k++)allDraw[k]+=trial.consumed[k];
-        if(trial.result!==outcome||
-          (observedDraws!==null&&trial.draws!==observedDraws))continue;
-        matches++;matchedCount++;
-        for(let k=0;k<10;k++)matchedDraw[k]+=trial.consumed[k];
-        // 多候選 reservoir：重採樣同一父粒子時仍可抽取不同合法發牌路徑。
-        if(acceptedBank.length<8)acceptedBank.push(trial);
-        else{
-          const j=Math.floor(this.rng()*matches);
-          if(j<8)acceptedBank[j]=trial;
+        // 只接受吻合實際觀測的結果；如有可驗證補牌張數，額外條件化。
+        if(trial&&trial.result===outcome&&
+          (observedDraws===null||trial.draws===observedDraws)){chosen=trial;break;}
+      }
+      if(chosen){
+        this.particles[i]=chosen.counts;sum+=chosen.draws;accepted++;
+        if(outcome==="T"||chosen.draws>=5){
+          longHands++;
+          // 所謂「成對扣牌」是條件樣本下共同消耗的期望值，
+          // 不會將 A / 4 / 7 / 0 點錯誤地強制扣兩倍。
+          const special=[0,1,4,7],used=special.map(k=>chosen.consumed[k]);
+          keyDraws+=used.reduce((v,n)=>v+n,0);
+          const present=used.filter(n=>n>0).length;
+          if(present>=2)pairCoPresence++;
         }
       }
-      // 在罕見的零命中情況增加候選，不能直接把不符合結果的手硬扣掉。
-      if(!matches&&proposals){
-        for(let extra=0;extra<256;extra++){
-          const trial=sampleHand(original,this.rng);
-          if(!trial)break;
-          proposals++;proposalCount++;
-          for(let k=0;k<10;k++)allDraw[k]+=trial.consumed[k];
-          if(trial.result!==outcome||
-            (observedDraws!==null&&trial.draws!==observedDraws))continue;
-          matches++;matchedCount++;
-          for(let k=0;k<10;k++)matchedDraw[k]+=trial.consumed[k];
-          acceptedBank.push(trial);break;
-        }
-      }
-      // 匹配機率在此粒子下估計；不把方向固定成莊/閒兩個人為群組。
-      likelihoods.push(proposals?matches/proposals:0);
-      candidateBanks.push(acceptedBank);
     }
-    const total=likelihoods.reduce((a,b)=>a+b,0);
-    if(total<=0){
-      // 資訊不足時不得虛構轉移；保留原牌並回報不可識別。
-      this.lastAcceptance=0;this.lastLikelihood=0;this.lastEss=0;
-      this.lastMarginal={...this.lastMarginal,likelihood:0,samples:proposalCount};
-      this.lastPairwise={...this.lastPairwise,matched_particles:0,
-        tie_or_long_hands:0,estimated_draws:0};
-      this.drawHistory.push(0);this.pairwiseHistory.push({...this.lastPairwise});
-      const snapshot=this.snapshot();this.densityHistory.push({
-        high:snapshot.virtual_high_ratio,low:snapshot.virtual_low_ratio});
-      return snapshot;
-    }
-    // SMC 系統重採樣：對 P(結果|粒子殘牌) 高的粒子加權，避免
-    // 舊方法「每個粒子都以同一權重接受一次」造成長期推估漂移。
-    const ess=total**2/likelihoods.reduce((sum,w)=>sum+w*w,0);
-    const step=total/this.size,offset=this.rng()*step;
-    const next=[];
-    let index=0,cumulative=likelihoods[0];
-    for(let i=0;i<this.size;i++){
-      const target=offset+i*step;
-      while(target>=cumulative&&index<this.size-1){
-        index++;cumulative+=likelihoods[index];
-      }
-      const bank=candidateBanks[index];
-      next.push(bank.length?
-        bank[Math.floor(this.rng()*bank.length)].counts.slice():
-        this.particles[index].slice());
-    }
-    // 所有實際粒子僅由合法匹配的出牌轉移；所有耗牌維持非負整數。
-    this.particles=next;this.lastEss=ess;this.lastLikelihood=matchedCount/Math.max(1,proposalCount);
-    this.lastAcceptance=candidateBanks.filter(bank=>bank.length>0).length/this.size;
-    const cond=matchedDraw.map(v=>v/Math.max(1,matchedCount));
-    const uncond=allDraw.map(v=>v/Math.max(1,proposalCount));
-    const excess=cond.map((v,i)=>(v-uncond[i])/Math.max(.05,uncond[i]));
-    this.lastMarginal={
-      method:"conditional_observation_likelihood",point_values:[0,1,2,3,4,5,6,7,8,9],
-      relative_excess:excess,expected_conditional:cond,expected_unconditional:uncond,
-      small_1_4_excess:excess.slice(1,5).reduce((a,b)=>a+b,0)/4,
-      large_5_8_excess:excess.slice(5,9).reduce((a,b)=>a+b,0)/4,
-      likelihood:this.lastLikelihood,samples:proposalCount,identified_cards:false
-    };
-    let keyDraws=0,pairCoPresence=0,longHands=0,sumDraws=0;
-    for(const bank of candidateBanks){
-      if(!bank.length)continue;
-      // 用同一父粒子條件樣本估算共同消耗；不是實際抽到的牌。
-      const selected=bank[0];
-      sumDraws+=selected.draws;
-      if(outcome==="T"||selected.draws>=5){
-        longHands++;
-        const group=[0,1,4,7].map(k=>selected.consumed[k]);
-        keyDraws+=group.reduce((a,b)=>a+b,0);
-        if(group.filter(v=>v>0).length>=2)pairCoPresence++;
-      }
-    }
-    this.lastPairwise={
-      source:"conditional_joint_sampling",observed_cards:false,
-      observed_draw_count:observedDraws!==null,
-      matched_particles:candidateBanks.filter(bank=>bank.length>0).length,
-      tie_or_long_hands:longHands,
+    this.lastAcceptance=accepted/this.size;
+    this.lastPairwise={source:"conditional_joint_sampling",
+      observed_cards:false,observed_draw_count:observedDraws!==null,
+      matched_particles:accepted,tie_or_long_hands:longHands,
       estimated_key_consumption:longHands?keyDraws/longHands:0,
-      estimated_key_consumption_ratio:sumDraws?keyDraws/sumDraws:0,
+      estimated_key_consumption_ratio:longHands?keyDraws/Math.max(1,sum):0,
       estimated_pairwise_key_copresence:longHands?pairCoPresence/longHands:0,
-      estimated_draws:candidateBanks.some(bank=>bank.length)?
-        sumDraws/candidateBanks.filter(bank=>bank.length>0).length:0
-    };
-    this.drawHistory.push(this.lastPairwise.estimated_draws);
+      estimated_draws:accepted?sum/accepted:0};
     this.pairwiseHistory.push({...this.lastPairwise});
+    this.drawHistory.push(accepted?sum/accepted:0);
     const snapshot=this.snapshot();
     this.densityHistory.push({high:snapshot.virtual_high_ratio,low:snapshot.virtual_low_ratio});
     return snapshot;
@@ -235,6 +138,7 @@ class BlindPhysicsEstimator{
       const tail=values.slice(-n);return tail.length?
         tail.reduce((sum,v)=>sum+v,0)/tail.length:fallback;
     };
+    // 僅使用近 3 vs 8 次虛擬模擬的相對差分，不輸出累積殘牌量給模型。
     const densityHigh=this.densityHistory.map(x=>x.high),
       lows=this.densityHistory.map(x=>x.low),draws=this.drawHistory.filter(v=>v>0);
     const highMomentum=avg(densityHigh,3,highRatio)-avg(densityHigh,8,highRatio);
@@ -247,9 +151,7 @@ class BlindPhysicsEstimator{
       virtual_high_momentum:highMomentum,virtual_low_momentum:lowMomentum,
       virtual_draw_momentum:drawMomentum,
       virtual_high_std:Math.sqrt(variance),conditional_acceptance:this.lastAcceptance,
-      conditional_outcome_likelihood:this.lastLikelihood,effective_particle_size:this.lastEss,
       expected_draws_recent:recent.length?recent.reduce((s,v)=>s+v,0)/recent.length:4.94,
-      marginal_card_weights:{...this.lastMarginal},
       pairwise_depletion:{...this.lastPairwise},
       actual_draw_count_known:false,actual_remaining_known:false
     };

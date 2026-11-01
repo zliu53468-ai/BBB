@@ -4,11 +4,10 @@ const assert=require("node:assert/strict");
 const {
   PhysicsForecastFirstEngine,observedCounts,observedHand,
   deal,simulate,decisionFromEV,weightedContext,BASE,BASE_EV,INITIAL,VERSION,
-  shoePhaseScaling,roadPosterior,microFusion,conflictGuard,
-  oneCardRemovalLikelihood
+  shoePhaseScaling,roadPosterior,microFusion,conflictGuard
 }=require("./physics_forecast_first_runtime.js");
 const near=(x,y,eps=1e-8)=>assert(Math.abs(x-y)<=eps,String(x)+" != "+String(y));
-assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V4_MARGINAL_EV");
+assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
 assert.equal(INITIAL.length,10);
 assert.equal(INITIAL[0],128);
 assert(INITIAL.slice(1).every(x=>x===32));
@@ -16,12 +15,15 @@ assert.equal(INITIAL.reduce((a,b)=>a+b),416);
 near(BASE.B,.458597);near(BASE.P,.446247);near(BASE.T,.095156);
 assert(BASE_EV.B<0&&BASE_EV.P<0,"standard 8 deck bets have negative base EV");
 const engine=new PhysicsForecastFirstEngine();
+assert.equal(engine.threshold,.008,"V3 balanced baseline must increase from .005");
+assert.equal(engine.lossGate,.035);
+assert.equal(engine.predict().dynamic_gate,.008);
 const initial=engine.predict();
 assert.equal(initial.action,"SKIP");
 assert.equal(initial.direction,"Skip");
 assert.equal(initial.observed_card_evidence,false);
 assert.equal(initial.reason,"dynamic_signal_filter");
-assert.equal(initial.dynamic_gate,.005);
+assert.equal(initial.dynamic_gate,.008);
 assert.equal(initial.research_signal.direction,"B");
 assert.equal(initial.research_signal.action,"SKIP");
 assert.equal(initial.research_signal.source,"simulated_bpt_only");
@@ -41,7 +43,7 @@ assert.equal(bpt.action,"SKIP","unobserved ranks must never be labelled BET");
 assert(["unobserved_card_composition","dynamic_signal_filter"].includes(bpt.reason));
 assert(["B","P"].includes(bpt.research_signal.direction));
 assert(["SIGNAL","SKIP"].includes(bpt.research_signal.action));
-assert([0,.005,.035].includes(bpt.dynamic_gate));
+assert([0,.008,.035].includes(bpt.dynamic_gate));
 assert.equal(bpt.research_signal.evidence_qualified,false);
 assert.equal(bpt.card_count_source,"hypothetical_particle_posterior");
 assert(bpt.physical_ev.samples>=1000);
@@ -143,10 +145,10 @@ assert.equal(data.road_weight,.1);
 assert.equal(data.road_has_direction_authority,false);
 // 動態順風車：僅在上一局研究訊號有方向、且實際結算 B/P 時更新。
 // 重複 predict() 讀取不得增加連勝或重新消耗緩衝。
-const dynamic=new PhysicsForecastFirstEngine({threshold:.005,lossGate:.035});
+const dynamic=new PhysicsForecastFirstEngine({threshold:.008,lossGate:.035});
 const success={research_signal:{available:true,direction:"B"}};
 const filtered={research_signal:{available:false,direction:"P"}};
-assert.equal(dynamic.predict().dynamic_gate,.005);
+assert.equal(dynamic.predict().dynamic_gate,.008);
 dynamic._settle(success,"B");
 assert.equal(dynamic.phase,"overdrive");
 assert.equal(dynamic.winStreak,1);
@@ -162,7 +164,7 @@ dynamic._settle(filtered,"T");
 assert.equal(dynamic.predict().dynamic_gate,.035,"Tie must not consume one-hand cushion");
 dynamic._settle(filtered,"P");
 assert.equal(dynamic.phase,"base");
-assert.equal(dynamic.predict().dynamic_gate,.005,"one missed opportunity reverts to base");
+assert.equal(dynamic.predict().dynamic_gate,.008,"one missed opportunity reverts to base");
 dynamic._settle(success,"B");
 assert.equal(dynamic.predict().dynamic_gate,0,"a correct research signal enables overdrive");
 dynamic._settle(success,"P");
@@ -222,12 +224,12 @@ assert(opposite.road_weight>0&&opposite.road_weight<=.1);
 assert.equal(opposite.calibrated,false);
 assert.equal(opposite.modifies_real_ev,false);
 near(opposite.raw_ev_gap_deviation,-.45);
-const first=conflictGuard(opposite,.005,null);
+const first=conflictGuard(opposite,.008,null);
 assert.equal(first.applied,true);
 near(first.effective_gate,.035);
-const second=conflictGuard(opposite,.005,first.signature);
+const second=conflictGuard(opposite,.008,first.signature);
 assert.equal(second.applied,false,"same conflict may not cause infinite SKIP");
-near(second.effective_gate,.005);
+near(second.effective_gate,.008);
 const agreeing=microFusion({
   simulated_probability:{B:.7,P:.2,T:.1},
   ev_banker:.465,ev_player:-.5,ev_gap_deviation:.4
@@ -245,38 +247,4 @@ assert.equal(initial.pairwise_depletion.estimated_key_consumption,0);
 assert.equal(initial.pairwise_depletion.observed_cards,false);
 assert.equal(bpt.phantom_95pct_claim,false);
 assert.equal(bpt.research_signal.source,"simulated_bpt_only");
-// 一張卡的非線性邊際權重使用完整合法發牌路徑的精確機率比率。
-// 驗證解析式與逐張條件機率相同，且不需要修改外層門檻。
-const rngMargin=(()=>{let x=187652;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};})();
-for(let k=0;k<10;k++){
-  const hand=deal(INITIAL,rngMargin);
-  const likelihood=oneCardRemovalLikelihood(INITIAL,hand,k);
-  let counts=INITIAL.slice(),changed=INITIAL.slice(),originalProb=1,removedProb=1;
-  changed[k]--;
-  for(const point of hand.cards){
-    const N=counts.reduce((a,b)=>a+b,0);
-    const M=changed.reduce((a,b)=>a+b,0);
-    originalProb*=counts[point]/N;
-    removedProb*=changed[point]/M;
-    counts[point]--;changed[point]--;
-  }
-  near(likelihood,removedProb/originalProb,1e-10);
-}
-const marginal=drawResult.marginal_ev;
-assert.equal(marginal.method,"one_card_removed_importance_reweighting");
-assert.equal(marginal.points.length,10);
-assert.equal(marginal.identified_actual_deck,false,
-  "simulate accepts arbitrary point composition; true observed origin must be verified by Engine");
-assert(marginal.points.every(row=>row.available&&Number.isFinite(row.delta_ev_gap)));
-assert(marginal.points.some(row=>row.delta_ev_gap>0));
-assert(marginal.points.some(row=>row.delta_ev_gap<0),
-  "must not hard-code a fixed sign for 1-4/5-8/Tie");
-assert.equal(marginal.does_not_force_direction,true);
-assert.equal(bpt.marginal_ev.points.length,10);
-assert.equal(bpt.marginal_ev.identified_actual_deck,false);
-assert.equal(bpt.final_bias_is_real_ev,false);
-near(bpt.final_bias,bpt.ucb_raw_bias*bpt.shoe_phase.scale);
-assert.equal(actual.marginal_ev.identified_actual_deck,true);
-assert.equal(actual.marginal_ev.source,"observed_card_count");
-assert.equal(bpt.dynamic_gate,snapshotReset.predict().dynamic_gate);
-console.log("PASS physics V4: exact per-value likelihood ratio, 8-deck EV, BPT-vs-observed origin, unchanged gates & run replay");
+console.log("PASS V3 balanced: conditional depletion, nonlinear signal, weak Bayesian road fusion, 0.008/0/0.035 state, legacy replay");

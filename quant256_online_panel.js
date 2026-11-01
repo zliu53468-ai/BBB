@@ -9,7 +9,7 @@ if(!root||!root.document||!root.BBBPhysicsForecastFirst||
   typeof URLSearchParams!=="function"||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
 const {PhysicsForecastFirstEngine,VERSION}=root.BBBPhysicsForecastFirst;
-const CONFIG={threshold:.005,lossGate:.035,simulationsPerParticle:64,
+const CONFIG={threshold:.008,lossGate:.035,simulationsPerParticle:64,
   observedSamples:12000,quantOptions:{lambda:.82,alpha:.15}};
 const model=new PhysicsForecastFirstEngine(CONFIG);
 const KEY="bgs256d_frozen_6x15_forward_v18";
@@ -39,10 +39,10 @@ function render(p){
   const regime=el("regime"),strength=el("strength"),orb=el("directionOrb"),
     pill=el("modePill"),message=el("message");
   const conflictSkip=research.conflict_guard_applied;
-  // 最終大字僅顯示莊／閒；保留下方 SIMULATION ONLY 以區分真實 EV。
-  if(text)text.textContent=conflictSkip?"觀望（微觀衝突）":
-    (dir==="B"?"莊":"閒");
-  if(code)code.textContent=conflictSkip?"CONFLICT / SHORT SKIP":
+  // 正式訊號僅顯示「莊」或「閒」，不使用會讓手機文字溢出的（研究）標籤。
+  // 未達門檻時真正顯示觀望，而不是一邊 SKIP 一邊假裝有下注意見。
+  if(text)text.textContent=!signal?"觀望":dir==="B"?"莊":"閒";
+  if(code)code.textContent=!signal?"SKIP / NO ACTION":
     (dir==="B"?"BANKER":"PLAYER")+
     (qualified?" / EV VERIFIED":" / SIMULATION ONLY");
   if(conf)conf.textContent="模擬 EV 偏移 "+(p.ev_gap_deviation*100).toFixed(2)+"%（非勝率）";
@@ -56,7 +56,7 @@ function render(p){
     "%｜莊 EV "+(p.ev_banker*100).toFixed(2)+
     "%｜閒 EV "+(p.ev_player*100).toFixed(2)+"%";
   if(orb)orb.className="direction-orb "+(signal?(dir==="B"?"banker":"player"):"idle");
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · MARGINAL EV";
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V3 BALANCED";
   const hit=p.hit_rate===null?"無有效樣本":(p.hit_rate*100).toFixed(1)+"%";
   const rate=p.signal_rate===null?"—":(p.signal_rate*100).toFixed(1)+"%";
   if(message)message.textContent="本局研究方向："+(dir==="B"?"莊":"閒")+
@@ -68,12 +68,6 @@ function render(p){
     "｜研究訊號強度 "+(p.scaled_research_score*100).toFixed(2)+"%"+
     "｜成對扣牌估計 "+p.pairwise_depletion.estimated_pairwise_key_copresence.toFixed(3)+
     "（非實際扣牌）"+
-    "｜小牌 1–4 再消耗一張莊 EV 邊際 "+
-       (p.marginal_ev.small_1_4_delta_banker*100).toFixed(3)+"%"+
-    "｜大牌 5–8 再消耗一張閒 EV 邊際 "+
-       (p.marginal_ev.large_5_8_delta_player*100).toFixed(3)+"%"+
-    "｜條件粒子有效數 "+p.model_road_debug.blind_physics.effective_particle_size.toFixed(1)+
-    "（虛擬模型）"+
     "｜實測 EV 行動："+(qualified?"BET":"未達 BET 資格")+
     "｜Gate "+(p.dynamic_gate*100).toFixed(2)+"%"+
     "｜連中 "+p.win_streak+" 局"+

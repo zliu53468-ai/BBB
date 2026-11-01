@@ -24,4 +24,4 @@ jobs:
         run: node test_quant256_online.js && node test_physics_forecast_first.js
       - name: Live loader checks
         run: |
-          node -e 'const fs=require("fs");const a=fs.readFileSync("auth-client.js","utf8");for(const f of ["quant256_online_runtime.js","physics_forecast_first_runtime.js","quant256_online_panel.js"])if(!a.includes(f))throw Error("missing script "+f);const i=fs.readFileSync("index.html","utf8");if(!i.includes("20261101-card-marginal-v4"))throw Error("stale page cache key");console.log("PASS browser loader references")'
+          node -e 'const fs=require("fs");const a=fs.readFileSync("auth-client.js","utf8");for(const f of ["quant256_online_runtime.js","physics_forecast_first_runtime.js","quant256_online_panel.js"])if(!a.includes(f))throw Error("missing script "+f);const i=fs.readFileSync("index.html","utf8");if(!i.includes("20261101-v3-balanced-gate-008"))throw Error("stale page cache key");console.log("PASS browser loader references")'
