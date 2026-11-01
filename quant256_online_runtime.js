@@ -1,5 +1,5 @@
 /**
- * BBB 256D Online LinUCB V2 — symmetric anti-lock / B/P/T-only.
+ * BBB 256D Online LinUCB V3 — hyper-sensitive high-frequency experimental B/P/T engine.
  * 本模組不讀取 A~K，也不把盲估牌張當真實算牌資料。
  * 128D 牌靴 + 128D 牌路固定介面，內部只訓練經挑選的 36 個非零特徵，
  * 其餘維度為 0；活躍維度使用完整正定 Gram 矩陣，而非凍結係數。
@@ -13,7 +13,7 @@
 "use strict";
 const DIM=256,SHOE=128,DECK=416,BASE_POINTS=[128,32,32,32,32,32,32,32,32,32];
 const ACTIVE=[...Array.from({length:12},(_,i)=>i),...Array.from({length:24},(_,i)=>128+i)];
-const K=ACTIVE.length,VERSION="BBB_QUANT256_ONLINE_V2_ANTI_LOCK";
+const K=ACTIVE.length,VERSION="BBB_QUANT256_ONLINE_V3_HYPER_MICRO";
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const finite=x=>typeof x==="number"&&Number.isFinite(x);
 const valid=s=>s==="B"||s==="P"||s==="T";
@@ -128,55 +128,65 @@ class BlindPhysicsEstimator{
 function context256(history,physics){
   if(!Array.isArray(history)||history.some(v=>!valid(v)))throw Error("invalid_history");
   const shoe=Array(SHOE).fill(0),road=Array(SHOE).fill(0);
-  const s3=windowStats(history,3),s8=windowStats(history,8),s16=windowStats(history,16);
-  const nonTie=bp(history),ties=(n)=>history.slice(-n).filter(x=>x==="T").length/n;
+  const s2=windowStats(history,2),s5=windowStats(history,5),
+    s8=windowStats(history,8),s16=windowStats(history,16);
+  const nonTie=bp(history),tieRatio=n=>{
+    const tail=history.slice(-n);return tail.length?
+      tail.filter(x=>x==="T").length/tail.length:0;
+  };
   const sim=physics.snapshot(),last=nonTie.at(-1)||"";
-  // 全部 36 個活躍特徵皆為 [-1,+1] 的中心化差值或相對變動。
-  // 禁用固定正截距、累積局數、累積扣牌量（未知真實剩餘牌）。
-  shoe[0]=clamp(s3.banker-s8.banker,-1,1);
-  shoe[1]=clamp(s8.banker-s16.banker,-1,1);
-  shoe[2]=clamp(ties(3)-ties(8),-1,1);
-  shoe[3]=clamp(ties(8)-ties(16),-1,1);
+  const turn25=s2.turn-s5.turn,regular25=s2.regularity-s5.regularity;
+  const entropy25=s2.entropy-s5.entropy;
+  // 固定 128D 牌靴/進程槽：只用可得的短窗相對差與虛擬模擬動量。
+  // 不將盲估的高低張殘牌當成實測事實，也不加入單調累積局數。
+  shoe[0]=clamp(s2.banker-s5.banker,-1,1);
+  shoe[1]=clamp(s5.banker-s8.banker,-1,1);
+  shoe[2]=clamp(tieRatio(2)-tieRatio(5),-1,1);
+  shoe[3]=clamp(tieRatio(5)-tieRatio(8),-1,1);
   shoe[4]=clamp(sim.virtual_high_momentum*2,-.2,.2);
   shoe[5]=clamp(sim.virtual_low_momentum*2,-.2,.2);
   shoe[6]=clamp(sim.virtual_high_momentum-sim.virtual_low_momentum,-.2,.2);
   shoe[7]=clamp(sim.virtual_draw_momentum,-.2,.2);
-  shoe[8]=0; // 盲估不能當作實際發牌證據
-  shoe[9]=clamp(s3.turn-s8.turn,-1,1);
-  shoe[10]=clamp(s8.entropy-s16.entropy,-1,1);
-  shoe[11]=clamp(s3.entropy-s8.entropy,-1,1);
-  // 128D: B/P/T 路單，所有有效視窗 <= 32 局。短窗 3 vs 8 差分。
+  shoe[8]=0; // 盲抽不提供真實剩餘牌或預測的確定性
+  shoe[9]=clamp(turn25,-1,1);
+  shoe[10]=clamp(s5.entropy-s8.entropy,-1,1);
+  shoe[11]=clamp(entropy25,-1,1);
+
+  // 後 128D：核心改為 2 vs 5 局。所有有效視窗 <=16 局（無 32+ 長窗）。
+  // Entropy 在只有兩筆非和局時常為 0，它仍是變化檢測而非預知未來。
   road[0]=last==="B"?.5:last==="P"?-.5:0;
-  road[1]=clamp(s3.run/Math.max(1,s3.count)-s8.run/Math.max(1,s8.count),-1,1);
-  road[2]=clamp(s3.turn-.5,-.5,.5);
-  road[3]=clamp(s8.turn-.5,-.5,.5);
-  road[4]=clamp(s3.turn-s8.turn,-1,1);
-  road[5]=clamp((s3.banker-.5)*(s3.regularity-.5),-1,1);
-  road[6]=clamp((s8.banker-.5)*(s8.regularity-.5),-1,1);
-  road[7]=clamp(s3.regularity-s8.regularity,-1,1);
-  road[8]=clamp((s3.banker-.5)*(s3.entropy-.5),-1,1);
-  road[9]=clamp(s8.entropy-s16.entropy,-1,1);
-  road[10]=clamp(s3.entropy-s8.entropy,-1,1);
-  road[11]=s3.banker-.5;
-  road[12]=s8.banker-.5;
-  road[13]=clamp(s3.banker-s8.banker,-1,1);
-  road[14]=clamp(s16.banker-.5,-.5,.5);
-  road[15]=clamp(s8.turn-s16.turn,-1,1);
-  road[16]=clamp(s8.run/Math.max(1,s8.count)-s16.run/Math.max(1,s16.count),-1,1);
-  road[17]=clamp((s16.banker-.5)*(s16.regularity-.5),-1,1);
-  road[18]=clamp((s8.banker-s16.banker)*(s8.entropy-s16.entropy),-1,1);
-  road[19]=clamp(ties(3)-ties(8),-1,1);
+  road[1]=clamp(s2.run/Math.max(1,s2.count)-s5.run/Math.max(1,s5.count),-1,1);
+  road[2]=clamp(s2.turn-.5,-.5,.5);
+  road[3]=clamp(s5.turn-.5,-.5,.5);
+  road[4]=clamp(turn25,-1,1);
+  road[5]=clamp((s2.banker-.5)*(s2.regularity-.5),-1,1);
+  road[6]=clamp((s5.banker-.5)*(s5.regularity-.5),-1,1);
+  road[7]=clamp(regular25,-1,1);
+  road[8]=clamp((s2.banker-.5)*(s2.entropy-.5),-1,1);
+  road[9]=clamp(s5.entropy-s8.entropy,-1,1);
+  road[10]=clamp(entropy25,-1,1);
+  road[11]=s2.banker-.5;
+  road[12]=s5.banker-.5;
+  road[13]=clamp(s2.banker-s5.banker,-1,1);
+  road[14]=clamp(s8.banker-.5,-.5,.5);
+  road[15]=clamp(s5.turn-s8.turn,-1,1);
+  road[16]=clamp(s5.run/Math.max(1,s5.count)-s8.run/Math.max(1,s8.count),-1,1);
+  road[17]=clamp((s8.banker-.5)*(s8.regularity-.5),-1,1);
+  road[18]=clamp((s5.banker-s8.banker)*(s5.entropy-s8.entropy),-1,1);
+  road[19]=clamp(tieRatio(2)-tieRatio(5),-1,1);
   road[20]=nonTie.length<2?0:nonTie.at(-1)===nonTie.at(-2)?.4:-.4;
-  road[21]=clamp(s3.banker-s16.banker,-1,1);
-  road[22]=clamp(s8.regularity-s16.regularity,-1,1);
-  road[23]=clamp(s3.turn-s16.turn,-1,1);
+  road[21]=clamp(s2.banker-s8.banker,-1,1);
+  road[22]=clamp(s5.regularity-s8.regularity,-1,1);
+  road[23]=clamp(s2.turn-s8.turn,-1,1);
   const vector=shoe.concat(road);
   if(vector.length!==DIM||vector.some(x=>!finite(x)))throw Error("invalid_256D_context");
-  return{vector,shoe,road,physics:sim,features:{regularity3:s3.regularity,
-    regularity8:s8.regularity,regularity_delta:s3.regularity-s8.regularity,
-    entropy3:s3.entropy,entropy8:s8.entropy,entropy_delta:s3.entropy-s8.entropy,
-    entropy_volatility:Math.abs(s3.entropy-s8.entropy),
-    observed_bp:nonTie.length}};
+  return{vector,shoe,road,physics:sim,features:{
+    regularity2:s2.regularity,regularity5:s5.regularity,regularity_delta:regular25,
+    turn2:s2.turn,turn5:s5.turn,turn_rate_delta:turn25,
+    entropy2:s2.entropy,entropy5:s5.entropy,entropy_delta:entropy25,
+    entropy_volatility:Math.abs(entropy25),
+    non_tie_sample:nonTie.length,maximum_window:16
+  }};
 }
 function makeArm(){
   const A=Array.from({length:K},(_,i)=>Float64Array.from({length:K},(_,j)=>i===j?1:0));
@@ -200,84 +210,70 @@ function solveSPD(A,v){
 }
 function dot(a,b){let s=0;for(let i=0;i<K;i++)s+=a[i]*b[i];return s;}
 class OnlineLinUCB256{
-  constructor({lambda=.94,alpha=.15,minSamples=12,confidenceThreshold=.025,particles=24,
-    coolingAfter=3,coolingMultiplier=.7,coolingCap=2.5,maxSameSide=4}={}){
-    if(!finite(lambda)||lambda<.90||lambda>.96)throw Error("lambda_must_be_0.90_to_0.96");
+  constructor({lambda=.82,alpha=.15,minSamples=0,confidenceThreshold=0,
+    lossGate=.04,particles=24}={}){
+    if(!finite(lambda)||lambda<.75||lambda>.96)throw Error("lambda_must_be_0.75_to_0.96");
     if(!finite(alpha)||alpha<0||alpha>2)throw Error("invalid_alpha");
-    if(!finite(confidenceThreshold)||confidenceThreshold<=0||confidenceThreshold>.5)throw Error("invalid_confidence_threshold");
+    if(!Number.isInteger(minSamples)||minSamples<0)throw Error("invalid_min_samples");
+    if(!finite(confidenceThreshold)||confidenceThreshold<0||confidenceThreshold>.5)
+      throw Error("invalid_confidence_threshold");
+    if(!finite(lossGate)||lossGate<0||lossGate>.5)throw Error("invalid_loss_gate");
     this.lambda=lambda;this.alpha=alpha;this.minSamples=minSamples;
-    if(!Number.isInteger(coolingAfter)||coolingAfter<1||
-      !finite(coolingMultiplier)||coolingMultiplier<=0||
-      !finite(coolingCap)||coolingCap<1||
-      !Number.isInteger(maxSameSide)||maxSameSide<=coolingAfter)
-      throw Error("invalid_anti_lock_options");
-    this.confidenceThreshold=confidenceThreshold;this.particleCount=particles;
-    this.coolingAfter=coolingAfter;this.coolingMultiplier=coolingMultiplier;
-    this.coolingCap=coolingCap;this.maxSameSide=maxSameSide;
-    this.reset();
+    this.confidenceThreshold=confidenceThreshold;this.lossGate=lossGate;
+    this.particleCount=particles;this.reset();
   }
   reset(){
     this.history=[];this.arms={B:makeArm(),P:makeArm()};
     this.physics=new BlindPhysicsEstimator({particles:this.particleCount});
-    this.trainedRounds=0;this.prequential={eligible:0,correct:0,wrong:0,ties:0};
-    this.recommendationArm=null;this.recommendationStreak=0;
+    this.trainedRounds=0;
+    this.prequential={eligible:0,correct:0,wrong:0,ties:0,skipped:0};
+    this.last_signal=null;this.last_settlement="none";
+    this.gateCooldown=0;this.recommendationArm=null;this.recommendationStreak=0;
     return this;
   }
   _x(vector){return Float64Array.from(ACTIVE,i=>vector[i]);}
-  _armScore(arm,x,alpha=this.alpha){
+  _armScore(arm,x){
     const m=this.arms[arm],theta=solveSPD(m.A,m.b),projection=solveSPD(m.A,x);
     const mean=dot(x,theta),uncertainty=Math.sqrt(Math.max(0,dot(x,projection)));
-    return{mean,uncertainty,alpha,ucb:mean+alpha*uncertainty};
+    return{mean,uncertainty,ucb:mean+this.alpha*uncertainty};
   }
   predict(){
     const c=context256(this.history,this.physics),x=this._x(c.vector);
-    const bankerBase=this._armScore("B",x),playerBase=this._armScore("P",x);
-    // A_B === A_P，b_B === -b_P；同 alpha 的 UCB 不應憑空偏向特定臂。
-    const rawDirection=bankerBase.ucb>=playerBase.ucb?"B":"P";
-    const proposedStreak=this.recommendationArm===rawDirection?
-      this.recommendationStreak+1:1;
-    const overheated=proposedStreak>this.coolingAfter;
-    const coolingScale=overheated?Math.min(this.coolingCap,
-      1+this.coolingMultiplier*(proposedStreak-this.coolingAfter)):1;
-    const opposite=rawDirection==="B"?"P":"B";
-    const alphaB=overheated&&opposite==="B"?this.alpha*coolingScale:this.alpha;
-    const alphaP=overheated&&opposite==="P"?this.alpha*coolingScale:this.alpha;
-    const banker=this._armScore("B",x,alphaB),player=this._armScore("P",x,alphaP);
+    const banker=this._armScore("B",x),player=this._armScore("P",x);
     const delta=Math.abs(banker.ucb-player.ucb);
-    // 探索增益不能當成另一側真的有較高勝率，更不能強迫反方向出手。
-    const coolingReversed=(banker.ucb>=player.ucb?"B":"P")!==rawDirection;
-    const antiLockSkip=this.recommendationArm===rawDirection&&
-      this.recommendationStreak>=this.maxSameSide;
-    // 3 vs 8 局震盪越明顯，提高 Skip 閘門，禁止假定跳路轉折必勝。
-    const shock=c.features.entropy_volatility;
-    const windowShock=Math.abs(windowStats(this.history,8).turn-windowStats(this.history,16).turn);
-    const threshold=clamp(this.confidenceThreshold*(1+shock*.9+windowShock*.4),
-      this.confidenceThreshold,this.confidenceThreshold*2.3);
+    // 高密度訊號政策：平常 dynamic_gate=0；預測失誤只提高下一局至 .04。
+    // 這是研究用信號強度門檻，不是下注具有正 EV 的保證。
+    let dynamic_gate=Math.max(this.confidenceThreshold,this.gateCooldown);
     const enough=this.trainedRounds>=this.minSamples;
-    const allowed=enough&&!antiLockSkip&&!coolingReversed&&delta>=threshold;
-    const reason=!enough?"warmup":antiLockSkip?"anti_lock_skip":
-      coolingReversed?"cooling_reversal_skip":delta<threshold?"volume_guard":"model_score_gap";
+    const allowed=enough&&delta>=dynamic_gate;
+    // 分數同為零時先展示 B 為固定決策，不得標記為高信心或高勝率。
+    const rawDirection=banker.ucb>=player.ucb?"B":"P";
+    const reason=!enough?"warmup":!allowed?"one_round_loss_gate":
+      delta===0?"neutral_default_signal":"hyper_micro_signal";
     return{
       version:VERSION,direction:allowed?rawDirection:"Skip",raw_direction:rawDirection,
-      bet_allowed:allowed,reason,
-      ucb_banker:banker.ucb,ucb_player:player.ucb,delta,confidence_threshold:threshold,
-      baseline_gap:bankerBase.ucb-playerBase.ucb,
-      cooling:{active:overheated,source_arm:overheated?rawDirection:null,
-        boosted_arm:overheated?opposite:null,alpha_banker:alphaB,alpha_player:alphaP,
-        multiplier:coolingScale,proposed_streak:proposedStreak,
-        committed_streak:this.recommendationStreak,forced_skip:antiLockSkip,
-        reversed_by_exploration:coolingReversed},
+      bet_allowed:allowed,reason,dynamic_gate,
+      ucb_banker:banker.ucb,ucb_player:player.ucb,
+      delta,confidence_threshold:dynamic_gate,
       arms:{B:banker,P:player},history_length:this.history.length,
       trained_rounds:this.trainedRounds,lambda:this.lambda,alpha:this.alpha,
       context:c.vector,shoe_context:c.shoe,road_context:c.road,
       active_dimensions:K,features:c.features,blind_physics:c.physics,
+      gate_cooldown_rounds:this.gateCooldown>0?1:0,
+      last_settlement:this.last_settlement,
+      recommendation_streak:this.recommendationStreak,
       calibrated_probability:false,claimed_edge:false,
       prequential:{...this.prequential},
-      notice:"反鎖定與探索係數只調整觀望政策，不保證反轉或提高勝率；僅 B/P/T 不能知道實際剩餘牌張。"
+      evaluated_hands:this.prequential.eligible,
+      hit_rate:this.prequential.eligible-this.prequential.ties>0?
+        this.prequential.correct/(this.prequential.eligible-this.prequential.ties):null,
+      signal_rate:this.history.length?
+        this.prequential.eligible/this.history.length:null,
+      notice:"高密度推測方向不是保證命中；B/P/T 無法提供實際牌張與可驗證正EV。"
     };
   }
   _decay(m){
-    // A <- lambda*A + (1-lambda)*I；b <- lambda*b
+    // 每局 A = lambda*A+(1-lambda)*I；b = lambda*b
     const lam=this.lambda;
     for(let i=0;i<K;i++){
       m.b[i]*=lam;
@@ -285,30 +281,37 @@ class OnlineLinUCB256{
       m.A[i][i]+=1-lam;
     }
   }
-  /** 先對上一局作 prequential 評估，再用結算結果更新；不偷看未來。 */
+  /** Prequential：先取得上一局預測，等使用者按 B/P/T 後才結算、再訓練。 */
   observe(outcome){
     if(!valid(outcome))throw Error("invalid_outcome");
     const prior=this.predict(),x=this._x(prior.context);
-    // 只有每局結算才記錄一次推薦，不允許重複點「開始分析」灌大 streak。
+    this.last_signal=prior.direction;
     if(prior.bet_allowed){
       this.recommendationStreak=prior.direction===this.recommendationArm?
         this.recommendationStreak+1:1;
       this.recommendationArm=prior.direction;
-    }else{
-      this.recommendationArm=null;this.recommendationStreak=0;
-    }
-    if(prior.bet_allowed){
       this.prequential.eligible++;
       if(outcome==="T")this.prequential.ties++;
       else if(prior.direction===outcome)this.prequential.correct++;
       else this.prequential.wrong++;
+    }else{
+      this.recommendationArm=null;this.recommendationStreak=0;
+      this.prequential.skipped++;
+    }
+    // T 無法判定 B/P 預測對錯。保留剩餘的一局震盪過濾資格直到 B/P 開獎。
+    if(outcome!=="T"){
+      const failed=prior.bet_allowed&&prior.direction!==outcome;
+      this.gateCooldown=failed?this.lossGate:0; // 成功立即歸零；Skip 亦只維持一局
+      this.last_settlement=prior.bet_allowed?(failed?"loss":"win"):"skipped";
+    }else{
+      this.last_settlement="tie";
     }
     for(const arm of ["B","P"])this._decay(this.arms[arm]);
     if(outcome!=="T"){
-      // 雙臂對稱 full-information：開莊 +1/-1；開閒 -1/+1。
-      // 每臂同時接收同一特徵的 xx^T，確保 A 相等、b 互為相反數。
+      // 同一筆已知結果揭露兩個 arm 的 full-information 標籤。
+      // 非數學反對稱：獲勝 +1、失敗 -2，A 雙邊相同但 b 不互為負數。
       for(const arm of ["B","P"]){
-        const m=this.arms[arm],reward=arm===outcome?1:-1;
+        const m=this.arms[arm],reward=arm===outcome?1:-2;
         for(let i=0;i<K;i++){
           m.b[i]+=reward*x[i];
           for(let j=0;j<K;j++)m.A[i][j]+=x[i]*x[j];
@@ -320,11 +323,12 @@ class OnlineLinUCB256{
     this.physics.observe(outcome);
     return this.predict();
   }
-  /** 本機不持久化 A/b：刷新重播歷史，返回上一局會重建，不會重複學習。 */
+  /** 歷史/返回上一局採可重現回放；不會因點擊分析而重複訓練。 */
   syncHistory(seq){
     if(!Array.isArray(seq)||seq.some(v=>!valid(v)))throw Error("invalid_history");
     let same=this.history.length<=seq.length;
-    if(same)for(let i=0;i<this.history.length;i++)if(this.history[i]!==seq[i]){same=false;break;}
+    if(same)for(let i=0;i<this.history.length;i++)
+      if(this.history[i]!==seq[i]){same=false;break;}
     if(!same)this.reset();
     for(let i=this.history.length;i<seq.length;i++)this.observe(seq[i]);
     return this.predict();

@@ -9,12 +9,12 @@ if(!root||!root.document||!root.BBBQuant256Online||
   typeof URLSearchParams!=="function"||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
 const {OnlineLinUCB256,VERSION}=root.BBBQuant256Online;
-const CONFIG={lambda:.94,confidenceThreshold:.025,minSamples:12,alpha:.15,
-  coolingAfter:3,coolingMultiplier:.7,coolingCap:2.5,maxSameSide:4};
+const CONFIG={lambda:.82,confidenceThreshold:0,lossGate:.04,minSamples:0,alpha:.15};
 const model=new OnlineLinUCB256(CONFIG);
 const KEY="bgs256d_frozen_6x15_forward_v18";
 const FALLBACK=["bgs256d_frozen_6x15_sensitive_v17","bgs256d_frozen_6x15_bigroad_v16",
-  "bgs256d_frozen_column_linucb_v15"];
+  "bgs256d_frozen_column_linucb_v15",
+  "bgs256d_128plus128_frozen_direct_tech_panel_v1"];
 const el=id=>root.document.getElementById(id);
 function history(){
   try{
@@ -32,28 +32,25 @@ function render(pred){
   const text=el("directionText"),code=el("directionCode"),confidence=el("confidence");
   const regime=el("regime"),strength=el("strength"),orb=el("directionOrb"),mode=el("modePill"),message=el("message");
   if(text)text.textContent=skip?"觀望":pred.direction==="B"?"莊":"閒";
-  if(code)code.textContent=skip?"SKIP / NO ACTION":pred.direction==="B"?"BANKER":"PLAYER";
+  if(code)code.textContent=skip?"LOSS GATE / SKIP":pred.direction==="B"?"BANKER":"PLAYER";
   if(confidence)confidence.textContent="UCB 差 "+pred.delta.toFixed(4)+"（非勝率）";
-  if(regime)regime.textContent=skip?
-    pred.reason==="warmup"?"資料暖機中，強制觀望":
-    pred.reason==="anti_lock_skip"?"單邊連續四次，強制冷卻觀望":
-    pred.reason==="cooling_reversal_skip"?"反向探索分數翻轉，安全觀望":
-    "差距不足，強制觀望":
-    pred.cooling.active?"過熱冷卻中｜已通過品質閘門":"通過模型差距閘門（未校準）";
-  if(strength)strength.textContent="閘門 "+pred.confidence_threshold.toFixed(4)+
-    "｜雙臂同步學習 "+pred.trained_rounds+" 局";
+  if(regime)regime.textContent=skip?"上一局失誤，短暫觀望（0.04）":
+    pred.reason==="neutral_default_signal"?"初始中立訊號（非預測優勢）":
+    "極短窗即時方向（未校準）";
+  if(strength)strength.textContent="動態閘門 "+pred.dynamic_gate.toFixed(3)+
+    "｜有效出手 "+pred.prequential.eligible+" 局";
   if(orb)orb.className="direction-orb "+(skip?"idle":pred.direction==="B"?"banker":"player");
-  if(mode)mode.textContent="256D Anti-Lock · λ="+pred.lambda.toFixed(2);
-  if(message)message.textContent="線上 LinUCB｜UCB 莊 "+pred.ucb_banker.toFixed(3)+
-    "／閒 "+pred.ucb_player.toFixed(3)+
-    "｜反鎖定 streak "+pred.cooling.committed_streak+
-    "／冷卻對側 "+(pred.cooling.boosted_arm||"無")+
-    "／alpha 莊 "+pred.cooling.alpha_banker.toFixed(3)+
-    "、閒 "+pred.cooling.alpha_player.toFixed(3)+
-    "｜3/8 局 Entropy 差 "+pred.features.entropy_delta.toFixed(3)+
-    "｜Regularity 差 "+pred.features.regularity_delta.toFixed(3)+
-    "｜盲眼物理：僅虛擬抽樣（非實際牌值）"+
-    "｜既有觀望判斷只代表模型分數，未經真實樣本校準或證明有投注優勢";
+  if(mode)mode.textContent="256D Hyper Micro · λ="+pred.lambda.toFixed(2);
+  const hit=pred.hit_rate===null?"樣本不足":(pred.hit_rate*100).toFixed(1)+"%";
+  const rate=pred.signal_rate===null?"—":(pred.signal_rate*100).toFixed(1)+"%";
+  if(message)message.textContent="實驗性高頻 LinUCB｜莊分 "+pred.ucb_banker.toFixed(3)+
+    "／閒分 "+pred.ucb_player.toFixed(3)+
+    "｜2/5 Turn Δ "+pred.features.turn_rate_delta.toFixed(3)+
+    "｜Regularity Δ "+pred.features.regularity_delta.toFixed(3)+
+    "｜上局結果 "+pred.last_settlement+
+    "｜前推命中率 "+hit+"／出手密度 "+rate+
+    "｜盲眼物理僅為虛擬抽樣"+
+    "｜模型分數不是真實勝率，連勝不代表下一局較容易獲勝";
 }
 function run(){
   const seq=history(),message=el("message");

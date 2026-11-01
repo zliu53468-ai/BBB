@@ -1,184 +1,165 @@
 "use strict";
-const assert=require("node:assert/strict");
-const fs=require("node:fs"),vm=require("node:vm");
+// Quant256 V3 完整線上回放與瀏覽器按鈕接線測試。
+const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
 const {OnlineLinUCB256,BlindPhysicsEstimator,context256,windowStats,ACTIVE_INDICES,VERSION}=
   require("./quant256_online_runtime");
-const close=(a,b,tol=1e-10)=>assert(Math.abs(a-b)<tol,"not close: "+a+" vs "+b);
+const near=(a,b,tol=1e-9)=>assert(Math.abs(a-b)<=tol,"expected "+a+" ~ "+b);
+assert.equal(VERSION,"BBB_QUANT256_ONLINE_V3_HYPER_MICRO");
 assert.equal(ACTIVE_INDICES.length,36);
-assert.equal(VERSION,"BBB_QUANT256_ONLINE_V2_ANTI_LOCK");
-assert.throws(()=>new OnlineLinUCB256({lambda:.89}),/lambda/);
+assert.equal(new OnlineLinUCB256().lambda,.82);
+for(const l of [.75,.82,.94,.96])near(new OnlineLinUCB256({lambda:l}).lambda,l);
+assert.throws(()=>new OnlineLinUCB256({lambda:.74}),/lambda/);
 assert.throws(()=>new OnlineLinUCB256({lambda:.97}),/lambda/);
-for(const lambda of [.90,.94,.96])assert.equal(new OnlineLinUCB256({lambda}).lambda,lambda);
-const q=new OnlineLinUCB256({lambda:.94}),p0=q.predict();
-assert.equal(p0.context.length,256);
-assert.equal(p0.shoe_context.length,128);
-assert.equal(p0.road_context.length,128);
-assert.equal(p0.direction,"Skip");assert.equal(p0.reason,"warmup");
-assert.equal(p0.bet_allowed,false);
+assert.throws(()=>new OnlineLinUCB256({lossGate:-1}),/loss_gate/);
+const q=new OnlineLinUCB256(),p0=q.predict();
+assert.equal(p0.context.length,256);assert.equal(p0.shoe_context.length,128);
+assert.equal(p0.road_context.length,128);assert.equal(p0.dynamic_gate,0);
+assert.equal(p0.direction,"B");assert.equal(p0.bet_allowed,true);
+assert.equal(p0.reason,"neutral_default_signal");
+assert.equal(p0.calibrated_probability,false);assert.equal(p0.claimed_edge,false);
 assert.equal(p0.blind_physics.actual_draw_count_known,false);
 assert.equal(p0.blind_physics.actual_remaining_known,false);
 assert.equal(p0.blind_physics.source,"simulated_unobserved");
-assert.equal(p0.blind_physics.observed_cards,0);
-assert.equal(p0.calibrated_probability,false);
 assert.throws(()=>q.observe("X"),/invalid_outcome/);
-const x0=p0.context[ACTIVE_INDICES[0]];
-q.observe("B");
-assert.equal(q.trainedRounds,1);
-close(q.arms.B.A[0][0],1+x0*x0);
-close(q.arms.B.b[0],x0);
-close(q.arms.P.b[0],-x0);
-assert.equal(q.arms.B.A[0][0],q.arms.P.A[0][0],"both arms must share identical information matrix");
-const previousA=q.arms.B.A[0][0],previousB=q.arms.B.b[0];
-const x1=q.predict().context[ACTIVE_INDICES[0]];
-q.observe("P");
-close(q.arms.B.A[0][0],.94*previousA+.06+x1*x1);
-close(q.arms.B.b[0],.94*previousB-x1);
-close(q.arms.P.b[0],-q.arms.B.b[0]);
-assert(q.arms.P.b[12]>0,"opposite arm must receive explicit +1 after Player");
-function symmetricArms(model){
-  for(let i=0;i<ACTIVE_INDICES.length;i++){
-    close(model.arms.B.b[i],-model.arms.P.b[i],1e-9);
-    for(let j=0;j<ACTIVE_INDICES.length;j++)
-      close(model.arms.B.A[i][j],model.arms.P.A[i][j],1e-9);
+// 初始無資訊，初次 +1/-2 更新的 x 向量為零；下一次才有可學習的牌路。
+const x0=p0.context.map((x,i)=>ACTIVE_INDICES.includes(i)?x:0);
+q.observe("P"); // predict("B") 錯誤，下局應暫時閘門 .04
+assert.equal(q.gateCooldown,.04);assert.equal(q.last_settlement,"loss");
+assert.equal(q.trainedRounds,1);assert.equal(q.prequential.wrong,1);
+assert.equal(q.predict().dynamic_gate,.04);
+const aBefore=q.arms.B.A.map(row=>Array.from(row));
+const bBefore=Array.from(q.arms.B.b);
+const x1=Float64Array.from(ACTIVE_INDICES,i=>q.predict().context[i]);
+assert.equal(q.predict().direction,"Skip"); // 上局僅一筆資料，分數仍相等
+q.observe("B"); // 觀望也按 B/P 結算，以正負標籤更新，但不視為真實命中
+assert.equal(q.gateCooldown,0);
+assert.equal(q.last_settlement,"skipped");
+assert.equal(q.trainedRounds,2);
+for(let i=0;i<36;i++){
+  near(q.arms.B.b[i],.82*bBefore[i]+x1[i]);
+  near(q.arms.P.b[i],-2*x1[i]); // 第一局輸入的零向量不產生非零 b
+  for(let j=0;j<36;j++){
+    near(q.arms.B.A[i][j],.82*aBefore[i][j]+(i===j?.18:0)+x1[i]*x1[j]);
+    near(q.arms.B.A[i][j],q.arms.P.A[i][j]);
   }
 }
-symmetricArms(q);
-const train=q.trainedRounds;q.observe("T");
-assert.equal(q.trainedRounds,train,"Tie must not pretend to label a B/P direction");
-assert.equal(q.history.join(""),"BPT");
-symmetricArms(q);
-assert.equal(q.prequential.eligible,0,"warmup must not count as a wager");
-assert.equal(q.syncHistory(["B","P","T"]).history_length,3);
-assert.equal(q.trainedRounds,2,"idempotent history replay");
-const q2=new OnlineLinUCB256();q2.syncHistory(["B","P","T"]);
-close(q2.predict().ucb_banker,q.predict().ucb_banker);
-assert.equal(q2.syncHistory(["B","P"]).history_length,2,"undo must rebuild");
-assert.equal(q2.trainedRounds,2);
-q2.syncHistory([]);assert.equal(q2.trainedRounds,0);
-const sim=new BlindPhysicsEstimator({particles:12});
-assert.equal(sim.snapshot().virtual_remaining,416);
-for(const r of ["B","P","T","B","B","P"])sim.observe(r);
-assert(sim.snapshot().virtual_remaining<416);
-assert.equal(sim.snapshot().actual_draw_count_known,false);
-assert(sim.snapshot().expected_draws_recent>=4);
-assert(sim.snapshot().expected_draws_recent<=6);
-const s1=new BlindPhysicsEstimator({particles:12}),s2=new BlindPhysicsEstimator({particles:12});
-for(const r of ["B","T","P","B"]){s1.observe(r);s2.observe(r);}
-close(s1.snapshot().virtual_high_ratio,s2.snapshot().virtual_high_ratio);
+assert.notEqual(q.arms.B.b[12],-q.arms.P.b[12],
+  "雙倍懲罰令 b 非反對稱；不能誤稱 b_B=-b_P");
+// 驗證開莊正回饋 +1/開閒 -2；非和局先衰減而且雙臂 A 同步。
+const x2=Float64Array.from(ACTIVE_INDICES,i=>q.predict().context[i]);
+const beforeB=Array.from(q.arms.B.b),beforeP=Array.from(q.arms.P.b);
+q.observe("P");
+for(let i=0;i<36;i++){
+  near(q.arms.B.b[i],.82*beforeB[i]-2*x2[i]);
+  near(q.arms.P.b[i],.82*beforeP[i]+x2[i]);
+}
+const trained=q.trainedRounds,prevB=Array.from(q.arms.B.b);
+q.observe("T");
+assert.equal(q.trainedRounds,trained,"Tie 不可用 B/P 假標籤更新");
+for(let i=0;i<36;i++)near(q.arms.B.b[i],.82*prevB[i]);
+assert.equal(q.prequential.eligible,
+  q.prequential.correct+q.prequential.wrong+q.prequential.ties);
+const result=q.syncHistory(["P","B","P","T"]);
+assert.equal(result.history_length,4);assert.equal(q.trainedRounds,3);
+q.syncHistory(["P","B"]);
+assert.equal(q.trainedRounds,2,"返回上一局需回放而不重複學習");
+q.syncHistory([]);
+assert.equal(q.trainedRounds,0);assert.equal(q.gateCooldown,0);
+const blind=new BlindPhysicsEstimator({particles:12});
+assert.equal(blind.snapshot().actual_draw_count_known,false);
+for(const r of ["B","P","T","B","P"])blind.observe(r);
+assert(blind.snapshot().virtual_remaining<416);
 const h="BBBPBBPPTBPPBBTPBPBBPP".split("");
-const stats=context256(h,sim);
-assert.equal(stats.vector.length,256);
-assert(stats.vector.slice(12,128).every(x=>x===0),"pruned shoe features");
-assert(stats.vector.slice(128+24).every(x=>x===0),"pruned long road features");
-assert.equal(stats.features.entropy_delta,windowStats(h,3).entropy-windowStats(h,8).entropy);
-assert.equal(stats.features.regularity_delta,windowStats(h,3).regularity-windowStats(h,8).regularity);
-assert(stats.vector.every(v=>v>=-1&&v<=1),"all features must be centered and normalized");
-assert(stats.vector.slice(0,12).every(Number.isFinite));
-const initial=context256([],new BlindPhysicsEstimator({particles:8}));
-assert(initial.vector.every(v=>v<=.5&&v>=-.5),"no positive intercept or absolute progress");
-assert.equal(initial.shoe[0],0,"no constant Banker bias");
-assert.equal(initial.shoe[3],0,"no cumulative time signal");
-assert.equal(initial.road[0],0,"no forced starting side");
+const c=context256(h,blind);
+assert.equal(c.vector.length,256);
+assert(c.vector.every(v=>Number.isFinite(v)&&v>=-1&&v<=1));
+assert(c.vector.slice(12,128).every(v=>v===0));
+assert(c.vector.slice(128+24).every(v=>v===0));
+assert.equal(c.features.maximum_window,16);
+near(c.features.turn_rate_delta,windowStats(h,2).turn-windowStats(h,5).turn);
+near(c.features.regularity_delta,windowStats(h,2).regularity-windowStats(h,5).regularity);
+near(c.features.entropy_delta,windowStats(h,2).entropy-windowStats(h,5).entropy);
+const initial=context256([],new BlindPhysicsEstimator());
+assert.equal(initial.vector.every(v=>v===0),true,"不可注入固定截距/單邊先驗");
 const inverted=h.map(v=>v==="B"?"P":v==="P"?"B":"T");
-const other=context256(inverted,sim);
-for(const idx of [0,11,12,13,14,21]){
-  close(stats.road[idx],-other.road[idx],1e-12);
-}
-close(stats.shoe[0],-other.shoe[0]);
-close(stats.shoe[1],-other.shoe[1]);
-const q3=new OnlineLinUCB256({confidenceThreshold:.025,minSamples:100});
-const trained=q3.syncHistory(h);
-assert.equal(trained.bet_allowed,false,"quality gate is mandatory in warmup");
-assert(trained.confidence_threshold>=.025);
-assert(trained.confidence_threshold<=.025*2.3);
-assert(["B","P"].includes(trained.raw_direction));
-assert(Number.isFinite(trained.ucb_banker)&&Number.isFinite(trained.ucb_player));
-const q4=new OnlineLinUCB256({minSamples:1});
-q4.syncHistory(h);
-const response=q4.predict();
-assert.equal(response.bet_allowed,response.delta>=response.confidence_threshold&&
-  !response.cooling.forced_skip&&!response.cooling.reversed_by_exploration);
-symmetricArms(q4);
-assert.throws(()=>new OnlineLinUCB256({coolingAfter:4,maxSameSide:4}),/anti_lock/);
-const baseSide=response.raw_direction;
-const beforeStreak=q4.recommendationStreak;
-q4.predict();q4.predict();q4.predict();
-assert.equal(q4.recommendationStreak,beforeStreak,"predict calls may not inflate the streak");
-q4.recommendationArm=baseSide;
-q4.recommendationStreak=3;
-const cooled=q4.predict();
-assert(cooled.cooling.active,"fourth proposed same-side recommendation triggers cooling");
-assert.equal(cooled.cooling.boosted_arm,baseSide==="B"?"P":"B");
-assert.equal(cooled.cooling.proposed_streak,4);
-assert(cooled.cooling.multiplier>1);
-if(baseSide==="B"){
-  assert(cooled.cooling.alpha_player>cooled.cooling.alpha_banker);
-}else{
-  assert(cooled.cooling.alpha_banker>cooled.cooling.alpha_player);
-}
-assert(cooled.direction!==(baseSide==="B"?"P":"B"),"cooling cannot force a counter-side recommendation");
-q4.recommendationStreak=4;
-const locked=q4.predict();
-assert.equal(locked.direction,"Skip","after four identical recommendations must abstain");
-assert.equal(locked.bet_allowed,false);
-assert.equal(locked.reason,"anti_lock_skip");
-assert(locked.cooling.forced_skip);
-const originalUCB=locked.ucb_banker;
-const lockedAgain=q4.predict();
-close(lockedAgain.ucb_banker,originalUCB);
-assert.equal(q4.recommendationStreak,4,"repeated read-only predictions cannot reset lock");
-q4.observe("B"); // a skipped proposal releases the streak after its outcome is settled
-assert.equal(q4.recommendationStreak,0);
-assert.equal(q4.recommendationArm,null);
-symmetricArms(q4);
-assert.equal(response.direction,response.bet_allowed?response.raw_direction:"Skip");
-assert.equal(response.prequential.eligible,
-  response.prequential.correct+response.prequential.wrong+response.prequential.ties);
-const repeat=OnlineLinUCB256.fromHistory(h),again=OnlineLinUCB256.fromHistory(h);
-close(repeat.ucb_banker,again.ucb_banker);
-close(repeat.delta,again.delta);
+const ci=context256(inverted,blind);
+for(const i of [0,11,12,13,14,21])near(c.road[i],-ci.road[i]);
+near(c.shoe[0],-ci.shoe[0]);
+near(c.shoe[1],-ci.shoe[1]);
+// 人工固定 UCB 差 .02，驗證失誤後只有一個非和局觸發 .04 観望。
+const scripted=new OnlineLinUCB256();
+scripted._armScore=arm=>({mean:arm==="B"?.02:0,uncertainty:0,ucb:arm==="B"?.02:0});
+assert.equal(scripted.predict().direction,"B");assert.equal(scripted.predict().dynamic_gate,0);
+scripted.observe("P"); // B 錯
+assert.equal(scripted.predict().dynamic_gate,.04);
+assert.equal(scripted.predict().direction,"Skip");
+scripted.observe("T"); // 和局不消耗 B/P 錯誤冷卻
+assert.equal(scripted.predict().dynamic_gate,.04);
+scripted.observe("B"); // 觀望當局結束，冷卻解除
+assert.equal(scripted.predict().dynamic_gate,0);
+assert.equal(scripted.predict().direction,"B");
+scripted.observe("B");
+assert.equal(scripted.predict().dynamic_gate,0,"命中立即維持零門檻");
+scripted.observe("P");
+assert.equal(scripted.predict().dynamic_gate,.04,"下一次失誤立即變嚴格");
+scripted.syncHistory(["P","T","B","B","P"]);
+assert.equal(scripted.gateCooldown,.04,"單純重讀歷史不能改動動態門檻");
+const fresh=OnlineLinUCB256.fromHistory(h);
+near(fresh.ucb_banker,OnlineLinUCB256.fromHistory(h).ucb_banker);
+near(fresh.delta,OnlineLinUCB256.fromHistory(h).delta);
+// 高密度下即使表現不好也不允許出現多個連續無方向的非和局。
+const dense=new OnlineLinUCB256();
+const rounds=Array.from({length:60},(_,i)=>i%3===0?"B":"P");
+dense.syncHistory(rounds);
+assert(dense.prequential.eligible>=30,"實驗性高頻決策至少半數有方向");
+assert.equal(dense.prequential.eligible+dense.prequential.skipped,60);
+assert.equal(dense.hitRate,undefined,"不應把測試輸出宣稱為保證勝率");
+assert(dense.predict().signal_rate>=.5);
 
-// Interface simulation: B/P/T click first saves via existing Frozen app, then
-// online listener settles a hand; Start is captured before Frozen Direct.
+// DOM 操作測試：原本 B/P/T 儲存先執行，然後 V3 接管顯示；Start 防止 Frozen click。
 const listeners={},dom={};
 const ids=["btnStart","btnB","btnP","btnT","btnBack","btnEnd","directionText",
   "directionCode","directionOrb","confidence","regime","strength","modePill","message"];
 for(const id of ids){
-  listeners[id]=[];
-  dom[id]={textContent:"",className:"",
-    addEventListener(type,fn,capture){listeners[id].push({type,fn,capture:!!capture});}};
+  listeners[id]=[];dom[id]={textContent:"",className:"",
+    addEventListener(type,fn,capture){listeners[id].push({fn,capture:!!capture});}};
 }
+const KEY="bgs256d_frozen_6x15_forward_v18",
+ LEGACY="bgs256d_128plus128_frozen_direct_tech_panel_v1";
 let saved=[],frozenClicks=0;
-const data=new Map([["bgs256d_frozen_6x15_forward_v18",JSON.stringify({history:saved})]]);
+const data=new Map([[KEY,JSON.stringify({history:saved})]]);
 const storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)};
-for(const result of ["B","P","T"])dom["btn"+result].addEventListener("click",()=>{
-  saved.push(result);storage.setItem("bgs256d_frozen_6x15_forward_v18",JSON.stringify({history:saved}));
+for(const v of ["B","P","T"])dom["btn"+v].addEventListener("click",()=>{
+  saved.push(v);storage.setItem(KEY,JSON.stringify({history:saved}));
 });
-dom.btnStart.addEventListener("click",()=>{frozenClicks++;});
+dom.btnStart.addEventListener("click",()=>frozenClicks++);
 dom.btnBack.addEventListener("click",()=>{
-  saved.pop();storage.setItem("bgs256d_frozen_6x15_forward_v18",JSON.stringify({history:saved}));
+  saved.pop();storage.setItem(KEY,JSON.stringify({history:saved}));
 });
 function click(id){
-  let stopped=false;
-  const event={preventDefault(){},stopImmediatePropagation(){stopped=true;}};
-  for(const item of [...listeners[id]].sort((a,b)=>Number(b.capture)-Number(a.capture))){
-    if(stopped)break;item.fn(event);
+  let stop=false;
+  const e={preventDefault(){},stopImmediatePropagation(){stop=true;}};
+  for(const handler of [...listeners[id]].sort((a,b)=>Number(b.capture)-Number(a.capture))){
+    if(stop)break;handler.fn(e);
   }
 }
 const win={document:{getElementById:id=>dom[id]||null},localStorage:storage,
   location:{search:""},BBBQuant256Online:require("./quant256_online_runtime")};
-const sandbox={window:win,document:win.document,URLSearchParams,console};
-vm.runInNewContext(fs.readFileSync("./quant256_online_panel.js","utf8"),sandbox);
+vm.runInNewContext(fs.readFileSync("./quant256_online_panel.js","utf8"),
+  {window:win,document:win.document,URLSearchParams,console});
 const ui=win.__BBB_QUANT256_ONLINE_PANEL__;
-assert(ui&&ui.version===VERSION);
+assert.equal(ui.configuration.lambda,.82);
+assert.equal(ui.configuration.lossGate,.04);
+assert.equal(ui.version,VERSION);
 click("btnB");click("btnP");click("btnT");
 assert.equal(ui.model.history.join(""),"BPT");
-assert.equal(ui.model.trainedRounds,2);
 click("btnStart");
-assert.equal(frozenClicks,0,"Frozen click must be suppressed");
-assert.equal(dom.directionText.textContent,"觀望");
+assert.equal(frozenClicks,0);
+assert(dom.modePill.textContent.includes("0.82"));
 assert(dom.confidence.textContent.includes("非勝率"));
-assert.equal(ui.model.trainedRounds,2);
 click("btnBack");assert.equal(ui.model.history.join(""),"BP");
+data.delete(KEY);data.set(LEGACY,JSON.stringify({history:["T","P","B"]}));
+assert.equal(ui.history().join(""),"TPB","must migrate legacy 128+128 local key");
+assert.equal(ui.run().history_length,3);
 click("btnEnd");assert.equal(ui.model.trainedRounds,0);
-console.log("PASS quant256 anti-lock v2: symmetric full-matrix A/b, centered 256D, cooling + hard Skip, replay and UI");
+console.log("PASS V3: aggressive decay .82, signed +1/-2, 2vs5 context, one-hand .04 loss gate, dense signals, legacy storage, UI");
