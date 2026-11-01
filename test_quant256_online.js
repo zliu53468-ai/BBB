@@ -144,22 +144,24 @@ function click(id){
   }
 }
 const win={document:{getElementById:id=>dom[id]||null},localStorage:storage,
-  location:{search:""},BBBQuant256Online:require("./quant256_online_runtime")};
+  location:{search:""},BBBQuant256Online:require("./quant256_online_runtime"),
+  BBBPhysicsForecastFirst:require("./physics_forecast_first_runtime")};
 vm.runInNewContext(fs.readFileSync("./quant256_online_panel.js","utf8"),
   {window:win,document:win.document,URLSearchParams,console});
 const ui=win.__BBB_QUANT256_ONLINE_PANEL__;
-assert.equal(ui.configuration.lambda,.82);
-assert.equal(ui.configuration.lossGate,.04);
-assert.equal(ui.version,VERSION);
+assert.equal(ui.configuration.quantOptions.lambda,.82);
+assert.equal(ui.configuration.threshold,.015);
+assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V1");
 click("btnB");click("btnP");click("btnT");
 assert.equal(ui.model.history.join(""),"BPT");
 click("btnStart");
 assert.equal(frozenClicks,0);
-assert(dom.modePill.textContent.includes("0.82"));
+assert(dom.modePill.textContent.includes("PHYSICS FORECAST FIRST"));
 assert(dom.confidence.textContent.includes("非勝率"));
 click("btnBack");assert.equal(ui.model.history.join(""),"BP");
 data.delete(KEY);data.set(LEGACY,JSON.stringify({history:["T","P","B"]}));
 assert.equal(ui.history().join(""),"TPB","must migrate legacy 128+128 local key");
 assert.equal(ui.run().history_length,3);
 click("btnEnd");assert.equal(ui.model.trainedRounds,0);
-console.log("PASS V3: aggressive decay .82, signed +1/-2, 2vs5 context, one-hand .04 loss gate, dense signals, legacy storage, UI");
+assert.equal(ui.run().action,"SKIP");
+console.log("PASS V3 quant research + physics-first main UI: A/b updates, 2vs5, legacy storage, absolute unobserved-card Skip");

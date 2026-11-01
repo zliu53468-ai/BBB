@@ -26,8 +26,9 @@ const scripts=[
   "final_probability_runtime.js?v=20261030-pf-light-v1",
   "run_survival_pf_runtime.js?v=20261031-quant256-v6",
   "quant256_runtime.js?v=20261031-quant256-v6",
-  "quant256_online_runtime.js?v=20261101-quant256-hyper-micro-v3",
-  "quant256_online_panel.js?v=20261101-quant256-hyper-micro-v3"
+  "quant256_online_runtime.js?v=20261101-physics-first-v1",
+  "physics_forecast_first_runtime.js?v=20261101-physics-first-v1",
+  "quant256_online_panel.js?v=20261101-physics-first-v1"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}

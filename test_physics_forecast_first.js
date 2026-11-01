@@ -1,77 +1,134 @@
 "use strict";
-const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
-function make(missing=false,opposed=false){
-  const store=new Map(),nodes=new Map();
-  const ctx={console,document:{getElementById:()=>null},localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)},fetch:async file=>({ok:true,json:async()=>{
-    const m=JSON.parse(fs.readFileSync(file,"utf8"));
-    if(missing&&file==="physics_multitask_model.json")m.trained=false;
-    if(opposed&&file==="final_probability_model.json"){m.base_margin=Math.log(.001/.999);m.trees=[];m.calibration={method:"identity"};}
-    return m;
-  }})};ctx.window=ctx;
-
-  vm.createContext(ctx);
-  for(const f of ["app256forward.js","app256continuation.js","particle_filter_runtime.js","macro_ema.js","final_probability_runtime.js"])vm.runInContext(fs.readFileSync(f,"utf8"),ctx,{filename:f});
-  const api=ctx.__BGS_FINAL56__;
-  return {ctx,api,store,nodes};
+/** 真實物理證據與盲估資料源必須嚴格分流。 */
+const assert=require("node:assert/strict");
+const {
+  PhysicsForecastFirstEngine,observedCounts,observedHand,
+  deal,simulate,decisionFromEV,weightedContext,BASE,BASE_EV,INITIAL,VERSION
+}=require("./physics_forecast_first_runtime.js");
+const near=(x,y,eps=1e-8)=>assert(Math.abs(x-y)<=eps,String(x)+" != "+String(y));
+assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V1");
+assert.equal(INITIAL.length,10);
+assert.equal(INITIAL[0],128);
+assert(INITIAL.slice(1).every(x=>x===32));
+assert.equal(INITIAL.reduce((a,b)=>a+b),416);
+near(BASE.B,.458597);near(BASE.P,.446247);near(BASE.T,.095156);
+assert(BASE_EV.B<0&&BASE_EV.P<0,"standard 8 deck bets have negative base EV");
+const engine=new PhysicsForecastFirstEngine();
+const initial=engine.predict();
+assert.equal(initial.action,"SKIP");
+assert.equal(initial.direction,"Skip");
+assert.equal(initial.observed_card_evidence,false);
+assert.equal(initial.reason,"unobserved_card_composition");
+assert.equal(initial.physical_ev.ev_gap_deviation,0);
+assert.equal(initial.context.length,256);
+assert.equal(initial.shoe_context.length,128);
+assert.equal(initial.road_context.length,128);
+assert.equal(initial.feature_weights.physics,5);
+assert.equal(initial.feature_weights.road,.1);
+assert(initial.road_context.every(x=>Math.abs(x)<=.1));
+assert.equal(initial.road_has_direction_authority,false);
+assert.equal(initial.proxy_only,true);
+assert.equal(initial.validated_edge,false);
+const seq="BPPBTBBPPTBBPPBTBPBPPBP".split("");
+const bpt=engine.syncHistory(seq);
+assert.equal(bpt.action,"SKIP","unobserved ranks must never be labelled BET");
+assert.equal(bpt.reason,"unobserved_card_composition");
+assert.equal(bpt.card_count_source,"hypothetical_particle_posterior");
+assert(bpt.physical_ev.samples>=1000);
+assert(bpt.physical_ev.particle_support>=8);
+assert(bpt.physical_ev.remaining<=416);
+assert(Number.isFinite(bpt.ev_banker));
+assert(Number.isFinite(bpt.ev_player));
+assert.equal(bpt.context.length,256);
+assert.equal(bpt.shoe_context.length,128);
+assert.equal(bpt.road_context.length,128);
+assert(bpt.road_context.every(x=>Math.abs(x)<=.1));
+assert(bpt.model_road_debug.direction==="B"||
+  bpt.model_road_debug.direction==="P"||
+  bpt.model_road_debug.direction==="Skip");
+assert.equal(bpt.bet_allowed,false);
+const saved=e=>JSON.stringify({
+  action:e.action,ev_banker:e.ev_banker,ev_player:e.ev_player,
+  ev_gap_deviation:e.ev_gap_deviation,context:e.context
+});
+assert.equal(saved(bpt),saved(engine.predict()),"read-only forecast must be deterministic");
+assert.equal(saved(bpt),saved(new PhysicsForecastFirstEngine().syncHistory(seq)),
+  "refresh replay must be deterministic");
+engine.syncHistory(seq.slice(0,-1));
+assert.equal(engine.history.length,seq.length-1);
+engine.syncHistory(seq);
+assert.equal(saved(engine.predict()),saved(bpt),"undo/replay must recreate prior output");
+assert.throws(()=>engine.syncHistory(["X"]),/invalid_history/);
+const drawResult=simulate(INITIAL,{samples:8192,seed:0xF27});
+assert(Math.abs(drawResult.win_probabilities.B-BASE.B)<.025,"MC banker vs exact standard odds");
+assert(Math.abs(drawResult.win_probabilities.P-BASE.P)<.025,"MC player vs exact standard odds");
+assert(Math.abs(drawResult.win_probabilities.T-BASE.T)<.015,"MC tie vs exact standard odds");
+assert.equal(drawResult.win_probabilities.B+
+  drawResult.win_probabilities.P+drawResult.win_probabilities.T,1);
+near(drawResult.ev_banker,.95*drawResult.win_probabilities.B-drawResult.win_probabilities.P);
+near(drawResult.ev_player,drawResult.win_probabilities.P-drawResult.win_probabilities.B);
+const theoreticalDeviation=(drawResult.ev_banker-drawResult.ev_player)-
+  (BASE_EV.B-BASE_EV.P);
+near(drawResult.ev_gap_deviation,theoreticalDeviation);
+assert.throws(()=>simulate(Array(10).fill(0)),/remaining_shoe_not_playable/);
+assert.throws(()=>simulate(INITIAL,{samples:10}),/invalid_mc_sample_count/);
+assert.throws(()=>simulate([128,...Array(9).fill(31.3)]),/invalid_point_counts/);
+// 4,5,6 張牌的合法出牌必須可驗證。順序是 P1/B1/P2/B2/P3?/B3?。
+assert.equal(observedHand([9,8,9,8]),"P");
+assert.equal(observedHand([7,9,7,9]),"B");
+assert.equal(observedHand([9,9,9,9]),"T");
+assert.throws(()=>observedHand([0,0,0,0]),/observed_hand_draw_rule_mismatch/);
+assert.throws(()=>observedHand([9,8,9,8,0]),/observed_hand_draw_rule_mismatch/);
+const nextPseudo=(()=>{let n=0x13879;return()=>{n^=n<<13;n^=n>>>17;n^=n<<5;return(n>>>0)/4294967296;};})();
+const records=[];
+const counts=INITIAL.slice();
+for(let i=0;i<8;i++){
+  const h=deal(counts,nextPseudo);
+  assert.equal(observedHand(h.cards),h.outcome);
+  records.push({outcome:h.outcome,observation:{cards:h.cards}});
+  for(const card of h.cards)counts[card]--;
 }
-const plain=v=>JSON.parse(JSON.stringify(v));
-(async()=>{
-  const a=make(),b=make(false,true);await Promise.all([a.api.loadModels(),b.api.loadModels()]);
-  const h1="BBPPBTBP".split(""),h2="PBTBBBBPPPT".split("");
-  const first=a.api.applyFinalPrediction(h1);
-  a.api.applyFinalPrediction(h2);
-  const repeat=a.api.applyFinalPrediction(h1);
-  assert.deepEqual(plain(first.finalProbability.physics),plain(repeat.finalProbability.physics),"previous hand must not affect rebuilt PF");
-  assert.equal(repeat.finalProbability.particleDiagnostics.history_fingerprint,h1.join(""));
-  assert.equal(repeat.finalProbability.particleDiagnostics.rebuild_from_scratch,true);
-  assert.notStrictEqual(first.finalProbability.physics,repeat.finalProbability.physics);
-  assert.deepEqual(plain(repeat.next_hand_forecast.directional),plain(a.api.nextHandForecast(repeat.finalProbability.physics).directional));
-  const v=Array(48).fill(0);v[23]=.46;v[24]=.44;v[25]=.10;v[42]=.2;
-  const f=a.api.nextHandForecast(v);
-  assert.equal(f.direction,"B");assert(Math.abs(f.directional.B-.46/.9)<1e-12);
-  assert.equal(f.probabilities.T,.10);assert.equal(f.source,"direct_physics_winner_head");
-  const equal=v.slice();equal[23]=equal[24]=.45;assert.equal(a.api.nextHandForecast(equal).direction,"Balanced");
-  for(const bad of [null,[],Array(48).fill(0),v.map((x,i)=>i===23?NaN:x)])assert(!a.api.nextHandForecast(bad).available);
-  for(const side of ["B","P"]){
-    const advisory=a.api.auxiliaryCandidateFilter(side,side==="B"?.001:.999,side==="B"?.001:.999);
-    assert.equal(advisory.decision,"keep");assert.equal(advisory.shrink,1);assert(advisory.advisoryOnly);
-  }
-  let predictions=0,skipsWithForecast=0;
-  for(const pattern of ["BBBBPP","BP","BBPP","BPTBPBBPT"]){
-    const history=[];
-    for(let i=0;i<70;i++){
-      history.push(pattern[i%pattern.length]);
-      const core=a.ctx.__BGS256_CONTINUATION_TEST__.hazardChoose(history);
-      const low={...core,probabilities:{B:.001,P:.999}},high={...core,probabilities:{B:.999,P:.001}};
-      const x=a.api.applyFinalPrediction(history,low),y=a.api.applyFinalPrediction(history,high),z=b.api.applyFinalPrediction(history,low);
-      assert.deepEqual(plain(x.next_hand_forecast),plain(y.next_hand_forecast),"Core must not control forecast");
-      assert.deepEqual(plain(x.next_hand_forecast),plain(z.next_hand_forecast),"XGB must not control forecast");
-      assert.equal(x.direction,y.direction,"Core must not veto the bet");assert.equal(x.direction,z.direction,"XGB must not veto the bet");
-      assert.equal(x.finalProbability.filteredPB,x.finalProbability.smoothedPB,"never erase probability on Skip");
-      assert.equal(x.finalProbability.physics.length,48);assert.equal(x.finalProbability.extended.length,57);
-      assert(x.finalProbability.execution_order.includes("particle_filter"));
-      assert.equal(x.finalProbability.particleDiagnostics.particle_count,10000);
-      assert.equal(x.finalProbability.particleDiagnostics.persistent_state,false);
-      assert(x.direction==="Skip"||x.direction===x.finalProbability.primary_candidate,"auxiliary flipped Physics");
-      if(x.direction!=="Skip")assert((x.direction==="B"?x.ev_banker:x.ev_player)>0);
-      if(x.direction==="Skip"&&x.next_hand_forecast.available)skipsWithForecast++;
-      predictions++;
-    }
-  }
-  assert(skipsWithForecast>0);
-  const ids=["directionOrb","directionText","directionCode","confidence","regime","strength","modePill","roundCount","message"];
-  for(const id of ids)a.nodes.set(id,{textContent:"",className:""});
-  a.ctx.document.getElementById=id=>a.nodes.get(id)||null;
-  const sample=a.api.applyFinalPrediction("BPBPBPTBBPPBP".split(""));
-  a.api.renderPrediction({...sample,direction:"Skip",next_hand_forecast:f},13);
-  assert.equal(a.nodes.get("directionText").textContent,"莊");
-  assert.match(a.nodes.get("confidence").textContent,/莊 51\.11% \/ 閒 48\.89%/);
-  assert.match(a.nodes.get("regime").textContent,/下注觀望/);
-  const saved={...sample,direction:"Skip",finalProbability:{...sample.finalProbability,finalDirection:"觀望 Skip"}};
-  a.api.registerPrediction(["B","P"],saved);a.api.settlePending("B",{outcome:"B"},["B","P"]);
-  const row=a.api.getTrainingRows().at(-1);assert.equal(row.bet_direction,"Skip");assert.equal(row.predicted_direction,"觀望 Skip");assert(row.next_hand_forecast);
-  const missing=make(true);await missing.api.loadModels();const unavailable=missing.api.applyFinalPrediction(["B","P"]);
-  assert.equal(unavailable.direction,"Skip");assert(!unavailable.next_hand_forecast.available);
-  a.api.renderPrediction(unavailable,2);assert.equal(a.nodes.get("confidence").textContent,"—");
-  console.log(JSON.stringify({passed:true,predictions,skipsWithForecast,checks:["stateless PF10000","Physics forecast only","Core/XGB advisory only","positive-EV bets","48D/57D","forecast separated from settlement","UI probabilities and tie","missing model"]}));
-})().catch(e=>{console.error(e);process.exitCode=1;});
+const recorded=observedCounts(records,records.map(r=>r.outcome));
+assert.deepEqual(recorded,counts,"observed ranks must be removed exactly");
+assert.throws(()=>observedCounts(records,["B"]),/cover_entire_shoe/);
+assert.throws(()=>observedCounts(
+  [{outcome:"P",observation:{cards:[7,9,7,9]}}],["P"]),/observed_result_mismatch/);
+const real=new PhysicsForecastFirstEngine({observedSamples:2400});
+real.syncHistory(records.map(r=>r.outcome));
+real.setObservedRounds(records);
+const actual=real.predict();
+assert.equal(actual.observed_card_evidence,true);
+assert.equal(actual.card_count_source,"observed_card_count");
+assert.equal(actual.proxy_only,false);
+assert.equal(actual.physical_ev.remaining,416-records.reduce((s,r)=>s+r.observation.cards.length,0));
+assert.equal(actual.physical_ev.samples,2400);
+assert.equal(actual.card_count_gate.evidence_source,"supplied_observed_cards");
+assert(actual.action==="SKIP"||actual.action==="BET");
+assert.equal(actual.action==="BET",actual.card_count_gate.bet_allowed);
+real.setObservedRounds(null);
+assert.equal(real.predict().action,"SKIP","remove observed cards immediately disables BET");
+assert.equal(real.predict().reason,"unobserved_card_composition");
+assert.throws(()=>real.setObservedRounds([{outcome:"B"}]),/invalid_observed_rows/);
+const strong={
+  ev_banker:.13,ev_player:-.13,ev_gap_deviation:.18,se_gap:.005,
+  se_banker:.004,se_player:.004
+};
+assert.equal(decisionFromEV(strong,{observed:false}).action,"SKIP",
+  "even a huge virtual MC EV cannot claim real edge");
+assert.equal(decisionFromEV(strong,{observed:true}).action,"BET",
+  "observed composition + meaningful positive lower CI can pass");
+assert.equal(decisionFromEV({...strong,ev_gap_deviation:.01},{observed:true}).action,"SKIP");
+assert.equal(decisionFromEV({...strong,ev_banker:-.02,ev_player:-.09},
+  {observed:true}).action,"SKIP","no positive EV cannot become BET");
+assert.equal(decisionFromEV({...strong,se_gap:.15},{observed:true}).action,"SKIP",
+  "unreliable MC cannot create a physical advantage");
+assert.throws(()=>new PhysicsForecastFirstEngine({threshold:-1}),/invalid_ev_gate/);
+real.reset();
+assert.equal(real.history.length,0);
+assert.equal(real.predict().action,"SKIP");
+const data=weightedContext(bpt.model_road_debug,bpt.physical_ev);
+assert.equal(data.vector.length,256);
+assert.equal(data.physics_weight,5);
+assert.equal(data.road_weight,.1);
+assert.equal(data.road_has_direction_authority,false);
+console.log("PASS physics-first: 8x52, correct draw rules, BPT shadow vs observed physical source, 5x/0.1x, EV+MC gate, no phantom BET, rollback and deterministic replay");
