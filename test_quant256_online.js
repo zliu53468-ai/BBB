@@ -4,7 +4,7 @@ const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("nod
 const {OnlineLinUCB256,BlindPhysicsEstimator,context256,windowStats,ACTIVE_INDICES,VERSION}=
   require("./quant256_online_runtime");
 const near=(a,b,tol=1e-9)=>assert(Math.abs(a-b)<=tol,"expected "+a+" ~ "+b);
-assert.equal(VERSION,"BBB_QUANT256_ONLINE_V3_HYPER_MICRO");
+assert.equal(VERSION,"BBB_QUANT256_ONLINE_V3_HYPER_MICRO_PAIRWISE");
 assert.equal(ACTIVE_INDICES.length,36);
 assert.equal(new OnlineLinUCB256().lambda,.82);
 for(const l of [.75,.82,.94,.96])near(new OnlineLinUCB256({lambda:l}).lambda,l);
@@ -152,14 +152,15 @@ const ui=win.__BBB_QUANT256_ONLINE_PANEL__;
 assert.equal(ui.configuration.quantOptions.lambda,.82);
 assert.equal(ui.configuration.threshold,.005);
 assert.equal(ui.configuration.lossGate,.035);
-assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V2_DYNAMIC_GATE");
+assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
 click("btnB");click("btnP");click("btnT");
 assert.equal(ui.model.history.join(""),"BPT");
 click("btnStart");
 assert.equal(frozenClicks,0);
-assert(dom.modePill.textContent.includes("DYNAMIC GATE"));
+assert(dom.modePill.textContent.includes("MICRO FUSION"));
 assert(/莊|閒/.test(dom.directionText.textContent));
-assert(dom.directionText.textContent.includes("研究"));
+assert(dom.directionText.textContent.includes("研究")||
+  dom.directionText.textContent.includes("微觀衝突"));
 assert(dom.regime.textContent.includes("未確認正 EV"));
 assert(dom.confidence.textContent.includes("非勝率"));
 click("btnBack");assert.equal(ui.model.history.join(""),"BP");
@@ -170,4 +171,28 @@ click("btnEnd");assert.equal(ui.model.trainedRounds,0);
 assert.equal(ui.run().action,"SKIP");
 assert(["B","P"].includes(ui.run().research_signal.direction));
 assert([0,.005,.035].includes(ui.run().dynamic_gate));
-console.log("PASS physics-first V2 main UI: visible B/P research direction, dynamic gate, authentic BET qualification, old history and Frozen bypass");
+// 盲估每局根據合法補牌結果抽樣，不可憑和局任意兩倍扣除特定牌。
+const pair=new BlindPhysicsEstimator({particles:12});
+const original=pair.particles.map(c=>c.slice());
+pair.observe("T");
+const pairStats=pair.snapshot().pairwise_depletion;
+assert.equal(pairStats.observed_cards,false);
+assert.equal(pairStats.source,"conditional_joint_sampling");
+assert(pairStats.estimated_draws>=4&&pairStats.estimated_draws<=6);
+assert(pairStats.estimated_pairwise_key_copresence>=0);
+assert(pairStats.estimated_pairwise_key_copresence<=1);
+assert.equal(pairStats.tie_or_long_hands,pairStats.matched_particles);
+for(let i=0;i<pair.particles.length;i++){
+  const removed=original[i].reduce((s,x,j)=>s+x-pair.particles[i][j],0);
+  assert(removed===0||(removed>=4&&removed<=6),"conditional draw must remove exactly 4-6 cards");
+  assert(pair.particles[i].every(x=>Number.isInteger(x)&&x>=0));
+}
+const pairLength=new BlindPhysicsEstimator({particles:8});
+pairLength.observe("B",{observedDraws:4});
+const info=pairLength.snapshot().pairwise_depletion;
+assert.equal(info.observed_draw_count,true);
+assert(info.estimated_draws===0||info.estimated_draws===4);
+assert.throws(()=>pairLength.observe("T",{observedDraws:7}),/invalid_observed_draw_count/);
+assert.equal(ui.run().pairwise_depletion.observed_cards,false);
+assert.equal(ui.run().fusion.modifies_real_ev,false);
+console.log("PASS physics-first V3 main UI: 0.005/0/0.035, conditional draw accounting, Bayesian-inspired diagnostics, old history/Frozen bypass");

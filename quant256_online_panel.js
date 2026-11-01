@@ -38,24 +38,35 @@ function render(p){
   const text=el("directionText"),code=el("directionCode"),conf=el("confidence");
   const regime=el("regime"),strength=el("strength"),orb=el("directionOrb"),
     pill=el("modePill"),message=el("message");
-  if(text)text.textContent=(dir==="B"?"莊":"閒")+"（研究）";
-  if(code)code.textContent=(dir==="B"?"BANKER":"PLAYER")+
+  const conflictSkip=research.conflict_guard_applied;
+  if(text)text.textContent=conflictSkip?"觀望（微觀衝突）":
+    (dir==="B"?"莊":"閒")+"（研究）";
+  if(code)code.textContent=conflictSkip?"CONFLICT / SHORT SKIP":
+    (dir==="B"?"BANKER":"PLAYER")+
     (qualified?" / EV VERIFIED":" / SIMULATION ONLY");
   if(conf)conf.textContent="模擬 EV 偏移 "+(p.ev_gap_deviation*100).toFixed(2)+"%（非勝率）";
   const phase=p.gate_phase==="cushion"?"失誤後單局緩衝":
     p.gate_phase==="overdrive"?"連勝順風門檻 0":"基礎研究門檻";
   if(regime)regime.textContent=phase+
-    (signal?"｜已通過研究訊號門檻":"｜研究差值未過門檻")+
+    (conflictSkip?"｜物理與路單衝突，僅本次短暫觀望":
+      signal?"｜已通過研究訊號門檻":"｜研究差值未過門檻")+
     (qualified?"｜實測 EV 通過":"｜未確認正 EV");
   if(strength)strength.textContent="門檻 "+(p.dynamic_gate*100).toFixed(2)+
     "%｜莊 EV "+(p.ev_banker*100).toFixed(2)+
     "%｜閒 EV "+(p.ev_player*100).toFixed(2)+"%";
   if(orb)orb.className="direction-orb "+(signal?(dir==="B"?"banker":"player"):"idle");
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · DYNAMIC GATE";
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · MICRO FUSION";
   const hit=p.hit_rate===null?"無有效樣本":(p.hit_rate*100).toFixed(1)+"%";
   const rate=p.signal_rate===null?"—":(p.signal_rate*100).toFixed(1)+"%";
   if(message)message.textContent="本局研究方向："+(dir==="B"?"莊":"閒")+
-    "｜研究訊號 "+(signal?"通過":"未通過")+
+    "｜研究訊號 "+(signal?"通過":conflictSkip?"路單衝突短暫觀望":"未通過")+
+    "｜Beta 路單權重 "+(p.fusion.road_weight*100).toFixed(2)+"%"+
+    "｜路單偏向 "+p.fusion.road.road_bias.toFixed(3)+
+    "｜靴進程倍率 "+p.shoe_phase.scale.toFixed(3)+"×（僅研究）"+
+    "｜原始 EV 偏移 "+(p.raw_ev_gap_deviation*100).toFixed(2)+"%"+
+    "｜研究訊號強度 "+(p.scaled_research_score*100).toFixed(2)+"%"+
+    "｜成對扣牌估計 "+p.pairwise_depletion.estimated_pairwise_key_copresence.toFixed(3)+
+    "（非實際扣牌）"+
     "｜實測 EV 行動："+(qualified?"BET":"未達 BET 資格")+
     "｜Gate "+(p.dynamic_gate*100).toFixed(2)+"%"+
     "｜連中 "+p.win_streak+" 局"+

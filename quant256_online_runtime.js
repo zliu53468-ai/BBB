@@ -13,7 +13,7 @@
 "use strict";
 const DIM=256,SHOE=128,DECK=416,BASE_POINTS=[128,32,32,32,32,32,32,32,32,32];
 const ACTIVE=[...Array.from({length:12},(_,i)=>i),...Array.from({length:24},(_,i)=>128+i)];
-const K=ACTIVE.length,VERSION="BBB_QUANT256_ONLINE_V3_HYPER_MICRO";
+const K=ACTIVE.length,VERSION="BBB_QUANT256_ONLINE_V3_HYPER_MICRO_PAIRWISE";
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const finite=x=>typeof x==="number"&&Number.isFinite(x);
 const valid=s=>s==="B"||s==="P"||s==="T";
@@ -58,7 +58,8 @@ function sampleHand(counts,rng){
     else if(b===6)bankerDraw=p3>=6&&p3<=7;
     if(bankerDraw)b=(b+draw())%10;
   }
-  return{counts:c,draws:cards,result:b>p?"B":p>b?"P":"T"};
+  return{counts:c,draws:cards,result:b>p?"B":p>b?"P":"T",
+    consumed:BASE_POINTS.map((v,i)=>counts[i]-c[i])};
 }
 /**
  * 不可辨識性聲明：B/P/T 不提供實際 4/5/6 張或點數。
@@ -73,22 +74,52 @@ class BlindPhysicsEstimator{
   reset(){
     this.rng=seededRng(this.seed);
     this.particles=Array.from({length:this.size},()=>BASE_POINTS.slice());
-    this.drawHistory=[];this.densityHistory=[];this.lastAcceptance=0;return this;
+    this.drawHistory=[];this.densityHistory=[];
+    this.pairwiseHistory=[];this.lastAcceptance=0;
+    this.lastPairwise={source:"conditional_joint_sampling",observed_cards:false,
+      matched_particles:0,tie_or_long_hands:0,estimated_key_consumption:0,
+      estimated_key_consumption_ratio:0,estimated_pairwise_key_copresence:0,
+      estimated_draws:0};
+    return this;
   }
-  observe(outcome){
+  observe(outcome,options={}){
     if(!valid(outcome))throw Error("invalid_outcome");
-    let accepted=0,sum=0;
+    const observedDraws=options.observedDraws??null;
+    if(observedDraws!==null&&![4,5,6].includes(observedDraws))
+      throw Error("invalid_observed_draw_count");
+    let accepted=0,sum=0,keyDraws=0,pairCoPresence=0,longHands=0;
     for(let i=0;i<this.size;i++){
       const original=this.particles[i];let chosen=null;
       // 條件抽樣，拒絕不符合本局已知 B/P/T 的虛擬發牌結果。
       // 不編造實測卡牌；未抽中時不改寫粒子狀態。
       for(let tries=0;tries<128;tries++){
         const trial=sampleHand(original,this.rng);
-        if(trial&&trial.result===outcome){chosen=trial;break;}
+        // 只接受吻合實際觀測的結果；如有可驗證補牌張數，額外條件化。
+        if(trial&&trial.result===outcome&&
+          (observedDraws===null||trial.draws===observedDraws)){chosen=trial;break;}
       }
-      if(chosen){this.particles[i]=chosen.counts;sum+=chosen.draws;accepted++;}
+      if(chosen){
+        this.particles[i]=chosen.counts;sum+=chosen.draws;accepted++;
+        if(outcome==="T"||chosen.draws>=5){
+          longHands++;
+          // 所謂「成對扣牌」是條件樣本下共同消耗的期望值，
+          // 不會將 A / 4 / 7 / 0 點錯誤地強制扣兩倍。
+          const special=[0,1,4,7],used=special.map(k=>chosen.consumed[k]);
+          keyDraws+=used.reduce((v,n)=>v+n,0);
+          const present=used.filter(n=>n>0).length;
+          if(present>=2)pairCoPresence++;
+        }
+      }
     }
     this.lastAcceptance=accepted/this.size;
+    this.lastPairwise={source:"conditional_joint_sampling",
+      observed_cards:false,observed_draw_count:observedDraws!==null,
+      matched_particles:accepted,tie_or_long_hands:longHands,
+      estimated_key_consumption:longHands?keyDraws/longHands:0,
+      estimated_key_consumption_ratio:longHands?keyDraws/Math.max(1,sum):0,
+      estimated_pairwise_key_copresence:longHands?pairCoPresence/longHands:0,
+      estimated_draws:accepted?sum/accepted:0};
+    this.pairwiseHistory.push({...this.lastPairwise});
     this.drawHistory.push(accepted?sum/accepted:0);
     const snapshot=this.snapshot();
     this.densityHistory.push({high:snapshot.virtual_high_ratio,low:snapshot.virtual_low_ratio});
@@ -121,6 +152,7 @@ class BlindPhysicsEstimator{
       virtual_draw_momentum:drawMomentum,
       virtual_high_std:Math.sqrt(variance),conditional_acceptance:this.lastAcceptance,
       expected_draws_recent:recent.length?recent.reduce((s,v)=>s+v,0)/recent.length:4.94,
+      pairwise_depletion:{...this.lastPairwise},
       actual_draw_count_known:false,actual_remaining_known:false
     };
   }

@@ -3,10 +3,11 @@
 const assert=require("node:assert/strict");
 const {
   PhysicsForecastFirstEngine,observedCounts,observedHand,
-  deal,simulate,decisionFromEV,weightedContext,BASE,BASE_EV,INITIAL,VERSION
+  deal,simulate,decisionFromEV,weightedContext,BASE,BASE_EV,INITIAL,VERSION,
+  shoePhaseScaling,roadPosterior,microFusion,conflictGuard
 }=require("./physics_forecast_first_runtime.js");
 const near=(x,y,eps=1e-8)=>assert(Math.abs(x-y)<=eps,String(x)+" != "+String(y));
-assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V2_DYNAMIC_GATE");
+assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
 assert.equal(INITIAL.length,10);
 assert.equal(INITIAL[0],128);
 assert(INITIAL.slice(1).every(x=>x===32));
@@ -181,4 +182,66 @@ assert.equal(snapshotReset.gatePhase,undefined);
 assert.deepEqual(snapshotReset.settlements,beforeSettlements,"incremental replay must be identical");
 assert.equal(snapshotReset.predict().dynamic_gate,output.dynamic_gate);
 assert.equal(snapshotReset.predict().research_signal.direction,output.research_signal.direction);
-console.log("PASS physics-first V2 dynamic 0.005/0/0.035: rules, shadow/real EV separation, research direction, prequential replay and one-round recovery");
+// 微觀靴尾：倍率只影響研究強度，EV 原始數值與實測資料完全不變。
+near(shoePhaseScaling(0).scale,1);
+near(shoePhaseScaling(35).scale,1.375);
+near(shoePhaseScaling(70).scale,2.5);
+near(shoePhaseScaling(140).scale,2.5);
+assert.throws(()=>shoePhaseScaling(-1),/invalid_hand_index/);
+assert.equal(shoePhaseScaling(70).modifies_real_ev,false);
+near(bpt.shoe_phase.scale,shoePhaseScaling(seq.length).scale);
+near(bpt.raw_ev_gap_deviation,bpt.ev_gap_deviation);
+near(bpt.scaled_research_score,
+  Math.abs(bpt.raw_ev_gap_deviation)*bpt.shoe_phase.scale*bpt.fusion.confidence_multiplier);
+assert.equal(bpt.fusion.modifies_real_ev,false,"nonlinear research boost cannot rewrite actual EV");
+
+// Beta-Binomial：只用已發生的前局推估延續機率；權重永遠 <=0.1。
+const longB=Array(26).fill("B");
+const trend=roadPosterior(longB);
+assert.equal(trend.direction,"B");
+assert.equal(trend.reliable,true);
+assert(trend.samples>=8);
+assert(trend.posterior_stay>.5);
+assert.equal(trend.calibrated,false);
+assert(trend.support<1);
+const tiny=roadPosterior(["B","P"]);
+assert.equal(tiny.reliable,false);
+assert.equal(tiny.road_probability_b,.5);
+const physicsOpposite={
+  simulated_probability:{B:.2,P:.7,T:.1},
+  ev_banker:-.51,ev_player:.50,ev_gap_deviation:-.45
+};
+const opposite=microFusion(physicsOpposite,longB);
+assert.equal(opposite.physics_direction,"P");
+assert.equal(opposite.road.direction,"B");
+assert.equal(opposite.conflicted,true);
+assert.equal(opposite.aligned,false);
+assert(opposite.confidence_multiplier<1);
+assert(opposite.road_weight>0&&opposite.road_weight<=.1);
+assert.equal(opposite.calibrated,false);
+assert.equal(opposite.modifies_real_ev,false);
+near(opposite.raw_ev_gap_deviation,-.45);
+const first=conflictGuard(opposite,.005,null);
+assert.equal(first.applied,true);
+near(first.effective_gate,.035);
+const second=conflictGuard(opposite,.005,first.signature);
+assert.equal(second.applied,false,"same conflict may not cause infinite SKIP");
+near(second.effective_gate,.005);
+const agreeing=microFusion({
+  simulated_probability:{B:.7,P:.2,T:.1},
+  ev_banker:.465,ev_player:-.5,ev_gap_deviation:.4
+},longB);
+assert.equal(agreeing.aligned,true);
+assert.equal(agreeing.conflicted,false);
+assert(agreeing.confidence_multiplier>1);
+assert.equal(conflictGuard(agreeing,0,null).applied,false);
+near(conflictGuard(agreeing,0,null).effective_gate,0,
+  1e-12); // 連勝進攻門檻仍為零，無衝突不受干擾
+const noData=roadPosterior([]);
+assert.equal(noData.reliable,false);
+assert.equal(noData.road_bias,0);
+assert.equal(initial.pairwise_depletion.estimated_key_consumption,0);
+assert.equal(initial.pairwise_depletion.observed_cards,false);
+assert.equal(bpt.phantom_95pct_claim,false);
+assert.equal(bpt.research_signal.source,"simulated_bpt_only");
+console.log("PASS physics-first V3: exact pairwise conditional draws, shoe-phase research-only scaling, Bayesian-inspired weak road fusion, one-regime conflict skip, state replay and EV evidence separation");
