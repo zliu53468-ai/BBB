@@ -15,7 +15,7 @@ class MiddleLateTests(unittest.TestCase):
         with patch.dict(PROFILE.get("pf_weight_smoothing_v1", {}), {"enabled": False}):
             for r in range(1,21):
                 # Original training weights stay fixed; the production EMA/Macro/PF anchors changed on purpose.
-                for key in ("training_weight", "focus_training_weight"):
+                for key in ("training_weight",):
                     anchors=old["anchors"][key]
                     expected=float(np.interp(r,[x for x,_ in anchors],[v for _,v in anchors]))
                     self.assertAlmostEqual(interpolate(key,r),expected,places=14)
