@@ -4,7 +4,7 @@ const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("nod
 const {OnlineLinUCB256,BlindPhysicsEstimator,context256,windowStats,ACTIVE_INDICES,VERSION}=
   require("./quant256_online_runtime");
 const near=(a,b,tol=1e-9)=>assert(Math.abs(a-b)<=tol,"expected "+a+" ~ "+b);
-assert.equal(VERSION,"BBB_QUANT256_ONLINE_V3_HYPER_MICRO_PAIRWISE");
+assert.equal(VERSION,"BBB_QUANT256_ONLINE_V4_CONDITIONAL_MARGINAL");
 assert.equal(ACTIVE_INDICES.length,36);
 assert.equal(new OnlineLinUCB256().lambda,.82);
 for(const l of [.75,.82,.94,.96])near(new OnlineLinUCB256({lambda:l}).lambda,l);
@@ -152,15 +152,17 @@ const ui=win.__BBB_QUANT256_ONLINE_PANEL__;
 assert.equal(ui.configuration.quantOptions.lambda,.82);
 assert.equal(ui.configuration.threshold,.005);
 assert.equal(ui.configuration.lossGate,.035);
-assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
+assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V4_MARGINAL_EV");
 click("btnB");click("btnP");click("btnT");
 assert.equal(ui.model.history.join(""),"BPT");
 click("btnStart");
 assert.equal(frozenClicks,0);
-assert(dom.modePill.textContent.includes("MICRO FUSION"));
+assert(dom.modePill.textContent.includes("MARGINAL EV"));
 assert(/莊|閒/.test(dom.directionText.textContent));
-assert(dom.directionText.textContent.includes("研究")||
-  dom.directionText.textContent.includes("微觀衝突"));
+assert(!dom.directionText.textContent.includes("研究"),"final direction label must omit 研究");
+assert(["莊","閒","觀望（微觀衝突）"].includes(dom.directionText.textContent));
+assert(dom.directionCode.textContent.includes("SIMULATION ONLY")||
+  dom.directionCode.textContent.includes("CONFLICT"),"unverified signal disclosure remains");
 assert(dom.regime.textContent.includes("未確認正 EV"));
 assert(dom.confidence.textContent.includes("非勝率"));
 click("btnBack");assert.equal(ui.model.history.join(""),"BP");
@@ -195,4 +197,33 @@ assert(info.estimated_draws===0||info.estimated_draws===4);
 assert.throws(()=>pairLength.observe("T",{observedDraws:7}),/invalid_observed_draw_count/);
 assert.equal(ui.run().pairwise_depletion.observed_cards,false);
 assert.equal(ui.run().fusion.modifies_real_ev,false);
-console.log("PASS physics-first V3 main UI: 0.005/0/0.035, conditional draw accounting, Bayesian-inspired diagnostics, old history/Frozen bypass");
+// 條件粒子似然重採樣與點值 0～9 邊際矩陣完整測試。
+const pf=new BlindPhysicsEstimator({particles:16,proposalTrials:48});
+const initialPf=pf.particles.map(c=>c.slice());
+const historyPf=["B","P","T","B","B","P","T","P","B"];
+for(const outcome of historyPf){
+  const snapshot=pf.observe(outcome);
+  assert(snapshot.conditional_outcome_likelihood>=0&&
+    snapshot.conditional_outcome_likelihood<=1);
+  assert(snapshot.effective_particle_size>=0&&
+    snapshot.effective_particle_size<=16+1e-8);
+  const marginal=snapshot.marginal_card_weights;
+  assert.equal(marginal.method,"conditional_observation_likelihood");
+  assert.equal(marginal.point_values.length,10);
+  assert.equal(marginal.relative_excess.length,10);
+  assert(marginal.relative_excess.every(Number.isFinite));
+  assert(marginal.expected_conditional.every(Number.isFinite));
+  assert(marginal.expected_unconditional.every(Number.isFinite));
+  assert.equal(marginal.identified_cards,false);
+  for(const counts of pf.particles){
+    assert.equal(counts.length,10);
+    assert(counts.every((x,j)=>Number.isInteger(x)&&x>=0&&x<=initialPf[0][j]));
+  }
+}
+const rerun=new BlindPhysicsEstimator({particles:16,proposalTrials:48});
+for(const outcome of historyPf)rerun.observe(outcome);
+assert.deepEqual(pf.particles,rerun.particles,"stochastic SMC replay must be seeded and deterministic");
+assert.throws(()=>new BlindPhysicsEstimator({proposalTrials:4}),/invalid_particle_proposals/);
+assert.equal(ui.run().final_bias_is_real_ev,false);
+assert.equal(ui.run().marginal_ev.points.length,10);
+console.log("PASS physics-first V4 main UI: final direction no 研究, conditional particle likelihood, per-point marginal outputs, EV separation and replay");

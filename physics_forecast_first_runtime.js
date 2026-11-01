@@ -17,7 +17,7 @@
 })(typeof window!=="undefined"?window:null,function(quant){
 "use strict";
 if(!quant||typeof quant.OnlineLinUCB256!=="function")throw Error("missing_quant256_online_runtime");
-const VERSION="BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION",DECKS=8;
+const VERSION="BBB_PHYSICS_FORECAST_FIRST_V4_MARGINAL_EV",DECKS=8;
 const BASE_EV_GATE=.005,OVERDRIVE_GATE=0,ONE_HAND_CUSHION=.035;
 const INITIAL=Object.freeze([128,32,32,32,32,32,32,32,32,32]);
 const BASE=Object.freeze({B:.458597,P:.446247,T:.095156});
@@ -104,15 +104,65 @@ function observedCounts(rows,history){
   validateCounts(counts,{observed:true});
   return counts;
 }
+/**
+ * 單張邊際牌值的「精確重要性比率」：
+ * 對已抽出 m 張的合法局，若起始牌靴 C 移除一張點值 k，
+ * P(hand | C-e_k)/P(hand | C)
+ *   = (C[k] - hand_count[k]) / C[k] * N / (N - m)
+ * 各抽牌次序在同一個樣本中完整抵消（N 為起始剩餘牌數）。
+ * 如此可使用同一批 MC 局數估計每個點值的 EV 微分，無需硬套
+ * 「小牌必利莊／大牌必利閒」的錯誤符號，也減少兩次 MC 的獨立雜訊。
+ */
+function oneCardRemovalLikelihood(counts,hand,k){
+  if(!Number.isInteger(k)||k<0||k>9)throw Error("invalid_marginal_point_value");
+  const total=sum(counts),length=hand.cards.length;
+  if(total<=length||counts[k]<=0)return null;
+  let removed=0;
+  for(const card of hand.cards)if(card===k)removed++;
+  return(clamp((counts[k]-removed)/counts[k],0,1)*total/(total-length));
+}
+function newMarginalAccumulator(){
+  return Array.from({length:10},(_,point)=>({point,weighted:{B:0,P:0,T:0},weight:0}));
+}
+function accumulateMarginals(accumulator,counts,hand){
+  for(let k=0;k<10;k++){
+    const w=oneCardRemovalLikelihood(counts,hand,k);
+    if(w===null)continue;
+    accumulator[k].weight+=w;
+    accumulator[k].weighted[hand.outcome]+=w;
+  }
+}
+function finalizeMarginals(accumulator,baseEVBanker,baseEVPlayer,{source="simulation"}={}){
+  const out=accumulator.map(entry=>{
+    if(!(entry.weight>0))return{point:entry.point,available:false,
+      delta_ev_banker:null,delta_ev_player:null,delta_ev_gap:null};
+    const b=entry.weighted.B/entry.weight,p=entry.weighted.P/entry.weight;
+    const evB=.95*b-p,evP=p-b;
+    return{point:entry.point,available:true,
+      ev_banker_if_removed:evB,ev_player_if_removed:evP,
+      delta_ev_banker:evB-baseEVBanker,
+      delta_ev_player:evP-baseEVPlayer,
+      delta_ev_gap:(evB-evP)-(baseEVBanker-baseEVPlayer)};
+  });
+  const avg=(arr,key)=>arr.reduce((acc,item)=>acc+((item.available?item[key]:0)),0)/
+    Math.max(1,arr.filter(item=>item.available).length);
+  return{method:"one_card_removed_importance_reweighting",source,points:out,
+    small_1_4_delta_banker:avg(out.slice(1,5),"delta_ev_banker"),
+    large_5_8_delta_player:avg(out.slice(5,9),"delta_ev_player"),
+    does_not_force_direction:true,identified_actual_deck:source==="observed_card_count",
+    interpretation:"正數代表假設再消耗該點值時相應下注 EV 增加，非下局必勝"};
+}
 /** Monte Carlo 只從剩餘牌組成計算 B/P/T，沒有引入牌路權重。 */
 function simulate(counts,{samples=2048,seed=0x13877}={}){
   validateCounts(counts);
   if(!Number.isInteger(samples)||samples<64||samples>50000)throw Error("invalid_mc_sample_count");
   const rng=seeded(seed),wins={B:0,P:0,T:0};
+  const marginalAccumulator=newMarginalAccumulator();
   let expectedCards=0;
   for(let i=0;i<samples;i++){
     const hand=deal(counts,rng);
     wins[hand.outcome]++;expectedCards+=hand.cards.length;
+    accumulateMarginals(marginalAccumulator,counts,hand);
   }
   const p={B:wins.B/samples,P:wins.P/samples,T:wins.T/samples};
   const evB=.95*p.B-p.P,evP=p.P-p.B;
@@ -126,6 +176,8 @@ function simulate(counts,{samples=2048,seed=0x13877}={}){
     ev_gap_deviation:gap-BASE_GAP,ev_banker_delta:evB-BASE_EV.B,
     ev_player_delta:evP-BASE_EV.P,se_banker:seB,se_player:seP,
     se_gap:seGap,draws_mean:expectedCards/samples,
+    marginal_ev:finalizeMarginals(marginalAccumulator,evB,evP,
+      {source:"provided_point_counts_unverified"}),
     payout:{banker_win:.95,player_win:1,tie_push:true}};
 }
 function summarizeHypotheses(physics,history,{samplesPerParticle=64}={}){
@@ -134,7 +186,7 @@ function summarizeHypotheses(physics,history,{samplesPerParticle=64}={}){
     throw Error("invalid_shadow_sample_count");
   const validParticles=physics.particles.filter(c=>Array.isArray(c)&&sum(c)>=6);
   const remaining=physics.particles.map(c=>sum(c));
-  const estimates=[];
+  const estimates=[],marginalAccumulator=newMarginalAccumulator();
   const stableSeed=hashHistory(history);
   for(let i=0;i<validParticles.length;i++){
     const counts=validParticles[i],rng=seeded(stableSeed^Math.imul(i+1,2654435761));
@@ -142,6 +194,7 @@ function summarizeHypotheses(physics,history,{samplesPerParticle=64}={}){
     for(let j=0;j<samplesPerParticle;j++){
       const result=deal(counts,rng);
       tally[result.outcome]++;draws+=result.cards.length;
+      accumulateMarginals(marginalAccumulator,counts,result);
     }
     estimates.push({...tally,draws});
   }
@@ -159,12 +212,15 @@ function summarizeHypotheses(physics,history,{samplesPerParticle=64}={}){
     simulated_probability:p,ev_banker:evB,ev_player:evP,
     ev_gap:gap,ev_gap_deviation:gap-BASE_GAP,
     se_gap:seGap,draws_mean:sum(estimates.map(e=>e.draws))/n,
+    marginal_ev:finalizeMarginals(marginalAccumulator,evB,evP,
+      {source:"hypothetical_particle_posterior"}),
     source:"hypothetical_particle_posterior",simulation_exhausted:false};
 }
 function baselineResult(){
   return{samples:0,remaining:416,particle_support:0,simulated_probability:{...BASE},
     ev_banker:BASE_EV.B,ev_player:BASE_EV.P,ev_gap:BASE_GAP,
     ev_gap_deviation:0,se_gap:null,draws_mean:null,
+    marginal_ev:finalizeMarginals(newMarginalAccumulator(),BASE_EV.B,BASE_EV.P),
     source:"unobserved_baseline",simulation_exhausted:false};
 }
 function decisionFromEV(s,{observed=false,threshold=.015,z=1.96}={}){
@@ -420,11 +476,16 @@ class PhysicsForecastFirstEngine{
       (this.history.length?summarizeHypotheses(this.quant.physics,this.history,{
         samplesPerParticle:this.simulationsPerParticle}):baselineResult());
     const normalized=observed?
-      {...physics,simulated_probability:physics.win_probabilities,source:"observed_card_count"}:
+      {...physics,simulated_probability:physics.win_probabilities,source:"observed_card_count",
+        marginal_ev:{...physics.marginal_ev,source:"observed_card_count",
+          identified_actual_deck:true}}:
       physics;
     const dynamicGate=this._gate();
     const fusion=microFusion(normalized,this.history);
     const score=fusion.research_score;
+    // 額外保留 LinUCB 雙臂差值的靴尾放大數作研究診斷，不修改物理 EV 或門檻。
+    const ucb_raw_bias=quantPrediction.ucb_banker-quantPrediction.ucb_player;
+    const final_bias=ucb_raw_bias*fusion.phase.scale;
     const direction=fusion.physics_direction; // 路單不可反轉物理 EV 方向
     // 若 Beta(4,4) 後驗與物理主方向顯著衝突，對該 regime 首次遇到時
     // 啟用「一次性衝突觀望」，後續相同 regime 不重複卡住。
@@ -464,6 +525,8 @@ class PhysicsForecastFirstEngine{
       fusion,shoe_phase: fusion.phase,
       scaled_research_score: fusion.research_score,
       raw_ev_gap_deviation:normalized.ev_gap_deviation,
+      ucb_raw_bias,final_bias,final_bias_is_real_ev:false,
+      marginal_ev:normalized.marginal_ev,
       dynamic_gate:dynamicGate,base_ev_gate:this.threshold,
       cushion_gate:this.lossGate,gate_phase:this.phase,
       win_streak:this.winStreak,last_settlement:this.lastSettlement,
@@ -489,5 +552,7 @@ class PhysicsForecastFirstEngine{
 return{PhysicsForecastFirstEngine,observedCounts,observedHand,
   deal,simulate,summarizeHypotheses,decisionFromEV,weightedContext,
   BASE,BASE_EV,INITIAL,DECKS,VERSION,BASE_EV_GATE,OVERDRIVE_GATE,ONE_HAND_CUSHION,
-  shoePhaseScaling,roadRegime,roadPosterior,microFusion,conflictGuard};
+  shoePhaseScaling,roadRegime,roadPosterior,microFusion,conflictGuard,
+  newMarginalAccumulator,accumulateMarginals,finalizeMarginals,
+  oneCardRemovalLikelihood};
 });

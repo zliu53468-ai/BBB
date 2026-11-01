@@ -4,10 +4,11 @@ const assert=require("node:assert/strict");
 const {
   PhysicsForecastFirstEngine,observedCounts,observedHand,
   deal,simulate,decisionFromEV,weightedContext,BASE,BASE_EV,INITIAL,VERSION,
-  shoePhaseScaling,roadPosterior,microFusion,conflictGuard
+  shoePhaseScaling,roadPosterior,microFusion,conflictGuard,
+  oneCardRemovalLikelihood
 }=require("./physics_forecast_first_runtime.js");
 const near=(x,y,eps=1e-8)=>assert(Math.abs(x-y)<=eps,String(x)+" != "+String(y));
-assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
+assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V4_MARGINAL_EV");
 assert.equal(INITIAL.length,10);
 assert.equal(INITIAL[0],128);
 assert(INITIAL.slice(1).every(x=>x===32));
@@ -244,4 +245,38 @@ assert.equal(initial.pairwise_depletion.estimated_key_consumption,0);
 assert.equal(initial.pairwise_depletion.observed_cards,false);
 assert.equal(bpt.phantom_95pct_claim,false);
 assert.equal(bpt.research_signal.source,"simulated_bpt_only");
-console.log("PASS physics-first V3: exact pairwise conditional draws, shoe-phase research-only scaling, Bayesian-inspired weak road fusion, one-regime conflict skip, state replay and EV evidence separation");
+// 一張卡的非線性邊際權重使用完整合法發牌路徑的精確機率比率。
+// 驗證解析式與逐張條件機率相同，且不需要修改外層門檻。
+const rngMargin=(()=>{let x=187652;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};})();
+for(let k=0;k<10;k++){
+  const hand=deal(INITIAL,rngMargin);
+  const likelihood=oneCardRemovalLikelihood(INITIAL,hand,k);
+  let counts=INITIAL.slice(),changed=INITIAL.slice(),originalProb=1,removedProb=1;
+  changed[k]--;
+  for(const point of hand.cards){
+    const N=counts.reduce((a,b)=>a+b,0);
+    const M=changed.reduce((a,b)=>a+b,0);
+    originalProb*=counts[point]/N;
+    removedProb*=changed[point]/M;
+    counts[point]--;changed[point]--;
+  }
+  near(likelihood,removedProb/originalProb,1e-10);
+}
+const marginal=drawResult.marginal_ev;
+assert.equal(marginal.method,"one_card_removed_importance_reweighting");
+assert.equal(marginal.points.length,10);
+assert.equal(marginal.identified_actual_deck,false,
+  "simulate accepts arbitrary point composition; true observed origin must be verified by Engine");
+assert(marginal.points.every(row=>row.available&&Number.isFinite(row.delta_ev_gap)));
+assert(marginal.points.some(row=>row.delta_ev_gap>0));
+assert(marginal.points.some(row=>row.delta_ev_gap<0),
+  "must not hard-code a fixed sign for 1-4/5-8/Tie");
+assert.equal(marginal.does_not_force_direction,true);
+assert.equal(bpt.marginal_ev.points.length,10);
+assert.equal(bpt.marginal_ev.identified_actual_deck,false);
+assert.equal(bpt.final_bias_is_real_ev,false);
+near(bpt.final_bias,bpt.ucb_raw_bias*bpt.shoe_phase.scale);
+assert.equal(actual.marginal_ev.identified_actual_deck,true);
+assert.equal(actual.marginal_ev.source,"observed_card_count");
+assert.equal(bpt.dynamic_gate,snapshotReset.predict().dynamic_gate);
+console.log("PASS physics V4: exact per-value likelihood ratio, 8-deck EV, BPT-vs-observed origin, unchanged gates & run replay");
