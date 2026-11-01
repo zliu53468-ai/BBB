@@ -1,3 +1,9 @@
+> **目前預設（2026-11-01）**：PF／Physics 主導＋長龍逆勢抑制（實驗）；EMA／Macro 降低跟牌、PF 設定上限提升。連續 3 手同向時，反向出手需額外 0.012 EV；連續 5 手時累計需額外 0.032 EV，否則正式 Skip。原始預測機率保留，不把觀望包裝成下注。**未驗證命中率與獲利改善，可回滾。**
+>
+> 回滾：`cardcount_profile.json` 設 `anti_streak_v1.enabled=false` 可關閉長龍保護，設 `pf_primary_v1.enabled=false` 可關閉 PF 主導；完整回復請還原設定檔與 `final_probability_runtime.js`（並還原本次同步變更的檔案）。僅修改開關須重新整理頁面。強龍額外 EV 採 **0.012 + 0.020 疊加**；同向 EV 最多減免 0.003，其餘 Guard 保持。
+>
+> 下方較早的「目前預設」與舊百分比記載屬歷史實驗紀錄，不代表 2026-11-01 之後實際預設。
+
 > 目前預設為「牌路主導／Physics＋PF微調」實驗版；上下文不足時由原算牌暫代。未驗證命中率提升，可一鍵回滾。見 [ROAD_PRIMARY_TEST.md](ROAD_PRIMARY_TEST.md)。
 
 > 可選PF主導測試：網址加 `?pf_primary=1`；原PR75曾預設Physics主導；目前預設改為牌路主導，可用road_primary_v1.enabled=false回復。PF小樣本未見改善，不自動晉升。見 [PF_PRIMARY_TEST_MODE.md](PF_PRIMARY_TEST_MODE.md)。
