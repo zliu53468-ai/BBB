@@ -1,5 +1,5 @@
 /**
- * BBB PHYSICS_FORECAST_FIRST V1
+ * BBB PHYSICS_FORECAST_FIRST V2 — dynamic research signal gate
  *
  * 物理主導決策，路單僅 0.1× 診斷，物理特徵 5×。
  * B/P/T 只可反推「可能」的 8 副牌路徑，無法知道實際扣了哪些牌。
@@ -17,7 +17,8 @@
 })(typeof window!=="undefined"?window:null,function(quant){
 "use strict";
 if(!quant||typeof quant.OnlineLinUCB256!=="function")throw Error("missing_quant256_online_runtime");
-const VERSION="BBB_PHYSICS_FORECAST_FIRST_V1",DECKS=8;
+const VERSION="BBB_PHYSICS_FORECAST_FIRST_V2_DYNAMIC_GATE",DECKS=8;
+const BASE_EV_GATE=.005,OVERDRIVE_GATE=0,ONE_HAND_CUSHION=.035;
 const INITIAL=Object.freeze([128,32,32,32,32,32,32,32,32,32]);
 const BASE=Object.freeze({B:.458597,P:.446247,T:.095156});
 const BASE_EV=Object.freeze({B:.95*BASE.B-BASE.P,P:BASE.P-BASE.B});
@@ -205,28 +206,91 @@ function weightedContext(model,physical){
   return{vector:shoe.concat(road),shoe,road,physics_weight:5,
     road_weight:.1,road_has_direction_authority:false};
 }
+/**
+ * 研究訊號狀態機：
+ * BASE(0.005) → 上一局實際提示正確：OVERDRIVE(0)
+ * BASE/OVERDRIVE → 上一局實際提示錯誤：CUSHION(0.035)
+ * CUSHION → 下一個非和局若未通過門檻：BASE(0.005)
+ *
+ * 狀態只在 observe()/syncHistory() 的逐局結算更新；重複 predict() 不會
+ * 虛增連勝或重複結算。預測錯誤是從上一局「已提示的研究方向」計算，
+ * 不能偷看當前輸入開獎結果。B/P/T 盲估的高密度方向不等於 BET。
+ */
 class PhysicsForecastFirstEngine{
-  constructor({simulationsPerParticle=64,observedSamples=12000,threshold=.015,quantOptions={}}={}){
+  constructor({simulationsPerParticle=64,observedSamples=12000,
+    threshold=BASE_EV_GATE,lossGate=ONE_HAND_CUSHION,quantOptions={}}={}){
     if(!finite(threshold)||threshold<0||threshold>.5)throw Error("invalid_ev_gate");
+    if(!finite(lossGate)||lossGate<0||lossGate>.5)throw Error("invalid_loss_gate");
     this.simulationsPerParticle=simulationsPerParticle;
     this.observedSamples=observedSamples;
-    this.threshold=threshold;this.quant=new quant.OnlineLinUCB256(quantOptions);
-    this.observedRows=null;this.lastReport=null;
+    this.threshold=threshold;this.lossGate=lossGate;
+    this.quant=new quant.OnlineLinUCB256(quantOptions);
+    this.reset();
   }
   get history(){return this.quant.history;}
   get trainedRounds(){return this.quant.trainedRounds;}
-  reset(){this.quant.reset();this.observedRows=null;this.lastReport=null;return this;}
+  reset(){
+    this.quant.reset();this.observedRows=null;this.lastReport=null;
+    this.phase="base";this.winStreak=0;this.lastSettlement="none";
+    this.settlements={signals:0,correct:0,wrong:0,ties:0,filtered:0,turns:0};
+    return this;
+  }
+  _gate(){return this.phase==="overdrive"?OVERDRIVE_GATE:
+    this.phase==="cushion"?this.lossGate:this.threshold;}
   setObservedRounds(rows){
     if(rows===null){this.observedRows=null;this.lastReport=null;return this;}
     if(!Array.isArray(rows)||rows.some(r=>!r||!valid(r.outcome)||
       !Array.isArray(r.observation?.cards)))throw Error("invalid_observed_rows");
-    this.observedRows=JSON.parse(JSON.stringify(rows));this.lastReport=null;return this;
+    // 匯入前先確認整靴完整，避免先顯示真實數據後才發現驗證失敗。
+    if(rows.length!==this.history.length)throw Error("observed_rows_must_cover_entire_shoe");
+    observedCounts(rows,this.history);
+    this.observedRows=JSON.parse(JSON.stringify(rows));
+    this.lastReport=null;return this;
   }
-  syncHistory(history){
-    this.quant.syncHistory(history);
-    if(this.observedRows!==null&&this.observedRows.length!==history.length)
+  /**
+   * 每次真正開獎只結算一次研究方向；T 不宣稱方向輸贏。
+   * 上一局若是 Cushion 且 research signal 不達 .035，只消耗下一個 B/P
+   * 觀測事件就恢復 BASE，不會因和局卡住。若下一局仍有訊號，
+   * 正確→OVERDRIVE，錯誤→再次一局 Cushion。
+   */
+  _settle(prior,outcome){
+    this.lastReport=null; // 結算狀態改變立即使預測快取失效
+    if(outcome==="T"){this.settlements.ties++;this.lastSettlement="tie";return;}
+    this.settlements.turns++;
+    const signal=prior.research_signal;
+    if(!signal?.available){
+      this.settlements.filtered++;this.phase="base";
+      this.winStreak=0;this.lastSettlement="filtered";
+      return;
+    }
+    this.settlements.signals++;
+    if(signal.direction===outcome){
+      this.settlements.correct++;
+      this.winStreak++;this.phase="overdrive";this.lastSettlement="win";
+    }else{
+      this.settlements.wrong++;
+      this.winStreak=0;this.phase="cushion";this.lastSettlement="loss";
+    }
+  }
+  syncHistory(seq){
+    if(!Array.isArray(seq)||seq.some(v=>!valid(v)))throw Error("invalid_history");
+    if(this.observedRows!==null&&this.observedRows.length!==seq.length)
       throw Error("observed_rows_must_cover_entire_shoe");
-    this.lastReport=null;return this.predict();
+    let prefix=this.history.length<=seq.length;
+    if(prefix)for(let i=0;i<this.history.length;i++)
+      if(this.history[i]!==seq[i]){prefix=false;break;}
+    if(!prefix){
+      // 返回上一局或歷史改寫必須全程重播，杜絕重複計算連勝。
+      const remembered=this.observedRows;
+      this.reset();this.observedRows=remembered;
+    }
+    for(let i=this.history.length;i<seq.length;i++){
+      const prior=this.predict();
+      this._settle(prior,seq[i]);
+      this.quant.observe(seq[i]);
+      this.lastReport=null;
+    }
+    return this.predict();
   }
   predict(){
     if(this.lastReport&&this.lastReport.history_length===this.history.length)
@@ -241,26 +305,57 @@ class PhysicsForecastFirstEngine{
     const normalized=observed?
       {...physics,simulated_probability:physics.win_probabilities,source:"observed_card_count"}:
       physics;
-    const gate=decisionFromEV(normalized,{observed,threshold:this.threshold});
+    const dynamicGate=this._gate();
+    const score=Math.abs(normalized.ev_gap_deviation);
+    const direction=normalized.ev_banker>=normalized.ev_player?"B":"P";
+    // 與真實投注分離的「研究方向」：不把 MC 抽樣不確定性當成勝率。
+    // 若物理粒子全耗盡或訊號不可計算，即使 overdrive 也不假裝可用。
+    const usable=!normalized.simulation_exhausted&&finite(score)&&
+      finite(normalized.ev_banker)&&finite(normalized.ev_player);
+    const available=usable&&score>=dynamicGate;
+    const researchSignal={
+      action:available?"SIGNAL":"SKIP",
+      direction,available,score,dynamic_gate:dynamicGate,
+      phase:this.phase,win_streak:this.winStreak,
+      last_settlement:this.lastSettlement,
+      source:observed?"observed_cards":"simulated_bpt_only",
+      evidence_qualified:observed,
+      reason:!usable?"simulation_unavailable":
+        !available?"dynamic_signal_filter":"model_direction_not_validated"
+    };
+    // 正式 BET 仍要求觀測到每局真實點數、正 EV 和抽樣誤差下界。
+    // 動態門檻會影響真實 EV 閘門，但任何連勝都無法捏造實際牌值。
+    const gate=decisionFromEV(normalized,{observed,threshold:dynamicGate});
+    const action=available?gate.action:"SKIP";
+    const reason=!available?"dynamic_signal_filter":gate.reason;
     const features=weightedContext(quantPrediction,normalized);
     const report={version:VERSION,history_length:this.history.length,
-      action:gate.action,direction:gate.direction,bet_allowed:gate.bet_allowed,
-      reason:gate.reason,card_count_source:normalized.source,
+      action,direction:action==="BET"?direction:"Skip",bet_allowed:action==="BET",
+      reason,card_count_source:normalized.source,
       observed_card_evidence:observed,card_count_gate:gate,
+      research_signal:researchSignal,display_direction:direction,
+      dynamic_gate:dynamicGate,base_ev_gate:this.threshold,
+      cushion_gate:this.lossGate,gate_phase:this.phase,
+      win_streak:this.winStreak,last_settlement:this.lastSettlement,
+      prequential:{...this.settlements},
+      signal_rate:this.settlements.turns?
+        this.settlements.signals/this.settlements.turns:null,
+      hit_rate:this.settlements.signals?
+        this.settlements.correct/this.settlements.signals:null,
       context:features.vector,shoe_context:features.shoe,road_context:features.road,
       feature_weights:{physics:5,road:.1},
       road_has_direction_authority:false,model_road_debug:quantPrediction,
       physical_ev:normalized,ev_banker:normalized.ev_banker,ev_player:normalized.ev_player,
-      ev_gap_deviation:normalized.ev_gap_deviation,ev_threshold:this.threshold,
-      baseline_ev:{...BASE_EV},hypothetical_candidate:gate.candidate,
+      ev_gap_deviation:normalized.ev_gap_deviation,ev_threshold:dynamicGate,
+      baseline_ev:{...BASE_EV},hypothetical_candidate:direction,
       proxy_only:!observed,validated_edge:false,
       notice:observed?
-        "已提供逐局實際牌值；MC 的機率仍有抽樣誤差，非保證獲利。":
-        "B/P/T 無法得知實際殘牌；本頁僅顯示假設條件模擬 EV，強制 Skip，不會偽稱真實算牌優勢。"};
+        "已輸入完整實際點數；仍需確認 MC 抽樣誤差與真實正 EV，連勝不保證下局贏。":
+        "高頻莊/閒僅為虛擬殘牌的研究方向，不是已驗證的正 EV 或投注指令。"};
     this.lastReport=report;return report;
   }
 }
 return{PhysicsForecastFirstEngine,observedCounts,observedHand,
   deal,simulate,summarizeHypotheses,decisionFromEV,weightedContext,
-  BASE,BASE_EV,INITIAL,DECKS,VERSION};
+  BASE,BASE_EV,INITIAL,DECKS,VERSION,BASE_EV_GATE,OVERDRIVE_GATE,ONE_HAND_CUSHION};
 });
