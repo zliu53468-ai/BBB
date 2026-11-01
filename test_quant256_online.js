@@ -150,7 +150,7 @@ vm.runInNewContext(fs.readFileSync("./quant256_online_panel.js","utf8"),
   {window:win,document:win.document,URLSearchParams,console});
 const ui=win.__BBB_QUANT256_ONLINE_PANEL__;
 assert.equal(ui.configuration.quantOptions.lambda,.82);
-assert.equal(ui.configuration.threshold,.008);
+assert.equal(ui.configuration.threshold,.010);
 assert.equal(ui.configuration.lossGate,.035);
 assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
 click("btnB");click("btnP");click("btnT");
@@ -173,7 +173,7 @@ assert.equal(ui.run().history_length,3);
 click("btnEnd");assert.equal(ui.model.trainedRounds,0);
 assert.equal(ui.run().action,"SKIP");
 assert(["B","P"].includes(ui.run().research_signal.direction));
-assert([0,.008,.035].includes(ui.run().dynamic_gate));
+assert([0,.010,.035].includes(ui.run().dynamic_gate));
 // 盲估每局根據合法補牌結果抽樣，不可憑和局任意兩倍扣除特定牌。
 const pair=new BlindPhysicsEstimator({particles:12});
 const original=pair.particles.map(c=>c.slice());
@@ -198,4 +198,4 @@ assert(info.estimated_draws===0||info.estimated_draws===4);
 assert.throws(()=>pairLength.observe("T",{observedDraws:7}),/invalid_observed_draw_count/);
 assert.equal(ui.run().pairwise_depletion.observed_cards,false);
 assert.equal(ui.run().fusion.modifies_real_ev,false);
-console.log("PASS V3 balanced UI: 0.008/0/0.035, no 研究 suffix, genuine Skip, old storage, pairwise sampling and Frozen bypass");
+console.log("PASS V3 balanced UI: 0.010/0/0.035, no 研究 suffix, genuine Skip, old storage, pairwise sampling and Frozen bypass");

@@ -18,7 +18,7 @@
 "use strict";
 if(!quant||typeof quant.OnlineLinUCB256!=="function")throw Error("missing_quant256_online_runtime");
 const VERSION="BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION",DECKS=8;
-const BASE_EV_GATE=.008,OVERDRIVE_GATE=0,ONE_HAND_CUSHION=.035;
+const BASE_EV_GATE=.010,OVERDRIVE_GATE=0,ONE_HAND_CUSHION=.035;
 const INITIAL=Object.freeze([128,32,32,32,32,32,32,32,32,32]);
 const BASE=Object.freeze({B:.458597,P:.446247,T:.095156});
 const BASE_EV=Object.freeze({B:.95*BASE.B-BASE.P,P:BASE.P-BASE.B});
