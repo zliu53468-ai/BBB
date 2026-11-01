@@ -17,7 +17,7 @@ assert(source.includes("physics_weight:5"));
 assert(source.includes("road_weight:.1"));
 assert.equal(new BlindPhysicsEstimator().size,96);
 assert.equal(new OnlineLinUCB256().particleCount,96);
-assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,64);
+assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,96);
 assert(online.includes("this.lastESS<this.size*.5"),"ESS trigger must be enabled");
 
 // A fixed seed and the same result history must give identical posterior,
@@ -29,7 +29,7 @@ const get=()=>{
   for(let i=0;i<seq.length;i++){
     const report=engine.syncHistory(seq.slice(0,i+1));
     assert.equal(engine.quant.physics.size,96);
-    assert.equal(report.physical_ev.samples,96*64);
+    assert.equal(report.physical_ev.samples,96*96);
     assert.equal(report.feature_weights.physics,5);
     assert.equal(report.feature_weights.road,.1);
     assert(["SKIP","SIGNAL"].includes(report.research_signal.action));

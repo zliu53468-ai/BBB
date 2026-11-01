@@ -82,7 +82,7 @@ class BlindPhysicsEstimator{
     if(!valid(outcome))throw Error("invalid_outcome");
     // Conditional proposal + likelihood correction: keeping only a matching hand
     // without P(outcome | particle) weights would bias the posterior ensemble.
-    const attempts=128,next=new Array(this.size),updated=new Array(this.size);
+    const attempts=256,next=new Array(this.size),updated=new Array(this.size);
     let accepted=0,sum=0;
     for(let i=0;i<this.size;i++){
       const original=this.particles[i];let chosen=null,matches=0;
