@@ -74,7 +74,9 @@ const c=context256(h,blind);
 assert.equal(c.vector.length,256);
 assert(c.vector.every(v=>Number.isFinite(v)&&v>=-1&&v<=1));
 assert(c.vector.slice(12,128).every(v=>v===0));
-assert(c.vector.slice(128+24).every(v=>v===0));
+assert(c.vector.slice(128+30).every(v=>v===0));
+assert(c.features.interaction_indices.length===6);
+assert(c.vector.slice(128+24,128+30).every(v=>Number.isFinite(v)&&v>=-1&&v<=1));
 assert.equal(c.features.maximum_window,16);
 near(c.features.turn_rate_delta,windowStats(h,2).turn-windowStats(h,5).turn);
 near(c.features.regularity_delta,windowStats(h,2).regularity-windowStats(h,5).regularity);
@@ -119,10 +121,12 @@ assert(dense.predict().signal_rate>=.5);
 // DOM 操作測試：原本 B/P/T 儲存先執行，然後 V3 接管顯示；Start 防止 Frozen click。
 const listeners={},dom={};
 const ids=["btnStart","btnB","btnP","btnT","btnBack","btnEnd","directionText",
-  "directionCode","directionOrb","confidence","regime","strength","modePill","message"];
+  "directionCode","directionOrb","confidence","regime","strength","modePill","message",
+  "bankrollSelect","stakePercent","stakePercentValue","bankrollCurrent",
+  "stakeConfidenceWeight","stakeRecommendation","stakeLocalStatus","stakeStatus"];
 for(const id of ids){
   listeners[id]=[];dom[id]={textContent:"",className:"",
-    addEventListener(type,fn,capture){listeners[id].push({fn,capture:!!capture});}};
+    addEventListener(type,fn,capture){listeners[id].push({type,fn,capture:!!capture});}};
 }
 const KEY="bgs256d_frozen_6x15_forward_v18",
  LEGACY="bgs256d_128plus128_frozen_direct_tech_panel_v1";
@@ -145,6 +149,7 @@ function click(id){
 }
 const win={document:{getElementById:id=>dom[id]||null},localStorage:storage,
   location:{search:""},BBBQuant256Online:require("./quant256_online_runtime"),
+  BBBLocalQuant256:require("./quant256_local_calibration"),
   BBBPhysicsForecastFirst:require("./physics_forecast_first_runtime")};
 vm.runInNewContext(fs.readFileSync("./quant256_online_panel.js","utf8"),
   {window:win,document:win.document,URLSearchParams,console});
@@ -152,12 +157,12 @@ const ui=win.__BBB_QUANT256_ONLINE_PANEL__;
 assert.equal(ui.configuration.quantOptions.lambda,.82);
 assert.equal(ui.configuration.threshold,.008);
 assert.equal(ui.configuration.lossGate,.035);
-assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
+assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V4_LOCAL12_DUAL_GATE");
 click("btnB");click("btnP");click("btnT");
 assert.equal(ui.model.history.join(""),"BPT");
 click("btnStart");
 assert.equal(frozenClicks,0);
-assert(dom.modePill.textContent.includes("V3 BALANCED"));
+assert(dom.modePill.textContent.includes("ONLINE 12"));
 assert(["莊","閒","觀望"].includes(dom.directionText.textContent));
 assert(!dom.directionText.textContent.includes("研究"),
   "最終方向須移除後面的（研究）兩個字");
@@ -198,4 +203,20 @@ assert(info.estimated_draws===0||info.estimated_draws===4);
 assert.throws(()=>pairLength.observe("T",{observedDraws:7}),/invalid_observed_draw_count/);
 assert.equal(ui.run().pairwise_depletion.observed_cards,false);
 assert.equal(ui.run().fusion.modifies_real_ev,false);
-console.log("PASS V3 balanced UI: 0.008/0/0.035, no 研究 suffix, genuine Skip, old storage, pairwise sampling and Frozen bypass");
+assert.equal(ui.capital,5000);
+assert.equal(ui.stake_percent,20);
+assert(dom.bankrollCurrent.textContent.includes("5,000"));
+assert(dom.stakeRecommendation.textContent.startsWith("NT$"));
+dom.bankrollSelect.value="30000";
+assert.equal(ui.capital,5000,"changing DOM value alone must not update state");
+// 分離觸發 change/input 來檢查本金或滑桿即時連動。
+for(const h of listeners.bankrollSelect)if(h.type==="change")h.fn();
+assert.equal(ui.capital,30000);
+dom.stakePercent.value="35";
+for(const h of listeners.stakePercent)if(h.type==="input")h.fn();
+assert.equal(ui.stake_percent,35);
+assert(dom.bankrollCurrent.textContent.includes("30,000"));
+assert.equal(dom.stakePercentValue.textContent,"35%");
+assert(dom.stakeLocalStatus.textContent.includes("近"));
+assert.equal(ui.run().online_calibration.window_size,12);
+console.log("PASS local12 DOM + stake exposure controls: presets, live sliders, model confidence, old storage, no 研究 suffix");

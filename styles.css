@@ -206,3 +206,28 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
 #predictionApp #localCalibrationStatus{font-size:11px;line-height:1.45;margin:6px 0;color:var(--muted)}
 
 #predictionApp .experiment-note{font-size:11px;line-height:1.45;margin:6px 0;color:#e1c7ff}#predictionApp .experiment-note[hidden]{display:none}
+
+
+/* BBB 近12局校準與本金風險試算：響應式手機介面。 */
+.bankroll-card{border-color:rgba(104,201,255,.28)}
+.stake-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:10px 15px;align-items:center}
+.stake-grid label{font-size:12px;color:var(--muted);font-weight:600}
+.stake-grid label strong{float:right;color:var(--violet-bright)}
+.stake-grid select{width:100%;border-radius:10px;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--text);padding:10px;font:inherit}
+.stake-grid input[type="range"]{width:100%;accent-color:#b48aff;min-height:32px;cursor:pointer}
+.stake-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.stake-overview div{padding:10px;border:1px solid rgba(218,190,255,.11);background:rgba(255,255,255,.03);
+  border-radius:11px;min-width:0}
+.stake-overview span{display:block;color:var(--muted);font-size:11px;margin-bottom:5px}
+.stake-overview strong{display:block;font-size:17px;overflow-wrap:anywhere}
+.stake-status{margin:10px 0 6px;color:#bbf4db;font-size:12px;line-height:1.5}
+.stake-disclosure{margin:6px 0 0;color:#baaed2;font-size:11px;line-height:1.55}
+@media(max-width:620px){
+ .stake-grid{grid-template-columns:1fr;gap:5px}
+ .stake-grid select{margin-bottom:5px}
+ .stake-overview{gap:6px}
+ .stake-overview strong{font-size:13px}
+ .stake-overview span{font-size:10px}
+ .stake-overview div{padding:7px}
+}

@@ -7,7 +7,7 @@ const {
   shoePhaseScaling,roadPosterior,microFusion,conflictGuard
 }=require("./physics_forecast_first_runtime.js");
 const near=(x,y,eps=1e-8)=>assert(Math.abs(x-y)<=eps,String(x)+" != "+String(y));
-assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
+assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V4_LOCAL12_DUAL_GATE");
 assert.equal(INITIAL.length,10);
 assert.equal(INITIAL[0],128);
 assert(INITIAL.slice(1).every(x=>x===32));
@@ -22,7 +22,7 @@ const initial=engine.predict();
 assert.equal(initial.action,"SKIP");
 assert.equal(initial.direction,"Skip");
 assert.equal(initial.observed_card_evidence,false);
-assert.equal(initial.reason,"dynamic_signal_filter");
+assert.equal(initial.reason,"dual_confidence_gate");
 assert.equal(initial.dynamic_gate,.008);
 assert.equal(initial.research_signal.direction,"B");
 assert.equal(initial.research_signal.action,"SKIP");
@@ -40,7 +40,7 @@ assert.equal(initial.validated_edge,false);
 const seq="BPPBTBBPPTBBPPBTBPBPPBP".split("");
 const bpt=engine.syncHistory(seq);
 assert.equal(bpt.action,"SKIP","unobserved ranks must never be labelled BET");
-assert(["unobserved_card_composition","dynamic_signal_filter"].includes(bpt.reason));
+assert(["unobserved_card_composition","dynamic_signal_filter","dual_confidence_gate","short_conflict_guard"].includes(bpt.reason));
 assert(["B","P"].includes(bpt.research_signal.direction));
 assert(["SIGNAL","SKIP"].includes(bpt.research_signal.action));
 assert([0,.008,.035].includes(bpt.dynamic_gate));
@@ -119,7 +119,7 @@ assert(actual.action==="SKIP"||actual.action==="BET");
 assert.equal(actual.action==="BET",actual.card_count_gate.bet_allowed);
 real.setObservedRounds(null);
 assert.equal(real.predict().action,"SKIP","remove observed cards immediately disables BET");
-assert(["unobserved_card_composition","dynamic_signal_filter"].includes(real.predict().reason));
+assert(["unobserved_card_composition","dynamic_signal_filter","dual_confidence_gate","short_conflict_guard"].includes(real.predict().reason));
 assert.throws(()=>real.setObservedRounds([{outcome:"B"}]),/invalid_observed_rows/);
 const strong={
   ev_banker:.13,ev_player:-.13,ev_gap_deviation:.18,se_gap:.005,
@@ -247,4 +247,26 @@ assert.equal(initial.pairwise_depletion.estimated_key_consumption,0);
 assert.equal(initial.pairwise_depletion.observed_cards,false);
 assert.equal(bpt.phantom_95pct_claim,false);
 assert.equal(bpt.research_signal.source,"simulated_bpt_only");
-console.log("PASS V3 balanced: conditional depletion, nonlinear signal, weak Bayesian road fusion, 0.008/0/0.035 state, legacy replay");
+// 即時 256D 局部回放：每次歷史重播都產生同一個 12 局 A/b 和雙重門檻。
+assert.equal(bpt.online_calibration.window_size,12);
+assert(bpt.online_calibration.recorded_rounds<=12);
+assert.equal(bpt.online_calibration.active_dimensions,42);
+assert(bpt.online_calibration.blend_weight>=0&&bpt.online_calibration.blend_weight<=.35);
+assert(bpt.online_calibration.sample_count<=12);
+assert.equal(bpt.online_calibration.calibrated_probability,false);
+assert(Number.isFinite(bpt.dual_confidence_gate.ucb_threshold));
+assert(Number.isFinite(bpt.dual_confidence_gate.uncertainty));
+assert(bpt.confidence_index>=.5&&bpt.confidence_index<=1);
+assert(["B","P"].includes(bpt.research_signal.direction));
+assert.equal(bpt.research_signal.local_calibration.dual_passed,
+  bpt.dual_confidence_gate.passed);
+assert.equal(snapshotReset.predict().online_calibration.gap,
+  bpt.online_calibration.gap,"local matrix replay must be deterministic");
+const lossGuard=new PhysicsForecastFirstEngine();
+lossGuard._settle({research_signal:{available:true,direction:"B"}},"P");
+assert.equal(lossGuard.predict().dual_confidence_gate.loss_multiplier,1.5);
+lossGuard._settle({research_signal:{available:true,direction:"B"}},"P");
+assert.equal(lossGuard.predict().dual_confidence_gate.loss_multiplier,2);
+lossGuard._settle({research_signal:{available:true,direction:"B"}},"B");
+assert.equal(lossGuard.predict().dual_confidence_gate.loss_multiplier,1);
+console.log("PASS V4 local12: rolling A/b, two-arm blended UCB and uncertainty gate, 1.5x/2x loss filter, BPT replay");

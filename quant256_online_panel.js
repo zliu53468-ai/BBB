@@ -9,14 +9,78 @@ if(!root||!root.document||!root.BBBPhysicsForecastFirst||
   typeof URLSearchParams!=="function"||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
 const {PhysicsForecastFirstEngine,VERSION}=root.BBBPhysicsForecastFirst;
+const {calculateStakeExposure}=root.BBBLocalQuant256||{};
 const CONFIG={threshold:.008,lossGate:.035,simulationsPerParticle:64,
   observedSamples:12000,quantOptions:{lambda:.82,alpha:.15}};
 const model=new PhysicsForecastFirstEngine(CONFIG);
+const STAKE_KEY="bbb_stake_exposure_panel_v1";
+const PRESETS=[5000,10000,20000,30000,50000];
+let capital=5000,stakePercent=20,currentReport=null;
+function restoreStake(){
+  try{
+    const raw=JSON.parse(root.localStorage?.getItem(STAKE_KEY)||"null");
+    if(raw&&PRESETS.includes(raw.capital))capital=raw.capital;
+    if(raw&&Number.isFinite(raw.stakePercent)&&raw.stakePercent>=10&&raw.stakePercent<=50)
+      stakePercent=raw.stakePercent;
+  }catch(_){}
+}
+function saveStake(){
+  try{root.localStorage?.setItem(STAKE_KEY,JSON.stringify({capital,stakePercent}));}
+  catch(_){}
+}
+restoreStake();
 const KEY="bgs256d_frozen_6x15_forward_v18";
 const FALLBACK=["bgs256d_frozen_6x15_sensitive_v17",
   "bgs256d_frozen_6x15_bigroad_v16","bgs256d_frozen_column_linucb_v15",
   "bgs256d_128plus128_frozen_direct_tech_panel_v1"];
 const el=id=>root.document.getElementById(id);
+const money=n=>"NT$"+Math.round(n).toLocaleString("en-US");
+function renderStake(report){
+  const signal=report?.research_signal?.available===true;
+  const weight=signal?report.confidence_index:.5;
+  const exposure=calculateStakeExposure?
+    calculateStakeExposure({bankroll:capital,percent:stakePercent,
+      confidenceWeight:weight,signal}):
+    {amount:0,confidenceWeight:.5,exposureRatio:0};
+  const select=el("bankrollSelect"),slider=el("stakePercent");
+  if(select)select.value=String(capital);
+  if(slider)slider.value=String(stakePercent);
+  const updates={
+    bankrollCurrent:money(capital),stakePercentValue:stakePercent+"%",
+    stakeConfidenceWeight:signal?(weight*100).toFixed(1)+"%":"—",
+    stakeRecommendation:money(exposure.amount),
+    stakeLocalStatus:report?
+      "近 "+report.online_calibration.recorded_rounds+" 局／有效 "+
+        report.online_calibration.sample_count+" 局":"尚未開始",
+    stakeStatus:!signal?"暫停出手，避開低信心或連敗區間：參考金額 NT$0":
+      "模型研究方向："+(report.research_signal.direction==="B"?"莊":"閒")+
+      "｜曝險試算 "+money(exposure.amount)+
+      "｜非已驗證正期望值，請勿當作保證回報"
+  };
+  for(const [id,value] of Object.entries(updates)){
+    const node=el(id);if(node)node.textContent=value;
+  }
+  return exposure;
+}
+function bindStakeControls(){
+  const select=el("bankrollSelect"),slider=el("stakePercent");
+  if(select)select.addEventListener("change",()=>{
+    const next=Number(select.value);
+    if(PRESETS.includes(next))capital=next;
+    saveStake();renderStake(currentReport);
+  });
+  if(slider){
+    const change=()=>{
+      const n=Number(slider.value);
+      if(Number.isFinite(n))stakePercent=Math.max(10,Math.min(50,Math.round(n)));
+      saveStake();renderStake(currentReport);
+    };
+    slider.addEventListener("input",change);
+    slider.addEventListener("change",change);
+  }
+}
+bindStakeControls();
+renderStake(null);
 function history(){
   try{
     for(const key of [KEY,...FALLBACK]){
@@ -32,6 +96,7 @@ function history(){
 function render(p){
   // 即使 B/P/T 無法確認真實算牌優勢，也顯示「研究方向」而非整頁 SKIP。
   // 注意：research signal 不等於 action=BET；必須通過實測牌值 EV Gate 才能 BET。
+  currentReport=p;
   const research=p.research_signal,dir=research.direction;
   const qualified=p.action==="BET";
   const signal=research.available;
@@ -45,18 +110,22 @@ function render(p){
   if(code)code.textContent=!signal?"SKIP / NO ACTION":
     (dir==="B"?"BANKER":"PLAYER")+
     (qualified?" / EV VERIFIED":" / SIMULATION ONLY");
-  if(conf)conf.textContent="模擬 EV 偏移 "+(p.ev_gap_deviation*100).toFixed(2)+"%（非勝率）";
+  if(conf)conf.textContent="UCB 差 "+p.dual_confidence_gate.ucb_gap.toFixed(3)+
+    "｜不確定度 "+p.dual_confidence_gate.uncertainty.toFixed(3)+"（非勝率）";
   const phase=p.gate_phase==="cushion"?"失誤後單局緩衝":
     p.gate_phase==="overdrive"?"連勝順風門檻 0":"基礎研究門檻";
   if(regime)regime.textContent=phase+
     (conflictSkip?"｜物理與路單衝突，僅本次短暫觀望":
       signal?"｜已通過研究訊號門檻":"｜研究差值未過門檻")+
-    (qualified?"｜實測 EV 通過":"｜未確認正 EV");
+    (qualified?"｜實測 EV 通過":"｜未確認正 EV")+
+    "｜近12局局部權重 "+(p.online_calibration.blend_weight*100).toFixed(1)+"%"+
+    (p.loss_streak?"｜前推連敗 "+p.loss_streak+"，信心門檻 "+
+       p.dual_confidence_gate.loss_multiplier.toFixed(1)+"×":"");
   if(strength)strength.textContent="門檻 "+(p.dynamic_gate*100).toFixed(2)+
     "%｜莊 EV "+(p.ev_banker*100).toFixed(2)+
     "%｜閒 EV "+(p.ev_player*100).toFixed(2)+"%";
   if(orb)orb.className="direction-orb "+(signal?(dir==="B"?"banker":"player"):"idle");
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V3 BALANCED";
+  if(pill)pill.textContent="PHYSICS · ONLINE 12 · DUAL GATE";
   const hit=p.hit_rate===null?"無有效樣本":(p.hit_rate*100).toFixed(1)+"%";
   const rate=p.signal_rate===null?"—":(p.signal_rate*100).toFixed(1)+"%";
   if(message)message.textContent="本局研究方向："+(dir==="B"?"莊":"閒")+
@@ -69,6 +138,9 @@ function render(p){
     "｜成對扣牌估計 "+p.pairwise_depletion.estimated_pairwise_key_copresence.toFixed(3)+
     "（非實際扣牌）"+
     "｜實測 EV 行動："+(qualified?"BET":"未達 BET 資格")+
+    "｜UCB差 "+p.dual_confidence_gate.ucb_gap.toFixed(3)+
+    "／門檻 "+p.dual_confidence_gate.ucb_threshold.toFixed(3)+
+    "｜信心比例門檻 "+p.dual_confidence_gate.ratio_threshold.toFixed(3)+
     "｜Gate "+(p.dynamic_gate*100).toFixed(2)+"%"+
     "｜連中 "+p.win_streak+" 局"+
     "｜上局結算 "+p.last_settlement+
@@ -76,11 +148,12 @@ function render(p){
     "｜模擬莊 EV "+(p.ev_banker*100).toFixed(2)+
     "%、閒 EV "+(p.ev_player*100).toFixed(2)+"%"+
     "｜B/P/T 不揭露實際牌值，模擬 EV 不是可驗證的套利優勢";
+  renderStake(p);
 }
 function run(){
   const seq=history(),message=el("message");
   if(!seq.length){
-    model.reset();
+    model.reset();currentReport=null;renderStake(null);
     if(message)message.textContent="請先輸入牌局，僅有 B/P/T 時會顯示模擬物理 EV（無真實算牌資格）";
     return null;
   }
@@ -99,10 +172,14 @@ for(const id of ["btnB","btnP","btnT","btnBack"]){
   const btn=el(id);
   if(btn)btn.addEventListener("click",()=>safeRun(),false);
 }
-const end=el("btnEnd");if(end)end.addEventListener("click",()=>model.reset(),false);
+const end=el("btnEnd");if(end)end.addEventListener("click",()=>{
+  model.reset();currentReport=null;renderStake(null);
+},false);
 root.__BBB_QUANT256_ONLINE_PANEL__={
   model,run,history,version:VERSION,configuration:{...CONFIG},
   setObservedRounds(rows){model.setObservedRounds(rows);return safeRun();},
+  get capital(){return capital;},get stake_percent(){return stakePercent;},
+  renderStake,get lastReport(){return currentReport;},
   wager_recommendation_validated:false,validated_edge:false
 };
 })(typeof window!=="undefined"?window:null);

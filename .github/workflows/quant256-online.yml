@@ -2,10 +2,10 @@ name: Quant256 Online Decay & Guard Checks
 on:
   push:
     branches: [main]
-    paths: ["quant256_online_*.js", "test_quant256_online.js", "physics_forecast_first_runtime.js", "test_physics_forecast_first.js", "auth-client.js", "index.html", ".github/workflows/quant256-online.yml"]
+    paths: ["quant256_online_*.js", "test_quant256_online.js", "quant256_local_calibration.js", "test_quant256_local_calibration.js", "styles.css", "physics_forecast_first_runtime.js", "test_physics_forecast_first.js", "auth-client.js", "index.html", ".github/workflows/quant256-online.yml"]
   pull_request:
     branches: [main]
-    paths: ["quant256_online_*.js", "test_quant256_online.js", "physics_forecast_first_runtime.js", "test_physics_forecast_first.js", "auth-client.js", "index.html", ".github/workflows/quant256-online.yml"]
+    paths: ["quant256_online_*.js", "test_quant256_online.js", "quant256_local_calibration.js", "test_quant256_local_calibration.js", "styles.css", "physics_forecast_first_runtime.js", "test_physics_forecast_first.js", "auth-client.js", "index.html", ".github/workflows/quant256-online.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,9 +19,9 @@ jobs:
         with:
           node-version: "20"
       - name: Syntax check
-        run: node --check quant256_online_runtime.js && node --check quant256_online_panel.js && node --check physics_forecast_first_runtime.js && node --check test_physics_forecast_first.js && node --check test_quant256_online.js && node --check auth-client.js
+        run: node --check quant256_online_runtime.js && node --check quant256_local_calibration.js && node --check test_quant256_local_calibration.js && node --check quant256_online_panel.js && node --check physics_forecast_first_runtime.js && node --check test_physics_forecast_first.js && node --check test_quant256_online.js && node --check auth-client.js
       - name: Online model and interface regression
-        run: node test_quant256_online.js && node test_physics_forecast_first.js
+        run: node test_quant256_online.js && node test_physics_forecast_first.js && node test_quant256_local_calibration.js
       - name: Live loader checks
         run: |
-          node -e 'const fs=require("fs");const a=fs.readFileSync("auth-client.js","utf8");for(const f of ["quant256_online_runtime.js","physics_forecast_first_runtime.js","quant256_online_panel.js"])if(!a.includes(f))throw Error("missing script "+f);const i=fs.readFileSync("index.html","utf8");if(!i.includes("20261101-v3-balanced-gate-008"))throw Error("stale page cache key");console.log("PASS browser loader references")'
+          node -e 'const fs=require("fs");const a=fs.readFileSync("auth-client.js","utf8");for(const f of ["quant256_online_runtime.js","quant256_local_calibration.js","physics_forecast_first_runtime.js","quant256_online_panel.js"])if(!a.includes(f))throw Error("missing script "+f);const i=fs.readFileSync("index.html","utf8");if(!i.includes("20261101-rolling12-capital-v1"))throw Error("stale page cache key");console.log("PASS browser loader references")'

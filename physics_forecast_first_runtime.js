@@ -11,13 +11,17 @@
   const quant=(root&&root.BBBQuant256Online)||
     (typeof module==="object"&&module.exports&&typeof require==="function"?
       require("./quant256_online_runtime.js"):null);
-  const api=factory(quant);
+  const local=(root&&root.BBBLocalQuant256)||
+    (typeof module==="object"&&module.exports&&typeof require==="function"?
+      require("./quant256_local_calibration.js"):null);
+  const api=factory(quant,local);
   if(typeof module==="object"&&module.exports)module.exports=api;
   if(root)root.BBBPhysicsForecastFirst=api;
-})(typeof window!=="undefined"?window:null,function(quant){
+})(typeof window!=="undefined"?window:null,function(quant,local){
 "use strict";
 if(!quant||typeof quant.OnlineLinUCB256!=="function")throw Error("missing_quant256_online_runtime");
-const VERSION="BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION",DECKS=8;
+if(!local||typeof local.WindowLocalLinUCB!=="function")throw Error("missing_quant256_local_calibration");
+const VERSION="BBB_PHYSICS_FORECAST_FIRST_V4_LOCAL12_DUAL_GATE",DECKS=8;
 const BASE_EV_GATE=.008,OVERDRIVE_GATE=0,ONE_HAND_CUSHION=.035;
 const INITIAL=Object.freeze([128,32,32,32,32,32,32,32,32,32]);
 const BASE=Object.freeze({B:.458597,P:.446247,T:.095156});
@@ -337,13 +341,14 @@ class PhysicsForecastFirstEngine{
     this.observedSamples=observedSamples;
     this.threshold=threshold;this.lossGate=lossGate;
     this.quant=new quant.OnlineLinUCB256(quantOptions);
+    this.local=new local.WindowLocalLinUCB({windowSize:12,alpha:.15,maxBlend:.35});
     this.reset();
   }
   get history(){return this.quant.history;}
   get trainedRounds(){return this.quant.trainedRounds;}
   reset(){
-    this.quant.reset();this.observedRows=null;this.lastReport=null;
-    this.phase="base";this.winStreak=0;this.lastSettlement="none";
+    this.quant.reset();this.local.reset();this.observedRows=null;this.lastReport=null;
+    this.phase="base";this.winStreak=0;this.lossStreak=0;this.lastSettlement="none";
     this.lastConflictSignature=null;
     this.settlements={signals:0,correct:0,wrong:0,ties:0,filtered:0,turns:0};
     return this;
@@ -383,10 +388,12 @@ class PhysicsForecastFirstEngine{
     this.settlements.signals++;
     if(signal.direction===outcome){
       this.settlements.correct++;
-      this.winStreak++;this.phase="overdrive";this.lastSettlement="win";
+      this.winStreak++;this.lossStreak=0;
+      this.phase="overdrive";this.lastSettlement="win";
     }else{
       this.settlements.wrong++;
-      this.winStreak=0;this.phase="cushion";this.lastSettlement="loss";
+      this.winStreak=0;this.lossStreak=Math.min(3,this.lossStreak+1);
+      this.phase="cushion";this.lastSettlement="loss";
     }
   }
   syncHistory(seq){
@@ -404,6 +411,8 @@ class PhysicsForecastFirstEngine{
     for(let i=this.history.length;i<seq.length;i++){
       const prior=this.predict();
       this._settle(prior,seq[i]);
+      // 本局結算之前的 256D x 才能進入近 12 局 A/b，防止偷看答案。
+      this.local.observe(prior.model_road_debug.context,seq[i]);
       this.quant.observe(seq[i]);
       this.lastReport=null;
     }
@@ -413,6 +422,8 @@ class PhysicsForecastFirstEngine{
     if(this.lastReport&&this.lastReport.history_length===this.history.length)
       return this.lastReport;
     const quantPrediction=this.quant.predict();
+    // 靜態/既有 256D LinUCB 基準 + 最近 12 局可滾動 A/b 的真實融合。
+    const localCalibration=this.local.predict(quantPrediction.context,quantPrediction);
     const observed=this.observedRows!==null&&this.history.length>0;
     const counts=observed?observedCounts(this.observedRows.slice(0,this.history.length),this.history):null;
     const physics=observed?simulate(counts,{
@@ -425,7 +436,21 @@ class PhysicsForecastFirstEngine{
     const dynamicGate=this._gate();
     const fusion=microFusion(normalized,this.history);
     const score=fusion.research_score;
-    const direction=fusion.physics_direction; // 路單不可反轉物理 EV 方向
+    // 只輸入 B/P/T：研究方向採 256D 靜態/局部融合。
+    // 若提供真實逐局牌值，正式 BET 候選仍由物理 EV 決定。
+    const direction=observed?fusion.physics_direction:localCalibration.direction;
+    const lossMultiplier=this.lossStreak>=2?2:this.lossStreak===1?1.5:1;
+    const ucbGap=Math.abs(localCalibration.gap);
+    const uncertainty=localCalibration.combined_uncertainty;
+    // 雙門檻：UCB 差距 + 差距相對不確定度，並依前推式連敗級數收緊。
+    // 這並非已校準的勝率，也不保證能阻止第三次連敗。
+    const ucbThreshold=(.008+.004*Math.min(1,uncertainty))*lossMultiplier;
+    const ratioThreshold=.018*lossMultiplier;
+    const dualPassed=ucbGap>=ucbThreshold&&
+      localCalibration.uncertainty_ratio>=ratioThreshold;
+    const excess=clamp((ucbGap-ucbThreshold)/
+      (ucbGap+uncertainty+1e-9),0,1);
+    const confidence_index=clamp(.5+.5*excess,.5,1);
     // 若 Beta(4,4) 後驗與物理主方向顯著衝突，對該 regime 首次遇到時
     // 啟用「一次性衝突觀望」，後續相同 regime 不重複卡住。
     const conflict=conflictGuard(fusion,dynamicGate,this.lastConflictSignature);
@@ -434,7 +459,7 @@ class PhysicsForecastFirstEngine{
     const effectiveGate=conflict.effective_gate;
     const usable=!normalized.simulation_exhausted&&finite(score)&&
       finite(normalized.ev_banker)&&finite(normalized.ev_player);
-    const available=usable&&!conflictSkip&&score>=effectiveGate;
+    const available=usable&&!conflictSkip&&score>=effectiveGate&&dualPassed;
     const researchSignal={
       action:available?"SIGNAL":"SKIP",
       direction,available,score,dynamic_gate:dynamicGate,
@@ -443,16 +468,29 @@ class PhysicsForecastFirstEngine{
       last_settlement:this.lastSettlement,
       source:observed?"observed_cards":"simulated_bpt_only",
       evidence_qualified:observed,
+      local_calibration:{samples:localCalibration.sample_count,
+        window_size:localCalibration.window_size,
+        blend_weight:localCalibration.blend_weight,
+        ucb_banker:localCalibration.blended_ucb.B,
+        ucb_player:localCalibration.blended_ucb.P,
+        ucb_gap:ucbGap,uncertainty,
+        uncertainty_ratio:localCalibration.uncertainty_ratio,
+        confidence_index,ucb_threshold:ucbThreshold,
+        ratio_threshold:ratioThreshold,loss_multiplier:lossMultiplier,
+        loss_streak:this.lossStreak,dual_passed:dualPassed,
+        probability_calibrated:false},
       conflict_detected:fusion.conflicted,
       conflict_guard_applied:conflictSkip,
       conflict_signature:conflictSignature,
       reason:!usable?"simulation_unavailable":conflictSkip?"short_conflict_guard":
+        !dualPassed?"dual_confidence_gate":
         !available?"dynamic_signal_filter":"model_direction_not_validated"
     };
     // 正式 BET 仍要求觀測到每局真實點數、正 EV 和抽樣誤差下界。
     // 動態門檻會影響真實 EV 閘門，但任何連勝都無法捏造實際牌值。
     const gate=decisionFromEV(normalized,{observed,threshold:dynamicGate});
-    const action=available?gate.action:"SKIP";
+    // 實際牌值足夠時，不能拿 256D 研究方向替代物理正 EV 閘門。
+    const action=available&&(!observed||gate.candidate===direction)?gate.action:"SKIP";
     const reason=!available?researchSignal.reason:gate.reason;
     const features=weightedContext(quantPrediction,normalized);
     const report={version:VERSION,history_length:this.history.length,
@@ -460,6 +498,11 @@ class PhysicsForecastFirstEngine{
       reason,card_count_source:normalized.source,
       observed_card_evidence:observed,card_count_gate:gate,
       research_signal:researchSignal,display_direction:direction,
+      online_calibration:localCalibration,loss_streak:this.lossStreak,
+      confidence_index,dual_confidence_gate:{
+        passed:dualPassed,ucb_gap:ucbGap,uncertainty,
+        ucb_threshold:ucbThreshold,uncertainty_ratio:localCalibration.uncertainty_ratio,
+        ratio_threshold:ratioThreshold,loss_multiplier:lossMultiplier},
       pairwise_depletion:quantPrediction.blind_physics.pairwise_depletion,
       fusion,shoe_phase: fusion.phase,
       scaled_research_score: fusion.research_score,
