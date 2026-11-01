@@ -210,18 +210,6 @@ function context256(history,physics){
   road[21]=clamp(s2.banker-s8.banker,-1,1);
   road[22]=clamp(s5.regularity-s8.regularity,-1,1);
   road[23]=clamp(s2.turn-s8.turn,-1,1);
-  // 129–256 維二階交互特徵：只描述已知牌路，不預知下一局。
-  // 近 2 局同側 vs 單跳，結合近 5 局轉向頻率、當前 Run 長度和熵差。
-  const same2=nonTie.length>=2&&nonTie.at(-1)===nonTie.at(-2)?1:0;
-  const alternating2=nonTie.length>=2&&nonTie.at(-1)!==nonTie.at(-2)?1:0;
-  const sideSign=last==="B"?1:last==="P"?-1:0;
-  const runRatio=clamp(s5.run/Math.max(1,s5.count),0,1);
-  road[24]=same2*sideSign*runRatio;
-  road[25]=alternating2*sideSign*clamp(s5.turn,0,1);
-  road[26]=(same2-alternating2)*(s2.turn-s5.turn);
-  road[27]=sideSign*(s2.regularity-s5.regularity);
-  road[28]=same2*sideSign*(s2.banker-s5.banker);
-  road[29]=alternating2*sideSign*(s2.entropy-s5.entropy);
   const vector=shoe.concat(road);
   if(vector.length!==DIM||vector.some(x=>!finite(x)))throw Error("invalid_256D_context");
   return{vector,shoe,road,physics:sim,features:{
@@ -229,8 +217,6 @@ function context256(history,physics){
     turn2:s2.turn,turn5:s5.turn,turn_rate_delta:turn25,
     entropy2:s2.entropy,entropy5:s5.entropy,entropy_delta:entropy25,
     entropy_volatility:Math.abs(entropy25),
-    same_side_2:same2,alternating_2:alternating2,
-    interaction_indices:[128+24,128+25,128+26,128+27,128+28,128+29],
     non_tie_sample:nonTie.length,maximum_window:16
   }};
 }

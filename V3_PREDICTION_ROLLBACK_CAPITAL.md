@@ -1,0 +1,23 @@
+# BBB 預測邏輯完整回退 V3 Micro-Fusion（2026-11-01）
+
+## 版本與範圍
+
+本次直接還原 commit b7dd635e4fc9ef9e80b5fec5d474f5e8b27307cb 所使用的 V3 Micro-Fusion 預測核心：quant256_online_runtime.js 與 physics_forecast_first_runtime.js。兩份核心檔案內容逐位元與上述 V3 版本完全相同。
+
+移除後續 V4 的近12局局部 A/b 預測融合、42維 rolling 矩陣、連敗1次1.5倍／2次2倍的額外雙信心門檻，以及6個額外二階交互。正式載入不再包含 quant256_local_calibration.js。
+
+V3 舊設定保持：基礎研究方向門檻 0.008、命中後0、錯局單次緩衝0.035，原V3物理粒子、靴尾研究倍率、弱Beta路單融合與一次性衝突觀望皆不更動。正式BET仍不會把B/P/T模擬殘牌冒充可驗證的真實正EV。
+
+## 介面／本金控制保留
+
+正式頁面繼續顯示「莊／閒／觀望」，不恢復大字「（研究）」後綴。前一版本加上的本金選擇、10%至50%比例滑桿與NT$0觀望顯示繼續保留，但從預測模型抽離為獨立的 quant256_bankroll_ui.js，僅依 V3 已經算出的研究訊號展示曝險試算，不會參與方向、EV與門檻決策。
+
+本金選項：5,000／10,000／20,000／30,000／50,000；比例預設20%，仍沿用本機儲存鍵 bbb_stake_exposure_panel_v1。V3只輸入B/P/T時，算出的EV屬模擬數字，不是可驗證的真實算牌優勢；這種資金試算不是下注建議。單局10%至50%本金曝險風險極高。
+
+## 測試與載入
+
+auth-client.js 保留授權後載入 V3 主量化、物理融合、V3面板，最後載入隔離本金UI。
+
+test_quant256_online.js、test_physics_forecast_first.js 還原對應 V3 原版測試；新增 test_v3_bankroll_ui.js，驗證本金滑桿與觀望金額0、沒有載入V4本地校準、模型輸出不受本金操作影響。GitHub Actions中的 Quant256 Online Decay & Guard Checks執行所有三項測試。
+
+此回退只回到已知V3運算設定，不代表V3預測可以達到特定勝率。要比較準確度須使用相同的逐靴留出資料，觀察出手率、命中率與最大連敗。
