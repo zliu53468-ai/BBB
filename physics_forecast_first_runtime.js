@@ -140,10 +140,23 @@ function summarizeHypotheses(physics,_history,{samplesPerParticle=64}={}){
   if(!physics||!Array.isArray(physics.particles))throw Error("invalid_physics_particles");
   if(!Number.isInteger(samplesPerParticle)||samplesPerParticle<8||samplesPerParticle>1024)
     throw Error("invalid_shadow_sample_count");
-  const validParticles=physics.particles.filter(c=>Array.isArray(c)&&sum(c)>=6);
-  const remaining=physics.particles.map(c=>sum(c));
-  const estimates=[];
+  // Weights are the posterior mass of *hypothesized* shoes, not observed
+  // ranks. Old callers without weights still get the legacy equal mixture.
+  const validParticles=[],rawWeights=[];
+  const provided=Array.isArray(physics.weights)&&
+    physics.weights.length===physics.particles.length?physics.weights:null;
+  for(let i=0;i<physics.particles.length;i++){
+    const counts=physics.particles[i];
+    if(!Array.isArray(counts)||sum(counts)<6)continue;
+    validParticles.push(counts);
+    rawWeights.push(provided?Math.max(0,physics.weights[i]):1);
+  }
+  const mass=sum(rawWeights),n=validParticles.length*samplesPerParticle;
+  if(!n||mass<=0||physics.posteriorUnavailable)
+    return{...baselineResult(),particle_support:0,simulation_exhausted:true};
+  const weights=rawWeights.map(w=>w/mass);
   const stableSeed=hashComposition(validParticles);
+  const estimates=[];
   for(let i=0;i<validParticles.length;i++){
     const counts=validParticles[i],rng=seeded(stableSeed^Math.imul(i+1,2654435761));
     const tally={B:0,P:0,T:0};let draws=0;
@@ -151,22 +164,35 @@ function summarizeHypotheses(physics,_history,{samplesPerParticle=64}={}){
       const result=deal(counts,rng);
       tally[result.outcome]++;draws+=result.cards.length;
     }
-    estimates.push({...tally,draws});
+    const b=tally.B/samplesPerParticle,p=tally.P/samplesPerParticle;
+    const gap=1.95*b-2*p;
+    estimates.push({...tally,draws,gap,
+      gap_variance:Math.max(0,1.95**2*b+4*p-gap*gap)});
   }
-  const n=estimates.length*samplesPerParticle;
-  if(!n)return{...baselineResult(),particle_support:0,simulation_exhausted:true};
-  const p={
-    B:sum(estimates.map(e=>e.B))/n,
-    P:sum(estimates.map(e=>e.P))/n,
-    T:sum(estimates.map(e=>e.T))/n
+  const prob={
+    B:estimates.reduce((v,e,i)=>v+weights[i]*e.B/samplesPerParticle,0),
+    P:estimates.reduce((v,e,i)=>v+weights[i]*e.P/samplesPerParticle,0),
+    T:estimates.reduce((v,e,i)=>v+weights[i]*e.T/samplesPerParticle,0)
   };
-  const evB=.95*p.B-p.P,evP=p.P-p.B,gap=evB-evP;
-  const seGap=Math.sqrt(Math.max(0,(1.95**2*p.B+4*p.P-gap**2)/n));
-  return{remaining:sum(remaining)/Math.max(remaining.length,1),
+  const evB=.95*prob.B-prob.P,evP=prob.P-prob.B,gap=evB-evP;
+  // Two distinct uncertainties: within-shoe MC draw noise and dispersion of
+  // plausible *latent shoes*. Neither is proof of a predictive edge.
+  const mcVariance=estimates.reduce((v,e,i)=>
+    v+weights[i]**2*e.gap_variance/samplesPerParticle,0);
+  const posteriorVariance=estimates.reduce((v,e,i)=>
+    v+weights[i]*(e.gap-gap)**2,0);
+  return{remaining:validParticles.reduce((v,c,i)=>v+weights[i]*sum(c),0),
     samples:n,particle_support:validParticles.length,
-    simulated_probability:p,ev_banker:evB,ev_player:evP,
+    simulated_probability:prob,ev_banker:evB,ev_player:evP,
     ev_gap:gap,ev_gap_deviation:gap-BASE_GAP,
-    se_gap:seGap,draws_mean:sum(estimates.map(e=>e.draws))/n,
+    se_gap:Math.sqrt(mcVariance+posteriorVariance),
+    mc_se_gap:Math.sqrt(mcVariance),
+    posterior_sd_gap:Math.sqrt(posteriorVariance),
+    particle_ess:1/weights.reduce((v,w)=>v+w*w,0),
+    posterior_update_ess:physics.lastESS??null,
+    particle_resampled:physics.lastResampled===true,
+    draws_mean:estimates.reduce((v,e,i)=>
+      v+weights[i]*e.draws/samplesPerParticle,0),
     source:"hypothetical_particle_posterior",simulation_exhausted:false};
 }
 function baselineResult(){
