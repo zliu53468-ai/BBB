@@ -31,10 +31,15 @@ function seeded(seed){
   let x=seed>>>0||0x9E3779B9;
   return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};
 }
-function hashHistory(seq){
-  let x=2166136261;
-  for(const c of seq){x^=c.charCodeAt(0);x=Math.imul(x,16777619);}
-  return x>>>0;
+/** Monte Carlo seed 僅由當前牌組的點數計數決定；嚴禁用過往 B/P/T 字元。 */
+function hashComposition(shoes){
+  const rows=Array.isArray(shoes[0])?shoes:[shoes];
+  let h=2166136261;
+  for(const row of rows){
+    for(const count of row){h^=count;h=Math.imul(h,16777619);}
+    h^=0x9e3779b9;h=Math.imul(h,16777619);
+  }
+  return h>>>0;
 }
 function validateCounts(counts,{observed=false}={}){
   if(!Array.isArray(counts)||counts.length!==10||counts.some((v,i)=>
@@ -128,14 +133,15 @@ function simulate(counts,{samples=2048,seed=0x13877}={}){
     se_gap:seGap,draws_mean:expectedCards/samples,
     payout:{banker_win:.95,player_win:1,tie_push:true}};
 }
-function summarizeHypotheses(physics,history,{samplesPerParticle=64}={}){
+function summarizeHypotheses(physics,_ignoredHistory,{samplesPerParticle=64}={}){
   if(!physics||!Array.isArray(physics.particles))throw Error("invalid_physics_particles");
   if(!Number.isInteger(samplesPerParticle)||samplesPerParticle<8||samplesPerParticle>1024)
     throw Error("invalid_shadow_sample_count");
   const validParticles=physics.particles.filter(c=>Array.isArray(c)&&sum(c)>=6);
   const remaining=physics.particles.map(c=>sum(c));
   const estimates=[];
-  const stableSeed=hashHistory(history);
+  // 第二參數只為兼容既有 API，physical EV 不讀取任何歷史方向標籤。
+  const stableSeed=hashComposition(validParticles);
   for(let i=0;i<validParticles.length;i++){
     const counts=validParticles[i],rng=seeded(stableSeed^Math.imul(i+1,2654435761));
     const tally={B:0,P:0,T:0};let draws=0;
@@ -416,8 +422,8 @@ class PhysicsForecastFirstEngine{
     const observed=this.observedRows!==null&&this.history.length>0;
     const counts=observed?observedCounts(this.observedRows.slice(0,this.history.length),this.history):null;
     const physics=observed?simulate(counts,{
-      samples:this.observedSamples,seed:hashHistory(this.history)^0xb15f13}):
-      (this.history.length?summarizeHypotheses(this.quant.physics,this.history,{
+      samples:this.observedSamples,seed:hashComposition(counts)^0xb15f13}):
+      (this.history.length?summarizeHypotheses(this.quant.physics,null,{
         samplesPerParticle:this.simulationsPerParticle}):baselineResult());
     const normalized=observed?
       {...physics,simulated_probability:physics.win_probabilities,source:"observed_card_count"}:

@@ -180,22 +180,37 @@ const original=pair.particles.map(c=>c.slice());
 pair.observe("T");
 const pairStats=pair.snapshot().pairwise_depletion;
 assert.equal(pairStats.observed_cards,false);
-assert.equal(pairStats.source,"conditional_joint_sampling");
+assert.equal(pairStats.source,"unconditional_shoe_sampling");
 assert(pairStats.estimated_draws>=4&&pairStats.estimated_draws<=6);
 assert(pairStats.estimated_pairwise_key_copresence>=0);
 assert(pairStats.estimated_pairwise_key_copresence<=1);
-assert.equal(pairStats.tie_or_long_hands,pairStats.matched_particles);
+assert(pairStats.tie_or_long_hands<=pairStats.matched_particles);
 for(let i=0;i<pair.particles.length;i++){
   const removed=original[i].reduce((s,x,j)=>s+x-pair.particles[i][j],0);
-  assert(removed===0||(removed>=4&&removed<=6),"conditional draw must remove exactly 4-6 cards");
+  assert(removed===0||(removed>=4&&removed<=6),"unconditional legal hand must remove exactly 4-6 cards");
   assert(pair.particles[i].every(x=>Number.isInteger(x)&&x>=0));
 }
 const pairLength=new BlindPhysicsEstimator({particles:8});
 pairLength.observe("B",{observedDraws:4});
 const info=pairLength.snapshot().pairwise_depletion;
 assert.equal(info.observed_draw_count,true);
-assert(info.estimated_draws===0||info.estimated_draws===4);
+assert(info.estimated_draws>=4&&info.estimated_draws<=6,
+  "observedDraws must be metadata, never a depletion filter");
 assert.throws(()=>pairLength.observe("T",{observedDraws:7}),/invalid_observed_draw_count/);
 assert.equal(ui.run().pairwise_depletion.observed_cards,false);
 assert.equal(ui.run().fusion.modifies_real_ev,false);
-console.log("PASS V3 balanced UI: 0.010/0/0.035, no 研究 suffix, genuine Skip, old storage, pairwise sampling and Frozen bypass");
+ // 相同初始牌靴 + RNG，輸入任意 B/P/T 或補牌觀測，不得改變虛擬扣牌。
+ const seqB=new BlindPhysicsEstimator({particles:16,seed:1729});
+ const seqP=new BlindPhysicsEstimator({particles:16,seed:1729});
+ const seqT=new BlindPhysicsEstimator({particles:16,seed:1729});
+ const inputOptions=new BlindPhysicsEstimator({particles:16,seed:1729});
+ for(let i=0;i<24;i++){
+   seqB.observe("B");seqP.observe("P");seqT.observe("T");
+   inputOptions.observe(i%2?"P":"B",{observedDraws:i%2?6:4});
+   assert.deepEqual(seqB.particles,seqP.particles,"B/P must have identical virtual depletion");
+   assert.deepEqual(seqB.particles,seqT.particles,"T must not force extra depletion");
+   assert.deepEqual(seqB.particles,inputOptions.particles,"observedDraws must not condition depletion");
+   assert.equal(seqB.snapshot().virtual_remaining,seqP.snapshot().virtual_remaining);
+ }
+ assert.equal(seqB.pairwiseHistory[0].source,"unconditional_shoe_sampling");
+console.log("PASS V3 UI: original gates and display; unconditional virtual depletion invariant to B/P/T and observedDraws");
