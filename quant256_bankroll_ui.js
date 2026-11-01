@@ -1,6 +1,6 @@
 /**
- * BBB V3 資金曝險試算 UI（完全獨立於預測引擎）。
- * 依原有 V3 research_signal 是否通過，顯示參考金額或 NT$0。
+ * BBB 資金曝險試算 UI（完全獨立於預測引擎）。
+ * 依現行 research_signal 是否通過，顯示參考金額或 NT$0。
  * 不修改莊/閒方向、EV、連勝狀態、觀望門檻或原始牌靴資料。
  */
 (function(root,factory){
@@ -55,9 +55,9 @@
       stakeConfidenceWeight:signal?(weight*100).toFixed(1)+"%":"—",
       stakeRecommendation:money(exposure.amount),
       stakeLocalStatus:report?
-        "V3 已分析 "+report.history_length+" 局":"V3 準備中",
+        "V2 已分析 "+report.history_length+" 局":"V2 準備中",
       stakeStatus:!signal?"觀望／訊號未通過：試算金額 NT$0":
-        "V3 模擬方向："+(report.research_signal.direction==="B"?"莊":"閒")+
+        "V2 模擬方向："+(report.research_signal.direction==="B"?"莊":"閒")+
         "｜曝險試算 "+money(exposure.amount)+"｜非已驗證正期望值"
     };
     for(const [id,value] of Object.entries(values)){

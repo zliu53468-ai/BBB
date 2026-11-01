@@ -17,8 +17,8 @@
 })(typeof window!=="undefined"?window:null,function(quant){
 "use strict";
 if(!quant||typeof quant.OnlineLinUCB256!=="function")throw Error("missing_quant256_online_runtime");
-const VERSION="BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION",DECKS=8;
-const BASE_EV_GATE=.010,OVERDRIVE_GATE=0,ONE_HAND_CUSHION=.035;
+const VERSION="BBB_PHYSICS_FORECAST_FIRST_V2_DYNAMIC_GATE",DECKS=8;
+const BASE_EV_GATE=.005,OVERDRIVE_GATE=0,ONE_HAND_CUSHION=.035;
 const INITIAL=Object.freeze([128,32,32,32,32,32,32,32,32,32]);
 const BASE=Object.freeze({B:.458597,P:.446247,T:.095156});
 const BASE_EV=Object.freeze({B:.95*BASE.B-BASE.P,P:BASE.P-BASE.B});
@@ -31,15 +31,10 @@ function seeded(seed){
   let x=seed>>>0||0x9E3779B9;
   return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};
 }
-/** Monte Carlo seed 僅由當前牌組的點數計數決定；嚴禁用過往 B/P/T 字元。 */
-function hashComposition(shoes){
-  const rows=Array.isArray(shoes[0])?shoes:[shoes];
-  let h=2166136261;
-  for(const row of rows){
-    for(const count of row){h^=count;h=Math.imul(h,16777619);}
-    h^=0x9e3779b9;h=Math.imul(h,16777619);
-  }
-  return h>>>0;
+function hashHistory(seq){
+  let x=2166136261;
+  for(const c of seq){x^=c.charCodeAt(0);x=Math.imul(x,16777619);}
+  return x>>>0;
 }
 function validateCounts(counts,{observed=false}={}){
   if(!Array.isArray(counts)||counts.length!==10||counts.some((v,i)=>
@@ -133,15 +128,14 @@ function simulate(counts,{samples=2048,seed=0x13877}={}){
     se_gap:seGap,draws_mean:expectedCards/samples,
     payout:{banker_win:.95,player_win:1,tie_push:true}};
 }
-function summarizeHypotheses(physics,_ignoredHistory,{samplesPerParticle=64}={}){
+function summarizeHypotheses(physics,history,{samplesPerParticle=64}={}){
   if(!physics||!Array.isArray(physics.particles))throw Error("invalid_physics_particles");
   if(!Number.isInteger(samplesPerParticle)||samplesPerParticle<8||samplesPerParticle>1024)
     throw Error("invalid_shadow_sample_count");
   const validParticles=physics.particles.filter(c=>Array.isArray(c)&&sum(c)>=6);
   const remaining=physics.particles.map(c=>sum(c));
   const estimates=[];
-  // 第二參數只為兼容既有 API，physical EV 不讀取任何歷史方向標籤。
-  const stableSeed=hashComposition(validParticles);
+  const stableSeed=hashHistory(history);
   for(let i=0;i<validParticles.length;i++){
     const counts=validParticles[i],rng=seeded(stableSeed^Math.imul(i+1,2654435761));
     const tally={B:0,P:0,T:0};let draws=0;
@@ -213,118 +207,6 @@ function weightedContext(model,physical){
     road_weight:.1,road_has_direction_authority:false};
 }
 /**
- * 靴尾非線性敏感度只調整「研究訊號分數」，不重新定義莊/閒真實 EV。
- * 以局數 / 70 估算靴進程只是代理量；因 4/5/6 張未知，不是實際耗牌進度。
- */
-function shoePhaseScaling(currentHand){
-  if(!Number.isInteger(currentHand)||currentHand<0)throw Error("invalid_hand_index");
-  const penetration_ratio=clamp(currentHand/70,0,1);
-  return{penetration_ratio,scale:1+Math.pow(penetration_ratio,2)*1.5,
-    source:"hand_index_proxy_not_observed_card_penetration",
-    modifies_real_ev:false};
-}
-/**
- * 過往 B/P 非和局構造 Beta-Binomial 路單方向傾向。
- * 每次索引 t 的標籤，只使用 t 之前的路單狀態，避免用未來答案訓練。
- * Beta(4,4) 先驗將少量連龍、單跳回歸 50/50，拒絕假校準。
- */
-function roadRegime(nonTie){
-  if(nonTie.length<2)return null;
-  const last=nonTie[nonTie.length-1];
-  let run=1;
-  for(let i=nonTie.length-2;i>=0&&nonTie[i]===last;i--)run++;
-  const two=nonTie.slice(-2);
-  const five=nonTie.slice(-5);
-  let changes=0;
-  for(let i=1;i<five.length;i++)if(five[i]!==five[i-1])changes++;
-  const turnRate=five.length>1?changes/(five.length-1):.5;
-  const regime=(two[0]===two[1]?"pair":"alternating")+
-    ":"+(run>=3?"long":"short")+
-    ":"+(turnRate>=.5?"turning":"stable");
-  return{regime,last,run,turn_rate:turnRate,
-    signature:regime+":"+last};
-}
-function roadPosterior(history,{prior=4,minimumSupport=8}={}){
-  if(!Array.isArray(history)||history.some(x=>!valid(x)))
-    throw Error("invalid_history");
-  if(!finite(prior)||prior<1||!Number.isInteger(minimumSupport)||minimumSupport<1)
-    throw Error("invalid_road_posterior_options");
-  const clean=[],byKey=new Map();
-  // 結算下一局前，只根據前一局已出現的二元結構記錄「是否延續」。
-  for(const outcome of history){
-    if(outcome==="T")continue;
-    const state=roadRegime(clean);
-    if(state){
-      const item=byKey.get(state.regime)||{stay:0,change:0};
-      if(outcome===state.last)item.stay++;else item.change++;
-      byKey.set(state.regime,item);
-    }
-    clean.push(outcome);
-  }
-  const current=roadRegime(clean);
-  if(!current)return{direction:null,road_bias:0,road_probability_b:.5,
-    posterior_stay:.5,posterior_se:.5,samples:0,support:0,
-    reliable:false,regime:"insufficient",signature:"insufficient"};
-  const counts=byKey.get(current.regime)||{stay:0,change:0};
-  const samples=counts.stay+counts.change;
-  const a=prior+counts.stay,b=prior+counts.change;
-  const stay=a/(a+b);
-  const variance=(a*b)/((a+b)**2*(a+b+1));
-  const roadProbabilityB=current.last==="B"?stay:1-stay;
-  const posteriorSE=Math.sqrt(variance);
-  const support=clamp(samples/(samples+16),0,1);
-  // 僅可當作先驗平滑的微弱路單輔助，非真正已校準的貝氏預測。
-  const reliable=samples>=minimumSupport&&
-    Math.abs(stay-.5)>1.28*posteriorSE;
-  return{direction:roadProbabilityB>=.5?"B":"P",
-    road_bias:roadProbabilityB-.5,road_probability_b:roadProbabilityB,
-    posterior_stay:stay,posterior_se:posteriorSE,samples,support,reliable,
-    regime:current.regime,signature:current.signature,
-    last:current.last,run:current.run,turn_rate:current.turn_rate,
-    prior_beta:[prior,prior],calibrated:false};
-}
-/**
- * 具溫度 .1 的產品專家融合：物理結果是主體，路單僅加入小幅 log-odds。
- * 對 B/P/T 歷史沒有真正物理 likelihood，故這是 Bayes-inspired 診斷值，
- * 不是經驗證的後驗勝率，也不可修改純物理 EV 或下注方向。
- */
-function microFusion(physical,history){
-  const road=roadPosterior(history);
-  const phase=shoePhaseScaling(history.length);
-  const p=physical.simulated_probability||physical.win_probabilities;
-  const pB=clamp(p.B/Math.max(1e-12,p.B+p.P),1e-6,1-1e-6);
-  const logit=x=>Math.log(x/(1-x));
-  const logistic=x=>1/(1+Math.exp(-x));
-  const roadLogit=clamp(logit(clamp(road.road_probability_b,1e-5,1-1e-5)),-.6,.6);
-  const roadWeight=.1*road.support;
-  const posteriorB=logistic(logit(pB)+roadWeight*roadLogit);
-  const physicsDirection=physical.ev_banker>=physical.ev_player?"B":"P";
-  const aligned=road.reliable&&road.direction===physicsDirection;
-  const conflicted=road.reliable&&road.direction!==physicsDirection;
-  // 只放大代理訊號幅度（非 EV），一致加最多 10%，衝突降低最多 10%。
-  const resonance=aligned?1+Math.min(.10,.2*road.support):
-    conflicted?1-Math.min(.10,.2*road.support):1;
-  const raw_deviation=physical.ev_gap_deviation;
-  const scaled_deviation=raw_deviation*phase.scale;
-  const weighted_score=Math.abs(scaled_deviation)*resonance;
-  return{source:"bayes_inspired_beta_binomial_road_diagnostic",
-    physics_direction:physicsDirection,road,physics_conditional_b:pB,
-    fused_conditional_b:posteriorB,road_weight:roadWeight,
-    aligned,conflicted,confidence_multiplier:resonance,
-    raw_ev_gap_deviation:raw_deviation,scaled_deviation,
-    research_score:weighted_score,phase,
-    modifies_real_ev:false,calibrated:false};
-}
-
-/** 衝突風險只攔住一個新 regime 的首局，避免又演變成無限 Skip。 */
-function conflictGuard(fusion,gate,lastSignature){
-  const signature=fusion.road.signature+":"+fusion.physics_direction;
-  const applied=fusion.conflicted&&lastSignature!==signature;
-  return{signature,applied,effective_gate:applied?Math.max(gate,.035):gate,
-    source:"one_time_road_physics_conflict"};
-}
-
-/**
  * 研究訊號狀態機：
  * BASE(0.005) → 上一局實際提示正確：OVERDRIVE(0)
  * BASE/OVERDRIVE → 上一局實際提示錯誤：CUSHION(0.035)
@@ -350,7 +232,6 @@ class PhysicsForecastFirstEngine{
   reset(){
     this.quant.reset();this.observedRows=null;this.lastReport=null;
     this.phase="base";this.winStreak=0;this.lastSettlement="none";
-    this.lastConflictSignature=null;
     this.settlements={signals:0,correct:0,wrong:0,ties:0,filtered:0,turns:0};
     return this;
   }
@@ -377,10 +258,6 @@ class PhysicsForecastFirstEngine{
     if(outcome==="T"){this.settlements.ties++;this.lastSettlement="tie";return;}
     this.settlements.turns++;
     const signal=prior.research_signal;
-    // 同一種衝突只阻擋一次，不因連續相同路單無限觀望。
-    if(signal?.conflict_guard_applied)
-      this.lastConflictSignature=signal.conflict_signature;
-    else if(!signal?.conflict_detected)this.lastConflictSignature=null;
     if(!signal?.available){
       this.settlements.filtered++;this.phase="base";
       this.winStreak=0;this.lastSettlement="filtered";
@@ -419,57 +296,44 @@ class PhysicsForecastFirstEngine{
     if(this.lastReport&&this.lastReport.history_length===this.history.length)
       return this.lastReport;
     const quantPrediction=this.quant.predict();
-    const observed=this.observedRows!==null&&this.history.length>0;
-    const counts=observed?observedCounts(this.observedRows.slice(0,this.history.length),this.history):null;
+    const observed=this.observedRows!==null;
+    const counts=observed?observedCounts(this.observedRows,this.history):null;
     const physics=observed?simulate(counts,{
-      samples:this.observedSamples,seed:hashComposition(counts)^0xb15f13}):
-      (this.history.length?summarizeHypotheses(this.quant.physics,null,{
+      samples:this.observedSamples,seed:hashHistory(this.history)^0xb15f13}):
+      (this.history.length?summarizeHypotheses(this.quant.physics,this.history,{
         samplesPerParticle:this.simulationsPerParticle}):baselineResult());
     const normalized=observed?
       {...physics,simulated_probability:physics.win_probabilities,source:"observed_card_count"}:
       physics;
     const dynamicGate=this._gate();
-    const fusion=microFusion(normalized,this.history);
-    const score=fusion.research_score;
-    const direction=fusion.physics_direction; // 路單不可反轉物理 EV 方向
-    // 若 Beta(4,4) 後驗與物理主方向顯著衝突，對該 regime 首次遇到時
-    // 啟用「一次性衝突觀望」，後續相同 regime 不重複卡住。
-    const conflict=conflictGuard(fusion,dynamicGate,this.lastConflictSignature);
-    const conflictSignature=conflict.signature;
-    const conflictSkip=conflict.applied;
-    const effectiveGate=conflict.effective_gate;
+    const score=Math.abs(normalized.ev_gap_deviation);
+    const direction=normalized.ev_banker>=normalized.ev_player?"B":"P";
+    // 與真實投注分離的「研究方向」：不把 MC 抽樣不確定性當成勝率。
+    // 若物理粒子全耗盡或訊號不可計算，即使 overdrive 也不假裝可用。
     const usable=!normalized.simulation_exhausted&&finite(score)&&
       finite(normalized.ev_banker)&&finite(normalized.ev_player);
-    const available=usable&&!conflictSkip&&score>=effectiveGate;
+    const available=usable&&score>=dynamicGate;
     const researchSignal={
       action:available?"SIGNAL":"SKIP",
       direction,available,score,dynamic_gate:dynamicGate,
-      effective_gate:effectiveGate,
       phase:this.phase,win_streak:this.winStreak,
       last_settlement:this.lastSettlement,
       source:observed?"observed_cards":"simulated_bpt_only",
       evidence_qualified:observed,
-      conflict_detected:fusion.conflicted,
-      conflict_guard_applied:conflictSkip,
-      conflict_signature:conflictSignature,
-      reason:!usable?"simulation_unavailable":conflictSkip?"short_conflict_guard":
+      reason:!usable?"simulation_unavailable":
         !available?"dynamic_signal_filter":"model_direction_not_validated"
     };
     // 正式 BET 仍要求觀測到每局真實點數、正 EV 和抽樣誤差下界。
     // 動態門檻會影響真實 EV 閘門，但任何連勝都無法捏造實際牌值。
     const gate=decisionFromEV(normalized,{observed,threshold:dynamicGate});
     const action=available?gate.action:"SKIP";
-    const reason=!available?researchSignal.reason:gate.reason;
+    const reason=!available?"dynamic_signal_filter":gate.reason;
     const features=weightedContext(quantPrediction,normalized);
     const report={version:VERSION,history_length:this.history.length,
       action,direction:action==="BET"?direction:"Skip",bet_allowed:action==="BET",
       reason,card_count_source:normalized.source,
       observed_card_evidence:observed,card_count_gate:gate,
       research_signal:researchSignal,display_direction:direction,
-      pairwise_depletion:quantPrediction.blind_physics.pairwise_depletion,
-      fusion,shoe_phase: fusion.phase,
-      scaled_research_score: fusion.research_score,
-      raw_ev_gap_deviation:normalized.ev_gap_deviation,
       dynamic_gate:dynamicGate,base_ev_gate:this.threshold,
       cushion_gate:this.lossGate,gate_phase:this.phase,
       win_streak:this.winStreak,last_settlement:this.lastSettlement,
@@ -485,7 +349,6 @@ class PhysicsForecastFirstEngine{
       ev_gap_deviation:normalized.ev_gap_deviation,ev_threshold:dynamicGate,
       baseline_ev:{...BASE_EV},hypothetical_candidate:direction,
       proxy_only:!observed,validated_edge:false,
-      phantom_95pct_claim:false,
       notice:observed?
         "已輸入完整實際點數；仍需確認 MC 抽樣誤差與真實正 EV，連勝不保證下局贏。":
         "高頻莊/閒僅為虛擬殘牌的研究方向，不是已驗證的正 EV 或投注指令。"};
@@ -494,6 +357,5 @@ class PhysicsForecastFirstEngine{
 }
 return{PhysicsForecastFirstEngine,observedCounts,observedHand,
   deal,simulate,summarizeHypotheses,decisionFromEV,weightedContext,
-  BASE,BASE_EV,INITIAL,DECKS,VERSION,BASE_EV_GATE,OVERDRIVE_GATE,ONE_HAND_CUSHION,
-  shoePhaseScaling,roadRegime,roadPosterior,microFusion,conflictGuard};
+  BASE,BASE_EV,INITIAL,DECKS,VERSION,BASE_EV_GATE,OVERDRIVE_GATE,ONE_HAND_CUSHION};
 });

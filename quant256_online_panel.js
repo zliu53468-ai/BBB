@@ -9,7 +9,7 @@ if(!root||!root.document||!root.BBBPhysicsForecastFirst||
   typeof URLSearchParams!=="function"||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
 const {PhysicsForecastFirstEngine,VERSION}=root.BBBPhysicsForecastFirst;
-const CONFIG={threshold:.010,lossGate:.035,simulationsPerParticle:64,
+const CONFIG={threshold:.005,lossGate:.035,simulationsPerParticle:64,
   observedSamples:12000,quantOptions:{lambda:.82,alpha:.15}};
 const model=new PhysicsForecastFirstEngine(CONFIG);
 const KEY="bgs256d_frozen_6x15_forward_v18";
@@ -38,9 +38,7 @@ function render(p){
   const text=el("directionText"),code=el("directionCode"),conf=el("confidence");
   const regime=el("regime"),strength=el("strength"),orb=el("directionOrb"),
     pill=el("modePill"),message=el("message");
-  const conflictSkip=research.conflict_guard_applied;
-  // 正式訊號僅顯示「莊」或「閒」，不使用會讓手機文字溢出的（研究）標籤。
-  // 未達門檻時真正顯示觀望，而不是一邊 SKIP 一邊假裝有下注意見。
+  // 維持目前手機 UI：只有莊、閒或觀望，不恢復過長的「（研究）」後綴。
   if(text)text.textContent=!signal?"觀望":dir==="B"?"莊":"閒";
   if(code)code.textContent=!signal?"SKIP / NO ACTION":
     (dir==="B"?"BANKER":"PLAYER")+
@@ -49,25 +47,17 @@ function render(p){
   const phase=p.gate_phase==="cushion"?"失誤後單局緩衝":
     p.gate_phase==="overdrive"?"連勝順風門檻 0":"基礎研究門檻";
   if(regime)regime.textContent=phase+
-    (conflictSkip?"｜物理與路單衝突，僅本次短暫觀望":
-      signal?"｜已通過研究訊號門檻":"｜研究差值未過門檻")+
+    (signal?"｜已通過研究訊號門檻":"｜研究差值未過門檻")+
     (qualified?"｜實測 EV 通過":"｜未確認正 EV");
   if(strength)strength.textContent="門檻 "+(p.dynamic_gate*100).toFixed(2)+
     "%｜莊 EV "+(p.ev_banker*100).toFixed(2)+
     "%｜閒 EV "+(p.ev_player*100).toFixed(2)+"%";
   if(orb)orb.className="direction-orb "+(signal?(dir==="B"?"banker":"player"):"idle");
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V3 BALANCED";
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2 DYNAMIC";
   const hit=p.hit_rate===null?"無有效樣本":(p.hit_rate*100).toFixed(1)+"%";
   const rate=p.signal_rate===null?"—":(p.signal_rate*100).toFixed(1)+"%";
   if(message)message.textContent="本局研究方向："+(dir==="B"?"莊":"閒")+
-    "｜研究訊號 "+(signal?"通過":conflictSkip?"路單衝突短暫觀望":"未通過")+
-    "｜Beta 路單權重 "+(p.fusion.road_weight*100).toFixed(2)+"%"+
-    "｜路單偏向 "+p.fusion.road.road_bias.toFixed(3)+
-    "｜靴進程倍率 "+p.shoe_phase.scale.toFixed(3)+"×（僅研究）"+
-    "｜原始 EV 偏移 "+(p.raw_ev_gap_deviation*100).toFixed(2)+"%"+
-    "｜研究訊號強度 "+(p.scaled_research_score*100).toFixed(2)+"%"+
-    "｜成對扣牌估計 "+p.pairwise_depletion.estimated_pairwise_key_copresence.toFixed(3)+
-    "（非實際扣牌）"+
+    "｜研究訊號 "+(signal?"通過":"未通過")+
     "｜實測 EV 行動："+(qualified?"BET":"未達 BET 資格")+
     "｜Gate "+(p.dynamic_gate*100).toFixed(2)+"%"+
     "｜連中 "+p.win_streak+" 局"+
@@ -76,14 +66,13 @@ function render(p){
     "｜模擬莊 EV "+(p.ev_banker*100).toFixed(2)+
     "%、閒 EV "+(p.ev_player*100).toFixed(2)+"%"+
     "｜B/P/T 不揭露實際牌值，模擬 EV 不是可驗證的套利優勢";
-  // 獨立本金試算插件：沒有任何回傳值會影響 V3 的判斷方向或門檻。
+  // 舊資金面板僅呈現曝險計算，不參與 e323a243 的預測決策。
   root.__BBB_V3_CAPITAL_UI__?.renderStake(p);
 }
 function run(){
   const seq=history(),message=el("message");
   if(!seq.length){
-    model.reset();
-    root.__BBB_V3_CAPITAL_UI__?.renderStake(null);
+    model.reset();root.__BBB_V3_CAPITAL_UI__?.renderStake(null);
     if(message)message.textContent="請先輸入牌局，僅有 B/P/T 時會顯示模擬物理 EV（無真實算牌資格）";
     return null;
   }

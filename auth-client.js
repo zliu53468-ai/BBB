@@ -26,10 +26,10 @@ const scripts=[
   "final_probability_runtime.js?v=20261030-pf-light-v1",
   "run_survival_pf_runtime.js?v=20261031-quant256-v6",
   "quant256_runtime.js?v=20261031-quant256-v6",
-  "quant256_online_runtime.js?v=20261101-v3-base-010",
-  "physics_forecast_first_runtime.js?v=20261101-v3-base-010",
-  "quant256_online_panel.js?v=20261101-v3-base-010",
-  "quant256_bankroll_ui.js?v=20261101-v3-base-010"
+  "quant256_online_runtime.js?v=20261101-e323-v2-restore",
+  "physics_forecast_first_runtime.js?v=20261101-e323-v2-restore",
+  "quant256_online_panel.js?v=20261101-e323-v2-restore",
+  "quant256_bankroll_ui.js?v=20261101-e323-v2-restore"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}

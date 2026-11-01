@@ -3,11 +3,10 @@
 const assert=require("node:assert/strict");
 const {
   PhysicsForecastFirstEngine,observedCounts,observedHand,
-  deal,simulate,summarizeHypotheses,decisionFromEV,weightedContext,BASE,BASE_EV,INITIAL,VERSION,
-  shoePhaseScaling,roadPosterior,microFusion,conflictGuard
+  deal,simulate,decisionFromEV,weightedContext,BASE,BASE_EV,INITIAL,VERSION
 }=require("./physics_forecast_first_runtime.js");
 const near=(x,y,eps=1e-8)=>assert(Math.abs(x-y)<=eps,String(x)+" != "+String(y));
-assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
+assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V2_DYNAMIC_GATE");
 assert.equal(INITIAL.length,10);
 assert.equal(INITIAL[0],128);
 assert(INITIAL.slice(1).every(x=>x===32));
@@ -15,15 +14,12 @@ assert.equal(INITIAL.reduce((a,b)=>a+b),416);
 near(BASE.B,.458597);near(BASE.P,.446247);near(BASE.T,.095156);
 assert(BASE_EV.B<0&&BASE_EV.P<0,"standard 8 deck bets have negative base EV");
 const engine=new PhysicsForecastFirstEngine();
-assert.equal(engine.threshold,.010,"V3 balanced baseline must increase from .005");
-assert.equal(engine.lossGate,.035);
-assert.equal(engine.predict().dynamic_gate,.010);
 const initial=engine.predict();
 assert.equal(initial.action,"SKIP");
 assert.equal(initial.direction,"Skip");
 assert.equal(initial.observed_card_evidence,false);
 assert.equal(initial.reason,"dynamic_signal_filter");
-assert.equal(initial.dynamic_gate,.010);
+assert.equal(initial.dynamic_gate,.005);
 assert.equal(initial.research_signal.direction,"B");
 assert.equal(initial.research_signal.action,"SKIP");
 assert.equal(initial.research_signal.source,"simulated_bpt_only");
@@ -43,7 +39,7 @@ assert.equal(bpt.action,"SKIP","unobserved ranks must never be labelled BET");
 assert(["unobserved_card_composition","dynamic_signal_filter"].includes(bpt.reason));
 assert(["B","P"].includes(bpt.research_signal.direction));
 assert(["SIGNAL","SKIP"].includes(bpt.research_signal.action));
-assert([0,.010,.035].includes(bpt.dynamic_gate));
+assert([0,.005,.035].includes(bpt.dynamic_gate));
 assert.equal(bpt.research_signal.evidence_qualified,false);
 assert.equal(bpt.card_count_source,"hypothetical_particle_posterior");
 assert(bpt.physical_ev.samples>=1000);
@@ -145,10 +141,10 @@ assert.equal(data.road_weight,.1);
 assert.equal(data.road_has_direction_authority,false);
 // 動態順風車：僅在上一局研究訊號有方向、且實際結算 B/P 時更新。
 // 重複 predict() 讀取不得增加連勝或重新消耗緩衝。
-const dynamic=new PhysicsForecastFirstEngine({threshold:.010,lossGate:.035});
+const dynamic=new PhysicsForecastFirstEngine({threshold:.005,lossGate:.035});
 const success={research_signal:{available:true,direction:"B"}};
 const filtered={research_signal:{available:false,direction:"P"}};
-assert.equal(dynamic.predict().dynamic_gate,.010);
+assert.equal(dynamic.predict().dynamic_gate,.005);
 dynamic._settle(success,"B");
 assert.equal(dynamic.phase,"overdrive");
 assert.equal(dynamic.winStreak,1);
@@ -164,7 +160,7 @@ dynamic._settle(filtered,"T");
 assert.equal(dynamic.predict().dynamic_gate,.035,"Tie must not consume one-hand cushion");
 dynamic._settle(filtered,"P");
 assert.equal(dynamic.phase,"base");
-assert.equal(dynamic.predict().dynamic_gate,.010,"one missed opportunity reverts to base");
+assert.equal(dynamic.predict().dynamic_gate,.005,"one missed opportunity reverts to base");
 dynamic._settle(success,"B");
 assert.equal(dynamic.predict().dynamic_gate,0,"a correct research signal enables overdrive");
 dynamic._settle(success,"P");
@@ -185,102 +181,4 @@ assert.equal(snapshotReset.gatePhase,undefined);
 assert.deepEqual(snapshotReset.settlements,beforeSettlements,"incremental replay must be identical");
 assert.equal(snapshotReset.predict().dynamic_gate,output.dynamic_gate);
 assert.equal(snapshotReset.predict().research_signal.direction,output.research_signal.direction);
-// 微觀靴尾：倍率只影響研究強度，EV 原始數值與實測資料完全不變。
-near(shoePhaseScaling(0).scale,1);
-near(shoePhaseScaling(35).scale,1.375);
-near(shoePhaseScaling(70).scale,2.5);
-near(shoePhaseScaling(140).scale,2.5);
-assert.throws(()=>shoePhaseScaling(-1),/invalid_hand_index/);
-assert.equal(shoePhaseScaling(70).modifies_real_ev,false);
-near(bpt.shoe_phase.scale,shoePhaseScaling(seq.length).scale);
-near(bpt.raw_ev_gap_deviation,bpt.ev_gap_deviation);
-near(bpt.scaled_research_score,
-  Math.abs(bpt.raw_ev_gap_deviation)*bpt.shoe_phase.scale*bpt.fusion.confidence_multiplier);
-assert.equal(bpt.fusion.modifies_real_ev,false,"nonlinear research boost cannot rewrite actual EV");
-
-// Beta-Binomial：只用已發生的前局推估延續機率；權重永遠 <=0.1。
-const longB=Array(26).fill("B");
-const trend=roadPosterior(longB);
-assert.equal(trend.direction,"B");
-assert.equal(trend.reliable,true);
-assert(trend.samples>=8);
-assert(trend.posterior_stay>.5);
-assert.equal(trend.calibrated,false);
-assert(trend.support<1);
-const tiny=roadPosterior(["B","P"]);
-assert.equal(tiny.reliable,false);
-assert.equal(tiny.road_probability_b,.5);
-const physicsOpposite={
-  simulated_probability:{B:.2,P:.7,T:.1},
-  ev_banker:-.51,ev_player:.50,ev_gap_deviation:-.45
-};
-const opposite=microFusion(physicsOpposite,longB);
-assert.equal(opposite.physics_direction,"P");
-assert.equal(opposite.road.direction,"B");
-assert.equal(opposite.conflicted,true);
-assert.equal(opposite.aligned,false);
-assert(opposite.confidence_multiplier<1);
-assert(opposite.road_weight>0&&opposite.road_weight<=.1);
-assert.equal(opposite.calibrated,false);
-assert.equal(opposite.modifies_real_ev,false);
-near(opposite.raw_ev_gap_deviation,-.45);
-const first=conflictGuard(opposite,.010,null);
-assert.equal(first.applied,true);
-near(first.effective_gate,.035);
-const second=conflictGuard(opposite,.010,first.signature);
-assert.equal(second.applied,false,"same conflict may not cause infinite SKIP");
-near(second.effective_gate,.010);
-const agreeing=microFusion({
-  simulated_probability:{B:.7,P:.2,T:.1},
-  ev_banker:.465,ev_player:-.5,ev_gap_deviation:.4
-},longB);
-assert.equal(agreeing.aligned,true);
-assert.equal(agreeing.conflicted,false);
-assert(agreeing.confidence_multiplier>1);
-assert.equal(conflictGuard(agreeing,0,null).applied,false);
-near(conflictGuard(agreeing,0,null).effective_gate,0,
-  1e-12); // 連勝進攻門檻仍為零，無衝突不受干擾
-const noData=roadPosterior([]);
-assert.equal(noData.reliable,false);
-assert.equal(noData.road_bias,0);
-assert.equal(initial.pairwise_depletion.estimated_key_consumption,0);
-assert.equal(initial.pairwise_depletion.observed_cards,false);
-assert.equal(bpt.phantom_95pct_claim,false);
-assert.equal(bpt.research_signal.source,"simulated_bpt_only");
-// Feedback-loop regression: result is a label, not evidence of removed card values.
-// Same initial 8-deck state + same seed + same number of consumed hands must
-// yield EXACTLY the same virtual shoe and physical EV, regardless of B/P/T labels.
-// The research road diagnosis and quantum 256D label training may still differ.
-const onlyB=new PhysicsForecastFirstEngine();
-const onlyP=new PhysicsForecastFirstEngine();
-const mixed=new PhysicsForecastFirstEngine();
-const observedB=[],observedP=[],observedMixed=[];
-for(let i=0;i<22;i++){
-  observedB.push("B");observedP.push("P");
-  observedMixed.push("BPT"[i%3]);
-  const rb=onlyB.syncHistory(observedB);
-  const rp=onlyP.syncHistory(observedP);
-  const rm=mixed.syncHistory(observedMixed);
-  assert.deepEqual(onlyB.quant.physics.particles,onlyP.quant.physics.particles,
-    "labels cannot change cards consumed in virtual shoe");
-  assert.deepEqual(onlyB.quant.physics.particles,mixed.quant.physics.particles,
-    "tie label cannot condition card depletion");
-  for(const other of [rp,rm]){
-    assert.equal(rb.physical_ev.ev_banker,other.physical_ev.ev_banker,
-      "physical EV(B) must depend on composition, not historical labels");
-    assert.equal(rb.physical_ev.ev_player,other.physical_ev.ev_player,
-      "physical EV(P) must depend on composition, not historical labels");
-    assert.equal(rb.physical_ev.ev_gap_deviation,other.physical_ev.ev_gap_deviation);
-    assert.equal(rb.physical_ev.samples,other.physical_ev.samples);
-  }
-}
-const blind=onlyB.quant.physics;
-const fakeHistoryA=Array(22).fill("B"),fakeHistoryP=Array(22).fill("P");
-assert.deepEqual(
-  summarizeHypotheses(blind,fakeHistoryA,{samplesPerParticle:64}),
-  summarizeHypotheses(blind,fakeHistoryP,{samplesPerParticle:64}),
-  "Monte Carlo RNG seed cannot hash previous result or history string");
-const physicsSource=require("node:fs").readFileSync("./physics_forecast_first_runtime.js","utf8");
-assert(physicsSource.includes('const physicsDirection=physical.ev_banker>=physical.ev_player?"B":"P";'));
-assert(physicsSource.includes("const BASE_EV_GATE=.010,OVERDRIVE_GATE=0,ONE_HAND_CUSHION=.035;"));
-console.log("PASS V3 feedback-loop repair: invariant physical EV under B/P/T label permutations, fixed composition RNG, 5x/0.1x/0.010 preserved");
+console.log("PASS physics-first V2 dynamic 0.005/0/0.035: rules, shadow/real EV separation, research direction, prequential replay and one-round recovery");

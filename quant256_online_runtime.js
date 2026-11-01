@@ -13,7 +13,7 @@
 "use strict";
 const DIM=256,SHOE=128,DECK=416,BASE_POINTS=[128,32,32,32,32,32,32,32,32,32];
 const ACTIVE=[...Array.from({length:12},(_,i)=>i),...Array.from({length:24},(_,i)=>128+i)];
-const K=ACTIVE.length,VERSION="BBB_QUANT256_ONLINE_V3_HYPER_MICRO_PAIRWISE";
+const K=ACTIVE.length,VERSION="BBB_QUANT256_ONLINE_V3_HYPER_MICRO";
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const finite=x=>typeof x==="number"&&Number.isFinite(x);
 const valid=s=>s==="B"||s==="P"||s==="T";
@@ -33,9 +33,7 @@ function seededRng(seed){
   let x=seed>>>0||0x6d2b79f5;
   return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};
 }
-/** 正確的百家樂第三張牌規則；每組虛擬粒子保存 0~9 點的假設殘牌。
- * 僅按當前點數分布抽牌，抽完才推導模擬 B/P/T；不接受真實結果作消耗條件。
- */
+/** 正確的百家樂第三張牌規則；每組虛擬粒子保存 0~9 點的假設殘牌。 */
 function sampleHand(counts,rng){
   const c=counts.slice(),total=c.reduce((a,b)=>a+b,0);
   if(total<6)return null;
@@ -60,13 +58,12 @@ function sampleHand(counts,rng){
     else if(b===6)bankerDraw=p3>=6&&p3<=7;
     if(bankerDraw)b=(b+draw())%10;
   }
-  return{counts:c,draws:cards,result:b>p?"B":p>b?"P":"T",
-    consumed:BASE_POINTS.map((v,i)=>counts[i]-c[i])};
+  return{counts:c,draws:cards,result:b>p?"B":p>b?"P":"T"};
 }
 /**
  * 不可辨識性聲明：B/P/T 不提供實際 4/5/6 張或點數。
- * 虛擬靴只依目前殘牌比例抽樣一手合法發牌，結果是抽樣後的產物，
- * 不依使用者輸入的 B/P/T 篩選可能路徑，更不代表實際 A~K 耗牌。
+ * 這裡僅從合法發牌模擬抽取「符合已知結果的可能路徑」做 latent ensemble；
+ * 它不是對真實牌靴的測量，亦不代表已知任何 A~K 殘量。
  */
 class BlindPhysicsEstimator{
   constructor({particles=24,seed=0xBBB256}={}){
@@ -76,44 +73,22 @@ class BlindPhysicsEstimator{
   reset(){
     this.rng=seededRng(this.seed);
     this.particles=Array.from({length:this.size},()=>BASE_POINTS.slice());
-    this.drawHistory=[];this.densityHistory=[];
-    this.pairwiseHistory=[];this.lastAcceptance=0;
-    this.lastPairwise={source:"unconditional_shoe_sampling",observed_cards:false,
-      matched_particles:0,tie_or_long_hands:0,estimated_key_consumption:0,
-      estimated_key_consumption_ratio:0,estimated_pairwise_key_copresence:0,
-      estimated_draws:0};
-    return this;
+    this.drawHistory=[];this.densityHistory=[];this.lastAcceptance=0;return this;
   }
-  observe(outcome,options={}){
+  observe(outcome){
     if(!valid(outcome))throw Error("invalid_outcome");
-    const observedDraws=options.observedDraws??null;
-    if(observedDraws!==null&&![4,5,6].includes(observedDraws))
-      throw Error("invalid_observed_draw_count");
-    let accepted=0,sum=0,keyDraws=0,pairCoPresence=0,longHands=0;
-    // B/P/T 是玩家輸入的歷史標籤，不是已知牌值。不能從結果反推
-    // 「應移除」的卡片；每個粒子只用當前殘牌分布隨機模擬一手。
-    // sampleHand 先抽牌（遵循第三張規則），再由點數產出虛擬結果；
-    // outcome 只供驗證／呼叫端記錄，絕不參與抽牌或挑選樣本。
+    let accepted=0,sum=0;
     for(let i=0;i<this.size;i++){
-      const chosen=sampleHand(this.particles[i],this.rng);
-      if(!chosen)continue;
-      this.particles[i]=chosen.counts;sum+=chosen.draws;accepted++;
-      if(chosen.draws>=5){
-        longHands++;
-        const used=[0,1,4,7].map(k=>chosen.consumed[k]);
-        keyDraws+=used.reduce((v,n)=>v+n,0);
-        if(used.filter(n=>n>0).length>=2)pairCoPresence++;
+      const original=this.particles[i];let chosen=null;
+      // 條件抽樣，拒絕不符合本局已知 B/P/T 的虛擬發牌結果。
+      // 不編造實測卡牌；未抽中時不改寫粒子狀態。
+      for(let tries=0;tries<128;tries++){
+        const trial=sampleHand(original,this.rng);
+        if(trial&&trial.result===outcome){chosen=trial;break;}
       }
+      if(chosen){this.particles[i]=chosen.counts;sum+=chosen.draws;accepted++;}
     }
     this.lastAcceptance=accepted/this.size;
-    this.lastPairwise={source:"unconditional_shoe_sampling",
-      observed_cards:false,observed_draw_count:observedDraws!==null,
-      matched_particles:accepted,tie_or_long_hands:longHands,
-      estimated_key_consumption:longHands?keyDraws/longHands:0,
-      estimated_key_consumption_ratio:longHands?keyDraws/Math.max(1,sum):0,
-      estimated_pairwise_key_copresence:longHands?pairCoPresence/longHands:0,
-      estimated_draws:accepted?sum/accepted:0};
-    this.pairwiseHistory.push({...this.lastPairwise});
     this.drawHistory.push(accepted?sum/accepted:0);
     const snapshot=this.snapshot();
     this.densityHistory.push({high:snapshot.virtual_high_ratio,low:snapshot.virtual_low_ratio});
@@ -146,7 +121,6 @@ class BlindPhysicsEstimator{
       virtual_draw_momentum:drawMomentum,
       virtual_high_std:Math.sqrt(variance),conditional_acceptance:this.lastAcceptance,
       expected_draws_recent:recent.length?recent.reduce((s,v)=>s+v,0)/recent.length:4.94,
-      pairwise_depletion:{...this.lastPairwise},
       actual_draw_count_known:false,actual_remaining_known:false
     };
   }

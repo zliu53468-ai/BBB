@@ -4,7 +4,7 @@ const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("nod
 const {OnlineLinUCB256,BlindPhysicsEstimator,context256,windowStats,ACTIVE_INDICES,VERSION}=
   require("./quant256_online_runtime");
 const near=(a,b,tol=1e-9)=>assert(Math.abs(a-b)<=tol,"expected "+a+" ~ "+b);
-assert.equal(VERSION,"BBB_QUANT256_ONLINE_V3_HYPER_MICRO_PAIRWISE");
+assert.equal(VERSION,"BBB_QUANT256_ONLINE_V3_HYPER_MICRO");
 assert.equal(ACTIVE_INDICES.length,36);
 assert.equal(new OnlineLinUCB256().lambda,.82);
 for(const l of [.75,.82,.94,.96])near(new OnlineLinUCB256({lambda:l}).lambda,l);
@@ -150,20 +150,16 @@ vm.runInNewContext(fs.readFileSync("./quant256_online_panel.js","utf8"),
   {window:win,document:win.document,URLSearchParams,console});
 const ui=win.__BBB_QUANT256_ONLINE_PANEL__;
 assert.equal(ui.configuration.quantOptions.lambda,.82);
-assert.equal(ui.configuration.threshold,.010);
+assert.equal(ui.configuration.threshold,.005);
 assert.equal(ui.configuration.lossGate,.035);
-assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
+assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V2_DYNAMIC_GATE");
 click("btnB");click("btnP");click("btnT");
 assert.equal(ui.model.history.join(""),"BPT");
 click("btnStart");
 assert.equal(frozenClicks,0);
-assert(dom.modePill.textContent.includes("V3 BALANCED"));
-assert(["莊","閒","觀望"].includes(dom.directionText.textContent));
-assert(!dom.directionText.textContent.includes("研究"),
-  "最終方向須移除後面的（研究）兩個字");
-assert(["莊","閒","觀望"].includes(dom.directionText.textContent));
-if(["莊","閒"].includes(dom.directionText.textContent))
-  assert(/BANKER|PLAYER/.test(dom.directionCode.textContent));
+assert(dom.modePill.textContent.includes("V2 DYNAMIC"));
+assert(/莊|閒|觀望/.test(dom.directionText.textContent));
+assert(["莊","閒","觀望"].includes(dom.directionText.textContent),"大字不保留研究後綴");
 assert(dom.regime.textContent.includes("未確認正 EV"));
 assert(dom.confidence.textContent.includes("非勝率"));
 click("btnBack");assert.equal(ui.model.history.join(""),"BP");
@@ -173,44 +169,5 @@ assert.equal(ui.run().history_length,3);
 click("btnEnd");assert.equal(ui.model.trainedRounds,0);
 assert.equal(ui.run().action,"SKIP");
 assert(["B","P"].includes(ui.run().research_signal.direction));
-assert([0,.010,.035].includes(ui.run().dynamic_gate));
-// 盲估每局根據合法補牌結果抽樣，不可憑和局任意兩倍扣除特定牌。
-const pair=new BlindPhysicsEstimator({particles:12});
-const original=pair.particles.map(c=>c.slice());
-pair.observe("T");
-const pairStats=pair.snapshot().pairwise_depletion;
-assert.equal(pairStats.observed_cards,false);
-assert.equal(pairStats.source,"unconditional_shoe_sampling");
-assert(pairStats.estimated_draws>=4&&pairStats.estimated_draws<=6);
-assert(pairStats.estimated_pairwise_key_copresence>=0);
-assert(pairStats.estimated_pairwise_key_copresence<=1);
-assert(pairStats.tie_or_long_hands<=pairStats.matched_particles);
-for(let i=0;i<pair.particles.length;i++){
-  const removed=original[i].reduce((s,x,j)=>s+x-pair.particles[i][j],0);
-  assert(removed===0||(removed>=4&&removed<=6),"unconditional legal hand must remove exactly 4-6 cards");
-  assert(pair.particles[i].every(x=>Number.isInteger(x)&&x>=0));
-}
-const pairLength=new BlindPhysicsEstimator({particles:8});
-pairLength.observe("B",{observedDraws:4});
-const info=pairLength.snapshot().pairwise_depletion;
-assert.equal(info.observed_draw_count,true);
-assert(info.estimated_draws>=4&&info.estimated_draws<=6,
-  "observedDraws must be metadata, never a depletion filter");
-assert.throws(()=>pairLength.observe("T",{observedDraws:7}),/invalid_observed_draw_count/);
-assert.equal(ui.run().pairwise_depletion.observed_cards,false);
-assert.equal(ui.run().fusion.modifies_real_ev,false);
- // 相同初始牌靴 + RNG，輸入任意 B/P/T 或補牌觀測，不得改變虛擬扣牌。
- const seqB=new BlindPhysicsEstimator({particles:16,seed:1729});
- const seqP=new BlindPhysicsEstimator({particles:16,seed:1729});
- const seqT=new BlindPhysicsEstimator({particles:16,seed:1729});
- const inputOptions=new BlindPhysicsEstimator({particles:16,seed:1729});
- for(let i=0;i<24;i++){
-   seqB.observe("B");seqP.observe("P");seqT.observe("T");
-   inputOptions.observe(i%2?"P":"B",{observedDraws:i%2?6:4});
-   assert.deepEqual(seqB.particles,seqP.particles,"B/P must have identical virtual depletion");
-   assert.deepEqual(seqB.particles,seqT.particles,"T must not force extra depletion");
-   assert.deepEqual(seqB.particles,inputOptions.particles,"observedDraws must not condition depletion");
-   assert.equal(seqB.snapshot().virtual_remaining,seqP.snapshot().virtual_remaining);
- }
- assert.equal(seqB.pairwiseHistory[0].source,"unconditional_shoe_sampling");
-console.log("PASS V3 UI: original gates and display; unconditional virtual depletion invariant to B/P/T and observedDraws");
+assert([0,.005,.035].includes(ui.run().dynamic_gate));
+console.log("PASS restored e323a243 V2: 0.005/0/0.035, UI direction only, research EV gate, legacy history, Frozen bypass");

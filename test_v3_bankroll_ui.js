@@ -1,19 +1,19 @@
 "use strict";
-// 還原 V3 原預測完全一致；本金操作不得回寫模型或方向。
+// 還原 e323a243 V2 原預測；本金操作不得回寫模型或方向。
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const vm=require("node:vm");
 const {PhysicsForecastFirstEngine,VERSION}=require("./physics_forecast_first_runtime");
 const {calculateStakeExposure}=require("./quant256_bankroll_ui");
-assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V3_MICRO_FUSION");
+assert.equal(VERSION,"BBB_PHYSICS_FORECAST_FIRST_V2_DYNAMIC_GATE");
 const seq="BPPBTBBPPTBBPPBTBPBPPBP".split("");
-const baseline=new PhysicsForecastFirstEngine({threshold:.010,lossGate:.035}).syncHistory(seq);
+const baseline=new PhysicsForecastFirstEngine({threshold:.005,lossGate:.035}).syncHistory(seq);
 const plain=JSON.stringify({direction:baseline.research_signal.direction,
   action:baseline.action,score:baseline.research_signal.score,
   gate:baseline.dynamic_gate,ev:baseline.ev_gap_deviation,
   winStreak:baseline.win_streak});
 assert.equal(JSON.stringify({
-  direction:new PhysicsForecastFirstEngine({threshold:.010,lossGate:.035}).syncHistory(seq).research_signal.direction,
+  direction:new PhysicsForecastFirstEngine({threshold:.005,lossGate:.035}).syncHistory(seq).research_signal.direction,
   action:baseline.action,score:baseline.research_signal.score,
   gate:baseline.dynamic_gate,ev:baseline.ev_gap_deviation,
   winStreak:baseline.win_streak
@@ -44,7 +44,7 @@ assert.equal(ui.stake_percent,20);
 assert.equal(dom.stakeRecommendation.textContent,"NT$0");
 const result=ui.renderStake(baseline);
 assert.equal(result.signal,baseline.research_signal.available);
-assert.equal(dom.stakeLocalStatus.textContent,"V3 已分析 "+seq.length+" 局");
+assert.equal(dom.stakeLocalStatus.textContent,"V2 已分析 "+seq.length+" 局");
 assert(["NT$0","NT$500","NT$501"].includes(dom.stakeRecommendation.textContent)||
   /NT\$[0-9,]+/.test(dom.stakeRecommendation.textContent));
 const priorAmount=result.amount;
@@ -59,12 +59,12 @@ assert(ui.renderStake(baseline).amount>=priorAmount);
 ui.renderStake({...baseline,research_signal:{...baseline.research_signal,available:false}});
 assert.equal(dom.stakeRecommendation.textContent,"NT$0");
 assert(dom.stakeStatus.textContent.includes("觀望"));
-const after=new PhysicsForecastFirstEngine({threshold:.010,lossGate:.035}).syncHistory(seq);
+const after=new PhysicsForecastFirstEngine({threshold:.005,lossGate:.035}).syncHistory(seq);
 assert.equal(after.research_signal.direction,baseline.research_signal.direction);
 assert.equal(after.dynamic_gate,baseline.dynamic_gate);
 assert.equal(after.ev_gap_deviation,baseline.ev_gap_deviation);
 assert(!fs.readFileSync("./auth-client.js","utf8").includes("quant256_local_calibration.js"),
   "actual production must not load V4 local 12 model");
 assert(!fs.readFileSync("./physics_forecast_first_runtime.js","utf8").includes("this.local"),
-  "V3 must not instantiate local 12 model");
-console.log("PASS: V3 engine only, 0.010/0/0.035, UI bankroll controls isolated, skipped exposure $0, no local A/b upgrade");
+  "V2 must not instantiate local 12 model");
+console.log("PASS: e323a243 V2 engine, 0.005/0/0.035, UI bankroll controls isolated, skipped exposure $0, no local A/b upgrade");
