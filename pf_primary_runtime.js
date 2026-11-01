@@ -8,7 +8,7 @@ function combine(posterior,direct,diagnostics,noise,custom={}){
  const raw={B:posterior[23]/mass,P:posterior[24]/mass,T:posterior[25]/mass},directional=raw.B+raw.P;if(directional<=0)throw Error('pf_primary_no_directional_mass');
  const q=raw.B/directional,physical=direct[23]/dm,a=side(q),b=side(physical),trusted=Number.isFinite(noise)&&noise<=clamp(custom.max_physics_noise??.70)&&direct[42]<=clamp(custom.max_physics_uncertainty??.70);
  const conflict=a!=='Balanced'&&b!=='Balanced'&&a!==b,forcedSkip=trusted&&conflict&&Math.abs(2*physical-1)>=Math.max(.02,custom.conflict_gap??.04);
- const requested=trusted&&a===b&&a!=='Balanced'?clamp(custom.physics_weight??.08,0,Math.min(.18,custom.max_physics_weight??.12)):0;
+ const requested=trusted&&a===b&&a!=='Balanced'?clamp(custom.physics_weight??.08,0,Math.min(.12,custom.max_physics_weight??.12)):0;
  const limit=clamp(custom.max_delta??.004,0,.006);let final=q+clamp(requested*(physical-q),-limit,limit);if(a==='Balanced'||side(final)!==a)final=q;
  const out=posterior.slice();out[23]=directional*final;out[24]=directional*(1-final);out[25]=raw.T;out[39]=.95*out[23]-out[24];out[40]=out[24]-out[23];out[41]=out[39]-out[40];out[42]=Math.max(clamp(diagnostics?.posterior_uncertainty??1),clamp(direct[42]));
  const effective=Math.abs(physical-q)>1e-12?(final-q)/(physical-q):0;

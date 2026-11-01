@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "name": "cardcount_physics_primary_anti_streak_v1",
+  "name": "cardcount_middle_late_v2",
   "enabled": true,
-  "display_gap": 0.015,
+  "display_gap": 0.01,
   "stages": [
     {
       "name": "early",
@@ -24,89 +24,121 @@
     "decision_alpha": [
       [
         1,
-        0.28
+        0.45
+      ],
+      [
+        18,
+        0.45
       ],
       [
         20,
-        0.3
+        0.49000000000000005
       ],
       [
-        30,
-        0.34
+        24,
+        0.6
       ],
       [
-        45,
-        0.38
+        43,
+        0.6
+      ],
+      [
+        49,
+        0.72
       ],
       [
         70,
-        0.42
+        0.72
       ]
     ],
     "macro_short": [
       [
         1,
-        0.18
+        0.28
+      ],
+      [
+        18,
+        0.28
       ],
       [
         20,
-        0.19
+        0.28800000000000003
       ],
       [
-        30,
-        0.2
+        24,
+        0.33
       ],
       [
-        45,
-        0.22
+        43,
+        0.33
+      ],
+      [
+        49,
+        0.35
       ],
       [
         70,
-        0.24
+        0.35
       ]
     ],
     "macro_long": [
       [
         1,
-        0.06
-      ],
-      [
-        20,
-        0.065
-      ],
-      [
-        30,
-        0.07
-      ],
-      [
-        45,
         0.08
       ],
       [
+        18,
+        0.08
+      ],
+      [
+        20,
+        0.08800000000000001
+      ],
+      [
+        24,
+        0.11
+      ],
+      [
+        43,
+        0.11
+      ],
+      [
+        49,
+        0.12
+      ],
+      [
         70,
-        0.09
+        0.12
       ]
     ],
     "pf_max": [
       [
         1,
-        0.18
+        0.1
+      ],
+      [
+        18,
+        0.1
       ],
       [
         20,
-        0.2
+        0.116
       ],
       [
-        30,
-        0.24
+        24,
+        0.15
       ],
       [
-        45,
-        0.28
+        43,
+        0.15
+      ],
+      [
+        49,
+        0.16
       ],
       [
         70,
-        0.3
+        0.16
       ]
     ],
     "training_weight": [
@@ -202,9 +234,9 @@
     "noise_high": 0.72
   },
   "pf": {
-    "min_blend": 0.1,
+    "min_blend": 0.06,
     "signal_gate": true,
-    "forecast_draws": 4,
+    "forecast_draws": 3,
     "point_card_sampling": {
       "schema_version": 1,
       "enabled": true,
@@ -228,7 +260,7 @@
     },
     "low_uncertainty_gain": 0.18,
     "actionability_gain": 0.08,
-    "pattern_gain": 0,
+    "pattern_gain": 0.0,
     "weight_cap": 1.5,
     "xgb_candidates": [
       {
@@ -307,7 +339,7 @@
     "prior_strength": 100,
     "max_delta": 0.005,
     "validation_window": 32,
-    "min_brier_gain": 0.00005,
+    "min_brier_gain": 5e-05,
     "noise_start": 0.55,
     "noise_stop": 0.85,
     "stage_anchors": {
@@ -461,71 +493,75 @@
   },
   "pf_weight_smoothing_v1": {
     "schema_version": 1,
-    "version": "PF10000_ANTI_STREAK_PF_PRIMARY_V1",
+    "version": "PF10000_ASCENDING_WEIGHT_EMA_POINT_CARD_V4",
     "enabled": true,
     "accuracy_validated": false,
     "anchors": {
       "pf_max": [
         [
           1,
-          0.18
+          0.1
         ],
         [
           20,
-          0.2
+          0.1
         ],
         [
           30,
-          0.24
+          0.12
         ],
         [
           45,
-          0.28
+          0.14
         ],
         [
           70,
-          0.3
+          0.16
         ]
       ],
       "decision_alpha": [
         [
           1,
-          0.28
+          0.42
         ],
         [
           20,
-          0.3
+          0.42
         ],
         [
           30,
-          0.34
+          0.48
         ],
         [
           45,
-          0.38
+          0.54
+        ],
+        [
+          50,
+          0.57
         ],
         [
           70,
-          0.42
+          0.62
         ]
       ]
     },
     "reference_smoothing": {
       "enabled": true,
-      "max_delta": 0.004
+      "max_delta": 0.006
     }
   },
   "pf_primary_v1": {
     "schema_version": 1,
     "version": "PF_PRIMARY_PHYSICS_SECONDARY_V1",
-    "enabled": true,
+    "enabled": false,
     "allow_query_test": true,
-    "physics_weight": 0.12,
-    "max_physics_weight": 0.18,
-    "max_delta": 0.006,
-    "max_physics_noise": 0.72,
-    "max_physics_uncertainty": 0.72,
-    "conflict_gap": 0.035,
+    "physics_weight": 0.08,
+    "max_physics_weight": 0.12,
+    "max_delta": 0.004,
+    "max_physics_noise": 0.7,
+    "max_physics_uncertainty": 0.7,
+    "conflict_gap": 0.04,
     "accuracy_validated": false
   },
   "road_primary_v1": {
@@ -662,18 +698,5 @@
       "uncertainty_high": 0.8,
       "validated": false
     }
-  },
-  "anti_streak_v1": {
-    "schema_version": 1,
-    "enabled": true,
-    "min_run_length": 3,
-    "strong_run_length": 5,
-    "block_opposite_bet": true,
-    "opposite_requires_extra_ev": 0.012,
-    "strong_opposite_requires_extra_ev": 0.02,
-    "same_side_ev_relief": 0.003,
-    "max_display_opposite_without_qualify": false,
-    "count_ties_break_run": true,
-    "accuracy_validated": false
   }
 }

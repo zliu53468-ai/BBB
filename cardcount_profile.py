@@ -8,7 +8,7 @@ def interpolate(key, round_index):
     anchors = PROFILE["anchors"][key]
     tuning = PROFILE.get("pf_weight_smoothing_v1", {})
     points = tuning.get("anchors", {}).get(key)
-    low, high = (.10, .30) if key == "pf_max" else (.25, .75)
+    low, high = (.06, .16) if key == "pf_max" else (.35, .75)
     valid = key in ("pf_max", "decision_alpha") and isinstance(points, list) and len(points) >= 2
     if valid:
         valid = all(isinstance(v, list) and len(v) == 2 and all(isinstance(x, (int, float)) and math.isfinite(x) for x in v) and 1 <= v[0] <= 70 and low <= v[1] <= high and (not i or v[0] > points[i-1][0]) for i, v in enumerate(points))
@@ -24,7 +24,7 @@ def interpolate(key, round_index):
 def decision_alpha(round_index, noise, uncertainty=.5):
     clamp=lambda v,lo=0.0,hi=1.0:max(lo,min(hi,float(v)))
     noise=clamp(noise);uncertainty=clamp(uncertainty)
-    return clamp(interpolate("decision_alpha",round_index)-.04*max(0.0,noise-.55)/.45-.03*max(0.0,uncertainty-.5)/.5,.25,.75)
+    return clamp(interpolate("decision_alpha",round_index)-.04*max(0.0,noise-.55)/.45-.03*max(0.0,uncertainty-.5)/.5,.35,.75)
 
 
 def focus_resample_indices(round_indices, random_state=20261023):

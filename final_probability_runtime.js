@@ -43,45 +43,13 @@ function applyRelativeBaseline(f,history=[]){const c=relativeBaselineConfig();re
 function dualCoreLiveConfig(){const c=roadPrimaryConfig()?.vnext_live_v1;return c?.enabled===true?c:null;}
 function roadPrimaryConfig(){if(bayesMarkovConfig())return null;const c=cardcountProfile?.road_primary_v1;const pfQuery=typeof window!=="undefined"&&/(?:^\?|&)pf_primary=1(?:&|$)/.test(String(window.location?.search||""));return c?.enabled===true&&!pfQuery?c:null;}
 function pfPrimaryConfig(){if(bayesMarkovConfig()||roadPrimaryConfig())return null;const c=cardcountProfile?.pf_primary_v1;if(!c)return null;const query=c.allow_query_test===true&&typeof window!=="undefined"&&/(?:^\?|&)pf_primary=1(?:&|$)/.test(String(window.location?.search||""));return c.enabled===true||query?c:null;}
-function pfPrimaryTag(){if(bayesMarkovConfig())return "bayes_markov:"+bayesPipelineTag();const road=roadPrimaryConfig();if(road)return "road:"+JSON.stringify(road);const c=pfPrimaryConfig();return c?JSON.stringify([c,antiStreakConfig()]):null;}
-// Eligibility-only long-run protection; never edits PF, Physics, or forecast probabilities.
-function antiStreakConfig(){const c=cardcountProfile?.anti_streak_v1;return c?.enabled===true?c:null;}
-function currentRun(history,tiesBreak=true){
-  let side=null,length=0;
-  if(!Array.isArray(history))return {side,length};
-  for(let i=history.length-1;i>=0;i--){
-    const hand=history[i];
-    if(hand==="T"){if(tiesBreak)break;continue;}
-    if(hand!=="B"&&hand!=="P")break;
-    if(side===null)side=hand;
-    if(hand!==side)break;
-    length++;
-  }
-  return {side,length};
-}
-function antiStreakQualification(history,candidate,edge,baseActivation,config=antiStreakConfig()){
-  const enabled=config?.enabled===true,run=currentRun(history,config?.count_ties_break_run!==false);
-  const minRun=Math.max(1,Math.floor(+config?.min_run_length||3)),strongRun=Math.max(minRun,Math.floor(+config?.strong_run_length||5));
-  const qualifiedRun=enabled&&run.length>=minRun,hasSide=candidate==="B"||candidate==="P";
-  const opposite=qualifiedRun&&hasSide&&candidate!==run.side,sameSide=qualifiedRun&&hasSide&&candidate===run.side;
-  // At 5+ consecutive outcomes the two premiums ADD: 0.012 + 0.020 = 0.032 EV.
-  const extra=opposite?Math.max(0,+config?.opposite_requires_extra_ev||0)+(run.length>=strongRun?Math.max(0,+config?.strong_opposite_requires_extra_ev||0):0):0;
-  const baseline=Number.isFinite(baseActivation)?Math.max(0,baseActivation):Infinity,required=baseline+extra;
-  const qualifies=!opposite||(Number.isFinite(edge)&&edge>required);
-  const blocked=opposite&&config?.block_opposite_bet===true&&!qualifies;
-  // Same-side relief is bounded to 0.003 EV and never overrides other entry/Volume guards.
-  const relief=sameSide?Math.min(.003,Math.max(0,+config?.same_side_ev_relief||0)):0;
-  return {enabled,current_run_side:run.side,current_run_length:run.length,candidate,opposite,opposite_blocked:blocked,
-    extra_ev_required:extra,required_ev:opposite?required:null,original_activation_ev:baseline,
-    candidate_ev:Number.isFinite(edge)?edge:null,same_side_ev_relief:relief,opposite_qualified:qualifies,
-    count_ties_break_run:config?.count_ties_break_run!==false};
-}
+function pfPrimaryTag(){if(bayesMarkovConfig())return "bayes_markov:"+bayesPipelineTag();const road=roadPrimaryConfig();if(road)return "road:"+JSON.stringify(road);const c=pfPrimaryConfig();return c?JSON.stringify(c):null;}
 function pointCardSamplingTag(){const p=cardcountProfile?.pf?.point_card_sampling;return p?.enabled===true?JSON.stringify(p):null;}
 function profileValue(key,roundIndex){
   if(!cardcountProfile?.enabled)return null;
   const roadAnchors=(bayesMarkovConfig()?cardcountProfile?.road_primary_v1:roadPrimaryConfig())?.decision_alpha_anchors;
   if(key==='decision_alpha'&&Array.isArray(roadAnchors)&&roadAnchors.length>=2&&roadAnchors.every((v,i,a)=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)&&v[0]>=1&&v[0]<=70&&v[1]>=.35&&v[1]<=.75&&(!i||v[0]>a[i-1][0])))return interpAnchors(clip(roundIndex,1,70),roadAnchors);
-  const tuning=cardcountProfile.pf_weight_smoothing_v1,points=tuning?.anchors?.[key],bounds=key==='pf_max'?[.10,.30]:[.25,.75];
+  const tuning=cardcountProfile.pf_weight_smoothing_v1,points=tuning?.anchors?.[key],bounds=key==='pf_max'?[.06,.16]:[.35,.75];
   const valid=['pf_max','decision_alpha'].includes(key)&&Array.isArray(points)&&points.length>=2&&points.every((v,i,a)=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite)&&v[0]>=1&&v[0]<=70&&v[1]>=bounds[0]&&v[1]<=bounds[1]&&(!i||v[0]>a[i-1][0]));
   return interpAnchors(clip(roundIndex,1,70),tuning?.enabled&&valid?points:cardcountProfile.anchors[key]);
 }
@@ -350,8 +318,7 @@ function applyProbabilityBounds(rawPB,roundIndex,noiseScore,progressWeight=null)
 function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null,physicsDiagnostics=null){
   if(cardcountProfile?.enabled){
     const noise=clip(noiseScore),u=clip(physicsDiagnostics?.physics_uncertainty??.5);
-    const floor=(cardcountProfile?.anchors?.decision_alpha?.[0]?.[1]??.35)<.35?.25:.35;
-    return clip(profileValue("decision_alpha",roundIndex)-.04*Math.max(0,noise-.55)/.45-.03*Math.max(0,u-.5)/.5,floor,.75);
+    return clip(profileValue("decision_alpha",roundIndex)-.04*Math.max(0,noise-.55)/.45-.03*Math.max(0,u-.5)/.5,.35,.75);
   }
   if(!adaptiveStageEnabled()){
     const stage=roundIndex<=40?"early":roundIndex>50?"late":"middle",range=stage==="early"?[.35,.45]:stage==="middle"?[.50,.60]:[.65,.75];
@@ -575,7 +542,6 @@ function v15SkipDiagnostics(primary,auxFilter,decision,mode,error=""){
     if(trace.distance+1e-12<trace.effectiveBand)failed.push("final_confidence_band");
     if(!(trace.candidateEdge>trace.effectiveActivationEv))failed.push("final_ev_gate");
   }
-  if(d.antiStreak?.opposite_blocked)failed.push("anti_streak_opposite_ev");
   if(d.direction==="Skip"&&failed.length===0)failed.push("unclassified_skip");
   return {schema_version:1,stage:p.policy?.stage??null,round_index:trace.roundIndex??null,
     final_action:d.direction||"Skip",primary_candidate:p.candidate,
@@ -802,7 +768,7 @@ function applyFinalPrediction(seq,corePrediction=null){
   const roadConfig=roadPrimaryConfig(),dualLive=dualCoreLiveConfig();let roadCandidate=null,roadAudit=null;
   const pfConfig=pfPrimaryConfig(),pfFirst=!!pfConfig;let pfPrimary=null;
   // B/P/T -> Direct Physics 213D->48D -> stateless PF10000 -> Physical EV -> Physics candidate
-  // -> Clip/EMA -> Frozen Core + 57D XGB -> Final EV -> Anti-Streak eligibility -> Volume Guard.
+  // -> Clip/EMA -> Frozen Core + 57D XGB -> Final EV Guard -> Volume Guard.
   const hitrate=hitrateConfig();let markov=null,hitrateAudit=null;
   let particleDiagnostics=null;
   let physics=null,physicsDirect=null,physicsForecast=null,physicsIntegrityReport=null,physicalEv=null,error="";
@@ -925,18 +891,13 @@ function applyFinalPrediction(seq,corePrediction=null){
     const baseBand=Math.max(policy.confidenceBand,primary.physicsConfidenceBand),baseActivation=Math.max(policy.activationEv,primary.physicsActivationEv),distance=Math.abs(finalPB-.5);
     const candidateEdge=candidate==="B"?evBanker:candidate==="P"?evPlayer:0;
     const aligned=candidate==="B"?finalPB>.5:candidate==="P"?finalPB<.5:false;
-    // Independent from the raw probability: a forecast may remain opposite while the bet is Skip.
-    const antiStreak=antiStreakQualification(seq,candidate,candidateEdge,baseActivation);
-    if(antiStreak.enabled)executionOrder.push("anti_streak_qualification");
-    const basePass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=baseBand&&
-      candidateEdge>Math.max(0,baseActivation-antiStreak.same_side_ev_relief)&&!antiStreak.opposite_blocked;
+    const basePass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=baseBand&&candidateEdge>baseActivation;
 
     executionOrder.push("volume_guard");
     const measuredGuard=volumeGuardState(roundIndex,finalPB,policy);
     const guard=hitrate?{...measuredGuard,active:false,bandRelief:0,evRelief:0}:measuredGuard;
-    const effectiveBand=Math.max(policy.bandMinimum,baseBand-guard.bandRelief-(hitrate?0:(policy.finalBandRelief??LOW_SKIP_FINAL_BAND_RELIEF))),effectiveActivationEv=Math.max(0,baseActivation-guard.evRelief-antiStreak.same_side_ev_relief);
-    // A Volume Guard EV discount cannot bypass the stricter opposite-run baseline plus premium.
-    const guardedPass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=effectiveBand&&candidateEdge>effectiveActivationEv&&!antiStreak.opposite_blocked;
+    const effectiveBand=Math.max(policy.bandMinimum,baseBand-guard.bandRelief-(hitrate?0:(policy.finalBandRelief??LOW_SKIP_FINAL_BAND_RELIEF))),effectiveActivationEv=Math.max(0,baseActivation-guard.evRelief);
+    const guardedPass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=effectiveBand&&candidateEdge>effectiveActivationEv;
     if(hitrate)hitrateAudit=hitrateGate(pfPrimary?.raw_pf_direction??markov?.direction??"Balanced",evBanker,evPlayer,roundIndex,primary.noise,primary.uncertainty,particleDiagnostics?.particle_quality,hitrate);
     if(pfPrimary?.forced_skip_by_conflict){if(!hitrateAudit)hitrateAudit={passed:false,reasons:[]};hitrateAudit.passed=false;hitrateAudit.reasons.push('pf_physics_conflict');}
     if(hitrateAudit)hitrateAudit.volume_guard={...measuredGuard,selective_only:true,relief_applied:false};
@@ -948,7 +909,7 @@ function applyFinalPrediction(seq,corePrediction=null){
       minEv:policy.minEv,activationEv:policy.activationEv,effectiveActivationEv,
       softBand:policy.softBand,confidenceBand:policy.confidenceBand,effectiveConfidenceBand:effectiveBand,
       volumeGuardActive:guard.active,entryTier,stakeMultiplier:entryTier==="weak"?.5:entryTier==="strong"?1:0,
-      policyEnabled:policy.enabled,policyProfile:policy.profile,direction,antiStreak,
+      policyEnabled:policy.enabled,policyProfile:policy.profile,direction,
       finalDirection:direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip",
       confidence:direction==="Skip"?0:softConfidence(candidateEdge,{...policy,activationEv:effectiveActivationEv}),
       basePass,guardedPass,candidate,
@@ -969,7 +930,6 @@ function applyFinalPrediction(seq,corePrediction=null){
   const direction=evDecision?.direction||"Skip",finalPP=1-finalPB;
   const confidence=evDecision?.confidence??0;
   const skipDiagnostics=v15SkipDiagnostics(primary,auxFilter,evDecision,mode,error);
-  const streakAudit=evDecision?.antiStreak||antiStreakQualification(seq,"Skip",0,0);
   if(hitrateAudit&&!hitrateAudit.passed){skipDiagnostics.failed_conditions.unshift(...hitrateAudit.reasons.map(reason=>"hitrate_"+reason));skipDiagnostics.primary_reason=skipDiagnostics.failed_conditions[0];}
   const physicalEvBanker=primary?.evBanker??physicalEv?.banker??null,physicalEvPlayer=primary?.evPlayer??physicalEv?.player??null,physicalEvGap=primary?(primary.evBanker-primary.evPlayer):(physicalEv?.gap??null),physicsUncertainty=primary?.uncertainty??physicalEv?.uncertainty??null;
   const rawForecast=nextHandForecast(physics);
@@ -977,7 +937,7 @@ function applyFinalPrediction(seq,corePrediction=null){
   else if(rawForecast.available&&particleDiagnostics)rawForecast.source=pfFirst?"pf_primary_physics_secondary_winner_head":"direct_physics_particle500_winner_head";
   const display=resolveDisplayForecast(rawForecast,seq),forecast=display.forecast;
   const calibrated={status:display.calibration};
-  return {...resolvedCore,...(forecast.relative_baseline?{relative_baseline:forecast.relative_baseline}:{}),...(roadConfig?{road_primary:roadAudit||{enabled:true,available:false,error}}:{}),...(pfFirst?{pf_primary:pfPrimary||{enabled:true,unavailable:true,error}}:{}),...(hitrate?{hitrate_max:{...hitrateAudit,physics_pf:markov?.base,physics_pf_direction:markov?.direction,markov:{...markov,physics:undefined},final_direction:direction}}:{}),...(display.experimental?{experimental_no_skip:display.experimental,base_raw_next_hand_forecast:rawForecast}:{}),raw_next_hand_forecast:display.raw,browser_calibration:calibrated?.status||null,next_hand_forecast:forecast,forecast_direction:forecast.direction,anti_streak:streakAudit,anti_streak_enabled:streakAudit.enabled,current_run_side:streakAudit.current_run_side,current_run_length:streakAudit.current_run_length,opposite_blocked:streakAudit.opposite_blocked,extra_ev_required:streakAudit.extra_ev_required,bet_direction:direction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
+  return {...resolvedCore,...(forecast.relative_baseline?{relative_baseline:forecast.relative_baseline}:{}),...(roadConfig?{road_primary:roadAudit||{enabled:true,available:false,error}}:{}),...(pfFirst?{pf_primary:pfPrimary||{enabled:true,unavailable:true,error}}:{}),...(hitrate?{hitrate_max:{...hitrateAudit,physics_pf:markov?.base,physics_pf_direction:markov?.direction,markov:{...markov,physics:undefined},final_direction:direction}}:{}),...(display.experimental?{experimental_no_skip:display.experimental,base_raw_next_hand_forecast:rawForecast}:{}),raw_next_hand_forecast:display.raw,browser_calibration:calibrated?.status||null,next_hand_forecast:forecast,forecast_direction:forecast.direction,bet_direction:direction,direction,final_direction:evDecision?.finalDirection||(direction==="B"?"莊 B":direction==="P"?"閒 P":"觀望 Skip"),confidence,
     ev_banker:evDecision?.evBanker??null,ev_player:evDecision?.evPlayer??null,
     physical_ev_banker:physicalEvBanker,physical_ev_player:physicalEvPlayer,physical_ev_gap:physicalEvGap,physics_uncertainty:physicsUncertainty,
     min_ev:evDecision?.minEv??null,activation_ev:evDecision?.activationEv??null,effective_activation_ev:evDecision?.effectiveActivationEv??null,
@@ -988,7 +948,6 @@ function applyFinalPrediction(seq,corePrediction=null){
     finalProbability:{...(display.experimental?{experimental_no_skip:display.experimental}:{}),version:VERSION,...(roadConfig?{road_primary:roadAudit||{enabled:true,available:false,error}}:{}),active:["physics_primary","pf_primary","road_primary"].includes(mode),mode,...(pfFirst?{pf_primary:pfPrimary||{enabled:true,unavailable:true,error}}:{}),
       ...(hitrate?{hitrate_max:{...hitrateAudit,physics_pf:markov?.base,physics_pf_direction:markov?.direction,markov:{...markov,physics:undefined},final_direction:direction}}:{}),
       skip_diagnostics:skipDiagnostics,
-      anti_streak:streakAudit,anti_streak_enabled:streakAudit.enabled,current_run_side:streakAudit.current_run_side,current_run_length:streakAudit.current_run_length,opposite_blocked:streakAudit.opposite_blocked,extra_ev_required:streakAudit.extra_ev_required,
       particleDiagnostics,primary_source:roadConfig?(roadAudit?.available?"road_primary_physics_pf_adjustment":"physics_pf_road_unready_fallback"):pfFirst?"pf_primary_physics_secondary":particleDiagnostics?"direct_physics_particle500_physical_ev":"direct_physics_physical_ev",primary_candidate:primary?.candidate??"Skip",
       macro_ema:primary?.macroFeatures??null,macro_adjustment:primary?.macro??null,
       decision_stage:primary?.policy?.stage??(seq.length<40?"early":seq.length<50?"middle":"late"),decision_progress:clip((seq.length+1)/getEstimatedTotalHands()),dynamic_band:primary?.policy?.dynamicBand??null,
@@ -1096,7 +1055,7 @@ function registerPrediction(seq,prediction){
     features_57d:cloneFiniteVector(r.extended,FEATURE_DIM),shoe_progress_weight:Number.isFinite(+r.extended?.[1])?+r.extended[1]:null,physics_noise_score:Number.isFinite(+r.extended?.at(-1))?+r.extended.at(-1):null,
     raw_p_b:Number.isFinite(+r.physics_raw_p_b)?+r.physics_raw_p_b:null,clipped_p_b:Number.isFinite(+r.physics_clipped_p_b)?+r.physics_clipped_p_b:null,smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,
     primary_raw_p_b:Number.isFinite(+r.physics_raw_p_b)?+r.physics_raw_p_b:null,primary_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,physics_smoothed_p_b:Number.isFinite(+r.physics_smoothed_p_b)?+r.physics_smoothed_p_b:null,
-    hitrate_max:r.hitrate_max??null,anti_streak:r.anti_streak??null,anti_streak_enabled:r.anti_streak_enabled===true,current_run_side:r.current_run_side??null,current_run_length:r.current_run_length??0,opposite_blocked:r.opposite_blocked===true,extra_ev_required:r.extra_ev_required??0,primary_candidate:r.primary_candidate||"Skip",skip_diagnostics:r.skip_diagnostics||null,xgb_aux_p_b:Number.isFinite(+r.xgb_aux_p_b)?+r.xgb_aux_p_b:null,core_aux_p_b:Number.isFinite(+r.core_aux_p_b)?+r.core_aux_p_b:null,aux_filter:r.aux_filter||null,
+    hitrate_max:r.hitrate_max??null,primary_candidate:r.primary_candidate||"Skip",skip_diagnostics:r.skip_diagnostics||null,xgb_aux_p_b:Number.isFinite(+r.xgb_aux_p_b)?+r.xgb_aux_p_b:null,core_aux_p_b:Number.isFinite(+r.core_aux_p_b)?+r.core_aux_p_b:null,aux_filter:r.aux_filter||null,
     macro_schema_version:1,macro_ema:r.macro_ema??null,macro_adjustment:r.macro_adjustment??null,
     decision_stage:r.decision_stage,decision_progress:r.decision_progress,dynamic_band:r.dynamic_band??null,runtime_version:r.version||VERSION,pf_primary_policy_tag:pfPrimaryTag(),pf_primary:r.pf_primary||null,point_card_sampling_tag:pointCardSamplingTag(),pf_smoothing_profile_version:cardcountProfile?.pf_weight_smoothing_v1?.enabled?cardcountProfile.pf_weight_smoothing_v1.version:null,
     smoothing_alpha:Number.isFinite(+r.smoothingAlpha)?+r.smoothingAlpha:1,smoothing_strength:Number.isFinite(+r.smoothingStrength)?+r.smoothingStrength:0,smoothing_profile:r.smoothingProfile||"off",final_p_b:Number.isFinite(+r.finalPB)?+r.finalPB:null,
@@ -1205,7 +1164,6 @@ function renderPrediction(p,n){
   if(p.road_primary?.dual_core?.enabled&&el("modePill"))el("modePill").textContent="VNext 雙核心實驗預測";
   if(p.road_primary?.dual_core?.enabled&&el("message"))el("message").textContent+="；雙核心已參與正式機率，未驗證勝率提升";
   if(p.next_hand_forecast?.relative_baseline?.applied&&el("message"))el("message").textContent+="；同靴雙向誤差校正（僅顯示機率，正式下注不變）";
-  if(p.opposite_blocked&&el("message")&&!noSkipTestActive)el("message").textContent+="；長龍逆勢EV不足，正式觀望（上方僅為機率傾向）";
   if(p.pf_primary?.enabled&&el("modePill"))el("modePill").textContent="PF主導／Physics輔助測試";
   if(p.pf_primary?.enabled&&el("message"))el("message").textContent+="；PF主導測試，未證實命中率改善";
 }
@@ -1296,7 +1254,7 @@ function installUI(){
   syncMacro(readHistory());
 }
 if(typeof window!=="undefined")window.__BGS_FINAL56__={version:VERSION,bayesMarkovConfig,relativeBaselineConfig,applyRelativeBaseline,dualCoreLiveConfig,roadPrimaryConfig,experimentalSettings,applyExperimentalForecast,resolveDisplayForecast,prepareDisplayCalibrationTickets,commitDisplayCalibrationTickets,setNoSkipTestMode,pfPrimaryConfig,getExperimentalStatus,getExperimentalRows,getExperimentalPending,hitrateConfig,markovAdjustment,hitrateGate,hitrateEv,getLocalCalibrationStatus:(history=readHistory())=>LOCAL_CALIBRATION?.inspect(history,getShoeId(),browserCalibrationTag,localCalibrationConfig())||null,displayDirection,profileValue,getCardcountProfile:()=>cardcountProfile,noSkipTestDirection,nextHandForecast,renderPrediction,applyFinalPrediction,predictPhysics,unpackPhysicsForecast,physicsIntegrity,dataQuality,buildOriginal7,historyVector,loadModels,setEstimatedTotalHands,getEstimatedTotalHands,directPhysicsEnabled,early35Enabled,applyProbabilityBounds,dynamicEmaAlpha,directPhysicsPrimary,auxiliaryCandidateFilter,preserveCandidateDirection,physicsConsistencyScore,calibratedPhysicsDirectionalPB,physicsPrecisionPenalty,
-  registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,currentRun,antiStreakQualification,antiStreakConfig,
+  registerPrediction,settlePending,exportTrainingData,downloadTrainingData,getMacroFeatures,recordCompletedHand,exportMacroObservations,rotateShoeId,undoRuntimeHistory,decisionPolicy,dynamicBand,volumeGuardState,
   getTrainingRows:()=>readRows(),getTrainingCount:()=>readRows().length,getModelStatus:()=>({...status,mode:status.physics&&status.final56?"final56":"core"})};
 if(typeof window?.addEventListener==="function")window.addEventListener("storage",event=>{if(event.key===MACRO_KEY||event.key===SHOE_KEY){macroJournal=null;macroState=null;}});
 loadModels();installUI();

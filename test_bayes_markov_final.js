@@ -14,13 +14,6 @@ for(const app of [on,hi,lo])app.store.set('bgs_xgb_final_shoe_id_v5','bayes-test
 on.ctx.__BGS_PARTICLE500__.estimate=()=>{throw Error('legacy PF executed');};on.ctx.BBBVNext.physicsCore=()=>{throw Error('old fusion executed');};
 assert.equal(on.api.roadPrimaryConfig(),null);assert.equal(on.api.pfPrimaryConfig(),null);assert.equal(on.api.relativeBaselineConfig(),null);assert.equal(on.api.experimentalSettings(),null);
 const signature=p=>plain({p:p.finalProbability.finalPB,d:p.direction,b:p.ev_banker,pv:p.ev_player});
-// Historical pre-Bayes snapshot predates the anti-streak audit fields; compare
-// its complete pre-existing contract, not the additional read-only diagnostics.
-const beforeAntiStreak=p=>{
-  const value=plain(p),keys=['anti_streak','anti_streak_enabled','current_run_side','current_run_length','opposite_blocked','extra_ev_required'];
-  for(const object of [value,value.finalProbability])if(object)for(const key of keys)delete object[key];
-  return value;
-};
 for(const seq of [[],h,Array(50).fill('B'),Array(50).fill('P'),Array(70).fill('T')]){
 const p=on.api.applyFinalPrediction(seq),r=p.finalProbability;assert.equal(r.mode,'bayes_markov_final');assert.equal(r.xgb_influence,0);assert.equal(r.particleDiagnostics,null);assert.equal(r.physics.length,48);assert.equal(r.extended.length,57);assert(p.next_hand_forecast.available);assert.deepEqual(signature(hi.api.applyFinalPrediction(seq)),signature(lo.api.applyFinalPrediction(seq)));assert(Math.abs(p.ev_banker-(1-r.p_tie)*(.95*r.finalPB-(1-r.finalPB)))<1e-12);assert(Math.abs(p.ev_player-(1-r.p_tie)*(1-2*r.finalPB))<1e-12);assert.deepEqual(signature(on.api.applyFinalPrediction(seq)),signature(p));
 }
@@ -28,6 +21,6 @@ const oldSchedule=await make({road:true,firstOrder:true,dualLive:true,bias:true}
 const before=on.api.applyFinalPrediction(h);on.api.applyFinalPrediction([...h,'P']);assert.deepEqual(signature(on.api.applyFinalPrediction(h)),signature(before));
 on.api.registerPrediction(h,before);on.api.settlePending('T',null,h);assert(JSON.parse(on.api.exportTrainingData()).rows.at(-1).bayes_markov.causal);
 const module=on.ctx.__BBB_BAYES_MARKOV__;on.ctx.__BBB_BAYES_MARKOV__=null;assert.equal(on.api.applyFinalPrediction(h).direction,'Skip');on.ctx.__BBB_BAYES_MARKOV__=module;
-const off=await make({road:true,firstOrder:true,dualLive:true,bias:true}),old=await make({road:true,firstOrder:true,dualLive:true,bias:true});for(const app of [off,old])app.store.set('bgs_xgb_final_shoe_id_v5','rollback');vm.runInContext(fs.readFileSync('validation/pre_bayes_markov_runtime.js','utf8'),old.ctx);await old.ctx.__BGS_FINAL56__.loadModels();for(const seq of [[],h])assert.deepEqual(beforeAntiStreak(off.api.applyFinalPrediction(seq)),beforeAntiStreak(old.ctx.__BGS_FINAL56__.applyFinalPrediction(seq)));
+const off=await make({road:true,firstOrder:true,dualLive:true,bias:true}),old=await make({road:true,firstOrder:true,dualLive:true,bias:true});for(const app of [off,old])app.store.set('bgs_xgb_final_shoe_id_v5','rollback');vm.runInContext(fs.readFileSync('validation/pre_bayes_markov_runtime.js','utf8'),old.ctx);await old.ctx.__BGS_FINAL56__.loadModels();for(const seq of [[],h])assert.deepEqual(plain(off.api.applyFinalPrediction(seq)),plain(old.ctx.__BGS_FINAL56__.applyFinalPrediction(seq)));
 console.log('PASS exact context counts, Bayesian priors, 1/2/3 selection, whole-shoe causality/undo, normalized tie-aware EV, XGB/PF/fusion isolation, 48D/57D unchanged, snapshot, missing module Skip and exact PR94 disabled rollback');
 })().catch(e=>{console.error(e);process.exitCode=1;});
