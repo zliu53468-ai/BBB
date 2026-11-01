@@ -3,7 +3,7 @@
 const assert=require("node:assert/strict");
 const {
   PhysicsForecastFirstEngine,observedCounts,observedHand,
-  deal,simulate,decisionFromEV,weightedContext,BASE,BASE_EV,INITIAL,VERSION,
+  deal,simulate,summarizeHypotheses,decisionFromEV,weightedContext,BASE,BASE_EV,INITIAL,VERSION,
   shoePhaseScaling,roadPosterior,microFusion,conflictGuard
 }=require("./physics_forecast_first_runtime.js");
 const near=(x,y,eps=1e-8)=>assert(Math.abs(x-y)<=eps,String(x)+" != "+String(y));
@@ -247,4 +247,40 @@ assert.equal(initial.pairwise_depletion.estimated_key_consumption,0);
 assert.equal(initial.pairwise_depletion.observed_cards,false);
 assert.equal(bpt.phantom_95pct_claim,false);
 assert.equal(bpt.research_signal.source,"simulated_bpt_only");
-console.log("PASS V3 balanced: conditional depletion, nonlinear signal, weak Bayesian road fusion, 0.010/0/0.035 state, legacy replay");
+// Feedback-loop regression: result is a label, not evidence of removed card values.
+// Same initial 8-deck state + same seed + same number of consumed hands must
+// yield EXACTLY the same virtual shoe and physical EV, regardless of B/P/T labels.
+// The research road diagnosis and quantum 256D label training may still differ.
+const onlyB=new PhysicsForecastFirstEngine();
+const onlyP=new PhysicsForecastFirstEngine();
+const mixed=new PhysicsForecastFirstEngine();
+const observedB=[],observedP=[],observedMixed=[];
+for(let i=0;i<22;i++){
+  observedB.push("B");observedP.push("P");
+  observedMixed.push("BPT"[i%3]);
+  const rb=onlyB.syncHistory(observedB);
+  const rp=onlyP.syncHistory(observedP);
+  const rm=mixed.syncHistory(observedMixed);
+  assert.deepEqual(onlyB.quant.physics.particles,onlyP.quant.physics.particles,
+    "labels cannot change cards consumed in virtual shoe");
+  assert.deepEqual(onlyB.quant.physics.particles,mixed.quant.physics.particles,
+    "tie label cannot condition card depletion");
+  for(const other of [rp,rm]){
+    assert.equal(rb.physical_ev.ev_banker,other.physical_ev.ev_banker,
+      "physical EV(B) must depend on composition, not historical labels");
+    assert.equal(rb.physical_ev.ev_player,other.physical_ev.ev_player,
+      "physical EV(P) must depend on composition, not historical labels");
+    assert.equal(rb.physical_ev.ev_gap_deviation,other.physical_ev.ev_gap_deviation);
+    assert.equal(rb.physical_ev.samples,other.physical_ev.samples);
+  }
+}
+const blind=onlyB.quant.physics;
+const fakeHistoryA=Array(22).fill("B"),fakeHistoryP=Array(22).fill("P");
+assert.deepEqual(
+  summarizeHypotheses(blind,fakeHistoryA,{samplesPerParticle:64}),
+  summarizeHypotheses(blind,fakeHistoryP,{samplesPerParticle:64}),
+  "Monte Carlo RNG seed cannot hash previous result or history string");
+const physicsSource=require("node:fs").readFileSync("./physics_forecast_first_runtime.js","utf8");
+assert(physicsSource.includes('const physicsDirection=physical.ev_banker>=physical.ev_player?"B":"P";'));
+assert(physicsSource.includes("const BASE_EV_GATE=.010,OVERDRIVE_GATE=0,ONE_HAND_CUSHION=.035;"));
+console.log("PASS V3 feedback-loop repair: invariant physical EV under B/P/T label permutations, fixed composition RNG, 5x/0.1x/0.010 preserved");
