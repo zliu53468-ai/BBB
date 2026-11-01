@@ -350,7 +350,8 @@ function applyProbabilityBounds(rawPB,roundIndex,noiseScore,progressWeight=null)
 function dynamicEmaAlpha(roundIndex,noiseScore,config,progressWeight=null,physicsDiagnostics=null){
   if(cardcountProfile?.enabled){
     const noise=clip(noiseScore),u=clip(physicsDiagnostics?.physics_uncertainty??.5);
-    return clip(profileValue("decision_alpha",roundIndex)-.04*Math.max(0,noise-.55)/.45-.03*Math.max(0,u-.5)/.5,.25,.75);
+    const floor=(cardcountProfile?.anchors?.decision_alpha?.[0]?.[1]??.35)<.35?.25:.35;
+    return clip(profileValue("decision_alpha",roundIndex)-.04*Math.max(0,noise-.55)/.45-.03*Math.max(0,u-.5)/.5,floor,.75);
   }
   if(!adaptiveStageEnabled()){
     const stage=roundIndex<=40?"early":roundIndex>50?"late":"middle",range=stage==="early"?[.35,.45]:stage==="middle"?[.50,.60]:[.65,.75];
@@ -926,7 +927,7 @@ function applyFinalPrediction(seq,corePrediction=null){
     const aligned=candidate==="B"?finalPB>.5:candidate==="P"?finalPB<.5:false;
     // Independent from the raw probability: a forecast may remain opposite while the bet is Skip.
     const antiStreak=antiStreakQualification(seq,candidate,candidateEdge,baseActivation);
-    executionOrder.push("anti_streak_qualification");
+    if(antiStreak.enabled)executionOrder.push("anti_streak_qualification");
     const basePass=auxFilter?.decision!=="skip"&&candidate!=="Skip"&&aligned&&distance>=baseBand&&
       candidateEdge>Math.max(0,baseActivation-antiStreak.same_side_ev_relief)&&!antiStreak.opposite_blocked;
 

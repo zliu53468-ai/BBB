@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict'),{make}=require('./test_pf_primary_runtime');
 (async()=>{
-  const {api}=await make({query:true});
+  const {api}=await make({query:true,legacy:false});
   const config=api.getCardcountProfile().anti_streak_v1;
   const test=(seq,candidate,edge,base=.010)=>api.antiStreakQualification(seq.split(','),candidate,edge,base,config);
   assert.equal(api.roadPrimaryConfig(),null);
