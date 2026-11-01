@@ -66,42 +66,82 @@ function sampleHand(counts,rng){
  * 它不是對真實牌靴的測量，亦不代表已知任何 A~K 殘量。
  */
 class BlindPhysicsEstimator{
-  constructor({particles=24,seed=0xBBB256}={}){
-    this.size=clamp(Math.floor(particles)||24,8,96);
+  constructor({particles=96,seed=0xBBB256}={}){
+    this.size=clamp(Math.floor(particles)||96,8,96);
     this.seed=seed>>>0;this.reset();
   }
   reset(){
     this.rng=seededRng(this.seed);
     this.particles=Array.from({length:this.size},()=>BASE_POINTS.slice());
+    this.weights=Array(this.size).fill(1/this.size);
+    this.lastESS=this.size;this.lastResampled=false;
+    this.posteriorUnavailable=false;
     this.drawHistory=[];this.densityHistory=[];this.lastAcceptance=0;return this;
   }
   observe(outcome){
     if(!valid(outcome))throw Error("invalid_outcome");
+    // Conditional proposal + likelihood correction: keeping only a matching hand
+    // without P(outcome | particle) weights would bias the posterior ensemble.
+    const attempts=128,next=new Array(this.size),updated=new Array(this.size);
     let accepted=0,sum=0;
     for(let i=0;i<this.size;i++){
-      const original=this.particles[i];let chosen=null;
-      // 條件抽樣，拒絕不符合本局已知 B/P/T 的虛擬發牌結果。
-      // 不編造實測卡牌；未抽中時不改寫粒子狀態。
-      for(let tries=0;tries<128;tries++){
+      const original=this.particles[i];let chosen=null,matches=0;
+      for(let tries=0;tries<attempts;tries++){
         const trial=sampleHand(original,this.rng);
-        if(trial&&trial.result===outcome){chosen=trial;break;}
+        if(!trial||trial.result!==outcome)continue;
+        matches++;
+        // Reservoir sampling gives a uniform conditional draw, without
+        // preference for the first successful trial.
+        if(this.rng()<1/matches)chosen=trial;
       }
-      if(chosen){this.particles[i]=chosen.counts;sum+=chosen.draws;accepted++;}
+      next[i]=chosen?chosen.counts:original.slice();
+      updated[i]=chosen?this.weights[i]*(matches/attempts):0;
+      if(chosen){sum+=chosen.draws;accepted++;}
     }
+    const evidence=updated.reduce((a,b)=>a+b,0);
     this.lastAcceptance=accepted/this.size;
+    this.lastResampled=false;
+    if(evidence>0){
+      this.particles=next;
+      this.weights=updated.map(w=>w/evidence);
+      // Posterior ESS before any resampling is kept for diagnostics.
+      this.lastESS=1/this.weights.reduce((acc,w)=>acc+w*w,0);
+      this.posteriorUnavailable=false;
+      if(this.lastESS<this.size*.5){
+        // Systematic resampling is deterministic under the shoe PRNG.
+        // Copy whole valid card-count vectors: never create or alter ranks.
+        const step=1/this.size,start=this.rng()*step;
+        const resampled=[];let index=0,cumulative=this.weights[0];
+        for(let j=0;j<this.size;j++){
+          const u=start+j*step;
+          while(u>cumulative&&index<this.size-1)
+            cumulative+=this.weights[++index];
+          resampled.push(this.particles[index].slice());
+        }
+        this.particles=resampled;
+        this.weights.fill(step);
+        this.lastResampled=true;
+      }
+    }else{
+      // No conditional support: leave the shoe untouched and prevent the
+      // forecast from presenting unsupported physical evidence.
+      this.lastESS=0;
+      this.posteriorUnavailable=true;
+    }
     this.drawHistory.push(accepted?sum/accepted:0);
     const snapshot=this.snapshot();
     this.densityHistory.push({high:snapshot.virtual_high_ratio,low:snapshot.virtual_low_ratio});
     return snapshot;
   }
   snapshot(){
-    const mean=BASE_POINTS.map((_,k)=>this.particles.reduce((s,p)=>s+p[k],0)/this.size);
+    const mean=BASE_POINTS.map((_,k)=>this.particles.reduce(
+      (s,p,i)=>s+this.weights[i]*p[k],0));
     const remain=mean.reduce((s,v)=>s+v,0);
     const high=mean[7]+mean[8]+mean[9],low=mean[1]+mean[2]+mean[3]+mean[4];
     const highBase=96/416,lowBase=128/416;
     const highRatio=remain?high/remain:highBase,lowRatio=remain?low/remain:lowBase;
     const highs=this.particles.map(p=>(p[7]+p[8]+p[9])/Math.max(1,p.reduce((s,v)=>s+v,0)));
-    const variance=highs.reduce((s,v)=>s+(v-highRatio)**2,0)/this.size;
+    const variance=highs.reduce((s,v,i)=>s+this.weights[i]*(v-highRatio)**2,0);
     const recent=this.drawHistory.slice(-8).filter(x=>x>0);
     const avg=(values,n,fallback)=>{
       const tail=values.slice(-n);return tail.length?
@@ -120,6 +160,11 @@ class BlindPhysicsEstimator{
       virtual_high_momentum:highMomentum,virtual_low_momentum:lowMomentum,
       virtual_draw_momentum:drawMomentum,
       virtual_high_std:Math.sqrt(variance),conditional_acceptance:this.lastAcceptance,
+      particle_ess:this.lastESS,
+      particle_active_ess:1/this.weights.reduce((v,w)=>v+w*w,0),
+      particle_count:this.size,
+      posterior_weights_active:!this.lastResampled,
+      resampled:this.lastResampled,posterior_unavailable:this.posteriorUnavailable,
       expected_draws_recent:recent.length?recent.reduce((s,v)=>s+v,0)/recent.length:4.94,
       actual_draw_count_known:false,actual_remaining_known:false
     };
@@ -211,7 +256,7 @@ function solveSPD(A,v){
 function dot(a,b){let s=0;for(let i=0;i<K;i++)s+=a[i]*b[i];return s;}
 class OnlineLinUCB256{
   constructor({lambda=.82,alpha=.15,minSamples=0,confidenceThreshold=0,
-    lossGate=.04,particles=24}={}){
+    lossGate=.04,particles=96}={}){
     if(!finite(lambda)||lambda<.75||lambda>.96)throw Error("lambda_must_be_0.75_to_0.96");
     if(!finite(alpha)||alpha<0||alpha>2)throw Error("invalid_alpha");
     if(!Number.isInteger(minSamples)||minSamples<0)throw Error("invalid_min_samples");
