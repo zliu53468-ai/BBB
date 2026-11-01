@@ -9,7 +9,8 @@ if(!root||!root.document||!root.BBBQuant256Online||
   typeof URLSearchParams!=="function"||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
 const {OnlineLinUCB256,VERSION}=root.BBBQuant256Online;
-const CONFIG={lambda:.94,confidenceThreshold:.025,minSamples:12,alpha:.15};
+const CONFIG={lambda:.94,confidenceThreshold:.025,minSamples:12,alpha:.15,
+  coolingAfter:3,coolingMultiplier:.7,coolingCap:2.5,maxSameSide:4};
 const model=new OnlineLinUCB256(CONFIG);
 const KEY="bgs256d_frozen_6x15_forward_v18";
 const FALLBACK=["bgs256d_frozen_6x15_sensitive_v17","bgs256d_frozen_6x15_bigroad_v16",
@@ -34,13 +35,21 @@ function render(pred){
   if(code)code.textContent=skip?"SKIP / NO ACTION":pred.direction==="B"?"BANKER":"PLAYER";
   if(confidence)confidence.textContent="UCB 差 "+pred.delta.toFixed(4)+"（非勝率）";
   if(regime)regime.textContent=skip?
-    pred.reason==="warmup"?"資料暖機中，強制觀望":"差距不足，強制觀望":
-    "通過模型差距閘門（未校準）";
-  if(strength)strength.textContent="閘門 "+pred.confidence_threshold.toFixed(4)+"｜學習 "+pred.trained_rounds+" 局";
+    pred.reason==="warmup"?"資料暖機中，強制觀望":
+    pred.reason==="anti_lock_skip"?"單邊連續四次，強制冷卻觀望":
+    pred.reason==="cooling_reversal_skip"?"反向探索分數翻轉，安全觀望":
+    "差距不足，強制觀望":
+    pred.cooling.active?"過熱冷卻中｜已通過品質閘門":"通過模型差距閘門（未校準）";
+  if(strength)strength.textContent="閘門 "+pred.confidence_threshold.toFixed(4)+
+    "｜雙臂同步學習 "+pred.trained_rounds+" 局";
   if(orb)orb.className="direction-orb "+(skip?"idle":pred.direction==="B"?"banker":"player");
-  if(mode)mode.textContent="256D Online · λ="+pred.lambda.toFixed(2);
+  if(mode)mode.textContent="256D Anti-Lock · λ="+pred.lambda.toFixed(2);
   if(message)message.textContent="線上 LinUCB｜UCB 莊 "+pred.ucb_banker.toFixed(3)+
     "／閒 "+pred.ucb_player.toFixed(3)+
+    "｜反鎖定 streak "+pred.cooling.committed_streak+
+    "／冷卻對側 "+(pred.cooling.boosted_arm||"無")+
+    "／alpha 莊 "+pred.cooling.alpha_banker.toFixed(3)+
+    "、閒 "+pred.cooling.alpha_player.toFixed(3)+
     "｜3/8 局 Entropy 差 "+pred.features.entropy_delta.toFixed(3)+
     "｜Regularity 差 "+pred.features.regularity_delta.toFixed(3)+
     "｜盲眼物理：僅虛擬抽樣（非實際牌值）"+

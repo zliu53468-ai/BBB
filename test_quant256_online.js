@@ -5,7 +5,7 @@ const {OnlineLinUCB256,BlindPhysicsEstimator,context256,windowStats,ACTIVE_INDIC
   require("./quant256_online_runtime");
 const close=(a,b,tol=1e-10)=>assert(Math.abs(a-b)<tol,"not close: "+a+" vs "+b);
 assert.equal(ACTIVE_INDICES.length,36);
-assert.equal(VERSION,"BBB_QUANT256_ONLINE_V1");
+assert.equal(VERSION,"BBB_QUANT256_ONLINE_V2_ANTI_LOCK");
 assert.throws(()=>new OnlineLinUCB256({lambda:.89}),/lambda/);
 assert.throws(()=>new OnlineLinUCB256({lambda:.97}),/lambda/);
 for(const lambda of [.90,.94,.96])assert.equal(new OnlineLinUCB256({lambda}).lambda,lambda);
@@ -26,16 +26,27 @@ q.observe("B");
 assert.equal(q.trainedRounds,1);
 close(q.arms.B.A[0][0],1+x0*x0);
 close(q.arms.B.b[0],x0);
-close(q.arms.P.b[0],0);
+close(q.arms.P.b[0],-x0);
+assert.equal(q.arms.B.A[0][0],q.arms.P.A[0][0],"both arms must share identical information matrix");
 const previousA=q.arms.B.A[0][0],previousB=q.arms.B.b[0];
 const x1=q.predict().context[ACTIVE_INDICES[0]];
 q.observe("P");
 close(q.arms.B.A[0][0],.94*previousA+.06+x1*x1);
-close(q.arms.B.b[0],.94*previousB);
-assert(q.arms.P.b[0]>0);
+close(q.arms.B.b[0],.94*previousB-x1);
+close(q.arms.P.b[0],-q.arms.B.b[0]);
+assert(q.arms.P.b[12]>0,"opposite arm must receive explicit +1 after Player");
+function symmetricArms(model){
+  for(let i=0;i<ACTIVE_INDICES.length;i++){
+    close(model.arms.B.b[i],-model.arms.P.b[i],1e-9);
+    for(let j=0;j<ACTIVE_INDICES.length;j++)
+      close(model.arms.B.A[i][j],model.arms.P.A[i][j],1e-9);
+  }
+}
+symmetricArms(q);
 const train=q.trainedRounds;q.observe("T");
 assert.equal(q.trainedRounds,train,"Tie must not pretend to label a B/P direction");
 assert.equal(q.history.join(""),"BPT");
+symmetricArms(q);
 assert.equal(q.prequential.eligible,0,"warmup must not count as a wager");
 assert.equal(q.syncHistory(["B","P","T"]).history_length,3);
 assert.equal(q.trainedRounds,2,"idempotent history replay");
@@ -61,6 +72,20 @@ assert(stats.vector.slice(12,128).every(x=>x===0),"pruned shoe features");
 assert(stats.vector.slice(128+24).every(x=>x===0),"pruned long road features");
 assert.equal(stats.features.entropy_delta,windowStats(h,3).entropy-windowStats(h,8).entropy);
 assert.equal(stats.features.regularity_delta,windowStats(h,3).regularity-windowStats(h,8).regularity);
+assert(stats.vector.every(v=>v>=-1&&v<=1),"all features must be centered and normalized");
+assert(stats.vector.slice(0,12).every(Number.isFinite));
+const initial=context256([],new BlindPhysicsEstimator({particles:8}));
+assert(initial.vector.every(v=>v<=.5&&v>=-.5),"no positive intercept or absolute progress");
+assert.equal(initial.shoe[0],0,"no constant Banker bias");
+assert.equal(initial.shoe[3],0,"no cumulative time signal");
+assert.equal(initial.road[0],0,"no forced starting side");
+const inverted=h.map(v=>v==="B"?"P":v==="P"?"B":"T");
+const other=context256(inverted,sim);
+for(const idx of [0,11,12,13,14,21]){
+  close(stats.road[idx],-other.road[idx],1e-12);
+}
+close(stats.shoe[0],-other.shoe[0]);
+close(stats.shoe[1],-other.shoe[1]);
 const q3=new OnlineLinUCB256({confidenceThreshold:.025,minSamples:100});
 const trained=q3.syncHistory(h);
 assert.equal(trained.bet_allowed,false,"quality gate is mandatory in warmup");
@@ -71,7 +96,41 @@ assert(Number.isFinite(trained.ucb_banker)&&Number.isFinite(trained.ucb_player))
 const q4=new OnlineLinUCB256({minSamples:1});
 q4.syncHistory(h);
 const response=q4.predict();
-assert.equal(response.bet_allowed,response.delta>=response.confidence_threshold);
+assert.equal(response.bet_allowed,response.delta>=response.confidence_threshold&&
+  !response.cooling.forced_skip&&!response.cooling.reversed_by_exploration);
+symmetricArms(q4);
+assert.throws(()=>new OnlineLinUCB256({coolingAfter:4,maxSameSide:4}),/anti_lock/);
+const baseSide=response.raw_direction;
+const beforeStreak=q4.recommendationStreak;
+q4.predict();q4.predict();q4.predict();
+assert.equal(q4.recommendationStreak,beforeStreak,"predict calls may not inflate the streak");
+q4.recommendationArm=baseSide;
+q4.recommendationStreak=3;
+const cooled=q4.predict();
+assert(cooled.cooling.active,"fourth proposed same-side recommendation triggers cooling");
+assert.equal(cooled.cooling.boosted_arm,baseSide==="B"?"P":"B");
+assert.equal(cooled.cooling.proposed_streak,4);
+assert(cooled.cooling.multiplier>1);
+if(baseSide==="B"){
+  assert(cooled.cooling.alpha_player>cooled.cooling.alpha_banker);
+}else{
+  assert(cooled.cooling.alpha_banker>cooled.cooling.alpha_player);
+}
+assert(cooled.direction!==(baseSide==="B"?"P":"B"),"cooling cannot force a counter-side recommendation");
+q4.recommendationStreak=4;
+const locked=q4.predict();
+assert.equal(locked.direction,"Skip","after four identical recommendations must abstain");
+assert.equal(locked.bet_allowed,false);
+assert.equal(locked.reason,"anti_lock_skip");
+assert(locked.cooling.forced_skip);
+const originalUCB=locked.ucb_banker;
+const lockedAgain=q4.predict();
+close(lockedAgain.ucb_banker,originalUCB);
+assert.equal(q4.recommendationStreak,4,"repeated read-only predictions cannot reset lock");
+q4.observe("B"); // a skipped proposal releases the streak after its outcome is settled
+assert.equal(q4.recommendationStreak,0);
+assert.equal(q4.recommendationArm,null);
+symmetricArms(q4);
 assert.equal(response.direction,response.bet_allowed?response.raw_direction:"Skip");
 assert.equal(response.prequential.eligible,
   response.prequential.correct+response.prequential.wrong+response.prequential.ties);
@@ -122,4 +181,4 @@ assert(dom.confidence.textContent.includes("非勝率"));
 assert.equal(ui.model.trainedRounds,2);
 click("btnBack");assert.equal(ui.model.history.join(""),"BP");
 click("btnEnd");assert.equal(ui.model.trainedRounds,0);
-console.log("PASS quant256 online: full A/b decay, 256D, blind B/P/T, strict skip, idempotence/undo/UI");
+console.log("PASS quant256 anti-lock v2: symmetric full-matrix A/b, centered 256D, cooling + hard Skip, replay and UI");
