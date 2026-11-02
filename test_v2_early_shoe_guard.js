@@ -13,12 +13,12 @@ assert.equal(BASE_EV_GATE,.005);
 assert.equal(OVERDRIVE_GATE,0);
 assert.equal(ONE_HAND_CUSHION,.035);
 const blind=new BlindPhysicsEstimator();
-assert.equal(blind.size,96);
+assert.equal(blind.size,192);
 const model=new OnlineLinUCB256();
-assert.equal(model.particleCount,96);
+assert.equal(model.particleCount,192);
 assert(fs.readFileSync("quant256_online_runtime.js","utf8")
   .includes("const attempts=256,next=new Array(this.size),updated=new Array(this.size);"));
-assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,96);
+assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,128);
 
 // A controlled test mixture proves Bayesian-style shrinkage moves *toward*
 // the exact fresh-shoe baseline and scales down unverified early EV noise.
@@ -60,14 +60,14 @@ const run=()=>{
  const engine=new PhysicsForecastFirstEngine(),rows=[];
  for(let i=0;i<seq.length;i++){
    const report=engine.syncHistory(seq.slice(0,i+1)),round=i+1;
-   assert.equal(engine.quant.physics.size,96);
-   assert.equal(report.physical_ev.samples,9216);
+   assert.equal(engine.quant.physics.size,192);
+   assert.equal(report.physical_ev.samples,24576);
    assert(["SKIP","SIGNAL"].includes(report.research_signal.action));
    assert.equal(report.action,"SKIP","B/P/T-only remains non-bettable");
    assert.equal(report.feature_weights.physics,5);
    assert.equal(report.feature_weights.road,.1);
    assert([0,.005,.035].includes(report.dynamic_gate));
-   assert.equal(engine.quant.physics.weights.length,96);
+   assert.equal(engine.quant.physics.weights.length,192);
    near(engine.quant.physics.weights.reduce((a,b)=>a+b,0),1);
    const snap=engine.quant.physics.snapshot();
    assert(Number.isFinite(snap.likelihood_relative_se));
@@ -80,7 +80,7 @@ const run=()=>{
    }else{
      assert.equal(report.early_shoe_guard,null);
      const raw=summarizeHypotheses(engine.quant.physics,[],
-       {samplesPerParticle:96});
+       {samplesPerParticle:128});
      near(report.ev_banker,raw.ev_banker);
      near(report.ev_player,raw.ev_player);
      near(report.ev_gap_deviation,raw.ev_gap_deviation);
@@ -96,14 +96,14 @@ const outputs=run();
 assert.deepEqual(outputs,run(),"fixed seed must preserve full history replay");
 const auth=fs.readFileSync("auth-client.js","utf8");
 const page=fs.readFileSync("index.html","utf8");
-assert(auth.includes("quant256_online_runtime.js?v=20261102-v2-early-shoe-guard-v1"),
+assert(auth.includes("quant256_online_runtime.js?v=20261103-v2-pf192-l256-m128"),
   "unchanged particle runtime must keep its cache version");
 assert(auth.includes("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1"),
   "new distribution guard must load before the physics module");
-assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-dynamic-shoe-guard-v1"),
+assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-v2-pf192-l256-m128"),
   "upgraded physics module must get new cache version");
-assert(page.includes("auth-client.js?v=20261103-dynamic-shoe-guard-v1"));
+assert(page.includes("auth-client.js?v=20261103-v2-pf192-l256-m128"));
 assert(page.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),
   "mobile layout fix must be loaded without changing prediction logic");
 assert(!page.includes("side-bet-card"),"removed side-bet panel must stay removed");
-console.log("PASS Early-Shoe V2 B/P/T guard (1-19), exact mature physical EV after 20, observed-rank bypass, deterministic replay, 96/256/96 and loader");
+console.log("PASS Early-Shoe V2 B/P/T guard (1-19), exact mature physical EV after 20, observed-rank bypass, deterministic replay, 192/256/128 and loader");

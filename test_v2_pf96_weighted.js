@@ -15,9 +15,9 @@ assert.equal(ONE_HAND_CUSHION,.035);
 assert(source.includes('const direction=normalized.ev_banker>=normalized.ev_player?"B":"P";'));
 assert(source.includes("physics_weight:5"));
 assert(source.includes("road_weight:.1"));
-assert.equal(new BlindPhysicsEstimator().size,96);
-assert.equal(new OnlineLinUCB256().particleCount,96);
-assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,96);
+assert.equal(new BlindPhysicsEstimator().size,192);
+assert.equal(new OnlineLinUCB256().particleCount,192);
+assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,128);
 assert(online.includes("this.lastESS<this.size*.5"),"ESS trigger must be enabled");
 
 // A fixed seed and the same result history must give identical posterior,
@@ -28,8 +28,8 @@ const get=()=>{
   const reports=[];
   for(let i=0;i<seq.length;i++){
     const report=engine.syncHistory(seq.slice(0,i+1));
-    assert.equal(engine.quant.physics.size,96);
-    assert.equal(report.physical_ev.samples,96*96);
+    assert.equal(engine.quant.physics.size,192);
+    assert.equal(report.physical_ev.samples,192*128);
     assert.equal(report.feature_weights.physics,5);
     assert.equal(report.feature_weights.road,.1);
     assert(["SKIP","SIGNAL"].includes(report.research_signal.action));
@@ -42,7 +42,7 @@ const get=()=>{
       assert(remaining>=416-6*(i+1)&&remaining<=416-4*(i+1));
     }
     assert(report.physical_ev.particle_ess>0);
-    assert(report.physical_ev.particle_ess<=96+1e-9);
+    assert(report.physical_ev.particle_ess<=192+1e-9);
     assert(Number.isFinite(report.physical_ev.mc_se_gap));
     assert(Number.isFinite(report.physical_ev.posterior_sd_gap));
     assert(report.physical_ev.se_gap>=report.physical_ev.mc_se_gap);
@@ -90,4 +90,4 @@ noSupport.observe("T");
 assert(noSupport.posteriorUnavailable);
 assert.equal(summarizeHypotheses(noSupport,[],{}).simulation_exhausted,true);
 
-console.log("PASS 96-particle likelihood weighting, ESS resampling, weighted physical EV, uncertainty, V2 invariant gates, deterministic replay");
+console.log("PASS 192-particle likelihood weighting, ESS resampling, weighted physical EV, uncertainty, V2 invariant gates, deterministic replay");

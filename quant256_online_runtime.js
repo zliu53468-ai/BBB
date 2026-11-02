@@ -66,8 +66,8 @@ function sampleHand(counts,rng){
  * 它不是對真實牌靴的測量，亦不代表已知任何 A~K 殘量。
  */
 class BlindPhysicsEstimator{
-  constructor({particles=96,seed=0xBBB256}={}){
-    this.size=clamp(Math.floor(particles)||96,8,96);
+  constructor({particles=192,seed=0xBBB256}={}){
+    this.size=clamp(Math.floor(particles)||192,8,192);
     this.seed=seed>>>0;this.reset();
   }
   reset(){
@@ -269,7 +269,7 @@ function solveSPD(A,v){
 function dot(a,b){let s=0;for(let i=0;i<K;i++)s+=a[i]*b[i];return s;}
 class OnlineLinUCB256{
   constructor({lambda=.82,alpha=.15,minSamples=0,confidenceThreshold=0,
-    lossGate=.04,particles=96}={}){
+    lossGate=.04,particles=192}={}){
     if(!finite(lambda)||lambda<.75||lambda>.96)throw Error("lambda_must_be_0.75_to_0.96");
     if(!finite(alpha)||alpha<0||alpha>2)throw Error("invalid_alpha");
     if(!Number.isInteger(minSamples)||minSamples<0)throw Error("invalid_min_samples");
