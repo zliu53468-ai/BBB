@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
   <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
-  <link rel="stylesheet" href="styles.css?v=20261102-mobile-stable-v2">
+  <link rel="stylesheet" href="styles.css?v=20261103-compact-no-stake-v1">
 
 </head>
 <body>
@@ -64,30 +64,6 @@
         </div>
       </div>
       <div class="message" id="message" aria-live="polite">輸入牌局後開始分析</div>
-    </section>
-
-    <section class="card bankroll-card" aria-labelledby="bankrollTitle">
-      <div class="card-title"><span id="bankrollTitle">本金與配注控制</span><small>資金風險試算</small></div>
-      <div class="stake-grid">
-        <label for="bankrollSelect">當前本金</label>
-        <select id="bankrollSelect" aria-label="切換本金">
-          <option value="5000">NT$5,000</option>
-          <option value="10000">NT$10,000</option>
-          <option value="20000">NT$20,000</option>
-          <option value="30000">NT$30,000</option>
-          <option value="50000">NT$50,000</option>
-        </select>
-        <label for="stakePercent">設定配注比例 <strong id="stakePercentValue">20%</strong></label>
-        <input id="stakePercent" type="range" min="10" max="50" step="1" value="20" aria-label="模擬配注比例百分比">
-      </div>
-      <div class="stake-overview">
-        <div><span>當前總本金</span><strong id="bankrollCurrent">NT$5,000</strong></div>
-        <div><span>模型相對信心權重</span><strong id="stakeConfidenceWeight">—</strong></div>
-        <div><span>公式參考金額（非實際下注指令）</span><strong id="stakeRecommendation">NT$0</strong></div>
-        <div><span>模型訊號狀態</span><strong id="stakeLocalStatus">尚未開始</strong></div>
-      </div>
-      <p id="stakeStatus" class="stake-status" role="status" aria-live="polite">觀望／未有合格研究訊號：參考金額 NT$0</p>
-      <p class="stake-disclosure">這是依設定比例的資金曝險試算，不是經校準勝率或獲利建議。每局投入本金的 10%～50% 風險極高；僅有莊／閒／和無法驗證正期望值。</p>
     </section>
 
     <section class="card controls-card">

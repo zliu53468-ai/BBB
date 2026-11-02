@@ -5,20 +5,24 @@ const css=fs.readFileSync("styles.css","utf8");
 const script=fs.readFileSync("viewport-fit.js","utf8");
 for(const s of ["side-bet-card","sideBetTitle","sideBetNote","本局邊注建議","幸運六"])
   assert(!html.includes(s),"removed side-bet text must stay removed: "+s);
-for(const id of ["predictionApp","appViewportContent","bankrollSelect","stakePercent",
+for(const id of ["predictionApp","appViewportContent",
   "btnStart","btnB","btnP","btnT","btnBack","btnEnd","licenseGate","licenseForm",
   "btnExportTraining","btnExportObservations"])
   assert(html.includes('id="'+id+'"'),"missing original control: "+id);
+assert(!html.includes('class="card bankroll-card"')&&!html.includes('id="bankrollSelect"')&&
+  !html.includes('id="stakePercent"'),"stake controls removed from displayed panel");
 assert(html.indexOf("brand-hero")<html.indexOf("appViewportContent"),
   "background must remain outside scroll content");
 assert(html.includes("auth-client.js?v=20261103-pf256-l384-m160-v1"),
   "production prediction core loader must not be changed");
 assert(html.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),"stable viewport loader version");
-assert(html.includes("styles.css?v=20261102-mobile-stable-v2"),"stable CSS cache key");
+assert(html.includes("styles.css?v=20261103-compact-no-stake-v1"),"stable CSS cache key");
 
 // A frozen outer viewport with an accessible independently scrolling content
 // region replaces the old unbounded scaled page. Especially important for
 // iPhone app browsers and larger Dynamic Type font settings.
+assert(css.includes("width:min(700px,calc(100% - 24px))"),"desktop panel is slightly narrower");
+assert(css.includes("width:min(100% - 20px,700px)"),"mobile side margins remain compact");
 assert(css.includes("height:100svh"),"use stable small viewport, not dynamic toolbars");
 assert(css.includes("overflow-y:auto"),"short screens must reach all controls");
 assert(css.includes("overflow:hidden!important"),"outer document remains fixed");
@@ -63,4 +67,4 @@ assert(htmlClasses.has("bbb-viewport-locked")&&bodyClasses.has("bbb-viewport-loc
 app.hidden=true;watchers[0].callback();
 assert(!htmlClasses.has("bbb-viewport-locked")&&!bodyClasses.has("bbb-viewport-locked"),
   "logout must restore login scroll");
-console.log("PASS mobile stable viewport: no automatic scaling, usable small-screen scrolling, nonstacked status, original inputs, unchanged prediction loader");
+console.log("PASS mobile stable viewport: no automatic scaling, usable small-screen scrolling, nonstacked status, compact no-stake layout, original prediction inputs and loader");
