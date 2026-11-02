@@ -66,8 +66,8 @@ function sampleHand(counts,rng){
  * 它不是對真實牌靴的測量，亦不代表已知任何 A~K 殘量。
  */
 class BlindPhysicsEstimator{
-  constructor({particles=192,seed=0xBBB256}={}){
-    this.size=clamp(Math.floor(particles)||192,8,192);
+  constructor({particles=256,seed=0xBBB256}={}){
+    this.size=clamp(Math.floor(particles)||256,8,256);
     this.seed=seed>>>0;this.reset();
   }
   reset(){
@@ -85,7 +85,7 @@ class BlindPhysicsEstimator{
     if(!valid(outcome))throw Error("invalid_outcome");
     // Conditional proposal + likelihood correction: keeping only a matching hand
     // without P(outcome | particle) weights would bias the posterior ensemble.
-    const attempts=256,next=new Array(this.size),updated=new Array(this.size);
+    const attempts=384,next=new Array(this.size),updated=new Array(this.size);
     let accepted=0,sum=0,likelihood=0,likelihoodVariance=0;
     for(let i=0;i<this.size;i++){
       const original=this.particles[i];let chosen=null,matches=0;
@@ -269,7 +269,7 @@ function solveSPD(A,v){
 function dot(a,b){let s=0;for(let i=0;i<K;i++)s+=a[i]*b[i];return s;}
 class OnlineLinUCB256{
   constructor({lambda=.82,alpha=.15,minSamples=0,confidenceThreshold=0,
-    lossGate=.04,particles=192}={}){
+    lossGate=.04,particles=256}={}){
     if(!finite(lambda)||lambda<.75||lambda>.96)throw Error("lambda_must_be_0.75_to_0.96");
     if(!finite(alpha)||alpha<0||alpha>2)throw Error("invalid_alpha");
     if(!Number.isInteger(minSamples)||minSamples<0)throw Error("invalid_min_samples");
