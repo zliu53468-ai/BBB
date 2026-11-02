@@ -74,6 +74,9 @@ class BlindPhysicsEstimator{
     this.rng=seededRng(this.seed);
     this.particles=Array.from({length:this.size},()=>BASE_POINTS.slice());
     this.weights=Array(this.size).fill(1/this.size);
+    // Ancestor labels measure genealogical diversity after ESS resampling.
+    this.ancestorIds=Array.from({length:this.size},(_,i)=>i);
+    this.lastLikelihoodRelativeSE=0;
     this.lastESS=this.size;this.lastResampled=false;
     this.posteriorUnavailable=false;
     this.drawHistory=[];this.densityHistory=[];this.lastAcceptance=0;return this;
@@ -83,7 +86,7 @@ class BlindPhysicsEstimator{
     // Conditional proposal + likelihood correction: keeping only a matching hand
     // without P(outcome | particle) weights would bias the posterior ensemble.
     const attempts=256,next=new Array(this.size),updated=new Array(this.size);
-    let accepted=0,sum=0;
+    let accepted=0,sum=0,likelihood=0,likelihoodVariance=0;
     for(let i=0;i<this.size;i++){
       const original=this.particles[i];let chosen=null,matches=0;
       for(let tries=0;tries<attempts;tries++){
@@ -95,10 +98,16 @@ class BlindPhysicsEstimator{
         if(this.rng()<1/matches)chosen=trial;
       }
       next[i]=chosen?chosen.counts:original.slice();
-      updated[i]=chosen?this.weights[i]*(matches/attempts):0;
+      const pHat=matches/attempts,priorWeight=this.weights[i];
+      likelihood+=priorWeight*pHat;
+      likelihoodVariance+=priorWeight*pHat*(1-pHat)/attempts;
+      updated[i]=chosen?priorWeight*pHat:0;
       if(chosen){sum+=chosen.draws;accepted++;}
     }
     const evidence=updated.reduce((a,b)=>a+b,0);
+    // A finite-proposal noise diagnostic, not confidence in real card ranks.
+    this.lastLikelihoodRelativeSE=likelihood>0?
+      Math.sqrt(likelihoodVariance)/likelihood:1;
     this.lastAcceptance=accepted/this.size;
     this.lastResampled=false;
     if(evidence>0){
@@ -111,14 +120,16 @@ class BlindPhysicsEstimator{
         // Systematic resampling is deterministic under the shoe PRNG.
         // Copy whole valid card-count vectors: never create or alter ranks.
         const step=1/this.size,start=this.rng()*step;
-        const resampled=[];let index=0,cumulative=this.weights[0];
+        const resampled=[],ancestors=[];let index=0,cumulative=this.weights[0];
         for(let j=0;j<this.size;j++){
           const u=start+j*step;
           while(u>cumulative&&index<this.size-1)
             cumulative+=this.weights[++index];
           resampled.push(this.particles[index].slice());
+          ancestors.push(this.ancestorIds[index]);
         }
         this.particles=resampled;
+        this.ancestorIds=ancestors;
         this.weights.fill(step);
         this.lastResampled=true;
       }
@@ -163,6 +174,8 @@ class BlindPhysicsEstimator{
       particle_ess:this.lastESS,
       particle_active_ess:1/this.weights.reduce((v,w)=>v+w*w,0),
       particle_count:this.size,
+      particle_ancestor_diversity:new Set(this.ancestorIds).size/this.size,
+      likelihood_relative_se:this.lastLikelihoodRelativeSE,
       posterior_weights_active:!this.lastResampled,
       resampled:this.lastResampled,posterior_unavailable:this.posteriorUnavailable,
       expected_draws_recent:recent.length?recent.reduce((s,v)=>s+v,0)/recent.length:4.94,
