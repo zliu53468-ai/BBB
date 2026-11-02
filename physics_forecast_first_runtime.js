@@ -195,6 +195,51 @@ function summarizeHypotheses(physics,_history,{samplesPerParticle=96}={}){
       v+weights[i]*e.draws/samplesPerParticle,0),
     source:"hypothetical_particle_posterior",simulation_exhausted:false};
 }
+/**
+ * Early-shoe Bayesian-style shrinkage of unobserved B/P/T particle EV.
+ * This reliability heuristic is not a calibrated hit rate or observed count.
+ * At 20 rounds, and for real observed cards, it is an exact V2 no-op.
+ */
+function earlyShoeGuard(physical,particles,rounds,{observed=false}={}){
+  if(observed||rounds<1||rounds>=20||physical.simulation_exhausted||
+    !physical.simulated_probability)
+    return{physical,gateAddition:0,diagnostics:null};
+  const p=physical.simulated_probability;
+  if(["B","P","T"].some(k=>!finite(p[k])))
+    return{physical,gateAddition:0,diagnostics:null};
+  const n=Math.max(1,particles.size||physical.particle_support);
+  const ess=clamp((physical.posterior_update_ess??n)/n,0,1);
+  const activeESS=clamp((physical.particle_ess??n)/n,0,1);
+  const diversity=clamp(Array.isArray(particles.ancestorIds)?
+    new Set(particles.ancestorIds).size/n:1,0,1);
+  const likelihoodNoise=clamp(particles.lastLikelihoodRelativeSE??0,0,1);
+  const quality=clamp((.5*ess+.25*activeESS+.25*diversity)/
+    (1+likelihoodNoise),0,1);
+  const progress=rounds/20;
+  // Avoid interpreting tiny early virtual-shoe fluctuations as strong evidence.
+  // Blending reaches exactly 1 at round 20, leaving mature V2 unchanged.
+  const baseBlend=.12+.88*progress**1.25;
+  const blend=baseBlend*(1-.25*(1-progress)*(1-quality));
+  const prob={
+    B:BASE.B+blend*(p.B-BASE.B),
+    P:BASE.P+blend*(p.P-BASE.P),
+    T:BASE.T+blend*(p.T-BASE.T)
+  };
+  const evB=.95*prob.B-prob.P,evP=prob.P-prob.B;
+  const se=finite(physical.mc_se_gap)?physical.mc_se_gap:0;
+  const gateAddition=(1-progress)*Math.min(.01,.20*Math.max(0,se));
+  const diagnostics={
+    active:true,rounds,progress,blend,prior_weight:1-blend,
+    quality,likelihood_relative_se:likelihoodNoise,
+    ess_ratio:ess,active_ess_ratio:activeESS,ancestor_diversity:diversity,
+    supplemental_gate:gateAddition,validated_hit_rate:false
+  };
+  return{physical:{...physical,simulated_probability:prob,
+    ev_banker:evB,ev_player:evP,ev_gap:evB-evP,
+    ev_gap_deviation:evB-evP-BASE_GAP,early_shoe_guard:diagnostics},
+    gateAddition,diagnostics};
+}
+
 function baselineResult(){
   return{samples:0,remaining:416,particle_support:0,simulated_probability:{...BASE},
     ev_banker:BASE_EV.B,ev_player:BASE_EV.P,ev_gap:BASE_GAP,
@@ -336,9 +381,11 @@ class PhysicsForecastFirstEngine{
       samples:this.observedSamples,seed:hashComposition(counts)^0xb15f13}):
       (this.history.length?summarizeHypotheses(this.quant.physics,this.history,{
         samplesPerParticle:this.simulationsPerParticle}):baselineResult());
-    const normalized=observed?
+    const candidate=observed?
       {...physics,simulated_probability:physics.win_probabilities,source:"observed_card_count"}:
       physics;
+    const early=earlyShoeGuard(candidate,this.quant.physics,this.history.length,{observed});
+    const normalized=early.physical;
     const dynamicGate=this._gate();
     const score=Math.abs(normalized.ev_gap_deviation);
     const direction=normalized.ev_banker>=normalized.ev_player?"B":"P";
@@ -346,12 +393,13 @@ class PhysicsForecastFirstEngine{
     // 若物理粒子全耗盡或訊號不可計算，即使 overdrive 也不假裝可用。
     const usable=!normalized.simulation_exhausted&&finite(score)&&
       finite(normalized.ev_banker)&&finite(normalized.ev_player);
-    const available=usable&&score>=dynamicGate;
+    const available=usable&&score>=dynamicGate+early.gateAddition;
     const researchSignal={
       action:available?"SIGNAL":"SKIP",
       direction,available,score,dynamic_gate:dynamicGate,
       phase:this.phase,win_streak:this.winStreak,
       last_settlement:this.lastSettlement,
+      early_shoe_guard:early.diagnostics,
       source:observed?"observed_cards":"simulated_bpt_only",
       evidence_qualified:observed,
       reason:!usable?"simulation_unavailable":
@@ -368,6 +416,7 @@ class PhysicsForecastFirstEngine{
       reason,card_count_source:normalized.source,
       observed_card_evidence:observed,card_count_gate:gate,
       research_signal:researchSignal,display_direction:direction,
+      early_shoe_guard:early.diagnostics,
       dynamic_gate:dynamicGate,base_ev_gate:this.threshold,
       cushion_gate:this.lossGate,gate_phase:this.phase,
       win_streak:this.winStreak,last_settlement:this.lastSettlement,
@@ -390,6 +439,6 @@ class PhysicsForecastFirstEngine{
   }
 }
 return{PhysicsForecastFirstEngine,observedCounts,observedHand,
-  deal,simulate,summarizeHypotheses,decisionFromEV,weightedContext,
+  deal,simulate,summarizeHypotheses,earlyShoeGuard,decisionFromEV,weightedContext,
   BASE,BASE_EV,INITIAL,DECKS,VERSION,BASE_EV_GATE,OVERDRIVE_GATE,ONE_HAND_CUSHION};
 });
