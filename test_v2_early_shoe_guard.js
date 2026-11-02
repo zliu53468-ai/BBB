@@ -100,7 +100,7 @@ for(const f of ["quant256_online_runtime.js","physics_forecast_first_runtime.js"
   assert(auth.includes(f+"?v=20261102-v2-early-shoe-guard-v1"),
     "browser must not load stale runtime "+f);
 assert(page.includes("auth-client.js?v=20261102-v2-early-shoe-guard-v1"));
-assert(page.includes("viewport-fit.js?v=20261102-fixed-view-no-sidebets-v1"),
-  "keep previous no-scroll UI version");
+assert(page.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),
+  "mobile layout fix must be loaded without changing prediction logic");
 assert(!page.includes("side-bet-card"),"removed side-bet panel must stay removed");
 console.log("PASS Early-Shoe V2 B/P/T guard (1-19), exact mature physical EV after 20, observed-rank bypass, deterministic replay, 96/256/96 and loader");
