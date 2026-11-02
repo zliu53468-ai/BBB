@@ -11,12 +11,16 @@
   const quant=(root&&root.BBBQuant256Online)||
     (typeof module==="object"&&module.exports&&typeof require==="function"?
       require("./quant256_online_runtime.js"):null);
-  const api=factory(quant);
+  const distribution=(root&&root.BBBShoeDistributionGuard)||
+    (typeof module==="object"&&module.exports&&typeof require==="function"?
+      require("./shoe_distribution_guard.js"):null);
+  const api=factory(quant,distribution);
   if(typeof module==="object"&&module.exports)module.exports=api;
   if(root)root.BBBPhysicsForecastFirst=api;
-})(typeof window!=="undefined"?window:null,function(quant){
+})(typeof window!=="undefined"?window:null,function(quant,distribution){
 "use strict";
 if(!quant||typeof quant.OnlineLinUCB256!=="function")throw Error("missing_quant256_online_runtime");
+if(!distribution||typeof distribution.evaluate!=="function")throw Error("missing_shoe_distribution_guard");
 const VERSION="BBB_PHYSICS_FORECAST_FIRST_V2_DYNAMIC_GATE",DECKS=8;
 const BASE_EV_GATE=.005,OVERDRIVE_GATE=0,ONE_HAND_CUSHION=.035;
 const INITIAL=Object.freeze([128,32,32,32,32,32,32,32,32,32]);
@@ -386,6 +390,10 @@ class PhysicsForecastFirstEngine{
       physics;
     const early=earlyShoeGuard(candidate,this.quant.physics,this.history.length,{observed});
     const normalized=early.physical;
+    // A rolling change-point monitor does not flip or blend physical EV.
+    // It only adds a small research-signal penalty for a strong observed
+    // distribution shift; the original dynamic V2 phase gate is unchanged.
+    const distributionGuard=distribution.evaluate(this.history,{observed});
     const dynamicGate=this._gate();
     const score=Math.abs(normalized.ev_gap_deviation);
     const direction=normalized.ev_banker>=normalized.ev_player?"B":"P";
@@ -393,10 +401,14 @@ class PhysicsForecastFirstEngine{
     // 若物理粒子全耗盡或訊號不可計算，即使 overdrive 也不假裝可用。
     const usable=!normalized.simulation_exhausted&&finite(score)&&
       finite(normalized.ev_banker)&&finite(normalized.ev_player);
-    const available=usable&&score>=dynamicGate+early.gateAddition;
+    const effectiveResearchGate=dynamicGate+early.gateAddition+
+      distributionGuard.additional_gate;
+    const available=usable&&score>=effectiveResearchGate;
     const researchSignal={
       action:available?"SIGNAL":"SKIP",
       direction,available,score,dynamic_gate:dynamicGate,
+      effective_research_gate:effectiveResearchGate,
+      distribution_guard:distributionGuard,
       phase:this.phase,win_streak:this.winStreak,
       last_settlement:this.lastSettlement,
       early_shoe_guard:early.diagnostics,
@@ -417,6 +429,8 @@ class PhysicsForecastFirstEngine{
       observed_card_evidence:observed,card_count_gate:gate,
       research_signal:researchSignal,display_direction:direction,
       early_shoe_guard:early.diagnostics,
+      shoe_distribution_guard:distributionGuard,
+      effective_research_gate:effectiveResearchGate,
       dynamic_gate:dynamicGate,base_ev_gate:this.threshold,
       cushion_gate:this.lossGate,gate_phase:this.phase,
       win_streak:this.winStreak,last_settlement:this.lastSettlement,

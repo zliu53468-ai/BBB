@@ -27,8 +27,9 @@ const scripts=[
   "run_survival_pf_runtime.js?v=20261031-quant256-v6",
   "quant256_runtime.js?v=20261031-quant256-v6",
   "quant256_online_runtime.js?v=20261102-v2-early-shoe-guard-v1",
-  "physics_forecast_first_runtime.js?v=20261102-v2-early-shoe-guard-v1",
-  "quant256_online_panel.js?v=20261101-v2-pf96-l256-m96",
+  "shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1",
+  "physics_forecast_first_runtime.js?v=20261103-dynamic-shoe-guard-v1",
+  "quant256_online_panel.js?v=20261103-dynamic-shoe-guard-v1",
   "quant256_bankroll_ui.js?v=20261101-e323-v2-restore"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
