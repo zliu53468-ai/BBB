@@ -233,40 +233,66 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
 }
 
 
-/* Single-viewport analysis panel: scale the *presentation* to fit the
-   visible screen. Keep login independent so the keyboard remains usable. */
-html.bbb-viewport-locked,
-body.bbb-viewport-locked{
-  height:100%;
-  overflow:hidden !important;
-  overscroll-behavior:none;
+
+/* Stable iOS/Android WebView: fixed outer app, never scale entire content.
+   Taller pages can scroll INSIDE the app so buttons remain accessible. */
+html.bbb-viewport-locked,body.bbb-viewport-locked{
+  height:100%;width:100%;overflow:hidden!important;overscroll-behavior:none;
 }
 #predictionApp{
-  height:100dvh;
-  max-height:100dvh;
-  padding-top:8px;
-  padding-bottom:0;
+  height:100vh;height:100svh;max-height:100svh;min-height:0;
+  padding:8px 0 0;display:flex;flex-direction:column;overflow:hidden;
 }
 #appViewportContent{
-  width:100%;
-  position:relative;
-  z-index:1;
-  transform:scale(var(--bbb-fit-scale,1));
-  transform-origin:top center;
+  width:100%;flex:1 1 auto;min-height:0;position:relative;z-index:1;
+  transform:none!important;overflow-x:hidden;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;
+  padding:0 1px max(16px,env(safe-area-inset-bottom));
 }
 #predictionApp .brand-hero{z-index:-1;pointer-events:none}
-@media(max-height:800px){
-  #appViewportContent .topbar{margin-bottom:5px}
-  #appViewportContent .card{padding:10px;margin-bottom:6px}
-  #appViewportContent .card-title{margin-bottom:6px}
-  #appViewportContent .message{margin-top:6px}
-  #appViewportContent .stake-overview{margin-top:7px}
-  #appViewportContent .stake-status{margin-top:6px}
+#appViewportContent .topbar{
+  position:sticky;top:0;z-index:10;min-width:0;
+  background:rgba(12,8,26,.96);border:1px solid var(--line);
+  border-radius:13px;padding:8px;
 }
-@media(max-height:650px){
-  #appViewportContent .direction-orb{width:80px;height:80px}
-  #appViewportContent .direction-orb span{font-size:29px}
-  #appViewportContent .prediction-layout{grid-template-columns:85px minmax(0,1fr)}
-  #appViewportContent .bbb-results-block .result-btn{min-height:48px}
+#appViewportContent .brand-copy{min-width:0;flex:1 1 auto}
+#appViewportContent .status-pill{min-width:0;max-width:100%;overflow:hidden}
+#appViewportContent #modePill{
+  display:block;min-width:0;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;overflow-wrap:normal;word-break:normal;
+}
+#appViewportContent .round-pill{flex:0 0 auto}
+@media(max-width:620px){
+  #predictionApp{padding:env(safe-area-inset-top) 0 0}
+  #appViewportContent .topbar{
+    flex-direction:column;align-items:stretch;gap:6px;margin-bottom:8px;
+  }
+  #appViewportContent .brand{width:100%;min-width:0}
+  #appViewportContent .brand h1{
+    max-width:100%;font-size:clamp(14px,4.2vw,17px);line-height:1.25;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;word-break:normal;
+  }
+  #appViewportContent .status-area{
+    display:grid;width:100%;min-width:0;
+    grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;
+  }
+  #appViewportContent .status-pill{
+    display:flex;width:100%;min-width:0;padding:5px 8px;white-space:nowrap;
+  }
+  #appViewportContent .round-pill{padding:5px 8px;font-size:10px}
+  #appViewportContent .card{max-width:100%}
+  #appViewportContent .stake-grid{min-width:0}
+  #appViewportContent button,#appViewportContent select{touch-action:manipulation}
+}
+@media(max-width:380px){
+  #appViewportContent .brand-subtitle{font-size:9px}
+  #appViewportContent .eyebrow{font-size:8px}
+  #appViewportContent .card-title span{font-size:13px}
+  #appViewportContent .bbb-input-head small{font-size:9px}
+}
+@media(max-height:630px){
+  #appViewportContent .card{margin-bottom:6px}
+  #appViewportContent .topbar{margin-bottom:6px}
+  #appViewportContent .bbb-results-block .result-btn{min-height:50px}
   #appViewportContent .action-btn{min-height:40px}
 }
