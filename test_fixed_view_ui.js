@@ -11,7 +11,7 @@ for(const id of ["predictionApp","appViewportContent","bankrollSelect","stakePer
   assert(html.includes('id="'+id+'"'),"missing original control: "+id);
 assert(html.indexOf("brand-hero")<html.indexOf("appViewportContent"),
   "background must remain outside scroll content");
-assert(html.includes("auth-client.js?v=20261102-v2-early-shoe-guard-v1"),
+assert(html.includes("auth-client.js?v=20261103-dynamic-shoe-guard-v1"),
   "production prediction core loader must not be changed");
 assert(html.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),"stable viewport loader version");
 assert(html.includes("styles.css?v=20261102-mobile-stable-v2"),"stable CSS cache key");

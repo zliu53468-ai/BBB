@@ -65,6 +65,9 @@ function render(p){
     "｜研究訊號命中率 "+hit+"，訊號密度 "+rate+
     "｜模擬莊 EV "+(p.ev_banker*100).toFixed(2)+
     "%、閒 EV "+(p.ev_player*100).toFixed(2)+"%"+
+    "｜分布監測 "+(p.shoe_distribution_guard?.current_stage==="distribution_shift"?
+      "近期比例明顯改變":p.shoe_distribution_guard?.current_stage==="insufficient_data"?
+      "資料不足":"未見強烈變化")+
     "｜B/P/T 不揭露實際牌值，模擬 EV 不是可驗證的套利優勢";
   // 舊資金面板僅呈現曝險計算，不參與 e323a243 的預測決策。
   root.__BBB_V3_CAPITAL_UI__?.renderStake(p);
