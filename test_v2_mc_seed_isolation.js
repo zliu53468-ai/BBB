@@ -13,7 +13,7 @@ assert(src.includes("seed:hashComposition(counts)^0xb15f13"));
 assert.equal(BASE_EV_GATE,.005);
 assert.equal(OVERDRIVE_GATE,0);
 assert.equal(ONE_HAND_CUSHION,.035);
-assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,96);
+assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,128);
 // Same virtual remaining shoe MUST return the same simulated physical EV,
 // independent of an arbitrary history label text supplied in the legacy API.
 const blind=new BlindPhysicsEstimator({particles:24,seed:0xBBB256});

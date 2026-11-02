@@ -9,8 +9,8 @@ if(!root||!root.document||!root.BBBPhysicsForecastFirst||
   typeof URLSearchParams!=="function"||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
 const {PhysicsForecastFirstEngine,VERSION}=root.BBBPhysicsForecastFirst;
-const CONFIG={threshold:.005,lossGate:.035,simulationsPerParticle:96,
-  observedSamples:12000,quantOptions:{lambda:.82,alpha:.15}};
+const CONFIG={threshold:.005,lossGate:.035,simulationsPerParticle:128,
+  observedSamples:12000,quantOptions:{lambda:.82,alpha:.15,particles:192}};
 const model=new PhysicsForecastFirstEngine(CONFIG);
 const KEY="bgs256d_frozen_6x15_forward_v18";
 const FALLBACK=["bgs256d_frozen_6x15_sensitive_v17",
