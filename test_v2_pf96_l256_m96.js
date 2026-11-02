@@ -16,7 +16,9 @@ assert.equal(new BlindPhysicsEstimator().size,96);
 assert.equal(new OnlineLinUCB256().physics.size,96);
 assert(runtime.includes("const attempts=256,next=new Array(this.size),updated=new Array(this.size);"));
 assert(runtime.includes("this.lastESS<this.size*.5"));
-assert(runtime.includes("updated[i]=chosen?this.weights[i]*(matches/attempts):0"));
+assert(runtime.includes("const pHat=matches/attempts,priorWeight=this.weights[i];"));
+assert(runtime.includes("updated[i]=chosen?priorWeight*pHat:0"),
+  "posterior must still use the same weight times likelihood");
 assert(runtime.includes("if(this.rng()<1/matches)chosen=trial"));
 assert(physics.includes("function summarizeHypotheses(physics,_history,{samplesPerParticle=96}={}){"));
 assert(panel.includes("lossGate:.035,simulationsPerParticle:96,"));
