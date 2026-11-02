@@ -15,7 +15,7 @@ for(const id of ["predictionApp","appViewportContent","bankrollSelect","stakePer
   assert(html.includes('id="'+id+'"'),"core page control missing: "+id);
 assert(html.indexOf("brand-hero")<html.indexOf("appViewportContent"),
   "fixed hero must stay outside scaled content");
-assert(html.includes("auth-client.js?v=20261101-v2-pf96-l256-m96"),
+assert(html.includes("auth-client.js?v=20261102-v2-early-shoe-guard-v1"),
   "prediction loader must not be altered");
 assert(html.includes("viewport-fit.js?v=20261102-fixed-view-no-sidebets-v1"));
 assert(html.includes("styles.css?v=20261102-fixed-view-no-sidebets-v1"));
