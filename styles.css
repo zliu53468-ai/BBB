@@ -231,3 +231,42 @@ footer{text-align:center;color:#786e95;font-size:10px;letter-spacing:.04em;paddi
  .stake-overview span{font-size:10px}
  .stake-overview div{padding:7px}
 }
+
+
+/* Single-viewport analysis panel: scale the *presentation* to fit the
+   visible screen. Keep login independent so the keyboard remains usable. */
+html.bbb-viewport-locked,
+body.bbb-viewport-locked{
+  height:100%;
+  overflow:hidden !important;
+  overscroll-behavior:none;
+}
+#predictionApp{
+  height:100dvh;
+  max-height:100dvh;
+  padding-top:8px;
+  padding-bottom:0;
+}
+#appViewportContent{
+  width:100%;
+  position:relative;
+  z-index:1;
+  transform:scale(var(--bbb-fit-scale,1));
+  transform-origin:top center;
+}
+#predictionApp .brand-hero{z-index:-1;pointer-events:none}
+@media(max-height:800px){
+  #appViewportContent .topbar{margin-bottom:5px}
+  #appViewportContent .card{padding:10px;margin-bottom:6px}
+  #appViewportContent .card-title{margin-bottom:6px}
+  #appViewportContent .message{margin-top:6px}
+  #appViewportContent .stake-overview{margin-top:7px}
+  #appViewportContent .stake-status{margin-top:6px}
+}
+@media(max-height:650px){
+  #appViewportContent .direction-orb{width:80px;height:80px}
+  #appViewportContent .direction-orb span{font-size:29px}
+  #appViewportContent .prediction-layout{grid-template-columns:85px minmax(0,1fr)}
+  #appViewportContent .bbb-results-block .result-btn{min-height:48px}
+  #appViewportContent .action-btn{min-height:40px}
+}
