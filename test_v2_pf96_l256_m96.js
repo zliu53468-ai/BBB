@@ -16,10 +16,10 @@ assert.equal(new BlindPhysicsEstimator().size,256);
 assert.equal(new OnlineLinUCB256().physics.size,256);
 assert(runtime.includes("const attempts=384,next=new Array(this.size),updated=new Array(this.size);"));
 assert(runtime.includes("this.lastESS<this.size*.5"));
-assert(runtime.includes("const pHat=matches/attempts,priorWeight=this.weights[i];"));
+assert(runtime.includes("const pHat=likelihoodMass/attempts,priorWeight=this.weights[i];"));
 assert(runtime.includes("updated[i]=chosen?priorWeight*pHat:0"),
   "posterior must still use the same weight times likelihood");
-assert(runtime.includes("if(this.rng()<1/matches)chosen=trial"));
+assert(runtime.includes("this.rng()*likelihoodMass<mass"));
 assert(physics.includes("function summarizeHypotheses(physics,_history,{samplesPerParticle=160}={}){"));
 assert(panel.includes("lossGate:.035,simulationsPerParticle:160,"));
 const engine=new PhysicsForecastFirstEngine();
@@ -48,11 +48,11 @@ assert.equal(new PhysicsForecastFirstEngine().predict().physical_ev.samples,0,
 assert.equal(summarizeHypotheses(engine.quant.physics,[]).samples,40960,
   "direct physical estimator default must match model default");
 
-assert(auth.includes("quant256_online_runtime.js?v=20261103-pf256-l384-m160-v1"));
-assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-pf256-l384-m160-v1"));
+assert(auth.includes("quant256_online_runtime.js?v=20261103-v21-rb-move-v1"));
+assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-v21-rb-move-v1"));
 assert(auth.includes("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1"));
 assert(auth.includes("quant256_online_panel.js?v=20261103-pf256-l384-m160-v1"));
-assert(page.includes("auth-client.js?v=20261103-pf256-l384-m160-v1"));
+assert(page.includes("auth-client.js?v=20261103-v21-rb-move-v1"));
 assert(panel.includes('const KEY="bgs256d_frozen_6x15_forward_v18"'),
   "existing local-history storage key must stay stable");
 console.log("PASS V2 256 particles x 384 likelihood proposals x 160 EV samples; original gates, replay, browser loader");
