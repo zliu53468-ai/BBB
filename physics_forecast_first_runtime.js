@@ -223,7 +223,8 @@ function summarizeHypotheses(physics,_history,{samplesPerParticle=160}={}){
  * This reliability heuristic is not a calibrated hit rate or observed count.
  * At 20 rounds, and for real observed cards, it is an exact V2 no-op.
  */
-function earlyShoeGuard(physical,particles,rounds,{observed=false}={}){
+function earlyShoeGuard(physical,particles,rounds,{observed=false,
+  independentFinalScore=false}={}){
   if(observed||rounds<1||rounds>=20||physical.simulation_exhausted||
     !physical.simulated_probability)
     return{physical,gateAddition:0,diagnostics:null};
@@ -239,10 +240,23 @@ function earlyShoeGuard(physical,particles,rounds,{observed=false}={}){
   const quality=clamp((.5*ess+.25*activeESS+.25*diversity)/
     (1+likelihoodNoise),0,1);
   const progress=rounds/20;
-  // Avoid interpreting tiny early virtual-shoe fluctuations as strong evidence.
-  // Blending reaches exactly 1 at round 20, leaving mature V2 unchanged.
+  // IMPORTANT: the web-only single-score mode ALWAYS has rounds===1.
+  // Treating that as an early shoe forever shrinks 86-89% of the actual
+  // score-conditioned particle deviation toward a fresh eight-deck prior.
+  // In this explicit mode, use posterior quality and uncertainty, NOT
+  // artificial chronological progress, to determine a bounded blend.
+  // Other modes retain the exact original 1-19 / >=20 logic below.
+  const mcNoise=finite(physical.mc_se_gap)?
+    Math.max(0,physical.mc_se_gap):.05;
+  const posteriorSpread=finite(physical.posterior_sd_gap)?
+    Math.max(0,physical.posterior_sd_gap):.10;
+  const mcReliability=1/(1+mcNoise/.04);
+  const posteriorReliability=1/(1+posteriorSpread/.12);
+  const reliability=.65*mcReliability+.35*posteriorReliability;
   const baseBlend=.12+.88*progress**1.25;
-  const blend=baseBlend*(1-.25*(1-progress)*(1-quality));
+  const legacyBlend=baseBlend*(1-.25*(1-progress)*(1-quality));
+  const blend=independentFinalScore?
+    clamp(.28+.60*quality*reliability,.28,.82):legacyBlend;
   const prob={
     B:BASE.B+blend*(p.B-BASE.B),
     P:BASE.P+blend*(p.P-BASE.P),
@@ -250,12 +264,19 @@ function earlyShoeGuard(physical,particles,rounds,{observed=false}={}){
   };
   const evB=.95*prob.B-prob.P,evP=prob.P-prob.B;
   const se=finite(physical.mc_se_gap)?physical.mc_se_gap:0;
-  const gateAddition=(1-progress)*Math.min(.01,.20*Math.max(0,se));
+  const gateAddition=(independentFinalScore?1-blend:1-progress)*
+    Math.min(.01,.20*Math.max(0,se));
   const diagnostics={
     active:true,rounds,progress,blend,prior_weight:1-blend,
     quality,likelihood_relative_se:likelihoodNoise,
     ess_ratio:ess,active_ess_ratio:activeESS,ancestor_diversity:diversity,
-    supplemental_gate:gateAddition,validated_hit_rate:false
+    supplemental_gate:gateAddition,validated_hit_rate:false,
+    ...(independentFinalScore?{
+      mode:"independent_final_score_quality",mc_gap_se:mcNoise,
+      posterior_gap_spread:posteriorSpread,
+      mc_reliability:mcReliability,posterior_reliability:posteriorReliability,
+      evidence_reliability:reliability,validated_accuracy_gain:false
+    }:{})
   };
   return{physical:{...physical,simulated_probability:prob,
     ev_banker:evB,ev_player:evP,ev_gap:evB-evP,
@@ -320,12 +341,16 @@ function weightedContext(model,physical){
  */
 class PhysicsForecastFirstEngine{
   constructor({simulationsPerParticle=160,observedSamples=12000,
-    threshold=BASE_EV_GATE,lossGate=ONE_HAND_CUSHION,quantOptions={}}={}){
+    threshold=BASE_EV_GATE,lossGate=ONE_HAND_CUSHION,quantOptions={},
+    independentFinalScoreMode=false}={}){
     if(!finite(threshold)||threshold<0||threshold>.5)throw Error("invalid_ev_gate");
     if(!finite(lossGate)||lossGate<0||lossGate>.5)throw Error("invalid_loss_gate");
     this.simulationsPerParticle=simulationsPerParticle;
     this.observedSamples=observedSamples;
     this.threshold=threshold;this.lossGate=lossGate;
+    if(typeof independentFinalScoreMode!=="boolean")
+      throw Error("invalid_independent_final_score_mode");
+    this.independentFinalScoreMode=independentFinalScoreMode;
     this.quant=new quant.OnlineLinUCB256(quantOptions);
     this.reset();
   }
@@ -428,7 +453,10 @@ class PhysicsForecastFirstEngine{
     const candidate=observed?
       {...physics,simulated_probability:physics.win_probabilities,source:"observed_card_count"}:
       physics;
-    const early=earlyShoeGuard(candidate,this.quant.physics,this.history.length,{observed});
+    const independentFinalScore=this.independentFinalScoreMode&&!observed&&
+      this.history.length===1&&this.scoreRows.length===1&&Boolean(this.scoreRows[0]);
+    const early=earlyShoeGuard(candidate,this.quant.physics,this.history.length,{
+      observed,independentFinalScore});
     const normalized=early.physical;
     // A rolling change-point monitor does not flip or blend physical EV.
     // It only adds a small research-signal penalty for a strong observed

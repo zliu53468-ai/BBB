@@ -15,7 +15,8 @@ if(!root||!root.document||!root.BBBPhysicsForecastFirst||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
 const {PhysicsForecastFirstEngine,VERSION}=root.BBBPhysicsForecastFirst;
 const CONFIG={threshold:.005,lossGate:.035,simulationsPerParticle:160,
-  observedSamples:12000,quantOptions:{lambda:.82,alpha:.15,particles:256}};
+  observedSamples:12000,quantOptions:{lambda:.82,alpha:.15,particles:256},
+  independentFinalScoreMode:true};
 // Compatibility-only name: never import or replay this old B/P/T history.
 const KEY="bgs256d_frozen_6x15_forward_v18";
 const AUDIT_KEY="bgs_v24_independent_point_audit";
@@ -63,7 +64,7 @@ function clearView(){
   if(regime)regime.textContent="等待本局結算";
   if(strength)strength.textContent="—";
   if(orb)orb.className="direction-orb idle";
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.5 獨立點數";
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
   root.__BBB_V3_CAPITAL_UI__?.renderStake(null);
 }
 function render(report,pair){
@@ -92,7 +93,7 @@ function render(report,pair){
     "%｜莊 EV "+(evB*100).toFixed(2)+
     "%｜閒 EV "+(evP*100).toFixed(2)+"%";
   if(orb)orb.className="direction-orb "+(dir==="B"?"banker":"player");
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.5 獨立點數";
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
   const name=resultOf(pair)==="B"?"莊":resultOf(pair)==="P"?"閒":"和";
   if(message)message.textContent=
     "已結算：閒 "+pair.player+"／莊 "+pair.banker+"（"+name+"）"+

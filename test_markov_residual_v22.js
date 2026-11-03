@@ -104,9 +104,9 @@ const panel=fs.readFileSync("quant256_online_panel.js","utf8");
 const html=fs.readFileSync("index.html","utf8");
 assert(auth.indexOf("markov_residual_runtime.js?v=20261103-v22-markov-shadow-v1")>=0);
 assert(auth.indexOf("markov_residual_runtime.js?v=20261103-v22-markov-shadow-v1")<
-  auth.indexOf("physics_forecast_first_runtime.js?v=20261103-v23-points-v1"));
-assert(auth.includes("quant256_online_panel.js?v=20261103-v25-ev-manual-v1"));
-assert(html.includes("auth-client.js?v=20261103-v25-ev-manual-v1"));
-assert(panel.includes("V2.5 獨立點數"),"web-only presentation changed; core Markov V2.2 shadow remains");
+  auth.indexOf("physics_forecast_first_runtime.js?v=20261103-v26-independent-guard-v1"));
+assert(auth.includes("quant256_online_panel.js?v=20261103-v26-independent-guard-v1"));
+assert(html.includes("auth-client.js?v=20261103-v26-independent-guard-v1"));
+assert(panel.includes("V2.6 點數平滑"),"web-only presentation changed; core Markov V2.2 shadow remains");
 assert(!panel.includes("雙向偏移"));
 console.log("PASS V2.2 causal Markov shadow, first-order 64-prior/12-support, tie bypass, max 0.003, no BET/PF/EV override, deterministic replay and loader");
