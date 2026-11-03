@@ -11,6 +11,34 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
  const off=await make();for(const row of fixture.rows)close(signature(off.api.applyFinalPrediction(row.history)),row.prediction);
  const query=await make({road:true,query:true});assert.equal(query.api.roadPrimaryConfig(),null);assert(query.api.pfPrimaryConfig());
  const missing=await make({road:true});missing.ctx.__BBB_ROAD_PRIMARY__=null;assert.equal(missing.api.applyFinalPrediction(['B']).direction,'Skip');
- for(const [file,hash]of Object.entries(fixture.protected_hashes)){if(file==='auth-client.js'){const raw=fs.readFileSync(file,'utf8').replace(/^[ \t]*"markov_residual_runtime\.js\?v=[^"]+",\r?\n/m,'').replace('physics_forecast_first_runtime.js?v=20261103-v22-markov-shadow-v1','physics_forecast_first_runtime.js?v=20261103-bidir-offset-v1').replace('quant256_online_panel.js?v=20261103-v22-markov-shadow-v1','quant256_online_panel.js?v=20261103-bidir-offset-v1');const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');assert.equal(sha,'9891ec42ea2e3d6930561bc229592fbe804fac47','auth may only add markov script and change cache versions');continue;}if(file==='index.html'){const raw=fs.readFileSync(file,'utf8').replace('auth-client.js?v=20261103-v22-markov-shadow-v1','auth-client.js?v=20261103-bidir-offset-v1');const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');assert.equal(sha,'22a2d43e3d21ef3e5dc9a122cc868b3be3ef12e5','only V2.2 auth script key may change');continue;}let text=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n');if(file==='auth-client.js')text=text.replace(/^[ \t]*"pf_light_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"physics_correction_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"xgb_adaptive_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"bayes_markov_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"vnext\/relative_baseline_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"vnext\/dual_core_fusion_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"road_primary_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"quant256_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"quant256_panel\.js[^"]*",?\n/m,'').replace('final_probability_runtime.js?v=20261030-pf-light-v1",','final_probability_runtime.js?v=20261030-pf-light-v1"').replace('final_probability_runtime.js?v=20261030-pf-light-v1','final_probability_runtime.js?v=20261029-pf-primary-v1').replace(/20261103-v21-rb-move-v1/g,'20261103-pf256-l384-m160-v1');if(file==='index.html')text=text.replace('<option value="0.01" selected>1 個百分點（50.5%／49.5%）</option>','<option value="0.02" selected>2 個百分點（51%／49%）</option>').replace(/auth-client\.js(?:\?v=[^"\s<>]+)?/g,'auth-client.js');assert.equal(crypto.createHash('sha256').update(text).digest('hex'),hash,file+' modified outside allowed load/cache changes');}
+ for(const [file,hash]of Object.entries(fixture.protected_hashes)){if(file==='auth-client.js'){
+  const raw=fs.readFileSync(file,'utf8')
+    .replace('quant256_online_runtime.js?v=20261103-v23-points-v1',
+      'quant256_online_runtime.js?v=20261103-v21-rb-move-v1')
+    .replace('physics_forecast_first_runtime.js?v=20261103-v23-points-v1',
+      'physics_forecast_first_runtime.js?v=20261103-v22-markov-shadow-v1')
+    .replace('quant256_online_panel.js?v=20261103-v23-points-v1',
+      'quant256_online_panel.js?v=20261103-v22-markov-shadow-v1');
+  const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
+  const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');
+  assert.equal(sha,'ffc9efacca8fb8d56d378b69cee57da73367bc82',
+    'licensed auth may change only three V2.3 loader cache keys');continue;
+ }
+ if(file==='index.html'){
+  const html=fs.readFileSync(file,'utf8');
+  const start=html.indexOf('      <div class="bbb-point-entry"');
+  const end=html.indexOf('      <p id="experimentalNoSkipStatus"',start);
+  assert(start>=0&&end>start,'compact point entry must sit within original controls');
+  const raw=(html.slice(0,start)+html.slice(end))
+    .replace('auth-client.js?v=20261103-v23-points-v1',
+      'auth-client.js?v=20261103-v22-markov-shadow-v1')
+    .replace('styles.css?v=20261103-v23-compact-point-v1',
+      'styles.css?v=20261103-compact-no-stake-v1');
+  const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
+  const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');
+  assert.equal(sha,'3c78aa93a969df8ca6fe25baaffbf76126d21e54',
+    'original license and prediction UI must be byte-identical after removing only the new point block/cache keys');continue;
+ }
+ let text=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n');if(file==='auth-client.js')text=text.replace(/^[ \t]*"pf_light_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"physics_correction_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"xgb_adaptive_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"bayes_markov_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"vnext\/relative_baseline_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"vnext\/dual_core_fusion_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"road_primary_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"quant256_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"quant256_panel\.js[^"]*",?\n/m,'').replace('final_probability_runtime.js?v=20261030-pf-light-v1",','final_probability_runtime.js?v=20261030-pf-light-v1"').replace('final_probability_runtime.js?v=20261030-pf-light-v1','final_probability_runtime.js?v=20261029-pf-primary-v1').replace(/20261103-v21-rb-move-v1/g,'20261103-pf256-l384-m160-v1');if(file==='index.html')text=text.replace('<option value="0.01" selected>1 個百分點（50.5%／49.5%）</option>','<option value="0.02" selected>2 個百分點（51%／49%）</option>').replace(/auth-client\.js(?:\?v=[^"\s<>]+)?/g,'auth-client.js');assert.equal(crypto.createHash('sha256').update(text).digest('hex'),hash,file+' modified outside allowed load/cache changes');}
  console.log('PASS runtime road first, PF/Physics secondary, XGB isolation, snapshot export, same EV/tie, missing-module Skip, rollback to PR75 and protected files');
 })().catch(e=>{console.error(e);process.exitCode=1;});

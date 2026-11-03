@@ -72,8 +72,15 @@ function sampleHand(counts,rng){
  * 384 independent four-card proposals per particle and correct likelihood
  * weighting. It is not an exact full-shoe outcome likelihood.
  */
-function conditionalHandProposal(counts,rng,outcome){
+function validPointObservation(outcome,points){
+  if(points===null||points===undefined)return true;
+  return Boolean(points&&Number.isInteger(points.player)&&Number.isInteger(points.banker)&&
+    points.player>=0&&points.player<=9&&points.banker>=0&&points.banker<=9&&
+    (points.banker>points.player?"B":points.player>points.banker?"P":"T")===outcome);
+}
+function conditionalHandProposal(counts,rng,outcome,points=null){
   if(!valid(outcome))throw Error("invalid_outcome");
+  if(!validPointObservation(outcome,points))throw Error("invalid_point_observation");
   const c=counts.slice(),total=c.reduce((a,b)=>a+b,0);
   if(total<6)return{weight:0,hand:null};
   let drawn=0;
@@ -87,7 +94,8 @@ function conditionalHandProposal(counts,rng,outcome){
   const p=(p1+p2)%10,b=(b1+b2)%10;
   let mass=0,selectedP3=-1,selectedB3=-1;
   const offer=(prob,finalP,finalB,p3=-1,b3=-1)=>{
-    if(!(prob>0)||((finalB>finalP?"B":finalP>finalB?"P":"T")!==outcome))return;
+    if(!(prob>0)||((finalB>finalP?"B":finalP>finalB?"P":"T")!==outcome)||
+      (points!==null&&(finalP!==points.player||finalB!==points.banker)))return;
     mass+=prob;
     // Streaming weighted reservoir is exact conditional on these first four.
     if(rng()*mass<prob){selectedP3=p3;selectedB3=b3;}
@@ -127,9 +135,11 @@ function conditionalHandProposal(counts,rng,outcome){
  * accepting every nonzero proposal would bias the posterior.
  * Never mutate a residual shoe's point counts directly.
  */
-function resampleConditionalTransition(parent,rng,outcome){
-  for(let attempt=0;attempt<32;attempt++){
-    const trial=conditionalHandProposal(parent,rng,outcome);
+function resampleConditionalTransition(parent,rng,outcome,points=null){
+  // Exact-score events are rarer than outcome-only events. More independent
+  // proposals reduce fallback without altering any acceptance probability.
+  for(let attempt=0;attempt<(points===null?32:192);attempt++){
+    const trial=conditionalHandProposal(parent,rng,outcome,points);
     if(trial.weight>0&&rng()<trial.weight)return trial.hand;
   }
   return null;
@@ -153,17 +163,21 @@ class BlindPhysicsEstimator{
     this.lastESS=this.size;this.lastResampled=false;
     this.lastRejuvenated=0;this.lastRejuvenationFallbacks=0;
     this.posteriorUnavailable=false;
+    this.lastPointConditioned=false;
+    this.pointConditionedRounds=0;
     this.drawHistory=[];this.densityHistory=[];this.lastAcceptance=0;return this;
   }
-  observe(outcome){
+  observe(outcome,points=null){
     if(!valid(outcome))throw Error("invalid_outcome");
+    if(!validPointObservation(outcome,points))throw Error("invalid_point_observation");
+    const pointEvidence=points===null?null:{player:points.player,banker:points.banker};
     const attempts=384,next=new Array(this.size),updated=new Array(this.size);
     const priorParticles=this.particles;
     let accepted=0,sum=0,likelihood=0,likelihoodVariance=0;
     for(let i=0;i<this.size;i++){
       const original=priorParticles[i];let chosen=null,likelihoodMass=0,squaredMass=0;
       for(let tries=0;tries<attempts;tries++){
-        const trial=conditionalHandProposal(original,this.rng,outcome);
+        const trial=conditionalHandProposal(original,this.rng,outcome,pointEvidence);
         const mass=trial.weight;
         likelihoodMass+=mass;squaredMass+=mass*mass;
         // Pick a legal conditional hand with probability proportional to its
@@ -204,7 +218,7 @@ class BlindPhysicsEstimator{
           // observed outcome and the same pre-observation parent.
           let particle=null;
           if(selectedParents.has(index)){
-            particle=resampleConditionalTransition(priorParticles[index],this.rng,outcome);
+            particle=resampleConditionalTransition(priorParticles[index],this.rng,outcome,pointEvidence);
             if(particle)this.lastRejuvenated++;
             else this.lastRejuvenationFallbacks++;
           }
@@ -221,6 +235,8 @@ class BlindPhysicsEstimator{
       this.lastESS=0;
       this.posteriorUnavailable=true;
     }
+    this.lastPointConditioned=pointEvidence!==null;
+    if(pointEvidence!==null)this.pointConditionedRounds++;
     this.drawHistory.push(accepted?sum/accepted:0);
     const snapshot=this.snapshot();
     this.densityHistory.push({high:snapshot.virtual_high_ratio,low:snapshot.virtual_low_ratio});
@@ -259,6 +275,9 @@ class BlindPhysicsEstimator{
       particle_ancestor_diversity:new Set(this.ancestorIds).size/this.size,
       likelihood_relative_se:this.lastLikelihoodRelativeSE,
       posterior_weights_active:!this.lastResampled,
+      point_conditioned_last_round:this.lastPointConditioned,
+      point_conditioned_rounds:this.pointConditionedRounds,
+      point_scores_are_not_observed_card_ranks:true,
       resampled:this.lastResampled,posterior_unavailable:this.posteriorUnavailable,
       likelihood_method:"rao_blackwell_third_card_given_first_four",
       likelihood_proposals_per_particle:384,
@@ -426,8 +445,9 @@ class OnlineLinUCB256{
     }
   }
   /** Prequential：先取得上一局預測，等使用者按 B/P/T 後才結算、再訓練。 */
-  observe(outcome){
+  observe(outcome,points=null){
     if(!valid(outcome))throw Error("invalid_outcome");
+    if(!validPointObservation(outcome,points))throw Error("invalid_point_observation");
     const prior=this.predict(),x=this._x(prior.context);
     this.last_signal=prior.direction;
     if(prior.bet_allowed){
@@ -464,7 +484,7 @@ class OnlineLinUCB256{
       this.trainedRounds++;
     }
     this.history.push(outcome);
-    this.physics.observe(outcome);
+    this.physics.observe(outcome,points);
     return this.predict();
   }
   /** 歷史/返回上一局採可重現回放；不會因點擊分析而重複訓練。 */

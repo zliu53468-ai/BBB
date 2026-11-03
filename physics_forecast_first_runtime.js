@@ -333,6 +333,7 @@ class PhysicsForecastFirstEngine{
   get trainedRounds(){return this.quant.trainedRounds;}
   reset(){
     this.quant.reset();this.observedRows=null;this.lastReport=null;
+    this.scoreRows=[];
     this.phase="base";this.winStreak=0;this.lastSettlement="none";
     this.settlements={signals:0,correct:0,wrong:0,ties:0,filtered:0,turns:0};
     return this;
@@ -374,22 +375,42 @@ class PhysicsForecastFirstEngine{
       this.winStreak=0;this.phase="cushion";this.lastSettlement="loss";
     }
   }
-  syncHistory(seq){
+  syncHistory(seq,pointScores=[]){
     if(!Array.isArray(seq)||seq.some(v=>!valid(v)))throw Error("invalid_history");
+    if(!Array.isArray(pointScores)||pointScores.length>seq.length)
+      throw Error("invalid_point_score_history");
+    const scores=seq.map((outcome,i)=>{
+      const pair=pointScores[i];
+      if(pair===undefined||pair===null)return null;
+      if(!pair||!Number.isInteger(pair.player)||!Number.isInteger(pair.banker)||
+        pair.player<0||pair.player>9||pair.banker<0||pair.banker>9||
+        (pair.banker>pair.player?"B":pair.player>pair.banker?"P":"T")!==outcome)
+        throw Error("invalid_point_observation");
+      return{player:pair.player,banker:pair.banker};
+    });
     if(this.observedRows!==null&&this.observedRows.length!==seq.length)
       throw Error("observed_rows_must_cover_entire_shoe");
+    if(this.observedRows!==null&&scores.some(Boolean))
+      throw Error("point_scores_conflict_observed_rows");
     let prefix=this.history.length<=seq.length;
-    if(prefix)for(let i=0;i<this.history.length;i++)
-      if(this.history[i]!==seq[i]){prefix=false;break;}
+    if(prefix)for(let i=0;i<this.history.length;i++){
+      const old=this.scoreRows[i],fresh=scores[i];
+      if(this.history[i]!==seq[i]||Boolean(old)!==Boolean(fresh)||
+        (old&&(old.player!==fresh.player||old.banker!==fresh.banker))){
+        prefix=false;break;
+      }
+    }
     if(!prefix){
-      // 返回上一局或歷史改寫必須全程重播，杜絕重複計算連勝。
+      // Undone or corrected score observations require causal full replay.
+      // Ordinary append only updates the newest particle transition.
       const remembered=this.observedRows;
       this.reset();this.observedRows=remembered;
     }
     for(let i=this.history.length;i<seq.length;i++){
       const prior=this.predict();
       this._settle(prior,seq[i]);
-      this.quant.observe(seq[i]);
+      this.quant.observe(seq[i],scores[i]);
+      this.scoreRows.push(scores[i]);
       this.lastReport=null;
     }
     return this.predict();
@@ -445,7 +466,11 @@ class PhysicsForecastFirstEngine{
     const action=available?gate.action:"SKIP";
     const reason=!available?"dynamic_signal_filter":gate.reason;
     const features=weightedContext(quantPrediction,normalized);
+    const scoreCount=this.scoreRows.filter(Boolean).length;
     const report={version:VERSION,history_length:this.history.length,
+      point_score_observation_count:scoreCount,
+      score_conditioned_particles:scoreCount>0,
+      score_observations_are_actual_card_ranks:false,
       action,direction:action==="BET"?direction:"Skip",bet_allowed:action==="BET",
       reason,card_count_source:normalized.source,
       observed_card_evidence:observed,card_count_gate:gate,
@@ -471,7 +496,9 @@ class PhysicsForecastFirstEngine{
       proxy_only:!observed,validated_edge:false,
       notice:observed?
         "已輸入完整實際點數；仍需確認 MC 抽樣誤差與真實正 EV，連勝不保證下局贏。":
-        "高頻莊/閒僅為虛擬殘牌的研究方向，不是已驗證的正 EV 或投注指令。"};
+        scoreCount>0?
+          "當局最終點數已用於條件式粒子更新，仍無法唯一辨識實際牌張，不能當作已驗證正 EV。":
+          "高頻莊/閒僅為虛擬殘牌的研究方向，不是已驗證的正 EV 或投注指令。"};
     this.lastReport=report;return report;
   }
 }
