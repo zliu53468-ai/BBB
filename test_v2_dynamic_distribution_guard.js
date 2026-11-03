@@ -64,7 +64,8 @@ near(one.ev_gap_deviation,original.ev_gap_deviation);
 assert.equal(one.physical_ev.samples,40960);
 near(one.effective_research_gate,
   one.dynamic_gate+(one.early_shoe_guard?.supplemental_gate||0)+
-  one.shoe_distribution_guard.additional_gate);
+  one.shoe_distribution_guard.additional_gate+
+  one.bidirectional_offset.supplemental_gate);
 assert.deepEqual(one,engine.predict(),"read-only forecast cannot change");
 const final=engine.syncHistory("B".repeat(24).concat("P".repeat(24)).split(""));
 const base=summarizeHypotheses(engine.quant.physics,[],{samplesPerParticle:160});
