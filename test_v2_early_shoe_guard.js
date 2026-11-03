@@ -19,6 +19,8 @@ assert.equal(model.particleCount,256);
 assert(fs.readFileSync("quant256_online_runtime.js","utf8")
   .includes("const attempts=384,next=new Array(this.size),updated=new Array(this.size);"));
 assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,160);
+assert.equal(new PhysicsForecastFirstEngine().independentFinalScoreMode,false,
+  "all original V2/Markov and observed-card modes must be legacy by default");
 
 // A controlled test mixture proves Bayesian-style shrinkage moves *toward*
 // the exact fresh-shoe baseline and scales down unverified early EV noise.
@@ -100,9 +102,9 @@ assert(auth.includes("quant256_online_runtime.js?v=20261103-v23-points-v1"),
   "unchanged particle runtime must keep its cache version");
 assert(auth.includes("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1"),
   "new distribution guard must load before the physics module");
-assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-v23-points-v1"),
+assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-v26-independent-guard-v1"),
   "upgraded physics module must get new cache version");
-assert(page.includes("auth-client.js?v=20261103-v25-ev-manual-v1"));
+assert(page.includes("auth-client.js?v=20261103-v26-independent-guard-v1"));
 assert(page.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),
   "mobile layout fix must be loaded without changing prediction logic");
 assert(!page.includes("side-bet-card"),"removed side-bet panel must stay removed");
