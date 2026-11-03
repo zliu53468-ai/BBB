@@ -20,7 +20,7 @@ assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,M);
 assert(q.includes("const attempts=384,next=new Array(this.size),updated=new Array(this.size);"),
   "384 legal hand proposals must actually be performed per particle");
 assert(q.includes("this.lastESS<this.size*.5"),"ESS cutoff must remain 0.5N");
-assert(q.includes("resampleConditionalTransition(priorParticles[index],this.rng,outcome)"),"particle rejuvenation must use the exact prior deck and observed outcome");
+assert(q.includes("resampleConditionalTransition(priorParticles[index],this.rng,outcome,pointEvidence)"),"particle rejuvenation must use the exact prior deck and observed outcome");
 assert(q.includes("const pHat=likelihoodMass/attempts,priorWeight=this.weights[i];"),
   "weighted Rao-Blackwell likelihood formula unchanged in particle count");
 assert(q.includes("updated[i]=chosen?priorWeight*pHat:0"),
@@ -61,12 +61,12 @@ assert.equal(left.physical_ev.samples,N*M);
 assert.equal(left.action,"SKIP");
 assert.equal(left.research_signal.direction,
  left.ev_banker>=left.ev_player?"B":"P");
-assert(auth.includes("quant256_online_runtime.js?v=20261103-v21-rb-move-v1"),"quant model remains unchanged");
-assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-v22-markov-shadow-v1"),"physics loader must pick up Markov research shadow");
-assert(auth.includes("quant256_online_panel.js?v=20261103-v22-markov-shadow-v1"));
-assert(page.includes("auth-client.js?v=20261103-v22-markov-shadow-v1"));
+assert(auth.includes("quant256_online_runtime.js?v=20261103-v23-points-v1"),"quant model remains unchanged");
+assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-v23-points-v1"),"physics loader must pick up Markov research shadow");
+assert(auth.includes("quant256_online_panel.js?v=20261103-v23-points-v1"));
+assert(page.includes("auth-client.js?v=20261103-v23-points-v1"));
 assert(auth.indexOf("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1")<
- auth.indexOf("physics_forecast_first_runtime.js?v=20261103-v22-markov-shadow-v1"),
+ auth.indexOf("physics_forecast_first_runtime.js?v=20261103-v23-points-v1"),
  "must load unchanged distribution module before the V2 engine");
 assert(page.includes("viewport-fit.js?v=20261102-mobile-stable-v2"));
 assert(!page.includes("side-bet-card"));
