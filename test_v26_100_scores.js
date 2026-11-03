@@ -8,7 +8,7 @@
 const assert=require("node:assert/strict");
 const {PhysicsForecastFirstEngine,BASE}=require("./physics_forecast_first_runtime.js");
 const rows=[];
-const fields={total:0,bankerNew:0,playerNew:0,bankerLegacy:0,
+const fields={total:0,bankerNew:0,playerNew:0,bankerLegacy:0,playerLegacy:0,
   directionChanges:0,minBlend:Infinity,maxBlend:0,sumBlend:0,
   minESS:Infinity,maxESS:0,minGap:Infinity,maxGap:-Infinity};
 for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
