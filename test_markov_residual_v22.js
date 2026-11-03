@@ -82,7 +82,7 @@ assert(!("bidirectional_offset" in report));
 assert(!("bidirectional_offset" in report.research_signal));
 assert.equal(report.markov_residual.stats.prior_strength,64);
 assert.equal(report.markov_residual.shadow.applied_weight,0);
-assert.equal(report.physical_ev.samples,256*160);
+assert.equal(report.physical_ev.samples,96*96);
 near(report.ev_banker,report.physical_ev.ev_banker);
 near(report.ev_player,report.physical_ev.ev_player);
 assert.equal(report.research_signal.direction,
@@ -104,10 +104,10 @@ const panel=fs.readFileSync("quant256_online_panel.js","utf8");
 const html=fs.readFileSync("index.html","utf8");
 assert(auth.indexOf("markov_residual_runtime.js?v=20261103-v22-markov-shadow-v1")>=0);
 assert(auth.indexOf("markov_residual_runtime.js?v=20261103-v22-markov-shadow-v1")<
-  auth.indexOf("physics_forecast_first_runtime.js?v=20261103-v26-independent-guard-v1"));
+  auth.indexOf("physics_forecast_first_runtime.js?v=20261104-pf96-l256-m96-v1"));
 assert(auth.includes("point_signal_quality_guard.js?v=20261103-v26-mild-skip-v1"));
-assert(auth.includes("quant256_online_panel.js?v=20261103-v26-mild-skip-v1"));
-assert(html.includes("auth-client.js?v=20261103-v26-mild-skip-v1"));
+assert(auth.includes("quant256_online_panel.js?v=20261104-pf96-l256-m96-v1"));
+assert(html.includes("auth-client.js?v=20261104-pf96-l256-m96-v1"));
 assert(panel.includes("V2.6 點數平滑"),"web-only presentation changed; core Markov V2.2 shadow remains");
 assert(!panel.includes("雙向偏移"));
 console.log("PASS V2.2 causal Markov shadow, first-order 64-prior/12-support, tie bypass, max 0.003, no BET/PF/EV override, deterministic replay and loader");

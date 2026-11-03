@@ -27,15 +27,15 @@ const stats={B:0,P:0,SKIP:0,rawB:0,rawP:0,total:0};
 for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   const outcome=banker>player?"B":player>banker?"P":"T";
   const model=new PhysicsForecastFirstEngine({
-    simulationsPerParticle:160,threshold:.005,lossGate:.035,
-    quantOptions:{lambda:.82,alpha:.15,particles:256},
+    simulationsPerParticle:96,threshold:.005,lossGate:.035,
+    quantOptions:{lambda:.82,alpha:.15,particles:96},
     independentFinalScoreMode:true
   });
   const r=model.syncHistory([outcome],[{player,banker}]);
   const evB=r.ev_banker,evP=r.ev_player;
   const choice=guard.decide(r);
-  assert.equal(r.physical_ev.samples,40960);
-  assert.equal(model.quant.physics.size,256);
+  assert.equal(r.physical_ev.samples,9216);
+  assert.equal(model.quant.physics.size,96);
   assert.equal(r.action,"SKIP");assert.equal(r.bet_allowed,false);
   assert(choice.direction==="SKIP"||choice.direction===choice.raw_direction,
     "Display policy may abstain, never force the other side");
@@ -46,10 +46,10 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   stats[choice.direction]++;stats[choice.raw_direction==="B"?"rawB":"rawP"]++;stats.total++;
 }
 assert.equal(stats.total,100);
-assert.equal(stats.rawB,60);
-assert.equal(stats.rawP,40);
-assert(stats.SKIP>=5&&stats.SKIP<=35,
-  "Mild display gate unexpectedly skips too few/many benchmark pairs");
+assert.equal(stats.rawB+stats.rawP,100);
+assert(stats.rawB>0&&stats.rawP>0,"Both raw directions must be present");
+assert.deepEqual(stats,{B:48,P:40,SKIP:12,rawB:56,rawP:44,total:100},
+  "N96/L256/M96 display parity drifted from shared BGS regression");
 const auth=fs.readFileSync("auth-client.js","utf8");
 const idx=auth.indexOf("point_signal_quality_guard.js");
 const panel=auth.indexOf("quant256_online_panel.js");

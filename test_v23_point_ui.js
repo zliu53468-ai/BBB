@@ -14,7 +14,7 @@ const storage={
 const models=[];
 class FakeModel{
   constructor(){
-    models.push(this);this.quant={physics:{size:256}};
+    models.push(this);this.quant={physics:{size:96}};
     this.reset();
   }
   reset(){this.history=[];this.scoreRows=[];}
@@ -121,7 +121,7 @@ assert.equal(v.ui.independentCount,1);
 const key=v.dispatch("pointBankerFinal","keydown","Enter");
 assert.equal(key.prevented,true);
 assert.equal(v.ui.independentCount,2);
-assert.notEqual(v.ui.model,first,"second score MUST use a fresh 256-particle model");
+assert.notEqual(v.ui.model,first,"second score MUST use a fresh 96-particle model");
 assert.equal(v.ui.model.history.join(""),"B");
 assert.equal(v.elements.directionText.textContent,"莊");
 assert.equal(v.ui.latestReport.action,"SKIP",

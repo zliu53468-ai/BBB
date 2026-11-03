@@ -76,7 +76,7 @@ const t0=performance.now(),sequence="BPPBTBBPPTBBPPBTBPBPPBP".split("");
 const run=()=>{
   const e=new PhysicsForecastFirstEngine(),report=e.syncHistory(sequence);
   assert.equal(report.action,"SKIP");
-  assert.equal(report.physical_ev.samples,256*160);
+  assert.equal(report.physical_ev.samples,96*96);
   assert.equal(report.feature_weights.physics,5);
   assert.equal(report.feature_weights.road,.1);
   assert.equal(report.dynamic_gate===0||report.dynamic_gate===.005||report.dynamic_gate===.035,true);
