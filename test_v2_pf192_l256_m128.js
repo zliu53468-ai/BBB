@@ -66,7 +66,7 @@ assert(physics.includes("distributionGuard.additional_gate"));
 assert(auth.includes("quant256_online_runtime.js?v=20261104-pf96-l256-m96-v1"));
 assert(auth.includes("physics_forecast_first_runtime.js?v=20261104-two-hand-length-v1"));
 assert(auth.includes("quant256_online_panel.js?v=20261104-two-hand-length-v1"));
-assert(html.includes("auth-client.js?v=20261104-moderate-entry-v2"));
+assert(html.includes("auth-client.js?v=20261104-selective-entry-v3"));
 assert(html.includes("viewport-fit.js?v=20261102-mobile-stable-v2"));
 assert(!html.includes("side-bet-card"));
 assert(panel.includes('const KEY="bgs256d_frozen_6x15_forward_v18"'));
