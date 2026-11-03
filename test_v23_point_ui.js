@@ -71,7 +71,7 @@ assert.equal(view.ui.pointMode,true);
 assert.equal(view.elements.bbbPointEntry.hidden,false);
 assert.equal(storage.getItem(STAGE),"1");
 assert.equal(view.startFallback,0,"start must prevent old Frozen prediction handler");
-assert.deepEqual(view.ui.model.scores,[null,null,null]);
+assert.equal(JSON.stringify(view.ui.model.scores),"[null,null,null]","VM arrays must compare by data, not realm prototype");
 view.elements.pointPlayerFinal.value="7";
 view.dispatch("pointPlayerFinal","change");
 assert.equal(view.core.getHistory().length,3,"single score cannot settle a hand");
