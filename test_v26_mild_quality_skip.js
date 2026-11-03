@@ -55,6 +55,6 @@ const idx=auth.indexOf("point_signal_quality_guard.js");
 const panel=auth.indexOf("quant256_online_panel.js");
 assert(idx>0&&panel>idx,"Quality gate must load before panel");
 const page=fs.readFileSync("quant256_online_panel.js","utf8");
-assert(page.includes("BBBPointSignalQualityGuard.decide(report)"));
+assert(page.includes("signalGuard.decide(report)"));
 assert(page.includes('skip?"觀望"'));
 console.log("PASS BBB V2.6 mild display SKIP (no physical EV/policy changes):",JSON.stringify(stats));
