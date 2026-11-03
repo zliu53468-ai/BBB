@@ -13,7 +13,7 @@ assert(!html.includes('class="card bankroll-card"')&&!html.includes('id="bankrol
   !html.includes('id="stakePercent"'),"stake controls removed from displayed panel");
 assert(html.indexOf("brand-hero")<html.indexOf("appViewportContent"),
   "background must remain outside scroll content");
-assert(html.includes("auth-client.js?v=20261103-bidir-offset-v1"),
+assert(html.includes("auth-client.js?v=20261103-v22-markov-shadow-v1"),
   "production prediction core loader must not be changed");
 assert(html.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),"stable viewport loader version");
 assert(html.includes("styles.css?v=20261103-compact-no-stake-v1"),"stable CSS cache key");
