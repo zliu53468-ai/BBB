@@ -10,24 +10,24 @@ const physics=fs.readFileSync("./physics_forecast_first_runtime.js","utf8");
 const panel=fs.readFileSync("./quant256_online_panel.js","utf8");
 const auth=fs.readFileSync("./auth-client.js","utf8");
 const html=fs.readFileSync("./index.html","utf8");
-const P=256,LIKELIHOOD=384,MC=160;
+const P=96,LIKELIHOOD=256,MC=96;
 assert.equal(new BlindPhysicsEstimator().size,P,
- "runtime default must actually use 256 virtual particle shoes");
-assert.equal(new BlindPhysicsEstimator({particles:256}).size,P);
+ "runtime default must use 96 virtual particle shoes");
+assert.equal(new BlindPhysicsEstimator({particles:96}).size,P);
 assert.equal(new BlindPhysicsEstimator({particles:512}).size,P,
- "hard cap must be raised to 256 rather than silently clipping at 96");
+ "requested hard cap is 96");
 assert.equal(new OnlineLinUCB256().particleCount,P);
 assert.equal(new OnlineLinUCB256().physics.size,P);
 assert.equal(new PhysicsForecastFirstEngine().quant.physics.size,P);
 assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,MC);
-assert(runtime.includes("const attempts=384,next=new Array(this.size),updated=new Array(this.size);"));
+assert(runtime.includes("const attempts=256,next=new Array(this.size),updated=new Array(this.size);"));
 assert(runtime.includes("this.lastESS<this.size*.5"),
  "ESS=0.5N threshold must not be altered");
-assert(physics.includes("{samplesPerParticle=160}={})"),
+assert(physics.includes("{samplesPerParticle=96}={})"),
  "the physical EV helper's default must be 128");
-assert(panel.includes("lossGate:.035,simulationsPerParticle:160,"));
-assert(panel.includes("quantOptions:{lambda:.82,alpha:.15,particles:256}"),
- "UI must not override physics particle count back to 96");
+assert(panel.includes("lossGate:.035,simulationsPerParticle:96,"));
+assert(panel.includes("quantOptions:{lambda:.82,alpha:.15,particles:96}"),
+ "UI must explicitly set the requested 96 particles");
 assert.equal(BASE_EV_GATE,.005);assert.equal(OVERDRIVE_GATE,0);
 assert.equal(ONE_HAND_CUSHION,.035);
 const engine=new PhysicsForecastFirstEngine();
@@ -55,7 +55,7 @@ assert.equal(raw.source,"hypothetical_particle_posterior");
 const replay=["B","P","T","B","P","B"];
 const left=new PhysicsForecastFirstEngine().syncHistory(replay);
 const right=new PhysicsForecastFirstEngine().syncHistory(replay);
-assert.deepEqual(left,right,"full replay must be deterministic with 256/384/160");
+assert.deepEqual(left,right,"full replay must be deterministic with 96/256/96");
 assert.equal(left.physical_ev.samples,P*MC);
 assert(left.physical_ev.particle_ess>0&&left.physical_ev.particle_ess<=P+1e-8);
 assert.equal(left.action,"SKIP");
@@ -70,4 +70,4 @@ assert(html.includes("auth-client.js?v=20261103-v26-mild-skip-v1"));
 assert(html.includes("viewport-fit.js?v=20261102-mobile-stable-v2"));
 assert(!html.includes("side-bet-card"));
 assert(panel.includes('const KEY="bgs256d_frozen_6x15_forward_v18"'));
-console.log("PASS actual runtime & browser config 256 particles / 384 likelihood / 160 MC, guards, legal-card replay, mobile UI preserved");
+console.log("PASS actual runtime & browser config 96 particles / 256 likelihood / 96 MC, guards, legal-card replay, mobile UI preserved");
