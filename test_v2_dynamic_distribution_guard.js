@@ -42,8 +42,8 @@ assert.deepEqual(prior,evaluate(seq.slice(0,24)),
  "the monitor must be deterministic and causal");
 assert.notDeepEqual(prior.windows,evaluate(seq).windows,
  "later observations should affect later diagnostics only");
-assert.equal(new BlindPhysicsEstimator().size,256);
-assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,160);
+assert.equal(new BlindPhysicsEstimator().size,96);
+assert.equal(new PhysicsForecastFirstEngine().simulationsPerParticle,96);
 assert.equal(BASE_EV_GATE,.005);
 assert.equal(OVERDRIVE_GATE,0);
 assert.equal(ONE_HAND_CUSHION,.035);
@@ -57,17 +57,17 @@ assert.equal(first.research_signal.direction,
   first.ev_banker>=first.ev_player?"B":"P");
 assert.equal(first.action,"SKIP"); // B/P/T alone is never real card-count EV
 const one=engine.syncHistory("BP".repeat(11).split(""));
-const original=summarizeHypotheses(engine.quant.physics,[],{samplesPerParticle:160});
+const original=summarizeHypotheses(engine.quant.physics,[],{samplesPerParticle:96});
 near(one.ev_banker,original.ev_banker);
 near(one.ev_player,original.ev_player);
 near(one.ev_gap_deviation,original.ev_gap_deviation);
-assert.equal(one.physical_ev.samples,40960);
+assert.equal(one.physical_ev.samples,9216);
 near(one.effective_research_gate,
   one.dynamic_gate+(one.early_shoe_guard?.supplemental_gate||0)+
   one.shoe_distribution_guard.additional_gate);
 assert.deepEqual(one,engine.predict(),"read-only forecast cannot change");
 const final=engine.syncHistory("B".repeat(24).concat("P".repeat(24)).split(""));
-const base=summarizeHypotheses(engine.quant.physics,[],{samplesPerParticle:160});
+const base=summarizeHypotheses(engine.quant.physics,[],{samplesPerParticle:96});
 near(final.ev_banker,base.ev_banker);
 near(final.ev_player,base.ev_player);
 assert.equal(final.shoe_distribution_guard.current_stage,"distribution_shift");
@@ -94,4 +94,4 @@ assert(page.includes("auth-client.js?v=20261103-v26-mild-skip-v1"));
 assert(page.includes("viewport-fit.js?v=20261102-mobile-stable-v2"));
 assert(panel.includes("單局獨立模擬"),"web panel uses independently scored hands while underlying distribution guard is unchanged");
 assert(!page.includes("side-bet-card"));
-console.log("PASS V2 dynamic distribution monitor: 8/16/24 causal Bayes shift, unchanged physical EV formula/256-384-160, no direction flip, replay, auth and mobile UI");
+console.log("PASS V2 dynamic distribution monitor: 8/16/24 causal Bayes shift, unchanged physical EV formula/96-256-96, no direction flip, replay, auth and mobile UI");
