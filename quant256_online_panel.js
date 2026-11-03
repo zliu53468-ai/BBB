@@ -233,11 +233,8 @@ root.__BBB_QUANT256_ONLINE_PANEL__={
   },
   wager_recommendation_validated:false,validated_edge:false
 };
-try{
-  if(audit.length)run();
-  else{clearView();status("輸入閒、莊點數後按開始分析；電腦也可按 Enter。");}
-}catch(error){
-  model=new PhysicsForecastFirstEngine(CONFIG);lastReport=null;
-  clearView();status("恢復上筆顯示失敗，可輸入新點數："+String(error?.message||error));
-}
+// Loading/reloading a licensed session must NOT auto-run the last analysis.
+// The score audit is for undo only; the user explicitly starts new predictions.
+clearView();
+status("輸入閒、莊點數後按開始分析；電腦也可按 Enter。");
 })(typeof window!=="undefined"?window:null);
