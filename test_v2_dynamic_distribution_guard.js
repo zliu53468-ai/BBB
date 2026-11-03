@@ -87,7 +87,7 @@ const page=fs.readFileSync("index.html","utf8");
 const panel=fs.readFileSync("quant256_online_panel.js","utf8");
 assert(auth.indexOf("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1")>=0);
 assert(auth.indexOf("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1")<
-  auth.indexOf("physics_forecast_first_runtime.js?v=20261103-pf256-l384-m160-v1"));
+  auth.indexOf("physics_forecast_first_runtime.js?v=20261103-v21-rb-move-v1"));
 assert(auth.includes("quant256_online_runtime.js?v=20261103-pf256-l384-m160-v1"));
 assert(auth.includes("quant256_online_panel.js?v=20261103-pf256-l384-m160-v1"));
 assert(page.includes("auth-client.js?v=20261103-pf256-l384-m160-v1"));
