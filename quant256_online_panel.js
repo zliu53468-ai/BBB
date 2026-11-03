@@ -10,8 +10,11 @@
  */
 (function(root){
 "use strict";
+const signalGuard=root?.BBBPointSignalQualityGuard||
+  (typeof module==="object"&&module.exports&&typeof require==="function"?
+    require("./point_signal_quality_guard.js"):null);
 if(!root||!root.document||!root.BBBPhysicsForecastFirst||
-  !root.BBBPointSignalQualityGuard||
+  !signalGuard||
   typeof URLSearchParams!=="function"||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
 const {PhysicsForecastFirstEngine,VERSION}=root.BBBPhysicsForecastFirst;
@@ -74,7 +77,7 @@ function render(report,pair){
   const evB=report.ev_banker,evP=report.ev_player;
   if(!Number.isFinite(evB)||!Number.isFinite(evP)||
     report.physical_ev?.simulation_exhausted)throw Error("physical_ev_unavailable");
-  const display=root.BBBPointSignalQualityGuard.decide(report);
+  const display=signalGuard.decide(report);
   const dir=display.direction,skip=dir==="SKIP";
   const research=report.research_signal;
   const qualified=report.action==="BET";
