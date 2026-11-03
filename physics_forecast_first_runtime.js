@@ -185,13 +185,27 @@ function summarizeHypotheses(physics,_history,{samplesPerParticle=160}={}){
     v+weights[i]**2*e.gap_variance/samplesPerParticle,0);
   const posteriorVariance=estimates.reduce((v,e,i)=>
     v+weights[i]*(e.gap-gap)**2,0);
+  const mcStd=Math.sqrt(mcVariance),hypothesisSpread=Math.sqrt(posteriorVariance);
   return{remaining:validParticles.reduce((v,c,i)=>v+weights[i]*sum(c),0),
     samples:n,particle_support:validParticles.length,
     simulated_probability:prob,ev_banker:evB,ev_player:evP,
     ev_gap:gap,ev_gap_deviation:gap-BASE_GAP,
     se_gap:Math.sqrt(mcVariance+posteriorVariance),
-    mc_se_gap:Math.sqrt(mcVariance),
-    posterior_sd_gap:Math.sqrt(posteriorVariance),
+    mc_se_gap:mcStd,
+    posterior_sd_gap:hypothesisSpread,
+    // Diagnostics only. MC interval conditions on the sampled hypothesis
+    // mixture; it is NOT a calibrated confidence interval for real outcomes.
+    ev_uncertainty_diagnostics:{
+      likelihood_method:"rao_blackwell_third_card_given_first_four",
+      mc_gap_interval_95_conditional:[gap-1.96*mcStd,gap+1.96*mcStd],
+      posterior_gap_dispersion_sd:hypothesisSpread,
+      likelihood_relative_se:physics.lastLikelihoodRelativeSE??null,
+      rejuvenated_transitions:physics.lastRejuvenated??0,
+      rejuvenation_fallbacks:physics.lastRejuvenationFallbacks??0,
+      ancestor_diversity:Array.isArray(physics.ancestorIds)?
+        new Set(physics.ancestorIds).size/physics.ancestorIds.length:null,
+      calibrated_hit_rate:false,validated_edge:false
+    },
     particle_ess:1/weights.reduce((v,w)=>v+w*w,0),
     posterior_update_ess:physics.lastESS??null,
     particle_resampled:physics.lastResampled===true,
