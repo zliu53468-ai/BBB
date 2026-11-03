@@ -293,7 +293,7 @@ function bidirectionalOffsetGuard(physical,{observed=false}={}){
     (physical.ev_banker>=physical.ev_player?"B":"P"):null;
   const chosenOffset=direction==="B"?bankerOffset:playerOffset;
   const active=!observed&&!physical?.simulation_exhausted&&
-    direction!==null&&validProbability;
+    physical?.source!=="unobserved_baseline"&&direction!==null&&validProbability;
   const lift=BIDIRECTIONAL_OFFSET.minConditionalLift;
   const gateAddition=active?
     BIDIRECTIONAL_OFFSET.maxSupplementalGate*
