@@ -3,7 +3,7 @@
  *
  * No historical B/P/T bootstrap and NO accumulated particle posterior:
  * EACH (Player final total, Banker final total) pair is evaluated with a
- * freshly created V2.3 PhysicsForecastFirstEngine(N256/L384/M160).
+ * freshly created V2.3 PhysicsForecastFirstEngine(N96/L256/M96).
  * Old V2.3 licensed history and score logs are never read or mutated.
  * An optional license-scoped audit of prior score pairs is NOT model input.
  * All physics/EV/Markov/gate implementations remain unchanged.
@@ -18,8 +18,8 @@ if(!root||!root.document||!root.BBBPhysicsForecastFirst||
   typeof URLSearchParams!=="function"||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
 const {PhysicsForecastFirstEngine,VERSION}=root.BBBPhysicsForecastFirst;
-const CONFIG={threshold:.005,lossGate:.035,simulationsPerParticle:160,
-  observedSamples:12000,quantOptions:{lambda:.82,alpha:.15,particles:256},
+const CONFIG={threshold:.005,lossGate:.035,simulationsPerParticle:96,
+  observedSamples:12000,quantOptions:{lambda:.82,alpha:.15,particles:96},
   independentFinalScoreMode:true};
 // Compatibility-only name: never import or replay this old B/P/T history.
 const KEY="bgs256d_frozen_6x15_forward_v18";
@@ -103,7 +103,7 @@ function render(report,pair){
   const name=resultOf(pair)==="B"?"莊":resultOf(pair)==="P"?"閒":"和";
   if(message)message.textContent=
     "已結算：閒 "+pair.player+"／莊 "+pair.banker+"（"+name+"）"+
-    "｜本次全新 256 粒子，L384／M160"+
+    "｜本次全新 96 粒子，L256／M96"+
     "｜下一局顯示訊號："+(skip?"觀望":dir==="B"?"莊":"閒")+
     "｜模擬莊 EV "+(evB*100).toFixed(2)+"%"+
     "、閒 EV "+(evP*100).toFixed(2)+"%"+
@@ -113,7 +113,7 @@ function render(report,pair){
   const stakeReport=skip?{...report,research_signal:{...report.research_signal,available:false}}:report;
   root.__BBB_V3_CAPITAL_UI__?.renderStake(stakeReport);
 }
-/** Fresh PF256 with one scored hand; NEVER sync more than one outcome. */
+/** Fresh PF96 with one scored hand; NEVER sync more than one outcome. */
 function computeSingle(pair){
   if(!validPair(pair))throw Error("invalid_point_observation");
   const fresh=new PhysicsForecastFirstEngine(CONFIG);
