@@ -84,8 +84,8 @@ assert.deepEqual(rollbackStats,{B:48,P:40,SKIP:12,rawB:56,rawP:44,total:100},
 assert.deepEqual(moderateStats,{B:44,P:37,SKIP:19,rawB:56,rawP:44,total:100},
   "Previous moderate V2 profile must remain exactly reversible");
 assert.equal(stats.rawB,56);assert.equal(stats.rawP,44);
-assert(stats.SKIP>19 && stats.SKIP<=45,
-  "Moderate-high should abstain more than V2 but not excessively on 100 fixed scores");
+assert.deepEqual(stats,{B:36,P:34,SKIP:30,rawB:56,rawP:44,total:100},
+  "V3 fixed 100-score benchmark must match BGS (no EV/direction change)");
 const auth=fs.readFileSync("auth-client.js","utf8");
 const idx=auth.indexOf("point_signal_quality_guard.js");
 const panel=auth.indexOf("quant256_online_panel.js");
