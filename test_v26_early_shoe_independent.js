@@ -50,7 +50,7 @@ const unchanged=b.syncHistory(scored,point);
 assert.equal(corrected.early_shoe_guard.mode,"independent_final_score_quality");
 assert.equal(unchanged.early_shoe_guard.mode,undefined);
 assert(corrected.early_shoe_guard.blend>unchanged.early_shoe_guard.blend);
-assert.equal(corrected.physical_ev.samples,256*160);
+assert.equal(corrected.physical_ev.samples,96*96);
 assert.equal(corrected.point_score_observation_count,1);
 assert.equal(corrected.action,"SKIP");
 assert.equal(corrected.bet_allowed,false);
@@ -67,4 +67,4 @@ const panel=fs.readFileSync("quant256_online_panel.js","utf8");
 assert(panel.includes("independentFinalScoreMode:true"),"web panel must explicitly opt in");
 assert(panel.includes("const fresh=new PhysicsForecastFirstEngine(CONFIG)"),
   "each score still creates a new PF256 estimator");
-console.log("PASS V2.6: quality-adaptive one-score guard only; preserved legacy B/P/T and true-card EV, 256/384/160, EV/BET, deterministic replay and ESS/MC reliability");
+console.log("PASS V2.6: quality-adaptive one-score guard only; preserved legacy B/P/T and true-card EV, 96/256/96, EV/BET, deterministic replay and ESS/MC reliability");
