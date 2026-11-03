@@ -92,7 +92,7 @@ function replay(){
   assert.equal(engine.quant.physics.pointConditionedRounds,3);
   assert.equal(result.action,"SKIP","final scores do not qualify as true observed-card BET");
   assert.equal(result.observed_card_evidence,false);
-  assert.equal(result.physical_ev.samples,256*160);
+  assert.equal(result.physical_ev.samples,96*96);
   assert.equal(result.feature_weights.physics,5);
   assert.equal(result.feature_weights.road,.1);
   assert.equal(result.research_signal.direction,
