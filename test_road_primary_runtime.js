@@ -15,7 +15,7 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
   if(file==='auth-client.js'){
     // V2.4 only bumps the web panel cache key, not authentication flow.
     const raw=fs.readFileSync(file,'utf8')
-      .replace('quant256_online_panel.js?v=20261103-v24-independent-points-v1',
+      .replace('quant256_online_panel.js?v=20261103-v25-ev-manual-v1',
         'quant256_online_panel.js?v=20261103-v23-points-v1');
     const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
     const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');
@@ -23,20 +23,14 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
       'V2.4 must not modify authentication or other script loaders');continue;
   }
   if(file==='index.html'){
-    // Original V2.3 must be byte-identical after restoring 2 cache keys
-    // and the initial hidden attribute on the score entry.
-    const raw=fs.readFileSync(file,'utf8')
-      .replace('auth-client.js?v=20261103-v24-independent-points-v1',
-        'auth-client.js?v=20261103-v23-points-v1')
-      .replace('styles.css?v=20261103-v24-independent-ui-v1',
-        'styles.css?v=20261103-v23-compact-point-v1')
-      .replace('id="bbbPointEntry" aria-label',
-        'id="bbbPointEntry" hidden aria-label');
+    // Pin the exact V2.5 page blob. Only compact input/presentation markup
+    // and asset cache keys changed; no protected model code was touched.
+    const raw=fs.readFileSync(file,'utf8');
     const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
     const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');
-    assert.equal(sha,'4535343a4e5590dfaaa07bef48801ac83880467e',
-      'V2.4 page may change only the point visibility and loader cache keys');continue;
+    assert.equal(sha,'7f2398639153d64a06f00ca989c969a6a907fe3a',
+      'V2.5 page differs from pinned manual-input UI');continue;
   }
-  let text=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n');if(file==='auth-client.js')text=text.replace(/^[ \t]*"pf_light_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"physics_correction_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"xgb_adaptive_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"bayes_markov_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"vnext\/relative_baseline_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"vnext\/dual_core_fusion_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"road_primary_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"quant256_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"quant256_panel\.js[^"]*",?\n/m,'').replace('final_probability_runtime.js?v=20261030-pf-light-v1",','final_probability_runtime.js?v=20261030-pf-light-v1"').replace('final_probability_runtime.js?v=20261030-pf-light-v1','final_probability_runtime.js?v=20261029-pf-primary-v1').replace(/20261103-v21-rb-move-v1/g,'20261103-pf256-l384-m160-v1');if(file==='index.html')text=text.replace('<option value="0.01" selected>1 個百分點（50.5%／49.5%）</option>','<option value="0.02" selected>2 個百分點（51%／49%）</option>').replace(/auth-client\.js(?:\?v=[^"\s<>]+)?/g,'auth-client.js');assert.equal(crypto.createHash('sha256').update(text).digest('hex'),hash,file+' modified outside allowed load/cache changes');}
+    let text=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n');if(file==='auth-client.js')text=text.replace(/^[ \t]*"pf_light_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"physics_correction_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"xgb_adaptive_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"bayes_markov_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"vnext\/relative_baseline_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"vnext\/dual_core_fusion_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"road_primary_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"quant256_runtime\.js[^"]*",\n/m,'').replace(/^[ \t]*"quant256_panel\.js[^"]*",?\n/m,'').replace('final_probability_runtime.js?v=20261030-pf-light-v1",','final_probability_runtime.js?v=20261030-pf-light-v1"').replace('final_probability_runtime.js?v=20261030-pf-light-v1','final_probability_runtime.js?v=20261029-pf-primary-v1').replace(/20261103-v21-rb-move-v1/g,'20261103-pf256-l384-m160-v1');if(file==='index.html')text=text.replace('<option value="0.01" selected>1 個百分點（50.5%／49.5%）</option>','<option value="0.02" selected>2 個百分點（51%／49%）</option>').replace(/auth-client\.js(?:\?v=[^"\s<>]+)?/g,'auth-client.js');assert.equal(crypto.createHash('sha256').update(text).digest('hex'),hash,file+' modified outside allowed load/cache changes');}
  console.log('PASS runtime road first, PF/Physics secondary, XGB isolation, snapshot export, same EV/tie, missing-module Skip, rollback to PR75 and protected files');
 })().catch(e=>{console.error(e);process.exitCode=1;});

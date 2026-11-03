@@ -56,6 +56,8 @@ assert(panel.includes("fresh.syncHistory([outcome]"));
 assert(!panel.includes("model.syncHistory(seq"),
   "web panel must not replay cumulative historical sequences");
 assert(page.includes('id="bbbPointEntry" aria-label'));
+assert(page.includes('id="btnPointAnalyze"')&&!page.includes("分析局數"),"manual point analysis without count widget");
+assert(panel.includes("const dir=evB>=evP"),"higher physical EV always drives the presented direction");
 assert(page.indexOf('id="pointPlayerFinal"')<
   page.indexOf('id="pointBankerFinal"'),"left Player right Banker");
 assert(css.includes("#predictionApp .bbb-results-block,")&&

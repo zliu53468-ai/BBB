@@ -316,7 +316,7 @@ html.bbb-viewport-locked,body.bbb-viewport-locked{
 #predictionApp .bbb-point-grid label{display:grid;gap:4px;font-size:12px;font-weight:800;min-width:0}
 #predictionApp .bbb-player-label{color:#83d1ff}
 #predictionApp .bbb-banker-label{color:#ff83ac}
-#predictionApp .bbb-point-grid select{
+#predictionApp .bbb-point-grid input{
   width:100%;min-width:0;min-height:42px;box-sizing:border-box;
   border:1px solid rgba(195,163,255,.35);border-radius:10px;
   background:#181029;color:#f5efff;font-size:16px;
@@ -326,7 +326,7 @@ html.bbb-viewport-locked,body.bbb-viewport-locked{
 #predictionApp.bbb-point-mode #message{max-height:3.5em;overflow:auto}
 @media(max-width:620px){
   #predictionApp .bbb-point-entry{padding:7px 8px;gap:5px}
-  #predictionApp .bbb-point-grid select{min-height:40px}
+  #predictionApp .bbb-point-grid input{min-height:40px}
   #predictionApp .bbb-point-heading strong{font-size:12px}
   #predictionApp .bbb-point-heading small{font-size:9px}
 }
@@ -338,3 +338,12 @@ html.bbb-viewport-locked,body.bbb-viewport-locked{
 #predictionApp #forecastGap,
 #predictionApp label[for="forecastGap"]{display:none!important}
 #predictionApp .bbb-point-entry{display:grid}
+
+/* BBB V2.5: compact manual entry for typed final totals. */
+#predictionApp .bbb-point-grid input{font-variant-numeric:tabular-nums;outline-offset:2px;}
+#predictionApp .bbb-point-grid input:focus{border-color:rgba(195,163,255,.83);}
+#predictionApp .bbb-point-grid input::-webkit-inner-spin-button,
+#predictionApp .bbb-point-grid input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+#predictionApp .bbb-point-grid input[type=number]{appearance:textfield;-moz-appearance:textfield;}
+#predictionApp .bbb-point-analyze{width:100%;min-height:42px;font-weight:850;}
+#predictionApp .metrics>.metric:last-child:nth-child(odd){grid-column:1/-1;}

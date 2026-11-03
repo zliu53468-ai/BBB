@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
   <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
-  <link rel="stylesheet" href="styles.css?v=20261103-v24-independent-ui-v1">
+  <link rel="stylesheet" href="styles.css?v=20261103-v25-manual-input-v1">
 
 </head>
 <body>
@@ -48,7 +48,6 @@
       </div>
       <div class="status-area">
         <span class="status-pill"><i></i><span id="modePill">準備中</span></span>
-        <span class="round-pill" id="roundPill">0 局</span>
       </div>
     </header>
 
@@ -60,10 +59,9 @@
           <div class="metric"><span>物理 EV 差異（非勝率）</span><strong id="confidence">—</strong></div>
           <div class="metric"><span>下注狀態</span><strong id="regime">—</strong></div>
           <div class="metric"><span>莊／閒 EV（模擬）</span><strong id="strength">—</strong></div>
-          <div class="metric"><span>分析局數</span><strong><b id="roundCount">0</b> 局</strong></div>
         </div>
       </div>
-      <div class="message" id="message" aria-live="polite">輸入牌局後開始分析</div>
+      <div class="message" id="message" aria-live="polite">請輸入當局閒、莊點數，再按開始分析</div>
     </section>
 
     <section class="card controls-card">
@@ -76,40 +74,19 @@
         </div>
       </div>
       <div class="bbb-point-entry" id="bbbPointEntry" aria-label="當局最終點數輸入">
-        <div class="bbb-point-heading"><strong>輸入當局最終點數</strong><small>左閒、右莊 · 填完自動更新下一局</small></div>
+        <div class="bbb-point-heading"><strong>輸入當局最終點數</strong><small>左閒、右莊 · 手動開始分析下一局</small></div>
         <div class="bbb-point-grid">
           <label for="pointPlayerFinal" class="bbb-player-label">閒 PLAYER
-            <select id="pointPlayerFinal" aria-label="閒家最終點數">
-              <option value="">選擇點數</option>
-            <option value="0">0 點</option>
-            <option value="1">1 點</option>
-            <option value="2">2 點</option>
-            <option value="3">3 點</option>
-            <option value="4">4 點</option>
-            <option value="5">5 點</option>
-            <option value="6">6 點</option>
-            <option value="7">7 點</option>
-            <option value="8">8 點</option>
-            <option value="9">9 點</option>
-            </select>
+            <input id="pointPlayerFinal" type="number" min="0" max="9" step="1"
+              inputmode="numeric" autocomplete="off" placeholder="輸入 0–9" aria-label="閒家最終點數">
           </label>
           <label for="pointBankerFinal" class="bbb-banker-label">莊 BANKER
-            <select id="pointBankerFinal" aria-label="莊家最終點數">
-              <option value="">選擇點數</option>
-            <option value="0">0 點</option>
-            <option value="1">1 點</option>
-            <option value="2">2 點</option>
-            <option value="3">3 點</option>
-            <option value="4">4 點</option>
-            <option value="5">5 點</option>
-            <option value="6">6 點</option>
-            <option value="7">7 點</option>
-            <option value="8">8 點</option>
-            <option value="9">9 點</option>
-            </select>
+            <input id="pointBankerFinal" type="number" min="0" max="9" step="1"
+              inputmode="numeric" autocomplete="off" placeholder="輸入 0–9" aria-label="莊家最終點數">
           </label>
         </div>
-        <p id="pointInputStatus" role="status" aria-live="polite">請依序選擇閒、莊最終點數（0–9）</p>
+        <button class="action-btn primary bbb-point-analyze" id="btnPointAnalyze" type="button">開始分析</button>
+        <p id="pointInputStatus" role="status" aria-live="polite">輸入兩邊 0–9 點數後按開始分析；電腦可按 Enter</p>
       </div>
       <p id="experimentalNoSkipStatus" class="experiment-note" role="status" aria-live="polite" hidden>未驗證實驗版｜不保證勝率；測試方向不等於正式下注資格</p>
       <p id="localCalibrationStatus" role="status" aria-live="polite">本機校準：等待模型就緒</p>
@@ -134,7 +111,7 @@
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
-  <script src="auth-client.js?v=20261103-v24-independent-points-v1"></script>
+  <script src="auth-client.js?v=20261103-v25-ev-manual-v1"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
