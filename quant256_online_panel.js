@@ -122,7 +122,7 @@ function computeSingle(pair){
     [{player:pair.player,banker:pair.banker}]);
   if(fresh.history.length!==1||report.history_length!==1||
     report.point_score_observation_count!==1||
-    fresh.quant.physics.size!==256)throw Error("independent_particle_contract_failed");
+    fresh.quant.physics.size!==96)throw Error("independent_particle_contract_failed");
   if(!Number.isFinite(report.ev_banker)||!Number.isFinite(report.ev_player)||
     report.physical_ev?.simulation_exhausted)throw Error("physical_ev_unavailable");
   return{fresh,report,outcome};
