@@ -62,6 +62,10 @@
         </div>
       </div>
       <div class="message" id="message" aria-live="polite">請輸入當局閒、莊點數，再按開始分析</div>
+      <details class="bbb-clear-details" id="drawLengthDiagnostics" hidden>
+        <summary>發牌張數聯合模擬：當局 × 下一局（4／5／6 張）</summary>
+        <div class="message" id="drawLengthJointMatrix" style="white-space:pre-line;line-height:1.75;" aria-live="polite"></div>
+      </details>
     </section>
 
     <section class="card controls-card">
@@ -111,7 +115,7 @@
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
-  <script src="auth-client.js?v=20261104-pf96-l256-m96-v1"></script>
+  <script src="auth-client.js?v=20261104-two-hand-length-v1"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
