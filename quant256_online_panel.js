@@ -107,12 +107,20 @@ function render(report,pair){
     (qualified?" / EV VERIFIED":" / EV COMPARISON");
   if(conf)conf.textContent="模擬 EV 偏移 "+
     (report.ev_gap_deviation*100).toFixed(2)+"%（非勝率）";
-  if(regime)regime.textContent="單局獨立模擬｜"+
-    (skip?"EV 差距較小，觀望":"顯示模擬 EV 較高方向")+
-    (signal?"｜原研究門檻已通過":"｜原研究門檻未通過")+
+  if(regime)regime.textContent="單局獨立模擬｜V4 觀望篩選 "+
+    (skip?"未通過：觀望":"通過：顯示較高 EV 方向")+
+    (signal?"｜原研究訊號門檻通過":"｜原研究訊號門檻未通過")+
     (qualified?"｜實測 EV 通過":"｜未確認正 EV");
-  if(strength)strength.textContent="門檻 "+(report.dynamic_gate*100).toFixed(2)+
+  // V3 accidentally displayed report.dynamic_gate as the "SKIP threshold".
+  // That belongs to a DIFFERENT research gate. The displayed recommendation
+  // is selected by signalGuard.decide(report), not report.dynamic_gate.
+  const screened=Number.isFinite(display.threshold)&&Number.isFinite(display.gap);
+  if(strength)strength.textContent=screened?
+    "觀望門檻 "+(display.threshold*100).toFixed(3)+
+    "%｜實際 EV 差距 "+(display.gap*100).toFixed(3)+
     "%｜莊 EV "+(evB*100).toFixed(2)+
+    "%｜閒 EV "+(evP*100).toFixed(2)+"%":
+    "觀望：品質資料不足｜莊 EV "+(evB*100).toFixed(2)+
     "%｜閒 EV "+(evP*100).toFixed(2)+"%";
   if(orb)orb.className="direction-orb "+(skip?"idle":dir==="B"?"banker":"player");
   if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
@@ -123,7 +131,7 @@ function render(report,pair){
     "｜下一局顯示訊號："+(skip?"觀望":dir==="B"?"莊":"閒")+
     "｜模擬莊 EV "+(evB*100).toFixed(2)+"%"+
     "、閒 EV "+(evP*100).toFixed(2)+"%"+
-    "｜原研究訊號門檻 "+(signal?"通過":"未通過")+
+    "｜顯示篩選 "+(display.entry_profile||"V4")+"："+(skip?"未通過":"通過")+
     "｜最終點數不等於實際牌張，較高 EV 不代表正 EV 或較高實際勝率";
   // Suppress stake suggestions when quality display guard abstains.
   const stakeReport=skip?{...report,research_signal:{...report.research_signal,available:false}}:report;
