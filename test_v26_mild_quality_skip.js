@@ -65,8 +65,8 @@ assert(stats.rawB>0&&stats.rawP>0,"Both raw directions must be present");
 assert.deepEqual(rollbackStats,{B:48,P:40,SKIP:12,rawB:56,rawP:44,total:100},
   "Legacy V2.6 display gate must remain exactly reversible");
 assert.equal(stats.rawB,56);assert.equal(stats.rawP,44);
-assert(stats.SKIP>12&&stats.SKIP<=30,
-  "Moderate entry guard should abstain more than mild, but not exceed 30/100 fixed-score cases");
+assert.deepEqual(stats,{B:44,P:37,SKIP:19,rawB:56,rawP:44,total:100},
+  "The fixed-score moderate guard must match BGS, without changing EV/direction");
 const auth=fs.readFileSync("auth-client.js","utf8");
 const idx=auth.indexOf("point_signal_quality_guard.js");
 const panel=auth.indexOf("quant256_online_panel.js");
