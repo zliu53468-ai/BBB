@@ -258,6 +258,60 @@ function earlyShoeGuard(physical,particles,rounds,{observed=false}={}){
     gateAddition,diagnostics};
 }
 
+/**
+ * Two-sided conditional B/P offset guard (B/P/T-only RESEARCH signals).
+ *
+ * A raw banker lead is expected in a fresh eight-deck shoe even before any
+ * card-count information. Compare both B and P conditional-on-no-tie lifts to
+ * their exact shared baseline, rather than treating the raw B lead as an edge.
+ *
+ * The two offsets are mathematically coupled (P = -B), NOT two independent
+ * observations. This can conservatively filter weak simulated signals but
+ * CANNOT add missing card information or prove better long-run accuracy.
+ *
+ * Physical EV, betting eligibility, direction and original dynamic gates
+ * stay untouched. A maximum 0.0025 additive research-only guard is applied
+ * symmetrically to the *physically preferred* direction's offset.
+ */
+const BIDIRECTIONAL_OFFSET=Object.freeze({
+  minConditionalLift:.002,    // 0.20 percentage points (uncalibrated)
+  maxSupplementalGate:.0025 // 0.25 percentage points physical EV
+});
+function bidirectionalOffsetGuard(physical,{observed=false}={}){
+  const p=physical?.simulated_probability||physical?.win_probabilities;
+  const baseMass=BASE.B+BASE.P;
+  const mass=p&&finite(p.B)&&finite(p.P)&&finite(p.T)?p.B+p.P:0;
+  const validProbability=mass>.05&&p.B>=0&&p.P>=0&&p.T>=0&&
+    Math.abs(mass+p.T-1)<1e-4;
+  const baseBanker=BASE.B/baseMass,basePlayer=BASE.P/baseMass;
+  const conditionalBanker=validProbability?p.B/mass:null;
+  const conditionalPlayer=validProbability?p.P/mass:null;
+  // B and P lifts sum to zero; a tie-rate shift alone adds no direction.
+  const bankerOffset=validProbability?conditionalBanker-baseBanker:null;
+  const playerOffset=validProbability?conditionalPlayer-basePlayer:null;
+  const direction=finite(physical?.ev_banker)&&finite(physical?.ev_player)?
+    (physical.ev_banker>=physical.ev_player?"B":"P"):null;
+  const chosenOffset=direction==="B"?bankerOffset:playerOffset;
+  const active=!observed&&!physical?.simulation_exhausted&&
+    physical?.source!=="unobserved_baseline"&&direction!==null&&validProbability;
+  const lift=BIDIRECTIONAL_OFFSET.minConditionalLift;
+  const gateAddition=active?
+    BIDIRECTIONAL_OFFSET.maxSupplementalGate*
+      clamp((lift-chosenOffset)/lift,0,1):0;
+  return{
+    active,source:observed?"observed_cards":"simulated_bpt_only",
+    offset_banker:bankerOffset,offset_player:playerOffset,
+    conditional_probability:validProbability?{B:conditionalBanker,P:conditionalPlayer}:null,
+    baseline_conditional_probability:{B:baseBanker,P:basePlayer},
+    physical_direction:direction,chosen_offset:chosenOffset,
+    min_conditional_lift:lift,
+    supplemental_gate:gateAddition,
+    max_supplemental_gate:BIDIRECTIONAL_OFFSET.maxSupplementalGate,
+    correlated_offsets:true,changes_physical_ev:false,
+    changes_direction:false,calibrated_hit_rate:false,validated_edge:false
+  };
+}
+
 function baselineResult(){
   return{samples:0,remaining:416,particle_support:0,simulated_probability:{...BASE},
     ev_banker:BASE_EV.B,ev_player:BASE_EV.P,ev_gap:BASE_GAP,
@@ -409,6 +463,7 @@ class PhysicsForecastFirstEngine{
     // distribution shift; the original dynamic V2 phase gate is unchanged.
     const distributionGuard=distribution.evaluate(this.history,{observed});
     const dynamicGate=this._gate();
+    const bidirectionalOffset=bidirectionalOffsetGuard(normalized,{observed});
     const score=Math.abs(normalized.ev_gap_deviation);
     const direction=normalized.ev_banker>=normalized.ev_player?"B":"P";
     // 與真實投注分離的「研究方向」：不把 MC 抽樣不確定性當成勝率。
@@ -416,13 +471,14 @@ class PhysicsForecastFirstEngine{
     const usable=!normalized.simulation_exhausted&&finite(score)&&
       finite(normalized.ev_banker)&&finite(normalized.ev_player);
     const effectiveResearchGate=dynamicGate+early.gateAddition+
-      distributionGuard.additional_gate;
+      distributionGuard.additional_gate+bidirectionalOffset.supplemental_gate;
     const available=usable&&score>=effectiveResearchGate;
     const researchSignal={
       action:available?"SIGNAL":"SKIP",
       direction,available,score,dynamic_gate:dynamicGate,
       effective_research_gate:effectiveResearchGate,
       distribution_guard:distributionGuard,
+      bidirectional_offset:bidirectionalOffset,
       phase:this.phase,win_streak:this.winStreak,
       last_settlement:this.lastSettlement,
       early_shoe_guard:early.diagnostics,
@@ -444,6 +500,7 @@ class PhysicsForecastFirstEngine{
       research_signal:researchSignal,display_direction:direction,
       early_shoe_guard:early.diagnostics,
       shoe_distribution_guard:distributionGuard,
+      bidirectional_offset:bidirectionalOffset,
       effective_research_gate:effectiveResearchGate,
       dynamic_gate:dynamicGate,base_ev_gate:this.threshold,
       cushion_gate:this.lossGate,gate_phase:this.phase,
@@ -467,6 +524,7 @@ class PhysicsForecastFirstEngine{
   }
 }
 return{PhysicsForecastFirstEngine,observedCounts,observedHand,
-  deal,simulate,summarizeHypotheses,earlyShoeGuard,decisionFromEV,weightedContext,
+  deal,simulate,summarizeHypotheses,earlyShoeGuard,bidirectionalOffsetGuard,
+  decisionFromEV,weightedContext,BIDIRECTIONAL_OFFSET,
   BASE,BASE_EV,INITIAL,DECKS,VERSION,BASE_EV_GATE,OVERDRIVE_GATE,ONE_HAND_CUSHION};
 });
