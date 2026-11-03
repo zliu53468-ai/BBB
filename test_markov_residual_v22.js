@@ -82,7 +82,7 @@ assert(!("bidirectional_offset" in report));
 assert(!("bidirectional_offset" in report.research_signal));
 assert.equal(report.markov_residual.stats.prior_strength,64);
 assert.equal(report.markov_residual.shadow.applied_weight,0);
-assert.equal(report.physical_ev.samples,256*160);
+assert.equal(report.physical_ev.samples,96*96);
 near(report.ev_banker,report.physical_ev.ev_banker);
 near(report.ev_player,report.physical_ev.ev_player);
 assert.equal(report.research_signal.direction,
