@@ -196,7 +196,9 @@ for(const id of ["btnB","btnP","btnT","btnBack"]){
       catch(error){pointStatus("返回後記錄未保存："+String(error?.message||error));}
       if(!seq.length&&scoreStage){try{setStage(false);}catch(_){}}
     }
-    safeRun();
+    // Before Start, history input is only data entry: do not run 256×384
+    // likelihood and 256×160 EV Monte Carlo after every B/P/T click.
+    if(scoreStage)safeRun();
   },false);
 }
 for(const id of ["pointPlayerFinal","pointBankerFinal"]){
