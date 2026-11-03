@@ -102,7 +102,7 @@ assert(auth.includes("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v
   "new distribution guard must load before the physics module");
 assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-v23-points-v1"),
   "upgraded physics module must get new cache version");
-assert(page.includes("auth-client.js?v=20261103-v24-independent-points-v1"));
+assert(page.includes("auth-client.js?v=20261103-v25-ev-manual-v1"));
 assert(page.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),
   "mobile layout fix must be loaded without changing prediction logic");
 assert(!page.includes("side-bet-card"),"removed side-bet panel must stay removed");
