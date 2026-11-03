@@ -17,9 +17,9 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
     const raw=fs.readFileSync(file,'utf8')
       .replace('quant256_online_runtime.js?v=20261104-pf96-l256-m96-v1',
         'quant256_online_runtime.js?v=20261103-v23-points-v1')
-      .replace('physics_forecast_first_runtime.js?v=20261104-pf96-l256-m96-v1',
+      .replace('physics_forecast_first_runtime.js?v=20261104-two-hand-length-v1',
         'physics_forecast_first_runtime.js?v=20261103-v23-points-v1')
-      .replace('quant256_online_panel.js?v=20261104-pf96-l256-m96-v1',
+      .replace('quant256_online_panel.js?v=20261104-two-hand-length-v1',
         'quant256_online_panel.js?v=20261103-v23-points-v1')
       .replace('  "point_signal_quality_guard.js?v=20261103-v26-mild-skip-v1",\n', '');
     const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
@@ -30,8 +30,13 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
   if(file==='index.html'){
     // Pin the exact V2.5 page blob. Only compact input/presentation markup
     // and asset cache keys changed; no protected model code was touched.
-    const raw=fs.readFileSync(file,'utf8')
-      .replace('auth-client.js?v=20261104-pf96-l256-m96-v1',
+    const html=fs.readFileSync(file,'utf8');
+    assert(html.includes('id="drawLengthDiagnostics"')&&
+      html.includes('id="drawLengthJointMatrix"'),
+      'Two-hand length diagnostics must appear in new web UI');
+    const raw=html
+      .replace(/\n      <details class="bbb-clear-details" id="drawLengthDiagnostics" hidden>[\s\S]*?      <\/details>/, '')
+      .replace('auth-client.js?v=20261104-two-hand-length-v1',
         'auth-client.js?v=20261103-v25-ev-manual-v1');
     const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
     const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');
