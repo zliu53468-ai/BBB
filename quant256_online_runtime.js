@@ -61,6 +61,80 @@ function sampleHand(counts,rng){
   return{counts:c,draws:cards,result:b>p?"B":p>b?"P":"T"};
 }
 /**
+ * Rao-Blackwellized B/P/T likelihood proposal.
+ *
+ * Sample the first four cards without replacement, then enumerate all legal
+ * third-card branches under the real baccarat table rules. The returned
+ * `weight` is P(observed B/P/T | sampled first four), NOT a fabricated card
+ * observation. `hand` is one exact conditional draw among those branches.
+ *
+ * This integrates third-card noise analytically while preserving the fixed
+ * 384 independent four-card proposals per particle and correct likelihood
+ * weighting. It is not an exact full-shoe outcome likelihood.
+ */
+function conditionalHandProposal(counts,rng,outcome){
+  if(!valid(outcome))throw Error("invalid_outcome");
+  const c=counts.slice(),total=c.reduce((a,b)=>a+b,0);
+  if(total<6)return{weight:0,hand:null};
+  let drawn=0;
+  function draw(){
+    let r=Math.floor(rng()*(total-drawn)),idx=9;
+    for(let j=0;j<10;j++){r-=c[j];if(r<0){idx=j;break;}}
+    if(c[idx]<=0)throw Error("virtual_deck_empty");
+    c[idx]--;drawn++;return idx;
+  }
+  const p1=draw(),b1=draw(),p2=draw(),b2=draw();
+  const p=(p1+p2)%10,b=(b1+b2)%10;
+  let mass=0,selectedP3=-1,selectedB3=-1;
+  const offer=(prob,finalP,finalB,p3=-1,b3=-1)=>{
+    if(!(prob>0)||((finalB>finalP?"B":finalP>finalB?"P":"T")!==outcome))return;
+    mass+=prob;
+    // Streaming weighted reservoir is exact conditional on these first four.
+    if(rng()*mass<prob){selectedP3=p3;selectedB3=b3;}
+  };
+  const mustBankerDraw=(banker,p3)=>p3<0?banker<=5:
+    banker<=2?true:banker===3?p3!==8:banker===4?p3>=2&&p3<=7:
+    banker===5?p3>=4&&p3<=7:banker===6?p3>=6&&p3<=7:false;
+  if(p>=8||b>=8)offer(1,p,b);
+  else if(p>5){
+    if(!mustBankerDraw(b,-1))offer(1,p,b);
+    else for(let k=0;k<10;k++){
+      if(c[k]>0)offer(c[k]/(total-4),p,(b+k)%10,-1,k);
+    }
+  }else{
+    const remaining=total-4;
+    for(let p3=0;p3<10;p3++){
+      if(c[p3]<=0)continue;
+      const p3mass=c[p3]/remaining,finalP=(p+p3)%10;
+      if(!mustBankerDraw(b,p3)){offer(p3mass,finalP,b,p3);continue;}
+      for(let b3=0;b3<10;b3++){
+        const available=c[b3]-(b3===p3?1:0);
+        if(available>0)
+          offer(p3mass*available/(remaining-1),finalP,(b+b3)%10,p3,b3);
+      }
+    }
+  }
+  if(!(mass>0))return{weight:0,hand:null};
+  if(selectedP3>=0)c[selectedP3]--;
+  if(selectedB3>=0)c[selectedB3]--;
+  return{weight:mass,hand:{counts:c,draws:4+
+    Number(selectedP3>=0)+Number(selectedB3>=0),result:outcome}};
+}
+/**
+ * After ESS resampling, repeated descendants of the same parent can receive
+ * fresh *conditional transitions* from that parent's PRE-OBSERVATION deck.
+ * Rejection with acceptance probability P(outcome | first four) is necessary:
+ * accepting every nonzero proposal would bias the posterior.
+ * Never mutate a residual shoe's point counts directly.
+ */
+function resampleConditionalTransition(parent,rng,outcome){
+  for(let attempt=0;attempt<32;attempt++){
+    const trial=conditionalHandProposal(parent,rng,outcome);
+    if(trial.weight>0&&rng()<trial.weight)return trial.hand;
+  }
+  return null;
+}
+/**
  * 不可辨識性聲明：B/P/T 不提供實際 4/5/6 張或點數。
  * 這裡僅從合法發牌模擬抽取「符合已知結果的可能路徑」做 latent ensemble；
  * 它不是對真實牌靴的測量，亦不代表已知任何 A~K 殘量。
@@ -74,59 +148,69 @@ class BlindPhysicsEstimator{
     this.rng=seededRng(this.seed);
     this.particles=Array.from({length:this.size},()=>BASE_POINTS.slice());
     this.weights=Array(this.size).fill(1/this.size);
-    // Ancestor labels measure genealogical diversity after ESS resampling.
     this.ancestorIds=Array.from({length:this.size},(_,i)=>i);
     this.lastLikelihoodRelativeSE=0;
     this.lastESS=this.size;this.lastResampled=false;
+    this.lastRejuvenated=0;this.lastRejuvenationFallbacks=0;
     this.posteriorUnavailable=false;
     this.drawHistory=[];this.densityHistory=[];this.lastAcceptance=0;return this;
   }
   observe(outcome){
     if(!valid(outcome))throw Error("invalid_outcome");
-    // Conditional proposal + likelihood correction: keeping only a matching hand
-    // without P(outcome | particle) weights would bias the posterior ensemble.
     const attempts=384,next=new Array(this.size),updated=new Array(this.size);
+    const priorParticles=this.particles;
     let accepted=0,sum=0,likelihood=0,likelihoodVariance=0;
     for(let i=0;i<this.size;i++){
-      const original=this.particles[i];let chosen=null,matches=0;
+      const original=priorParticles[i];let chosen=null,likelihoodMass=0,squaredMass=0;
       for(let tries=0;tries<attempts;tries++){
-        const trial=sampleHand(original,this.rng);
-        if(!trial||trial.result!==outcome)continue;
-        matches++;
-        // Reservoir sampling gives a uniform conditional draw, without
-        // preference for the first successful trial.
-        if(this.rng()<1/matches)chosen=trial;
+        const trial=conditionalHandProposal(original,this.rng,outcome);
+        const mass=trial.weight;
+        likelihoodMass+=mass;squaredMass+=mass*mass;
+        // Pick a legal conditional hand with probability proportional to its
+        // Rao-Blackwellized first-four evidence contribution.
+        if(mass>0&&this.rng()*likelihoodMass<mass)chosen=trial.hand;
       }
       next[i]=chosen?chosen.counts:original.slice();
-      const pHat=matches/attempts,priorWeight=this.weights[i];
+      const pHat=likelihoodMass/attempts,priorWeight=this.weights[i];
       likelihood+=priorWeight*pHat;
-      likelihoodVariance+=priorWeight*pHat*(1-pHat)/attempts;
+      // Variance of the RB likelihood mean (not Bernoulli variance).
+      const varMean=Math.max(0,(squaredMass-attempts*pHat*pHat)/
+        (attempts*(attempts-1)));
+      likelihoodVariance+=priorWeight*priorWeight*varMean;
       updated[i]=chosen?priorWeight*pHat:0;
       if(chosen){sum+=chosen.draws;accepted++;}
     }
     const evidence=updated.reduce((a,b)=>a+b,0);
-    // A finite-proposal noise diagnostic, not confidence in real card ranks.
     this.lastLikelihoodRelativeSE=likelihood>0?
       Math.sqrt(likelihoodVariance)/likelihood:1;
     this.lastAcceptance=accepted/this.size;
     this.lastResampled=false;
+    this.lastRejuvenated=0;this.lastRejuvenationFallbacks=0;
     if(evidence>0){
       this.particles=next;
       this.weights=updated.map(w=>w/evidence);
-      // Posterior ESS before any resampling is kept for diagnostics.
       this.lastESS=1/this.weights.reduce((acc,w)=>acc+w*w,0);
       this.posteriorUnavailable=false;
       if(this.lastESS<this.size*.5){
-        // Systematic resampling is deterministic under the shoe PRNG.
-        // Copy whole valid card-count vectors: never create or alter ranks.
         const step=1/this.size,start=this.rng()*step;
-        const resampled=[],ancestors=[];let index=0,cumulative=this.weights[0];
+        const resampled=[],ancestors=[],selectedParents=new Set();
+        let index=0,cumulative=this.weights[0];
         for(let j=0;j<this.size;j++){
           const u=start+j*step;
           while(u>cumulative&&index<this.size-1)
             cumulative+=this.weights[++index];
-          resampled.push(this.particles[index].slice());
+          // Regenerate only DUPLICATE transitions, never arbitrary card-rank
+          // mutations. The accepted transition is conditional on the same
+          // observed outcome and the same pre-observation parent.
+          let particle=null;
+          if(selectedParents.has(index)){
+            particle=resampleConditionalTransition(priorParticles[index],this.rng,outcome);
+            if(particle)this.lastRejuvenated++;
+            else this.lastRejuvenationFallbacks++;
+          }
+          resampled.push(particle?particle.counts:this.particles[index].slice());
           ancestors.push(this.ancestorIds[index]);
+          selectedParents.add(index);
         }
         this.particles=resampled;
         this.ancestorIds=ancestors;
@@ -134,8 +218,6 @@ class BlindPhysicsEstimator{
         this.lastResampled=true;
       }
     }else{
-      // No conditional support: leave the shoe untouched and prevent the
-      // forecast from presenting unsupported physical evidence.
       this.lastESS=0;
       this.posteriorUnavailable=true;
     }
@@ -178,6 +260,10 @@ class BlindPhysicsEstimator{
       likelihood_relative_se:this.lastLikelihoodRelativeSE,
       posterior_weights_active:!this.lastResampled,
       resampled:this.lastResampled,posterior_unavailable:this.posteriorUnavailable,
+      likelihood_method:"rao_blackwell_third_card_given_first_four",
+      likelihood_proposals_per_particle:384,
+      conditional_rejuvenation_moves:this.lastRejuvenated,
+      conditional_rejuvenation_fallbacks:this.lastRejuvenationFallbacks,
       expected_draws_recent:recent.length?recent.reduce((s,v)=>s+v,0)/recent.length:4.94,
       actual_draw_count_known:false,actual_remaining_known:false
     };
@@ -393,6 +479,7 @@ class OnlineLinUCB256{
   }
   static fromHistory(seq,options={}){return new OnlineLinUCB256(options).syncHistory(seq);}
 }
-return{OnlineLinUCB256,BlindPhysicsEstimator,context256,windowStats,
+return{OnlineLinUCB256,BlindPhysicsEstimator,conditionalHandProposal,
+  context256,windowStats,
   DIM,SHOE_DIM:SHOE,ACTIVE_INDICES:ACTIVE.slice(),VERSION};
 });
