@@ -48,8 +48,8 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
 assert.equal(stats.total,100);
 assert.equal(stats.rawB+stats.rawP,100);
 assert(stats.rawB>0&&stats.rawP>0,"Both raw directions must be present");
-assert(stats.SKIP>=0&&stats.SKIP<=100,
-  "Mild display gate unexpectedly skips too few/many benchmark pairs");
+assert.deepEqual(stats,{B:48,P:40,SKIP:12,rawB:56,rawP:44,total:100},
+  "N96/L256/M96 display parity drifted from shared BGS regression");
 const auth=fs.readFileSync("auth-client.js","utf8");
 const idx=auth.indexOf("point_signal_quality_guard.js");
 const panel=auth.indexOf("quant256_online_panel.js");
