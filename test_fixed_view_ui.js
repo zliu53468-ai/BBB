@@ -13,12 +13,16 @@ assert(!html.includes('class="card bankroll-card"')&&!html.includes('id="bankrol
   !html.includes('id="stakePercent"'),"stake controls removed from displayed panel");
 assert(html.indexOf("brand-hero")<html.indexOf("appViewportContent"),
   "background must remain outside scroll content");
-assert(html.includes("auth-client.js?v=20261103-v24-independent-points-v1"),
+assert(html.includes("auth-client.js?v=20261103-v25-ev-manual-v1"),
   "V2.4 web panel must be loaded after license authorization");
 assert(html.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),"stable viewport loader version");
+assert(html.includes('id="btnPointAnalyze"'),"visible manual Analyze button exists");
+assert(!html.includes("分析局數")&&!html.includes('id="roundPill"'),"analysis-count widgets removed");
+assert(html.includes('type="number" min="0" max="9" step="1"'),"typed score input limited to 0–9");
+assert(!html.includes('id="pointPlayerFinal" aria-label="閒家最終點數"'),"old select must not remain");
 assert(html.includes('id="bbbPointEntry" aria-label="當局最終點數輸入"'),"scores visible immediately");
 assert(css.includes("#predictionApp .bbb-results-block,")&&css.includes("#predictionApp #btnStart,"),"historical bootstrap is hidden");
-assert(html.includes("styles.css?v=20261103-v24-independent-ui-v1"),"stable CSS cache key");
+assert(html.includes("styles.css?v=20261103-v25-manual-input-v1"),"stable CSS cache key");
 
 // A frozen outer viewport with an accessible independently scrolling content
 // region replaces the old unbounded scaled page. Especially important for
