@@ -13,7 +13,7 @@ assert(!html.includes('class="card bankroll-card"')&&!html.includes('id="bankrol
   !html.includes('id="stakePercent"'),"stake controls removed from displayed panel");
 assert(html.indexOf("brand-hero")<html.indexOf("appViewportContent"),
   "background must remain outside scroll content");
-assert(html.includes("auth-client.js?v=20261104-moderate-entry-v2"),
+assert(html.includes("auth-client.js?v=20261104-selective-entry-v3"),
   "V2.4 web panel must be loaded after license authorization");
 assert(html.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),"stable viewport loader version");
 assert(html.includes('id="btnPointAnalyze"'),"visible manual Analyze button exists");

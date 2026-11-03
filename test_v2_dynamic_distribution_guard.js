@@ -90,7 +90,7 @@ assert(auth.indexOf("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1
   auth.indexOf("physics_forecast_first_runtime.js?v=20261104-two-hand-length-v1"));
 assert(auth.includes("quant256_online_runtime.js?v=20261104-pf96-l256-m96-v1"));
 assert(auth.includes("quant256_online_panel.js?v=20261104-two-hand-length-v1"));
-assert(page.includes("auth-client.js?v=20261104-moderate-entry-v2"));
+assert(page.includes("auth-client.js?v=20261104-selective-entry-v3"));
 assert(page.includes("viewport-fit.js?v=20261102-mobile-stable-v2"));
 assert(panel.includes("單局獨立模擬"),"web panel uses independently scored hands while underlying distribution guard is unchanged");
 assert(!page.includes("side-bet-card"));
