@@ -56,6 +56,21 @@ function status(value){
   const t=el("pointInputStatus");
   if(t)t.textContent=value;
 }
+function renderDrawLengths(report){
+  const d=report?.physical_ev?.draw_length_diagnostics||null;
+  const details=el("drawLengthDiagnostics"),matrix=el("drawLengthJointMatrix");
+  if(details)details.hidden=!d;
+  if(!matrix)return;
+  if(!d){matrix.textContent="";return;}
+  const pct=v=>(100*Number(v||0)).toFixed(1)+"%";
+  const series=probs=>[4,5,6].map(n=>pct(probs[n])).join(" / ");
+  const rows=[4,5,6].map(n=>"當局 "+n+" 張："+series(d.joint_probability[n]));
+  matrix.textContent=
+    "當局 4／5／6 張："+series(d.current_length_probability)+"\n"+
+    "下一局 4／5／6 張："+series(d.next_length_probability)+"\n"+
+    "聯合機率（下局依序 4／5／6 張）：\n"+rows.join("\n")+"\n"+
+    "僅為虛擬牌靴推估，實際張數未知；不影響 EV、方向或觀望。";
+}
 function clearView(){
   const dir=el("directionText"),code=el("directionCode"),
     message=el("message"),conf=el("confidence"),regime=el("regime"),
@@ -63,13 +78,14 @@ function clearView(){
   if(dir)dir.textContent="—";
   if(code)code.textContent="等待點數";
   if(message)message.textContent=
-    "輸入閒、莊最終點數（0–9），再按開始分析；每次都重新建立 256 個粒子。";
+    "輸入閒、莊最終點數（0–9），再按開始分析；每次都重新建立 96 個粒子。";
   if(conf)conf.textContent="—";
   if(regime)regime.textContent="等待本局結算";
   if(strength)strength.textContent="—";
   if(orb)orb.className="direction-orb idle";
   if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
   root.__BBB_V3_CAPITAL_UI__?.renderStake(null);
+  renderDrawLengths(null);
 }
 function render(report,pair){
   // One weak EV signal may be marked as display-only SKIP.
@@ -112,6 +128,7 @@ function render(report,pair){
   // Suppress stake suggestions when quality display guard abstains.
   const stakeReport=skip?{...report,research_signal:{...report.research_signal,available:false}}:report;
   root.__BBB_V3_CAPITAL_UI__?.renderStake(stakeReport);
+  renderDrawLengths(report);
 }
 /** Fresh PF96 with one scored hand; NEVER sync more than one outcome. */
 function computeSingle(pair){
@@ -182,7 +199,7 @@ function restorePrevious(){
     if(restored){
       model=restored.fresh;lastReport=restored.report;
       render(restored.report,next[next.length-1]);
-      status("已返回上一筆點數；該筆重新使用全新的 256 粒子模擬。");
+      status("已返回上一筆點數；該筆重新使用全新的 96 粒子模擬。");
       return restored.report;
     }
     model=new PhysicsForecastFirstEngine(CONFIG);lastReport=null;
