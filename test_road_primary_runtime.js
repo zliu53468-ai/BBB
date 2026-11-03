@@ -15,7 +15,9 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
   if(file==='auth-client.js'){
     // V2.4 only bumps the web panel cache key, not authentication flow.
     const raw=fs.readFileSync(file,'utf8')
-      .replace('quant256_online_panel.js?v=20261103-v25-ev-manual-v1',
+      .replace('physics_forecast_first_runtime.js?v=20261103-v26-independent-guard-v1',
+        'physics_forecast_first_runtime.js?v=20261103-v23-points-v1')
+      .replace('quant256_online_panel.js?v=20261103-v26-independent-guard-v1',
         'quant256_online_panel.js?v=20261103-v23-points-v1');
     const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
     const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');
@@ -25,7 +27,9 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
   if(file==='index.html'){
     // Pin the exact V2.5 page blob. Only compact input/presentation markup
     // and asset cache keys changed; no protected model code was touched.
-    const raw=fs.readFileSync(file,'utf8');
+    const raw=fs.readFileSync(file,'utf8')
+      .replace('auth-client.js?v=20261103-v26-independent-guard-v1',
+        'auth-client.js?v=20261103-v25-ev-manual-v1');
     const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
     const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');
     assert.equal(sha,'7f2398639153d64a06f00ca989c969a6a907fe3a',
