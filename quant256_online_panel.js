@@ -11,6 +11,7 @@
 (function(root){
 "use strict";
 if(!root||!root.document||!root.BBBPhysicsForecastFirst||
+  !root.BBBPointSignalQualityGuard||
   typeof URLSearchParams!=="function"||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
 const {PhysicsForecastFirstEngine,VERSION}=root.BBBPhysicsForecastFirst;
@@ -68,42 +69,46 @@ function clearView(){
   root.__BBB_V3_CAPITAL_UI__?.renderStake(null);
 }
 function render(report,pair){
-  // Display the higher *simulated physical EV* direction even when the
-  // research gate says SKIP. No change to the engine, actual action/BET
-  // eligibility, particle posterior, or the meaning of profitability.
+  // One weak EV signal may be marked as display-only SKIP.
+  // The physical EV, independent PF and official BET gate are unchanged.
   const evB=report.ev_banker,evP=report.ev_player;
   if(!Number.isFinite(evB)||!Number.isFinite(evP)||
     report.physical_ev?.simulation_exhausted)throw Error("physical_ev_unavailable");
-  const dir=evB>=evP?"B":"P";
+  const display=root.BBBPointSignalQualityGuard.decide(report);
+  const dir=display.direction,skip=dir==="SKIP";
   const research=report.research_signal;
   const qualified=report.action==="BET";
   const signal=research.available;
   const text=el("directionText"),code=el("directionCode"),
     conf=el("confidence"),regime=el("regime"),strength=el("strength"),
     orb=el("directionOrb"),pill=el("modePill"),message=el("message");
-  if(text)text.textContent=dir==="B"?"莊":"閒";
-  if(code)code.textContent=(dir==="B"?"BANKER":"PLAYER")+
+  if(text)text.textContent=skip?"觀望":dir==="B"?"莊":"閒";
+  if(code)code.textContent=skip?"SKIP / LOW SIGNAL":
+    (dir==="B"?"BANKER":"PLAYER")+
     (qualified?" / EV VERIFIED":" / EV COMPARISON");
   if(conf)conf.textContent="模擬 EV 偏移 "+
     (report.ev_gap_deviation*100).toFixed(2)+"%（非勝率）";
-  if(regime)regime.textContent="單局獨立模擬｜顯示模擬 EV 較高方向"+
+  if(regime)regime.textContent="單局獨立模擬｜"+
+    (skip?"EV 差距較小，觀望":"顯示模擬 EV 較高方向")+
     (signal?"｜原研究門檻已通過":"｜原研究門檻未通過")+
     (qualified?"｜實測 EV 通過":"｜未確認正 EV");
   if(strength)strength.textContent="門檻 "+(report.dynamic_gate*100).toFixed(2)+
     "%｜莊 EV "+(evB*100).toFixed(2)+
     "%｜閒 EV "+(evP*100).toFixed(2)+"%";
-  if(orb)orb.className="direction-orb "+(dir==="B"?"banker":"player");
+  if(orb)orb.className="direction-orb "+(skip?"idle":dir==="B"?"banker":"player");
   if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
   const name=resultOf(pair)==="B"?"莊":resultOf(pair)==="P"?"閒":"和";
   if(message)message.textContent=
     "已結算：閒 "+pair.player+"／莊 "+pair.banker+"（"+name+"）"+
     "｜本次全新 256 粒子，L384／M160"+
-    "｜下一局模擬 EV 較高方向："+(dir==="B"?"莊":"閒")+
+    "｜下一局顯示訊號："+(skip?"觀望":dir==="B"?"莊":"閒")+
     "｜模擬莊 EV "+(evB*100).toFixed(2)+"%"+
     "、閒 EV "+(evP*100).toFixed(2)+"%"+
     "｜原研究訊號門檻 "+(signal?"通過":"未通過")+
     "｜最終點數不等於實際牌張，較高 EV 不代表正 EV 或較高實際勝率";
-  root.__BBB_V3_CAPITAL_UI__?.renderStake(report);
+  // Suppress stake suggestions when quality display guard abstains.
+  const stakeReport=skip?{...report,research_signal:{...report.research_signal,available:false}}:report;
+  root.__BBB_V3_CAPITAL_UI__?.renderStake(stakeReport);
 }
 /** Fresh PF256 with one scored hand; NEVER sync more than one outcome. */
 function computeSingle(pair){
