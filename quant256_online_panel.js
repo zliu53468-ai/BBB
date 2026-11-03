@@ -17,6 +17,84 @@ const FALLBACK=["bgs256d_frozen_6x15_sensitive_v17",
   "bgs256d_frozen_6x15_bigroad_v16","bgs256d_frozen_column_linucb_v15",
   "bgs256d_128plus128_frozen_direct_tech_panel_v1"];
 const el=id=>root.document.getElementById(id);
+const POINT_KEY="bgs_v23_point_score_log",STAGE_KEY="bgs_v23_point_entry_mode";
+let scoreStage=false,scoreBusy=false;
+function validScore(pair,outcome){
+  return Boolean(pair&&Number.isInteger(pair.player)&&Number.isInteger(pair.banker)&&
+    pair.player>=0&&pair.player<=9&&pair.banker>=0&&pair.banker<=9&&
+    (pair.banker>pair.player?"B":pair.player>pair.banker?"P":"T")===outcome);
+}
+function pointScores(seq){
+  const rows=Array(seq.length).fill(null);
+  try{
+    const data=JSON.parse(root.localStorage?.getItem(POINT_KEY)||"null");
+    if(!Array.isArray(data?.history)||!Array.isArray(data?.scores))return rows;
+    for(let i=0;i<seq.length&&i<data.history.length;i++){
+      if(data.history[i]!==seq[i])break;
+      const pair=data.scores[i];
+      if(pair===null||pair===undefined)continue;
+      if(!validScore(pair,seq[i]))break;
+      rows[i]={player:pair.player,banker:pair.banker};
+    }
+  }catch(_){}
+  return rows;
+}
+function storeScores(seq,rows){
+  root.localStorage.setItem(POINT_KEY,JSON.stringify({history:seq,scores:rows}));
+}
+function setStage(on){
+  scoreStage=Boolean(on);
+  const app=el("predictionApp"),entry=el("bbbPointEntry");
+  if(app?.classList?.toggle)app.classList.toggle("bbb-point-mode",scoreStage);
+  if(entry)entry.hidden=!scoreStage;
+  root.localStorage?.setItem(STAGE_KEY,scoreStage?"1":"0");
+}
+function pointStatus(message){
+  const elStatus=el("pointInputStatus");
+  if(elStatus)elStatus.textContent=message;
+}
+/**
+ * Outcome is committed only after BOTH final totals exist. Reuse the existing
+ * B/P/T button click so Frozen Core, local storage and licensed history are
+ * updated once by their original handlers. The point row is stored before
+ * the synthetic click, allowing our existing bubble handler to apply a
+ * conditional PF observation in the same pass.
+ */
+function submitPoints(player,banker){
+  if(!scoreStage||scoreBusy)return null;
+  const p=Number(player),b=Number(banker);
+  if(!Number.isInteger(p)||!Number.isInteger(b)||p<0||p>9||b<0||b>9)
+    throw Error("invalid_point_observation");
+  const outcome=b>p?"B":p>b?"P":"T";
+  const seq=history(),button=el("btn"+outcome);
+  if(!seq.length||!button||typeof button.click!=="function")
+    throw Error("point_input_unavailable");
+  const rows=pointScores(seq),old= root.localStorage?.getItem(POINT_KEY);
+  scoreBusy=true;
+  try{
+    storeScores([...seq,outcome],[...rows,{player:p,banker:b}]);
+    button.click();
+    const updated=history();
+    if(updated.length!==seq.length+1||updated.at(-1)!==outcome)
+      throw Error("point_result_not_recorded");
+    pointStatus("第 "+updated.length+" 局 "+(outcome==="B"?"莊":outcome==="P"?"閒":"和")+
+      "勝已記錄（閒 "+p+"／莊 "+b+"）；下局已更新");
+    return outcome;
+  }catch(error){
+    if(old===null||old===undefined)root.localStorage?.removeItem(POINT_KEY);
+    else root.localStorage?.setItem(POINT_KEY,old);
+    pointStatus("記錄失敗，請確認本機資料："+String(error?.message||error));
+    throw error;
+  }finally{scoreBusy=false;}
+}
+function onPointChange(){
+  const p=el("pointPlayerFinal"),b=el("pointBankerFinal");
+  if(!p||!b||p.value===""||b.value==="")return;
+  try{submitPoints(Number(p.value),Number(b.value));}
+  catch(error){const m=el("message");if(m)m.textContent="點數結算失敗："+String(error?.message||error);}
+  finally{p.value="";b.value="";}
+}
+
 function history(){
   try{
     for(const key of [KEY,...FALLBACK]){
@@ -90,7 +168,7 @@ function run(){
     if(message)message.textContent="請先輸入牌局，僅有 B/P/T 時會顯示模擬物理 EV（無真實算牌資格）";
     return null;
   }
-  const result=model.syncHistory(seq);
+  const result=model.syncHistory(seq,pointScores(seq));
   render(result);return result;
 }
 function safeRun(){
@@ -99,18 +177,47 @@ function safeRun(){
 }
 const start=el("btnStart");
 if(start)start.addEventListener("click",function(event){
-  event.preventDefault();event.stopImmediatePropagation();safeRun();
+  event.preventDefault();event.stopImmediatePropagation();
+  const result=safeRun();
+  if(result){
+    try{setStage(true);pointStatus("已初始化 "+result.history_length+" 局歷史，請輸入當局最終點數");}
+    catch(error){const m=el("message");if(m)m.textContent="點數模式啟動失敗："+String(error?.message||error);}
+  }
 },true);
 for(const id of ["btnB","btnP","btnT","btnBack"]){
   const btn=el(id);
-  if(btn)btn.addEventListener("click",()=>safeRun(),false);
+  if(btn)btn.addEventListener("click",()=>{
+    const seq=history();
+    if(id==="btnBack"){
+      try{storeScores(seq,pointScores(seq));}
+      catch(error){pointStatus("返回後記錄未保存："+String(error?.message||error));}
+      if(!seq.length&&scoreStage){try{setStage(false);}catch(_){}}
+    }
+    safeRun();
+  },false);
+}
+for(const id of ["pointPlayerFinal","pointBankerFinal"]){
+  const field=el(id);
+  if(field)field.addEventListener("change",onPointChange,false);
 }
 const end=el("btnEnd");if(end)end.addEventListener("click",()=>{
   model.reset();root.__BBB_V3_CAPITAL_UI__?.renderStake(null);
+  try{
+    root.localStorage?.removeItem(POINT_KEY);
+    root.localStorage?.removeItem(STAGE_KEY);
+  }catch(_){}
+  scoreStage=false;
 },false);
 root.__BBB_QUANT256_ONLINE_PANEL__={
-  model,run,history,version:VERSION,configuration:{...CONFIG},
+  model,run,history,pointScores,submitPoints,
+  get pointMode(){return scoreStage;},
+  version:VERSION,configuration:{...CONFIG},
   setObservedRounds(rows){model.setObservedRounds(rows);return safeRun();},
   wager_recommendation_validated:false,validated_edge:false
 };
+try{
+  if(root.localStorage?.getItem(STAGE_KEY)==="1"&&history().length){
+    setStage(true);safeRun();
+  }
+}catch(_){} 
 })(typeof window!=="undefined"?window:null);
