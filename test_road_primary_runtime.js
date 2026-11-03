@@ -30,7 +30,12 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
   if(file==='index.html'){
     // Pin the exact V2.5 page blob. Only compact input/presentation markup
     // and asset cache keys changed; no protected model code was touched.
-    const raw=fs.readFileSync(file,'utf8')
+    const html=fs.readFileSync(file,'utf8');
+    assert(html.includes('id="drawLengthDiagnostics"')&&
+      html.includes('id="drawLengthJointMatrix"'),
+      'Two-hand length diagnostics must appear in new web UI');
+    const raw=html
+      .replace(/\n      <details class="bbb-clear-details" id="drawLengthDiagnostics" hidden>[\s\S]*?      <\/details>/, '')
       .replace('auth-client.js?v=20261104-two-hand-length-v1',
         'auth-client.js?v=20261103-v25-ev-manual-v1');
     const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
