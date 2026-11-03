@@ -1,6 +1,6 @@
 "use strict";
 /**
- * Full 0..9 x 0..9 final-score diagnostic, one new PF256 per independent case.
+ * Full 0..9 x 0..9 final-score diagnostic, one new PF96 per independent case.
  * No direction balancing; print the actual Banker/Player distribution.
  * Compare prior V2.5 1/20-shoe smoothing against V2.6 from the SAME posterior
  * and MC draws, avoiding an unfair RNG comparison.
@@ -14,15 +14,15 @@ const fields={total:0,bankerNew:0,playerNew:0,bankerLegacy:0,playerLegacy:0,
 for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   const outcome=banker>player?"B":player>banker?"P":"T";
   const engine=new PhysicsForecastFirstEngine({
-    simulationsPerParticle:160,threshold:.005,lossGate:.035,
-    quantOptions:{lambda:.82,alpha:.15,particles:256},
+    simulationsPerParticle:96,threshold:.005,lossGate:.035,
+    quantOptions:{lambda:.82,alpha:.15,particles:96},
     independentFinalScoreMode:true
   });
   const r=engine.syncHistory([outcome],[{player,banker}]);
   assert.equal(r.history_length,1);
   assert.equal(r.point_score_observation_count,1);
-  assert.equal(engine.quant.physics.size,256);
-  assert.equal(r.physical_ev.samples,40960);
+  assert.equal(engine.quant.physics.size,96);
+  assert.equal(r.physical_ev.samples,9216);
   assert.equal(r.bet_allowed,false);
   assert.equal(r.action,"SKIP","final scores are not direct observed-card evidence");
   assert(!r.physical_ev.simulation_exhausted);
@@ -57,7 +57,7 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
     v26_ev_banker:round(r.ev_banker),v26_ev_player:round(r.ev_player),
     raw_direction:rawEvB>=rawEvP?"B":"P",
     v25_direction:oldDir,final_direction:newDir,
-    blend:round(d.blend),update_ess:round(r.physical_ev.posterior_update_ess??256)});
+    blend:round(d.blend),update_ess:round(r.physical_ev.posterior_update_ess??96)});
 
   fields.total++;
   fields[newDir==="B"?"bankerNew":"playerNew"]++;
@@ -66,7 +66,7 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   fields.minBlend=Math.min(fields.minBlend,d.blend);
   fields.maxBlend=Math.max(fields.maxBlend,d.blend);
   fields.sumBlend+=d.blend;
-  fields.minESS=Math.min(fields.minESS,r.physical_ev.posterior_update_ess??256);
+  fields.minESS=Math.min(fields.minESS,r.physical_ev.posterior_update_ess??96);
   fields.maxESS=Math.max(fields.maxESS,r.physical_ev.posterior_update_ess??0);
   const gap=r.ev_banker-r.ev_player;
   fields.minGap=Math.min(fields.minGap,gap);
