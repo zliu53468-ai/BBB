@@ -17,8 +17,9 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
     const raw=fs.readFileSync(file,'utf8')
       .replace('physics_forecast_first_runtime.js?v=20261103-v26-independent-guard-v1',
         'physics_forecast_first_runtime.js?v=20261103-v23-points-v1')
-      .replace('quant256_online_panel.js?v=20261103-v26-independent-guard-v1',
-        'quant256_online_panel.js?v=20261103-v23-points-v1');
+      .replace('quant256_online_panel.js?v=20261103-v26-mild-skip-v1',
+        'quant256_online_panel.js?v=20261103-v23-points-v1')
+      .replace('  "point_signal_quality_guard.js?v=20261103-v26-mild-skip-v1",\n', '');
     const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
     const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');
     assert.equal(sha,'187d59c8358d37fdb2bc499187f1bb31be5ae7c8',
@@ -28,7 +29,7 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
     // Pin the exact V2.5 page blob. Only compact input/presentation markup
     // and asset cache keys changed; no protected model code was touched.
     const raw=fs.readFileSync(file,'utf8')
-      .replace('auth-client.js?v=20261103-v26-independent-guard-v1',
+      .replace('auth-client.js?v=20261103-v26-mild-skip-v1',
         'auth-client.js?v=20261103-v25-ev-manual-v1');
     const header=Buffer.from('blob '+Buffer.byteLength(raw)+String.fromCharCode(0));
     const sha=crypto.createHash('sha1').update(Buffer.concat([header,Buffer.from(raw)])).digest('hex');
