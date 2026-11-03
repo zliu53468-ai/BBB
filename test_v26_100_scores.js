@@ -7,7 +7,8 @@
  */
 const assert=require("node:assert/strict");
 const {PhysicsForecastFirstEngine,BASE}=require("./physics_forecast_first_runtime.js");
-const fields={total:0,bankerNew:0,playerNew:0,bankerLegacy:0,playerLegacy:0,
+const rows=[];
+const fields={total:0,bankerNew:0,playerNew:0,bankerLegacy:0,
   directionChanges:0,minBlend:Infinity,maxBlend:0,sumBlend:0,
   minESS:Infinity,maxESS:0,minGap:Infinity,maxGap:-Infinity};
 for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
@@ -43,6 +44,21 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   const oldP=BASE.P+oldBlend*(rawP-BASE.P);
   const oldDir=.95*oldB-oldP >=oldP-oldB?"B":"P";
   const newDir=r.ev_banker>=r.ev_player?"B":"P";
+  // Reconstruct unsmoothed physical EV from the same posterior and draws,
+  // without treating final totals as observed card ranks.
+  const rawEvB=.95*rawB-rawP,rawEvP=rawP-rawB;
+  const oldEvB=.95*oldB-oldP,oldEvP=oldP-oldB;
+  assert(Number.isFinite(rawEvB)&&Number.isFinite(rawEvP));
+  assert(Number.isFinite(oldEvB)&&Number.isFinite(oldEvP));
+  const round=x=>Number(x.toFixed(10));
+  rows.push({player,banker,outcome,
+    raw_ev_banker:round(rawEvB),raw_ev_player:round(rawEvP),
+    v25_ev_banker:round(oldEvB),v25_ev_player:round(oldEvP),
+    v26_ev_banker:round(r.ev_banker),v26_ev_player:round(r.ev_player),
+    raw_direction:rawEvB>=rawEvP?"B":"P",
+    v25_direction:oldDir,final_direction:newDir,
+    blend:round(d.blend),update_ess:round(r.physical_ev.posterior_update_ess??256)});
+
   fields.total++;
   fields[newDir==="B"?"bankerNew":"playerNew"]++;
   fields[oldDir==="B"?"bankerLegacy":"playerLegacy"]++;
@@ -57,9 +73,18 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   fields.maxGap=Math.max(fields.maxGap,gap);
 }
 assert.equal(fields.total,100);
+assert.equal(rows.length,100);
 assert.equal(fields.bankerNew+fields.playerNew,100);
 assert.equal(fields.bankerLegacy+fields.playerLegacy,100);
 fields.meanBlend=fields.sumBlend/fields.total;
 console.log("PASS V2.6 all 100 independent Player×Banker scores:",
   JSON.stringify(fields,null,2));
+// Publish 100 comparable rows in CI logs, not just aggregate counts.
+// EV values are decimal per-unit stakes and are not hit rates.
+const columns=["player","banker","outcome","raw_ev_banker","raw_ev_player",
+  "v25_ev_banker","v25_ev_player","v26_ev_banker","v26_ev_player",
+  "raw_direction","v25_direction","final_direction","blend","update_ess"];
+console.log("AUDIT V2.6 all 100 scores: raw EV, old smoothed EV, new smoothed EV and final direction (CSV)");
+console.log(columns.join(","));
+for(const row of rows)console.log(columns.map(k=>row[k]).join(","));
 // A more balanced 50:50 direction mix is NOT a goal or passing criterion.
