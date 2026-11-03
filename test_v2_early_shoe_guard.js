@@ -96,13 +96,13 @@ const outputs=run();
 assert.deepEqual(outputs,run(),"fixed seed must preserve full history replay");
 const auth=fs.readFileSync("auth-client.js","utf8");
 const page=fs.readFileSync("index.html","utf8");
-assert(auth.includes("quant256_online_runtime.js?v=20261103-v21-rb-move-v1"),
+assert(auth.includes("quant256_online_runtime.js?v=20261103-v23-points-v1"),
   "unchanged particle runtime must keep its cache version");
 assert(auth.includes("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1"),
   "new distribution guard must load before the physics module");
-assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-v22-markov-shadow-v1"),
+assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-v23-points-v1"),
   "upgraded physics module must get new cache version");
-assert(page.includes("auth-client.js?v=20261103-v22-markov-shadow-v1"));
+assert(page.includes("auth-client.js?v=20261103-v23-points-v1"));
 assert(page.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),
   "mobile layout fix must be loaded without changing prediction logic");
 assert(!page.includes("side-bet-card"),"removed side-bet panel must stay removed");
