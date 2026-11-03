@@ -64,9 +64,9 @@ assert(physics.includes('const direction=normalized.ev_banker>=normalized.ev_pla
 assert(physics.includes("function earlyShoeGuard("));
 assert(physics.includes("distributionGuard.additional_gate"));
 assert(auth.includes("quant256_online_runtime.js?v=20261103-v21-rb-move-v1"));
-assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-bidir-offset-v1"));
-assert(auth.includes("quant256_online_panel.js?v=20261103-bidir-offset-v1"));
-assert(html.includes("auth-client.js?v=20261103-bidir-offset-v1"));
+assert(auth.includes("physics_forecast_first_runtime.js?v=20261103-v22-markov-shadow-v1"));
+assert(auth.includes("quant256_online_panel.js?v=20261103-v22-markov-shadow-v1"));
+assert(html.includes("auth-client.js?v=20261103-v22-markov-shadow-v1"));
 assert(html.includes("viewport-fit.js?v=20261102-mobile-stable-v2"));
 assert(!html.includes("side-bet-card"));
 assert(panel.includes('const KEY="bgs256d_frozen_6x15_forward_v18"'));

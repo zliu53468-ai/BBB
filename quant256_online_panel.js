@@ -53,12 +53,16 @@ function render(p){
     "%｜莊 EV "+(p.ev_banker*100).toFixed(2)+
     "%｜閒 EV "+(p.ev_player*100).toFixed(2)+"%";
   if(orb)orb.className="direction-orb "+(signal?(dir==="B"?"banker":"player"):"idle");
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.1 雙向偏移";
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.2 MARKOV";
   const hit=p.hit_rate===null?"無有效樣本":(p.hit_rate*100).toFixed(1)+"%";
   const rate=p.signal_rate===null?"—":(p.signal_rate*100).toFixed(1)+"%";
-  const offsets=p.bidirectional_offset;
-  const offsetPP=value=>Number.isFinite(value)?
-    (value>=0?"+":"")+(value*100).toFixed(2)+"pp":"—";
+  const markov=p.markov_residual?.stats,shadow=p.markov_residual?.shadow;
+  const transition=markov?.from==="B"?"莊→莊／莊→閒":
+    markov?.from==="P"?"閒→莊／閒→閒":"尚無方向";
+  const posterior=Number.isFinite(markov?.posterior_conditional?.B)?
+    (markov.posterior_conditional.B*100).toFixed(2)+"%":"—";
+  const calibration=Number.isFinite(shadow?.conditional_shift)?
+    (shadow.conditional_shift*100).toFixed(3)+"pp":"—";
   if(message)message.textContent="本局研究方向："+(dir==="B"?"莊":"閒")+
     "｜研究訊號 "+(signal?"通過":"未通過")+
     "｜實測 EV 行動："+(qualified?"BET":"未達 BET 資格")+
@@ -68,9 +72,10 @@ function render(p){
     "｜研究訊號命中率 "+hit+"，訊號密度 "+rate+
     "｜模擬莊 EV "+(p.ev_banker*100).toFixed(2)+
     "%、閒 EV "+(p.ev_player*100).toFixed(2)+"%"+
-    "｜雙向偏移 莊 "+offsetPP(offsets?.offset_banker)+
-    "、閒 "+offsetPP(offsets?.offset_player)+
-    "（相對基準，非獨立訊號）"+
+    "｜馬可夫 "+transition+"，樣本 "+(markov?.selected_support??0)+
+    "，莊條件後驗 "+posterior+
+    "（"+(markov?.eligible?"已達統計門檻":"樣本不足")+"）"+
+    "｜研究校準候選 "+calibration+"（未啟用，不影響真實 EV）"+
     "｜分布監測 "+(p.shoe_distribution_guard?.current_stage==="distribution_shift"?
       "近期比例明顯改變":p.shoe_distribution_guard?.current_stage==="insufficient_data"?
       "資料不足":"未見強烈變化")+

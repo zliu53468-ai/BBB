@@ -64,8 +64,7 @@ near(one.ev_gap_deviation,original.ev_gap_deviation);
 assert.equal(one.physical_ev.samples,40960);
 near(one.effective_research_gate,
   one.dynamic_gate+(one.early_shoe_guard?.supplemental_gate||0)+
-  one.shoe_distribution_guard.additional_gate+
-  one.bidirectional_offset.supplemental_gate);
+  one.shoe_distribution_guard.additional_gate);
 assert.deepEqual(one,engine.predict(),"read-only forecast cannot change");
 const final=engine.syncHistory("B".repeat(24).concat("P".repeat(24)).split(""));
 const base=summarizeHypotheses(engine.quant.physics,[],{samplesPerParticle:160});
@@ -88,10 +87,10 @@ const page=fs.readFileSync("index.html","utf8");
 const panel=fs.readFileSync("quant256_online_panel.js","utf8");
 assert(auth.indexOf("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1")>=0);
 assert(auth.indexOf("shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1")<
-  auth.indexOf("physics_forecast_first_runtime.js?v=20261103-bidir-offset-v1"));
+  auth.indexOf("physics_forecast_first_runtime.js?v=20261103-v22-markov-shadow-v1"));
 assert(auth.includes("quant256_online_runtime.js?v=20261103-v21-rb-move-v1"));
-assert(auth.includes("quant256_online_panel.js?v=20261103-bidir-offset-v1"));
-assert(page.includes("auth-client.js?v=20261103-bidir-offset-v1"));
+assert(auth.includes("quant256_online_panel.js?v=20261103-v22-markov-shadow-v1"));
+assert(page.includes("auth-client.js?v=20261103-v22-markov-shadow-v1"));
 assert(page.includes("viewport-fit.js?v=20261102-mobile-stable-v2"));
 assert(panel.includes("分布監測"));
 assert(!page.includes("side-bet-card"));
