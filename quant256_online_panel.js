@@ -51,11 +51,6 @@ function status(value){
   const t=el("pointInputStatus");
   if(t)t.textContent=value;
 }
-function roundView(){
-  const pill=el("roundPill"),count=el("roundCount");
-  if(pill)pill.textContent=audit.length+" 次獨立分析";
-  if(count)count.textContent=String(audit.length);
-}
 function clearView(){
   const dir=el("directionText"),code=el("directionCode"),
     message=el("message"),conf=el("confidence"),regime=el("regime"),
@@ -63,47 +58,50 @@ function clearView(){
   if(dir)dir.textContent="—";
   if(code)code.textContent="等待點數";
   if(message)message.textContent=
-    "直接輸入閒與莊的最終點數（0–9）；兩邊齊全後獨立建立 256 粒子並模擬下一局。";
+    "輸入閒、莊最終點數（0–9），再按開始分析；每次都重新建立 256 個粒子。";
   if(conf)conf.textContent="—";
   if(regime)regime.textContent="等待本局結算";
   if(strength)strength.textContent="—";
   if(orb)orb.className="direction-orb idle";
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.4 獨立點數";
-  roundView();
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.5 獨立點數";
   root.__BBB_V3_CAPITAL_UI__?.renderStake(null);
 }
 function render(report,pair){
-  const research=report.research_signal,dir=research.direction;
+  // Display the higher *simulated physical EV* direction even when the
+  // research gate says SKIP. No change to the engine, actual action/BET
+  // eligibility, particle posterior, or the meaning of profitability.
+  const evB=report.ev_banker,evP=report.ev_player;
+  if(!Number.isFinite(evB)||!Number.isFinite(evP)||
+    report.physical_ev?.simulation_exhausted)throw Error("physical_ev_unavailable");
+  const dir=evB>=evP?"B":"P";
+  const research=report.research_signal;
   const qualified=report.action==="BET";
   const signal=research.available;
   const text=el("directionText"),code=el("directionCode"),
     conf=el("confidence"),regime=el("regime"),strength=el("strength"),
     orb=el("directionOrb"),pill=el("modePill"),message=el("message");
-  if(text)text.textContent=!signal?"觀望":dir==="B"?"莊":"閒";
-  if(code)code.textContent=!signal?"SKIP / NO ACTION":
-    (dir==="B"?"BANKER":"PLAYER")+
-    (qualified?" / EV VERIFIED":" / SIMULATION ONLY");
+  if(text)text.textContent=dir==="B"?"莊":"閒";
+  if(code)code.textContent=(dir==="B"?"BANKER":"PLAYER")+
+    (qualified?" / EV VERIFIED":" / EV COMPARISON");
   if(conf)conf.textContent="模擬 EV 偏移 "+
     (report.ev_gap_deviation*100).toFixed(2)+"%（非勝率）";
-  if(regime)regime.textContent="單局獨立模擬"+
-    (signal?"｜研究訊號已通過":"｜研究訊號未通過")+
+  if(regime)regime.textContent="單局獨立模擬｜顯示模擬 EV 較高方向"+
+    (signal?"｜原研究門檻已通過":"｜原研究門檻未通過")+
     (qualified?"｜實測 EV 通過":"｜未確認正 EV");
   if(strength)strength.textContent="門檻 "+(report.dynamic_gate*100).toFixed(2)+
-    "%｜莊 EV "+(report.ev_banker*100).toFixed(2)+
-    "%｜閒 EV "+(report.ev_player*100).toFixed(2)+"%";
-  if(orb)orb.className="direction-orb "+(signal?
-    (dir==="B"?"banker":"player"):"idle");
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.4 獨立點數";
+    "%｜莊 EV "+(evB*100).toFixed(2)+
+    "%｜閒 EV "+(evP*100).toFixed(2)+"%";
+  if(orb)orb.className="direction-orb "+(dir==="B"?"banker":"player");
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.5 獨立點數";
   const name=resultOf(pair)==="B"?"莊":resultOf(pair)==="P"?"閒":"和";
   if(message)message.textContent=
     "已結算：閒 "+pair.player+"／莊 "+pair.banker+"（"+name+"）"+
     "｜本次全新 256 粒子，L384／M160"+
-    "｜下一局研究方向 "+(signal?(dir==="B"?"莊":"閒"):"觀望")+
-    "｜模擬莊 EV "+(report.ev_banker*100).toFixed(2)+"%"+
-    "、閒 EV "+(report.ev_player*100).toFixed(2)+"%"+
-    "｜馬可夫樣本不足（單局獨立模式）"+
-    "｜最終點數不等於實際牌張，不能保證下一局勝率";
-  roundView();
+    "｜下一局模擬 EV 較高方向："+(dir==="B"?"莊":"閒")+
+    "｜模擬莊 EV "+(evB*100).toFixed(2)+"%"+
+    "、閒 EV "+(evP*100).toFixed(2)+"%"+
+    "｜原研究訊號門檻 "+(signal?"通過":"未通過")+
+    "｜最終點數不等於實際牌張，較高 EV 不代表正 EV 或較高實際勝率";
   root.__BBB_V3_CAPITAL_UI__?.renderStake(report);
 }
 /** Fresh PF256 with one scored hand; NEVER sync more than one outcome. */
@@ -116,6 +114,8 @@ function computeSingle(pair){
   if(fresh.history.length!==1||report.history_length!==1||
     report.point_score_observation_count!==1||
     fresh.quant.physics.size!==256)throw Error("independent_particle_contract_failed");
+  if(!Number.isFinite(report.ev_banker)||!Number.isFinite(report.ev_player)||
+    report.physical_ev?.simulation_exhausted)throw Error("physical_ev_unavailable");
   return{fresh,report,outcome};
 }
 function submitPoints(player,banker){
@@ -135,21 +135,29 @@ function submitPoints(player,banker){
     return outcome;
   }finally{busy=false;}
 }
-function onPointChange(){
+function analyzeEnteredPoints(){
   const p=el("pointPlayerFinal"),b=el("pointBankerFinal");
-  if(!p||!b)return;
-  if(p.value===""||b.value===""){
-    status("請填完左閒、右莊兩個最終點數（0–9）");
-    return;
+  if(!p||!b)return null;
+  const player=String(p.value??"").trim(),banker=String(b.value??"").trim();
+  // Check strings BEFORE Number conversion: empty/whitespace must not become 0.
+  if(!/^[0-9]$/.test(player)||!/^[0-9]$/.test(banker)){
+    status("請在左閒、右莊各輸入一個整數點數（0–9）。");
+    return null;
   }
   try{
-    submitPoints(Number(p.value),Number(b.value));
-    p.value="";b.value="";
+    const outcome=submitPoints(Number(player),Number(banker));
+    if(outcome!==null){p.value="";b.value="";}
+    return outcome;
   }catch(error){
     status("點數分析失敗："+String(error?.message||error));
     const m=el("message");
     if(m)m.textContent="本次分析未完成；請確認點數及本機儲存。";
+    return null;
   }
+}
+function isMobileKeyboard(){
+  return root.matchMedia?.("(pointer: coarse)")?.matches===true||
+    Boolean(root.navigator?.maxTouchPoints>0&&root.innerWidth<=820);
 }
 function restorePrevious(){
   if(busy)return null;
@@ -180,9 +188,19 @@ function run(){
   model=r.fresh;lastReport=r.report;render(r.report,pair);
   return r.report;
 }
+const analyze=el("btnPointAnalyze");
+if(analyze)analyze.addEventListener("click",()=>analyzeEnteredPoints(),false);
 for(const id of ["pointPlayerFinal","pointBankerFinal"]){
   const field=el(id);
-  if(field)field.addEventListener("change",onPointChange,false);
+  if(field)field.addEventListener("keydown",event=>{
+    if(event.key!=="Enter")return;
+    event.preventDefault();
+    // Desktop Enter runs analysis; mobile users explicitly press the button.
+    if(isMobileKeyboard()){
+      status("手機請點選「開始分析」按鈕。");return;
+    }
+    analyzeEnteredPoints();
+  },false);
 }
 const back=el("btnBack");
 if(back)back.addEventListener("click",event=>{
@@ -204,7 +222,7 @@ root.__BBB_QUANT256_ONLINE_PANEL__={
   get model(){return model;},run,
   history(){return model.history.slice();},
   pointScores(){return model.scoreRows.slice();},
-  submitPoints,restorePrevious,
+  submitPoints,analyzeEnteredPoints,restorePrevious,
   get pointMode(){return true;},
   get independentCount(){return audit.length;},
   get latestReport(){return lastReport;},
@@ -217,7 +235,7 @@ root.__BBB_QUANT256_ONLINE_PANEL__={
 };
 try{
   if(audit.length)run();
-  else{clearView();status("直接輸入閒、莊最終點數；每局都從零建立 256 粒子。");}
+  else{clearView();status("輸入閒、莊點數後按開始分析；電腦也可按 Enter。");}
 }catch(error){
   model=new PhysicsForecastFirstEngine(CONFIG);lastReport=null;
   clearView();status("恢復上筆顯示失敗，可輸入新點數："+String(error?.message||error));
