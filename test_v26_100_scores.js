@@ -31,6 +31,34 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   assert(d.blend>=.28-1e-12&&d.blend<=.82+1e-12);
   const prob=r.physical_ev.simulated_probability;
   assert(Math.abs(prob.B+prob.P+prob.T-1)<1e-8);
+  // Nine-cell virtual card-count joint: diagnostic only, same MC RNG and EV.
+  const lengths=r.physical_ev.draw_length_diagnostics;
+  assert.equal(lengths?.version,"BBB_V26_TWO_HAND_DRAW_LENGTH_V1");
+  assert.equal(lengths?.samples,9216);
+  assert.equal(lengths?.actual_current_length_known,false);
+  assert.equal(lengths?.affects_ev_or_direction,false);
+  assert.equal(lengths?.diagnostic_only,true);
+  const l=[4,5,6];
+  const close=(x,y)=>assert(Math.abs(x-y)<1e-9,`${x} not close to ${y}`);
+  close(l.reduce((v,k)=>v+lengths.current_length_probability[k],0),1);
+  close(l.reduce((v,k)=>v+lengths.next_length_probability[k],0),1);
+  let totalJoint=0;
+  for(const current of l){
+    let row=0;
+    for(const next of l){
+      const p=lengths.joint_probability[current][next];
+      assert(Number.isFinite(p)&&p>=0&&p<=1);
+      row+=p;totalJoint+=p;
+    }
+    close(row,lengths.current_length_probability[current]);
+  }
+  close(totalJoint,1);
+  for(const next of l){
+    close(l.reduce((v,current)=>v+lengths.joint_probability[current][next],0),
+      lengths.next_length_probability[next]);
+    const conditional=lengths.next_outcome_given_length[next];
+    if(conditional)close(conditional.B+conditional.P+conditional.T,1);
+  }
   assert(Math.abs(r.ev_banker-(.95*prob.B-prob.P))<1e-10);
   assert(Math.abs(r.ev_player-(prob.P-prob.B))<1e-10);
   const rawB=BASE.B+(prob.B-BASE.B)/d.blend;
