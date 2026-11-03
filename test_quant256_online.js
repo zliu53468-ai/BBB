@@ -116,62 +116,7 @@ assert.equal(dense.prequential.eligible+dense.prequential.skipped,60);
 assert.equal(dense.hitRate,undefined,"不應把測試輸出宣稱為保證勝率");
 assert(dense.predict().signal_rate>=.5);
 
-// DOM 操作測試：原本 B/P/T 儲存先執行，然後 V3 接管顯示；Start 防止 Frozen click。
-const listeners={},dom={};
-const ids=["btnStart","btnB","btnP","btnT","btnBack","btnEnd","directionText",
-  "directionCode","directionOrb","confidence","regime","strength","modePill","message"];
-for(const id of ids){
-  listeners[id]=[];dom[id]={textContent:"",className:"",
-    addEventListener(type,fn,capture){listeners[id].push({fn,capture:!!capture});}};
-}
-const KEY="bgs256d_frozen_6x15_forward_v18",
- LEGACY="bgs256d_128plus128_frozen_direct_tech_panel_v1";
-let saved=[],frozenClicks=0;
-const data=new Map([[KEY,JSON.stringify({history:saved})]]);
-const storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)};
-for(const v of ["B","P","T"])dom["btn"+v].addEventListener("click",()=>{
-  saved.push(v);storage.setItem(KEY,JSON.stringify({history:saved}));
-});
-dom.btnStart.addEventListener("click",()=>frozenClicks++);
-dom.btnBack.addEventListener("click",()=>{
-  saved.pop();storage.setItem(KEY,JSON.stringify({history:saved}));
-});
-function click(id){
-  let stop=false;
-  const e={preventDefault(){},stopImmediatePropagation(){stop=true;}};
-  for(const handler of [...listeners[id]].sort((a,b)=>Number(b.capture)-Number(a.capture))){
-    if(stop)break;handler.fn(e);
-  }
-}
-const win={document:{getElementById:id=>dom[id]||null},localStorage:storage,
-  location:{search:""},BBBQuant256Online:require("./quant256_online_runtime"),
-  BBBPhysicsForecastFirst:require("./physics_forecast_first_runtime")};
-vm.runInNewContext(fs.readFileSync("./quant256_online_panel.js","utf8"),
-  {window:win,document:win.document,URLSearchParams,console});
-const ui=win.__BBB_QUANT256_ONLINE_PANEL__;
-assert.equal(ui.configuration.quantOptions.lambda,.82);
-assert.equal(ui.configuration.threshold,.005);
-assert.equal(ui.configuration.lossGate,.035);
-assert.equal(ui.version,"BBB_PHYSICS_FORECAST_FIRST_V2_DYNAMIC_GATE");
-click("btnB");click("btnP");click("btnT");
-assert.equal(ui.history().join(""),"BPT","initial results must be recorded normally");
-assert.equal(ui.model.history.length,0,"do not run heavy PF for each historical input before Start");
-click("btnStart");
-assert.equal(ui.model.history.join(""),"BPT","Start must initialize the history in one replay");
-assert.equal(frozenClicks,0);
-assert(dom.modePill.textContent.includes("V2.2 MARKOV"));
-assert(dom.message.textContent.includes("馬可夫"),"markov diagnostics must be visible");
-assert(!dom.message.textContent.includes("雙向偏移"),"old two-sided offset UI must be gone");
-assert(/莊|閒|觀望/.test(dom.directionText.textContent));
-assert(["莊","閒","觀望"].includes(dom.directionText.textContent),"大字不保留研究後綴");
-assert(dom.regime.textContent.includes("未確認正 EV"));
-assert(dom.confidence.textContent.includes("非勝率"));
-click("btnBack");assert.equal(ui.model.history.join(""),"BP");
-data.delete(KEY);data.set(LEGACY,JSON.stringify({history:["T","P","B"]}));
-assert.equal(ui.history().join(""),"TPB","must migrate legacy 128+128 local key");
-assert.equal(ui.run().history_length,3);
-click("btnEnd");assert.equal(ui.model.trainedRounds,0);
-assert.equal(ui.run().action,"SKIP");
-assert(["B","P"].includes(ui.run().research_signal.direction));
-assert([0,.005,.035].includes(ui.run().dynamic_gate));
-console.log("PASS restored e323a243 V2: 0.005/0/0.035, UI direction only, research EV gate, legacy history, Frozen bypass");
+// The user-facing web panel is now solely independent P/B final-score input.
+// Keep the core Quant256 tests above unchanged and run a dedicated UI fixture.
+require("./test_v23_point_ui.js");
+console.log("PASS original Quant256 physics/LinUCB core + V2.4 independent-score-only browser workflow");

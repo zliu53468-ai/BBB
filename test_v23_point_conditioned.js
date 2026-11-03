@@ -108,8 +108,8 @@ for(const id of ["btnStart","btnB","btnP","btnT","btnBack","btnEnd",
   assert(page.includes('id="'+id+'"'),"existing and new control "+id);
 assert(page.indexOf('id="pointPlayerFinal"')<page.indexOf('id="pointBankerFinal"'),
   "player input must be LEFT of banker");
-assert(page.includes('id="bbbPointEntry" hidden'),"point controls hidden until analysis");
+assert(page.includes('id="bbbPointEntry" aria-label'),"point controls visible without prior history");
 assert(css.includes(".bbb-point-mode .bbb-results-block{display:none}"),
   "history controls must be swapped, not stacked");
-assert(panel.includes('button.click()'),"score entry must reuse the original result handler once");
+assert(panel.includes("fresh.syncHistory([outcome]"),"every score must use one independent new model");
 console.log("PASS V2.3 exact final-total likelihood on 6-card combinatorial deck, point PF update, deterministic undo/replay, historical BPT invariance and compact two-field controls");

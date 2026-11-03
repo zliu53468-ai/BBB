@@ -330,3 +330,11 @@ html.bbb-viewport-locked,body.bbb-viewport-locked{
   #predictionApp .bbb-point-heading strong{font-size:12px}
   #predictionApp .bbb-point-heading small{font-size:9px}
 }
+
+/* BBB V2.4 WEB: immediately show point totals; never display history bootstrap. */
+#predictionApp .bbb-results-block,
+#predictionApp #btnStart,
+#predictionApp #btnNoSkipTest,
+#predictionApp #forecastGap,
+#predictionApp label[for="forecastGap"]{display:none!important}
+#predictionApp .bbb-point-entry{display:grid}
