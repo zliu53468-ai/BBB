@@ -1,5 +1,5 @@
 "use strict";
-/** Regression for shared BBB/BGS display-only mild abstention, not hit-rate. */
+/** Regression for moderate display-only abstention, exact legacy rollback and immutable physical EV. */
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const {PhysicsForecastFirstEngine}=require("./physics_forecast_first_runtime.js");
@@ -12,6 +12,12 @@ const base={
    posterior_gap_spread:.085}
 };
 const weak=guard.decide(base);
+const legacyWeak=guard.decide(base,{enabled:false});
+assert(weak.threshold>legacyWeak.threshold);
+assert.equal(weak.moderate_entry_enabled,true);
+assert.equal(legacyWeak.moderate_entry_enabled,false);
+assert.equal(legacyWeak.threshold_addition,0);
+assert.equal(guard.MODERATE_ENTRY.pf_quality_threshold,.62);
 assert.equal(weak.direction,"SKIP");
 assert.equal(weak.raw_direction,"P");
 assert.equal(weak.verified_edge,false);
@@ -24,6 +30,7 @@ const veryPoor=guard.decide({...base,early_shoe_guard:{
 assert(veryPoor.threshold>weak.threshold);
 assert.equal(guard.decide({...base,early_shoe_guard:null}).direction,"SKIP");
 const stats={B:0,P:0,SKIP:0,rawB:0,rawP:0,total:0};
+const rollbackStats={B:0,P:0,SKIP:0,rawB:0,rawP:0,total:0};
 for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   const outcome=banker>player?"B":player>banker?"P":"T";
   const model=new PhysicsForecastFirstEngine({
@@ -34,6 +41,12 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   const r=model.syncHistory([outcome],[{player,banker}]);
   const evB=r.ev_banker,evP=r.ev_player;
   const choice=guard.decide(r);
+  const rollback=guard.decide(r,{enabled:false});
+  assert(choice.threshold>=rollback.threshold);
+  assert.equal(rollback.threshold_addition,0);
+  assert.equal(choice.raw_direction,rollback.raw_direction);
+  assert(choice.direction===rollback.direction||choice.direction==="SKIP",
+    "Moderate guard may only newly abstain, never enable or flip a direction");
   assert.equal(r.physical_ev.samples,9216);
   assert.equal(model.quant.physics.size,96);
   assert.equal(r.action,"SKIP");assert.equal(r.bet_allowed,false);
@@ -44,12 +57,16 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   assert.strictEqual(r.ev_banker,evB);
   assert.strictEqual(r.ev_player,evP);
   stats[choice.direction]++;stats[choice.raw_direction==="B"?"rawB":"rawP"]++;stats.total++;
+  rollbackStats[rollback.direction]++;rollbackStats[rollback.raw_direction==="B"?"rawB":"rawP"]++;rollbackStats.total++;
 }
 assert.equal(stats.total,100);
 assert.equal(stats.rawB+stats.rawP,100);
 assert(stats.rawB>0&&stats.rawP>0,"Both raw directions must be present");
-assert.deepEqual(stats,{B:48,P:40,SKIP:12,rawB:56,rawP:44,total:100},
-  "N96/L256/M96 display parity drifted from shared BGS regression");
+assert.deepEqual(rollbackStats,{B:48,P:40,SKIP:12,rawB:56,rawP:44,total:100},
+  "Legacy V2.6 display gate must remain exactly reversible");
+assert.equal(stats.rawB,56);assert.equal(stats.rawP,44);
+assert.deepEqual(stats,{B:44,P:37,SKIP:19,rawB:56,rawP:44,total:100},
+  "The fixed-score moderate guard must match BGS, without changing EV/direction");
 const auth=fs.readFileSync("auth-client.js","utf8");
 const idx=auth.indexOf("point_signal_quality_guard.js");
 const panel=auth.indexOf("quant256_online_panel.js");
@@ -57,4 +74,4 @@ assert(idx>0&&panel>idx,"Quality gate must load before panel");
 const page=fs.readFileSync("quant256_online_panel.js","utf8");
 assert(page.includes("signalGuard.decide(report)"));
 assert(page.includes('skip?"觀望"'));
-console.log("PASS BBB V2.6 mild display SKIP (no physical EV/policy changes):",JSON.stringify(stats));
+console.log("PASS BBB V2.6 moderate display SKIP (physical EV intact):",JSON.stringify({moderate:stats,legacy:rollbackStats}));
