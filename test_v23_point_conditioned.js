@@ -19,6 +19,21 @@ function totalsFromCards(a){
   }
   return{player:p,banker:b};
 }
+// A FINAL 8/9 may come from the legal third-card draw, not a natural.
+// Player first-two 3 + third 5 => final 8; Banker first-two 4 + third 3 => 7.
+// Player first-two 4 + third 5 => final 9; Banker first-two 4 + third 3 => 7.
+assert.deepEqual(totalsFromCards([1,2,2,2,5,3]),{player:8,banker:7});
+assert.deepEqual(totalsFromCards([2,2,2,2,5,3]),{player:9,banker:7});
+const thirdCardOnlyCounts=[0,1,3,1,0,1,0,0,0,0];
+const thirdRng=nextRng(8189);
+let thirdScore8Possible=false;
+for(let i=0;i<2000;i++){
+  const candidate=conditionalHandProposal(thirdCardOnlyCounts,thirdRng,"P",
+    {player:8,banker:7});
+  if(candidate.hand?.draws===6){thirdScore8Possible=true;break;}
+}
+assert(thirdScore8Possible,
+  "final Player 8 must accept valid third-card outcomes, not only naturals");
 const exact=new Map();
 function perm(prefix,remaining){
   if(!remaining.length){
