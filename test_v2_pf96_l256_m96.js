@@ -19,7 +19,7 @@ assert(runtime.includes("this.lastESS<this.size*.5"));
 assert(runtime.includes("const pHat=likelihoodMass/attempts,priorWeight=this.weights[i];"));
 assert(runtime.includes("updated[i]=chosen?priorWeight*pHat:0"),
   "posterior must still use the same weight times likelihood");
-assert(runtime.includes("if(this.rng()<1/matches)chosen=trial"));
+assert(runtime.includes("this.rng()*likelihoodMass<mass"));
 assert(physics.includes("function summarizeHypotheses(physics,_history,{samplesPerParticle=160}={}){"));
 assert(panel.includes("lossGate:.035,simulationsPerParticle:160,"));
 const engine=new PhysicsForecastFirstEngine();
