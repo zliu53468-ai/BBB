@@ -33,6 +33,10 @@ class FakeModel{
       ev_banker:evB,ev_player:evP,gate_phase:"base",
       win_streak:0,last_settlement:"none",hit_rate:null,signal_rate:null,
       point_score_observation_count:1,
+      physical_ev:{simulation_exhausted:false},
+      early_shoe_guard:{mode:"independent_final_score_quality",quality:.95,
+        ess_ratio:.95,ancestor_diversity:.95,mc_gap_se:.008,
+        posterior_gap_spread:.06},
       shoe_distribution_guard:{current_stage:"insufficient_data"},
       markov_residual:{stats:{selected_support:0,eligible:false,
         posterior_conditional:{B:.5068}},shadow:{conditional_shift:0}}};
@@ -75,7 +79,8 @@ function mount({mobile=false}={}){
     localStorage:storage,location:{search:""},
     matchMedia:()=>({matches:mobile}),
     navigator:{maxTouchPoints:mobile?5:0},innerWidth:mobile?390:1280,
-    BBBPhysicsForecastFirst:{PhysicsForecastFirstEngine:FakeModel,VERSION:"TEST_V25"}};
+    BBBPhysicsForecastFirst:{PhysicsForecastFirstEngine:FakeModel,VERSION:"TEST_V25"},
+    BBBPointSignalQualityGuard:require("./point_signal_quality_guard.js")};
   vm.runInNewContext(script,{window:root,document:root.document,URLSearchParams,console});
   return{ui:root.__BBB_QUANT256_ONLINE_PANEL__,elements,dispatch,
     get legacyStart(){return legacyStart;},
