@@ -131,7 +131,7 @@ function render(p){
     "%｜莊 EV "+(p.ev_banker*100).toFixed(2)+
     "%｜閒 EV "+(p.ev_player*100).toFixed(2)+"%";
   if(orb)orb.className="direction-orb "+(signal?(dir==="B"?"banker":"player"):"idle");
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.2 MARKOV";
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.2 MARKOV · V2.3 POINTS";
   const hit=p.hit_rate===null?"無有效樣本":(p.hit_rate*100).toFixed(1)+"%";
   const rate=p.signal_rate===null?"—":(p.signal_rate*100).toFixed(1)+"%";
   const markov=p.markov_residual?.stats,shadow=p.markov_residual?.shadow;
@@ -154,10 +154,13 @@ function render(p){
     "，莊條件後驗 "+posterior+
     "（"+(markov?.eligible?"已達統計門檻":"樣本不足")+"）"+
     "｜研究校準候選 "+calibration+"（未啟用，不影響真實 EV）"+
+    "｜點數條件觀測 "+(p.point_score_observation_count??0)+" 局"+
     "｜分布監測 "+(p.shoe_distribution_guard?.current_stage==="distribution_shift"?
       "近期比例明顯改變":p.shoe_distribution_guard?.current_stage==="insufficient_data"?
       "資料不足":"未見強烈變化")+
-    "｜B/P/T 不揭露實際牌值，模擬 EV 不是可驗證的套利優勢";
+    (p.point_score_observation_count>0?
+      "｜最終點數更新虛擬殘牌分布，但無法辨識真實牌張或保證正 EV":
+      "｜B/P/T 不揭露實際牌值，模擬 EV 不是可驗證的套利優勢");
   // 舊資金面板僅呈現曝險計算，不參與 e323a243 的預測決策。
   root.__BBB_V3_CAPITAL_UI__?.renderStake(p);
 }
