@@ -13,10 +13,12 @@ assert(!html.includes('class="card bankroll-card"')&&!html.includes('id="bankrol
   !html.includes('id="stakePercent"'),"stake controls removed from displayed panel");
 assert(html.indexOf("brand-hero")<html.indexOf("appViewportContent"),
   "background must remain outside scroll content");
-assert(html.includes("auth-client.js?v=20261103-v23-points-v1"),
-  "production prediction core loader must not be changed");
+assert(html.includes("auth-client.js?v=20261103-v24-independent-points-v1"),
+  "V2.4 web panel must be loaded after license authorization");
 assert(html.includes("viewport-fit.js?v=20261102-mobile-stable-v2"),"stable viewport loader version");
-assert(html.includes("styles.css?v=20261103-v23-compact-point-v1"),"stable CSS cache key");
+assert(html.includes('id="bbbPointEntry" aria-label="當局最終點數輸入"'),"scores visible immediately");
+assert(css.includes("#predictionApp .bbb-results-block,")&&css.includes("#predictionApp #btnStart,"),"historical bootstrap is hidden");
+assert(html.includes("styles.css?v=20261103-v24-independent-ui-v1"),"stable CSS cache key");
 
 // A frozen outer viewport with an accessible independently scrolling content
 // region replaces the old unbounded scaled page. Especially important for
