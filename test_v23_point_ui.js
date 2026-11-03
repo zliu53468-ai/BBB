@@ -138,8 +138,8 @@ assert.equal(JSON.parse(storage.getItem(AUDIT)).rows.length,1);
 // Page reload may restore only the previous independent score, never old history.
 v=mount();
 assert.equal(v.ui.independentCount,1);
-assert.equal(v.ui.model.history.length,1);
-assert.equal(v.elements.directionText.textContent,"閒");
+assert.equal(v.ui.model.history.length,0,"reload must not auto-predict a stale score");
+assert.equal(v.elements.directionText.textContent,"—","mobile/desktop waits for explicit new analysis");
 // Mobile Enter must not run: tap explicit button.
 let m=mount({mobile:true});
 m.elements.pointPlayerFinal.value="8";
