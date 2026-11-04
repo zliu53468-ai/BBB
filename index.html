@@ -62,10 +62,7 @@
         </div>
       </div>
       <div class="message" id="message" aria-live="polite">請輸入當局閒、莊最終總點數（各 0～9），再按開始分析</div>
-      <details class="bbb-clear-details" id="drawLengthDiagnostics" hidden>
-        <summary>發牌張數聯合模擬：當局 × 下一局（4／5／6 張）</summary>
-        <div class="message" id="drawLengthJointMatrix" style="white-space:pre-line;line-height:1.75;" aria-live="polite"></div>
-      </details>
+      
     </section>
 
     <section class="card controls-card">
@@ -105,7 +102,7 @@
         <button class="action-btn" id="btnNewSequence" type="button">另起連續序列（保留學習）</button>
         <button class="action-btn danger" id="btnEnd" type="button">清除學習並結束</button>
       </div>
-      <details class="bbb-clear-details"><summary>結束分析與資料清除說明</summary><div class="clear-note">結束分析會清空此開通碼的牌路、分析快照與歷史觀測；會員裝置授權仍會保留。未連線裝置將在下次驗證時同步清空。</div></details>
+      <details class="bbb-clear-details"><summary>結束分析與資料清除說明</summary><div class="clear-note">結束分析會清空此開通碼的總點數歷史、分析快照與累積統計；會員裝置授權仍會保留。未連線裝置將在下次驗證時同步清空。</div></details>
     </section>
 
     <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">總點數轉移矩陣與近期逐局紀錄持續保留在本機；漏局請另起連續序列，避免建立錯誤轉移。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
@@ -116,7 +113,7 @@
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
-  <script src="auth-client.js?v=20261105-total-transition-v1"></script>
+  <script src="auth-client.js?v=20261105-total-transition-v4"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
