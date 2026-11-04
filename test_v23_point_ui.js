@@ -26,14 +26,14 @@ class FakeModel{
     // The web should display the physical EV winner, not SKIP.
     const evB=history[0]==="P"?-.03:-.01;
     const evP=history[0]==="P"?-.01:-.02;
-    return{history_length:1,exact_enumeration:{complete:true,version:"BBB_EXACT_SINGLE_SCORE_V1"},research_signal:{
+    return{history_length:1,research_signal:{
         direction:history[0]==="P"?"B":"P",available:false
       },
       action:"SKIP",ev_gap_deviation:.02,dynamic_gate:.005,
       ev_banker:evB,ev_player:evP,gate_phase:"base",
       win_streak:0,last_settlement:"none",hit_rate:null,signal_rate:null,
       point_score_observation_count:1,
-      physical_ev:{simulation_exhausted:false,posterior_sd_gap:.01},
+      physical_ev:{simulation_exhausted:false},
       early_shoe_guard:{mode:"independent_final_score_quality",quality:.95,
         ess_ratio:.95,ancestor_diversity:.95,mc_gap_se:.008,
         posterior_gap_spread:.06},
@@ -43,7 +43,7 @@ class FakeModel{
   }
   setObservedRounds(){}
 }
-function mount({mobile=false,engine=FakeModel}={}){
+function mount({mobile=false}={}){
   const elements={},handlers={};
   const ids=["predictionApp","bbbPointEntry","pointPlayerFinal","pointBankerFinal",
     "pointInputStatus","btnStart","btnPointAnalyze","btnB","btnP","btnT","btnBack","btnEnd",
@@ -79,7 +79,7 @@ function mount({mobile=false,engine=FakeModel}={}){
     localStorage:storage,location:{search:""},
     matchMedia:()=>({matches:mobile}),
     navigator:{maxTouchPoints:mobile?5:0},innerWidth:mobile?390:1280,
-    BBBExactScore:{ExactScoreEngine:engine,VERSION:"TEST_EXACT"},
+    BBBPhysicsForecastFirst:{PhysicsForecastFirstEngine:FakeModel,VERSION:"TEST_V25"},
     BBBPointSignalQualityGuard:require("./point_signal_quality_guard.js")};
   vm.runInNewContext(script,{window:root,document:root.document,URLSearchParams,console});
   return{ui:root.__BBB_QUANT256_ONLINE_PANEL__,elements,dispatch,
@@ -168,16 +168,3 @@ assert.equal(storage.getItem(AUDIT),null);
 assert.equal(storage.getItem(OLD),oldStored);
 assert.equal(m.ui.model.history.length,0);
 console.log("PASS V2.5 web: manual typed points only, desktop Enter/mobile button, always stronger physical EV direction, no SKIP display, no model/legacy mutation");
-
-// Exercise the real deployed exact engine through the actual input/undo UI.
-const live=mount({engine:require("./exact_score_runtime.js").ExactScoreEngine});
-live.elements.btnEnd.click();
-assert.equal(live.ui.submitPoints(5,3),"P");
-assert.equal(live.elements.directionText.textContent,"觀望");
-assert(live.elements.message.textContent.includes("6,958"));
-assert(live.ui.latestReport.ev_banker<0);
-assert.equal(live.ui.latestReport.physical_ev.samples,0);
-live.ui.submitPoints(8,4);
-assert.equal(live.ui.model.history.length,1);
-assert.equal(live.ui.latestReport.exact_enumeration.complete,true);
-console.log("PASS real exact engine wired into web submit/undo and no historical accumulation");

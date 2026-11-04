@@ -50,29 +50,6 @@ function decide(report,{enabled=MODERATE_ENTRY.enabled,profile=ACTIVE_PROFILE}={
   const tuning=ENTRY_PROFILES[profile];
   if(!tuning)throw Error("invalid_entry_profile");
   const evB=report?.ev_banker,evP=report?.ev_player;
-  if(report?.exact_enumeration?.complete===true){
-    const spread=report.physical_ev?.posterior_sd_gap;
-    const valid=report.physical_ev?.simulation_exhausted!==true&&
-      finite(evB)&&finite(evP)&&finite(spread)&&spread>=0&&
-      report.exact_enumeration.version==="BBB_EXACT_SINGLE_SCORE_V1";
-    if(!valid)return{version:VERSION,direction:"SKIP",raw_direction:null,
-      reason:"insufficient_quality_diagnostics",threshold:null,gap:null,
-      verified_edge:false,validated_hit_rate:false};
-    // Same V4 threshold with complete integration and zero Monte Carlo noise.
-    // Latent-shoe dispersion remains; exact arithmetic does not reveal real cards.
-    const proxy=clamp(spread/.20,0,1);
-    const legacy=.00085+.00035*proxy;
-    const addition=enabled?tuning.additional_ev_gap+
-      (proxy>tuning.uncertainty_proxy_threshold?tuning.high_uncertainty_extra:0):0;
-    const threshold=legacy+addition,gap=Math.abs(evB-evP);
-    const raw=evB>=evP?"B":"P";
-    return{version:VERSION,direction:gap<threshold?"SKIP":raw,raw_direction:raw,
-      reason:gap<threshold?"small_ev_gap_or_uncertain":"relative_ev_gap_pass",
-      threshold,gap,legacy_threshold:legacy,threshold_addition:addition,
-      moderate_entry_enabled:Boolean(enabled),entry_profile:profile,
-      uncertainty_proxy:proxy,calculation_method:"exact_enumeration",
-      verified_edge:false,validated_hit_rate:false};
-  }
   const d=report?.early_shoe_guard;
   const invalid=!finite(evB)||!finite(evP)||
     report?.physical_ev?.simulation_exhausted===true||
