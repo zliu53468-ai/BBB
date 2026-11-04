@@ -9,8 +9,8 @@ const message=document.getElementById("licenseMessage"),submit=document.getEleme
 // Public server URL is not a secret; only Cloudflare holds ADMIN_TOKEN and LICENSE_PEPPER.
 const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu53468.workers.dev").replace(/\/+$/,"");
 const scripts=[
-  "point_transition_runtime.js?v=20261105-total-transition-v1",
-  "point_transition_panel.js?v=20261105-total-transition-v1"
+  "point_transition_runtime.js?v=20261105-total-transition-v4",
+  "point_transition_panel.js?v=20261105-total-transition-v4"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}

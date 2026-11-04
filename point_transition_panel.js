@@ -19,17 +19,26 @@
   text('confidence','莊閒機率差 '+pct(r.gap));
   text('strength',r.sampleSize<api.DEFAULTS.minSamples?'樣本不足，先累積紀錄':
    '莊 '+pct(r.probability.B)+'｜閒 '+pct(r.probability.P)+'｜和 '+pct(r.probability.T));
-  text('regime',r.relaxed?'門檻放寬 25%（探索訊號）':'標準統計門檻');
-  const reason=r.reason==='insufficient_samples'?'此點數組合後續樣本不足':r.reason==='gap_below_threshold'?'機率差未超過動態門檻':'點數轉移方向通過門檻';
+  text('regime',r.signalType==='low_variance_override'?'1024 次後驗抽樣：低變異訊號':
+    r.relaxed?'連續觀望超過 6 次：門檻暫降 30%':'V4 動態標準門檻');
+  const reason=r.reason==='insufficient_samples'?'此總點數組合的後續樣本不足':
+   r.reason==='gap_below_threshold'?'機率差及低變異例外皆未過門檻':
+   r.reason==='low_variance_signal'?'1024 次後驗抽樣變異符合條件，採用 4.5% 差值例外':
+   '總點數轉移方向通過動態門檻';
   text('message','目前狀態：閒 '+r.state.player+'／莊 '+r.state.banker+
    '｜同狀態後續樣本 '+r.sampleSize+'（非和局 '+r.decisiveSamples+'）'+
    '｜掃描 '+(r.scanDepth===0?'全部累積紀錄':r.scanDepth+' 局')+
-   '｜動態門檻 '+pct(r.threshold)+'｜'+reason+
-   (r.relaxed?'｜已擴大窗口並降低門檻；此為探索，不代表顯著性或勝率保證':'')+
+   '｜累積輸入 '+r.currentRound+' 局'+
+   '｜動態門檻 '+pct(r.threshold)+
+   '｜抽樣標準差（莊／閒） '+(r.particleStd?
+     pct(r.particleStd.stdBanker)+'／'+pct(r.particleStd.stdPlayer):'樣本不足')+
+   '｜'+reason+
+   (r.relaxed?'｜暫時以七折門檻評估':'')+
    '｜歷史相關不代表下一局必然重複。');
   if($('directionOrb'))$('directionOrb').className='direction-orb '+(skip?'idle':r.direction==='B'?'banker':'player');
-  text('localCalibrationStatus','已累積 '+model.totalRounds+' 局；精確狀態樣本至少 '+api.DEFAULTS.minSamples+
-   '、非和局至少 '+api.DEFAULTS.minDecisive+'；近 6 局訊號 '+r.recentSignals+' 次，目標 1～2 次，不強制出手。');
+  text('localCalibrationStatus','累積 '+model.totalRounds+' 次總點紀錄｜相同狀態後續至少 '+
+   api.DEFAULTS.minSamples+' 筆（非和局至少 '+api.DEFAULTS.minDecisive+
+   '）｜近 6 次方向 '+r.recentSignals+' 次｜目標每 6 次 1～2 次，不保證達成。');
  }
  async function persist(candidate){
   root.localStorage.setItem(KEY,JSON.stringify(candidate.snapshot()));
@@ -51,7 +60,7 @@
    const candidate=new PointTransitionPredictor(model.snapshot());const result=fn(candidate);
    await persist(candidate);if(id!==epoch)return;
    model=candidate;render(result);
-   text('pointInputStatus','歷史已儲存；輸入下一局總點數可持續更新轉移矩陣。');
+   text('pointInputStatus','總點數已儲存；下一局繼續輸入雙方最終點數即可，統計會自動累積。');
   }catch(e){observeOnly('本次未完成，觀望：'+String(e.message||e));text('pointInputStatus','未顯示新方向，請檢查輸入或儲存空間。');}
   finally{if(id===epoch){busy=false;if($('btnPointAnalyze'))$('btnPointAnalyze').disabled=false;}}
  }
@@ -82,7 +91,7 @@
  for(const id of ['pointPlayerFinal','pointBankerFinal'])$(id)?.addEventListener('keydown',e=>{
   if(e.key==='Enter'){e.preventDefault();if(!root.matchMedia?.('(pointer: coarse)').matches)submit();}
  });
- text('modePill','總點數轉移矩陣 · 自適應觀望');
+ text('modePill','V4 總點數轉移 · 動態觀望');
  try{
   const raw=root.localStorage.getItem(KEY);model=new PointTransitionPredictor(raw?JSON.parse(raw):null);
   render(model.nextIsBreak?null:model.latest());
