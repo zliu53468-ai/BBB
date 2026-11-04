@@ -43,7 +43,7 @@ class FakeModel{
   }
   setObservedRounds(){}
 }
-function mount({mobile=false}={}){
+function mount({mobile=false,engine=FakeModel,deplete=null}={}){
   const elements={},handlers={};
   const ids=["predictionApp","bbbPointEntry","pointPlayerFinal","pointBankerFinal",
     "pointInputStatus","btnStart","btnPointAnalyze","btnB","btnP","btnT","btnBack","btnEnd",
@@ -79,7 +79,8 @@ function mount({mobile=false}={}){
     localStorage:storage,location:{search:""},
     matchMedia:()=>({matches:mobile}),
     navigator:{maxTouchPoints:mobile?5:0},innerWidth:mobile?390:1280,
-    BBBPhysicsForecastFirst:{PhysicsForecastFirstEngine:FakeModel,VERSION:"TEST_V25"},
+    BBBPhysicsForecastFirst:{PhysicsForecastFirstEngine:engine,VERSION:"TEST_V25"},
+    BBBDepleteMC:deplete,
     BBBPointSignalQualityGuard:require("./point_signal_quality_guard.js")};
   vm.runInNewContext(script,{window:root,document:root.document,URLSearchParams,console});
   return{ui:root.__BBB_QUANT256_ONLINE_PANEL__,elements,dispatch,
@@ -168,3 +169,15 @@ assert.equal(storage.getItem(AUDIT),null);
 assert.equal(storage.getItem(OLD),oldStored);
 assert.equal(m.ui.model.history.length,0);
 console.log("PASS V2.5 web: manual typed points only, desktop Enter/mobile button, always stronger physical EV direction, no SKIP display, no model/legacy mutation");
+
+const live=mount({engine:require("./physics_forecast_first_runtime.js").PhysicsForecastFirstEngine,
+ deplete:require("./deplete_mc_runtime.js")});
+live.elements.btnEnd.click();live.ui.submitPoints(5,3);
+const report=live.ui.latestReport;
+assert.equal(report.deplete_mc.mode,"shadow");assert.equal(report.deplete_mc.affects_display,false);
+assert.equal(report.deplete_mc.status,"complete");
+assert(live.elements.message.textContent.includes("僅對照，不影響本次訊號"));
+const realGuard=require("./point_signal_quality_guard.js").decide(report);
+assert.equal(live.elements.directionText.textContent,realGuard.direction==="SKIP"?"觀望":realGuard.direction==="B"?"莊":"閒");
+live.ui.submitPoints(8,4);assert.equal(live.ui.model.history.length,1);
+console.log("PASS real PF/deplete UI wiring: primary direction retained and comparison-only label visible");
