@@ -20,7 +20,7 @@ if(!root||!root.document||!root.BBBPhysicsForecastFirst||
 const {PhysicsForecastFirstEngine,VERSION}=root.BBBPhysicsForecastFirst;
 const CONFIG={threshold:.005,lossGate:.035,simulationsPerParticle:96,
   observedSamples:12000,quantOptions:{lambda:.82,alpha:.15,particles:96},
-  independentFinalScoreMode:true};
+  independentFinalScoreMode:true,exactSingleScore:true};
 // Compatibility-only name: never import or replay this old B/P/T history.
 const KEY="bgs256d_frozen_6x15_forward_v18";
 const AUDIT_KEY="bgs_v24_independent_point_audit";
