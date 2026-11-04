@@ -18,9 +18,10 @@
 })(typeof window!=="undefined"?window:null,function(quant,physics,deplete){
  "use strict";
  if(!quant?.BlindPhysicsEstimator||!physics?.summarizeHypotheses||
-   !physics?.earlyShoeGuard||!deplete?.attachShadow||!deplete?.dealWithUniforms)
+   !physics?.adaptiveScoreSmoother||!deplete?.attachShadow||!deplete?.dealWithUniforms)
    throw Error("missing_physical_v4_dependencies");
- const VERSION="BBB_PF_EOR_DEPLETE_V4_SCORE_ONLY";
+ const VERSION="BBB_PF_EOR_DEPLETE_V4_ADAPTIVE_SCORE";
+ const BASE_GAP=1.95*physics.BASE.B-2*physics.BASE.P;
  const CONFIG=Object.freeze({
   particles:96,simulationsPerParticle:160,
   // 使用 16 個分層抽取的假想粒子，每個點數影響各做 96 次配對模擬。
@@ -89,7 +90,8 @@
   decide(report){
    const c=this.config,d=report?.quality,eor=report?.eor,shadow=report?.deplete_mc;
    const evB=report?.ev_banker,evP=report?.ev_player;
-   const candidate=finite(evB)&&finite(evP)?(evB>=evP?"B":"P"):null;
+   const signal=finite(evB)&&finite(evP)?evB-evP-BASE_GAP:NaN;
+   const candidate=finite(signal)?(signal>=0?"B":"P"):null;
    const mandatory=[
     evB,evP,d?.quality,d?.ess_ratio,d?.ancestor_diversity,
     d?.mc_gap_se,d?.posterior_gap_spread,eor?.max_abs_ev_gap_delta,
@@ -112,8 +114,8 @@
     c.posteriorSpreadWeight*posterior+
     c.eorSensitivityWeight*sensitivity+
     c.poorQualityWeight*(1-quality),c.minEvGap,c.maxEvGap);
-   const gap=abs(evB-evP),pfSigned=evB-evP;
-   const mcSigned=shadow.ev_banker-shadow.ev_player;
+   const gap=abs(signal),pfSigned=signal;
+   const mcSigned=shadow.ev_banker-shadow.ev_player-BASE_GAP;
    const deviation=abs(pfSigned-mcSigned);
    // Deplete 僅負責相容性檢查：同一筆證據不可當成兩份獨立觀測融合。
    const tolerance=Math.max(c.crossCheckFloor,c.crossCheckZ*
@@ -124,7 +126,9 @@
    return{direction:pass?candidate:"SKIP",candidate,
     reason:gap<=threshold?"weak_ev_gap":!stable?"deplete_disagreement":
      conflict?"opposite_deplete_direction":"quality_pass",
-    gap,threshold,quality,mc_gap_se:noise,posterior_spread:posterior,
+    gap,threshold,quality,baseline_ev_gap:BASE_GAP,
+    relative_ev_signal:signal,decision_metric:"baseline_relative_ev_gap",
+    mc_gap_se:noise,posterior_spread:posterior,
     eor_sensitivity:sensitivity,deplete_gap_deviation:deviation,
     deplete_agreement_limit:tolerance,deplete_consistent:stable&&!conflict,
     validated_hit_rate:false,verified_edge:false};
@@ -144,13 +148,13 @@
     {samplesPerParticle:this.config.simulationsPerParticle});
    if(raw.simulation_exhausted||raw.particle_support!==this.config.particles)
     throw Error("pf_posterior_unavailable");
-   const early=physics.earlyShoeGuard(raw,pf,1,{independentFinalScore:true});
-   const physical=early.physical;
+   const smooth=physics.adaptiveScoreSmoother(raw,pf);
+   const physical=smooth.physical;
    const core={version:VERSION,point_observation_independent:true,
     history_length:1,point_score_observation_count:1,
     observed_card_evidence:false,physical_ev:physical,
     ev_banker:physical.ev_banker,ev_player:physical.ev_player,
-    quality:early.diagnostics,early_shoe_guard:early.diagnostics,
+    quality:smooth.diagnostics,adaptive_score_smoothing:smooth.diagnostics,
     effective_research_gate:null,research_signal:{direction:null,available:false}};
    const eor=computeEOR(pf,pair,{particles:this.config.eorParticleCount,
     samples:this.config.eorSamples});
