@@ -111,9 +111,12 @@ function render(report,pair){
     (skip?"EV 差距較小，觀望":"顯示模擬 EV 較高方向")+
     (signal?"｜原研究門檻已通過":"｜原研究門檻未通過")+
     (qualified?"｜實測 EV 通過":"｜未確認正 EV");
-  if(strength)strength.textContent="門檻 "+(report.dynamic_gate*100).toFixed(2)+
-    "%｜莊 EV "+(evB*100).toFixed(2)+
-    "%｜閒 EV "+(evP*100).toFixed(2)+"%";
+  const percent=v=>Number.isFinite(v)?(v*100).toFixed(3)+"%":"無資料";
+  const guardReason=display.reason==="insufficient_quality_diagnostics"?"品質資料不足":
+    skip?"EV 差距未達觀望門檻":"EV 差距通過觀望門檻";
+  if(strength)strength.textContent="觀望門檻 "+percent(display.threshold)+
+    "｜目前 EV 差距 "+percent(display.gap)+
+    "｜莊 EV "+percent(evB)+"｜閒 EV "+percent(evP);
   if(orb)orb.className="direction-orb "+(skip?"idle":dir==="B"?"banker":"player");
   if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
   const name=resultOf(pair)==="B"?"莊":resultOf(pair)==="P"?"閒":"和";
@@ -123,7 +126,9 @@ function render(report,pair){
     "｜下一局顯示訊號："+(skip?"觀望":dir==="B"?"莊":"閒")+
     "｜模擬莊 EV "+(evB*100).toFixed(2)+"%"+
     "、閒 EV "+(evP*100).toFixed(2)+"%"+
-    "｜原研究訊號門檻 "+(signal?"通過":"未通過")+
+    "｜觀望判斷："+guardReason+
+    "｜模式："+(display.entry_profile||"品質不足")+
+    "｜原研究訊號門檻 "+percent(report.dynamic_gate)+"（"+(signal?"通過":"未通過")+"）"+
     "｜最終點數不等於實際牌張，較高 EV 不代表正 EV 或較高實際勝率";
   // Suppress stake suggestions when quality display guard abstains.
   const stakeReport=skip?{...report,research_signal:{...report.research_signal,available:false}}:report;
