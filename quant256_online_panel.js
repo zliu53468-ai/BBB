@@ -83,7 +83,7 @@ function clearView(){
   if(regime)regime.textContent="等待本局結算";
   if(strength)strength.textContent="—";
   if(orb)orb.className="direction-orb idle";
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑 · PF 80%＋Deplete 20%";
   root.__BBB_V3_CAPITAL_UI__?.renderStake(null);
   renderDrawLengths(null);
 }
@@ -118,12 +118,12 @@ function render(report,pair){
     "｜目前 EV 差距 "+percent(display.gap)+
     "｜莊 EV "+percent(evB)+"｜閒 EV "+percent(evP);
   if(orb)orb.className="direction-orb "+(skip?"idle":dir==="B"?"banker":"player");
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
+  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑 · PF 80%＋Deplete 20%";
   const comparison=report.deplete_mc;
   const depleteText=comparison?.status==="complete"?
-    "｜獨立牌組對照：莊 EV "+percent(comparison.ev_banker)+
-      "、閒 EV "+percent(comparison.ev_player)+"（僅對照，不影響本次訊號）":
-    "｜牌組對照未完成，正式訊號仍使用原 PF";
+    "｜Deplete 牌組推估：莊 EV "+percent(comparison.ev_banker)+
+      "、閒 EV "+percent(comparison.ev_player)+"（已納入本次預測：原模型 80%＋Deplete 20%）":
+    "｜Deplete 未完成，本次使用原 PF 預測";
   const name=resultOf(pair)==="B"?"莊":resultOf(pair)==="P"?"閒":"和";
   if(message)message.textContent=
     "已結算：閒 "+pair.player+"／莊 "+pair.banker+"（"+name+"）"+
@@ -148,10 +148,10 @@ function computeSingle(pair){
   const outcome=resultOf(pair);
   const primaryReport=fresh.syncHistory([outcome],
     [{player:pair.player,banker:pair.banker}]);
-  // Shadow branch shares this observation; never count it as extra evidence.
-  const report=root.BBBDepleteMC?.attachShadow?
-    root.BBBDepleteMC.attachShadow(primaryReport,pair):
-    {...primaryReport,deplete_mc:{status:"unavailable",mode:"shadow",affects_display:false}};
+  // Blend the shared observation once; retain original uncertainty and quality limits.
+  const report=root.BBBDepleteMC?.attachPrediction?
+    root.BBBDepleteMC.attachPrediction(primaryReport,pair):
+    {...primaryReport,deplete_mc:{status:"unavailable",mode:"candidate",affects_display:false}};
   if(fresh.history.length!==1||report.history_length!==1||
     report.point_score_observation_count!==1||
     fresh.quant.physics.size!==96)throw Error("independent_particle_contract_failed");

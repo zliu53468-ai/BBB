@@ -174,10 +174,10 @@ const live=mount({engine:require("./physics_forecast_first_runtime.js").PhysicsF
  deplete:require("./deplete_mc_runtime.js")});
 live.elements.btnEnd.click();live.ui.submitPoints(5,3);
 const report=live.ui.latestReport;
-assert.equal(report.deplete_mc.mode,"shadow");assert.equal(report.deplete_mc.affects_display,false);
+assert.equal(report.deplete_mc.mode,"candidate");assert.equal(report.deplete_mc.affects_display,true);
 assert.equal(report.deplete_mc.status,"complete");
-assert(live.elements.message.textContent.includes("僅對照，不影響本次訊號"));
+assert(live.elements.message.textContent.includes("已納入本次預測：原模型 80%＋Deplete 20%"));
 const realGuard=require("./point_signal_quality_guard.js").decide(report);
 assert.equal(live.elements.directionText.textContent,realGuard.direction==="SKIP"?"觀望":realGuard.direction==="B"?"莊":"閒");
 live.ui.submitPoints(8,4);assert.equal(live.ui.model.history.length,1);
-console.log("PASS real PF/deplete UI wiring: primary direction retained and comparison-only label visible");
+console.log("PASS real PF/deplete UI wiring: blended direction used and active weighting label visible");
