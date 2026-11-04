@@ -21,7 +21,7 @@ assert(runtime.includes("updated[i]=chosen?priorWeight*pHat:0"),
   "posterior must still use the same weight times likelihood");
 assert(runtime.includes("this.rng()*likelihoodMass<mass"));
 assert(physics.includes("function summarizeHypotheses(physics,_history,{samplesPerParticle=96}={}){"));
-assert(panel.includes("lossGate:.035,simulationsPerParticle:96,"));
+assert(panel.includes("exactEnumeration:true"));
 const engine=new PhysicsForecastFirstEngine();
 assert.equal(engine.simulationsPerParticle,96);
 assert.equal(engine.quant.physics.size,96);

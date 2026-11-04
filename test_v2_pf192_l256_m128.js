@@ -25,9 +25,9 @@ assert(runtime.includes("this.lastESS<this.size*.5"),
  "ESS=0.5N threshold must not be altered");
 assert(physics.includes("{samplesPerParticle=96}={})"),
  "the physical EV helper's default must be 128");
-assert(panel.includes("lossGate:.035,simulationsPerParticle:96,"));
-assert(panel.includes("quantOptions:{lambda:.82,alpha:.15,particles:96}"),
- "UI must explicitly set the requested 96 particles");
+assert(panel.includes("exactEnumeration:true"));
+assert(panel.includes("ExactScoreEngine:PhysicsForecastFirstEngine"),
+ "web must explicitly select the exhaustive single-score adapter; legacy PF96 remains available");
 assert.equal(BASE_EV_GATE,.005);assert.equal(OVERDRIVE_GATE,0);
 assert.equal(ONE_HAND_CUSHION,.035);
 const engine=new PhysicsForecastFirstEngine();

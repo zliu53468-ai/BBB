@@ -1,26 +1,15 @@
-/**
- * BBB V2.4 WEB ONLY — independent point-score input and per-round PF.
- *
- * No historical B/P/T bootstrap and NO accumulated particle posterior:
- * EACH (Player final total, Banker final total) pair is evaluated with a
- * freshly created V2.3 PhysicsForecastFirstEngine(N96/L256/M96).
- * Old V2.3 licensed history and score logs are never read or mutated.
- * An optional license-scoped audit of prior score pairs is NOT model input.
- * All physics/EV/Markov/gate implementations remain unchanged.
- */
+/** Web-only exact single-score marginalization. Each request uses one resolved score; audit is never model history. */
 (function(root){
 "use strict";
 const signalGuard=root?.BBBPointSignalQualityGuard||
   (typeof module==="object"&&module.exports&&typeof require==="function"?
     require("./point_signal_quality_guard.js"):null);
-if(!root||!root.document||!root.BBBPhysicsForecastFirst||
+if(!root||!root.document||!root.BBBExactScore||
   !signalGuard||
   typeof URLSearchParams!=="function"||
   new URLSearchParams(root.location?.search||"").get("quant256")==="frozen")return;
-const {PhysicsForecastFirstEngine,VERSION}=root.BBBPhysicsForecastFirst;
-const CONFIG={threshold:.005,lossGate:.035,simulationsPerParticle:96,
-  observedSamples:12000,quantOptions:{lambda:.82,alpha:.15,particles:96},
-  independentFinalScoreMode:true,exactSingleScore:true};
+const {ExactScoreEngine:PhysicsForecastFirstEngine,VERSION}=root.BBBExactScore;
+const CONFIG={independentFinalScoreMode:true,exactEnumeration:true};
 // Compatibility-only name: never import or replay this old B/P/T history.
 const KEY="bgs256d_frozen_6x15_forward_v18";
 const AUDIT_KEY="bgs_v24_independent_point_audit";
@@ -69,7 +58,7 @@ function renderDrawLengths(report){
     "當局 4／5／6 張："+series(d.current_length_probability)+"\n"+
     "下一局 4／5／6 張："+series(d.next_length_probability)+"\n"+
     "聯合機率（下局依序 4／5／6 張）：\n"+rows.join("\n")+"\n"+
-    "僅為虛擬牌靴推估，實際張數未知；不影響 EV、方向或觀望。";
+    "僅為八副牌假設下的精確推估，實際張數未知；不影響 EV、方向或觀望。";
 }
 function clearView(){
   const dir=el("directionText"),code=el("directionCode"),
@@ -78,12 +67,12 @@ function clearView(){
   if(dir)dir.textContent="—";
   if(code)code.textContent="等待點數";
   if(message)message.textContent=
-    "輸入閒、莊最終點數（0–9），再按開始分析；每次都重新建立 96 個粒子。";
+    "輸入閒、莊最終點數（0–9），再按開始分析；每次獨立查核全部合法牌張組成。";
   if(conf)conf.textContent="—";
   if(regime)regime.textContent="等待本局結算";
   if(strength)strength.textContent="—";
   if(orb)orb.className="direction-orb idle";
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
+  if(pill)pill.textContent="單局精確枚舉 · 八副牌假設";
   root.__BBB_V3_CAPITAL_UI__?.renderStake(null);
   renderDrawLengths(null);
 }
@@ -105,10 +94,10 @@ function render(report,pair){
   if(code)code.textContent=skip?"SKIP / LOW SIGNAL":
     (dir==="B"?"BANKER":"PLAYER")+
     (qualified?" / EV VERIFIED":" / EV COMPARISON");
-  if(conf)conf.textContent="模擬 EV 偏移 "+
+  if(conf)conf.textContent="模型 EV 偏移 "+
     (report.ev_gap_deviation*100).toFixed(2)+"%（非勝率）";
-  if(regime)regime.textContent="單局獨立模擬｜"+
-    (skip?"EV 差距較小，觀望":"顯示模擬 EV 較高方向")+
+  if(regime)regime.textContent="單局獨立精算｜"+
+    (skip?"EV 差距較小，觀望":"顯示模型 EV 較高方向")+
     (signal?"｜原研究門檻已通過":"｜原研究門檻未通過")+
     (qualified?"｜實測 EV 通過":"｜未確認正 EV");
   const percent=v=>Number.isFinite(v)?(v*100).toFixed(3)+"%":"無資料";
@@ -118,16 +107,19 @@ function render(report,pair){
     "｜目前 EV 差距 "+percent(display.gap)+
     "｜莊 EV "+percent(evB)+"｜閒 EV "+percent(evP);
   if(orb)orb.className="direction-orb "+(skip?"idle":dir==="B"?"banker":"player");
-  if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
+  if(pill)pill.textContent="單局精確枚舉 · 八副牌假設";
+  const modelProb=report.physical_ev?.model_probability;
+  const probabilityText=modelProb?"｜模型機率（含和局）：莊 "+percent(modelProb.B)+"、閒 "+percent(modelProb.P)+"、和 "+percent(modelProb.T):"";
   const name=resultOf(pair)==="B"?"莊":resultOf(pair)==="P"?"閒":"和";
   if(message)message.textContent=
     "已結算：閒 "+pair.player+"／莊 "+pair.banker+"（"+name+"）"+
-    "｜本次全新 96 粒子，L256／M96"+
+    "｜本次獨立精確枚舉，6,958 種扣牌組成"+
     "｜下一局顯示訊號："+(skip?"觀望":dir==="B"?"莊":"閒")+
-    "｜模擬莊 EV "+(evB*100).toFixed(2)+"%"+
+    "｜模型莊 EV "+(evB*100).toFixed(2)+"%"+
     "、閒 EV "+(evP*100).toFixed(2)+"%"+
     "｜觀望判斷："+guardReason+
     "｜模式："+(display.entry_profile||"品質不足")+
+    probabilityText+
     "｜原研究訊號門檻 "+percent(report.dynamic_gate)+"（"+(signal?"通過":"未通過")+"）"+
     "｜最終點數不等於實際牌張，較高 EV 不代表正 EV 或較高實際勝率";
   // Suppress stake suggestions when quality display guard abstains.
@@ -135,7 +127,7 @@ function render(report,pair){
   root.__BBB_V3_CAPITAL_UI__?.renderStake(stakeReport);
   renderDrawLengths(report);
 }
-/** Fresh PF96 with one scored hand; NEVER sync more than one outcome. */
+/** One resolved hand, exhaustive conditional table, no historical state. */
 function computeSingle(pair){
   if(!validPair(pair))throw Error("invalid_point_observation");
   const fresh=new PhysicsForecastFirstEngine(CONFIG);
@@ -144,7 +136,7 @@ function computeSingle(pair){
     [{player:pair.player,banker:pair.banker}]);
   if(fresh.history.length!==1||report.history_length!==1||
     report.point_score_observation_count!==1||
-    fresh.quant.physics.size!==96)throw Error("independent_particle_contract_failed");
+    report.exact_enumeration?.complete!==true)throw Error("independent_exact_score_contract_failed");
   if(!Number.isFinite(report.ev_banker)||!Number.isFinite(report.ev_player)||
     report.physical_ev?.simulation_exhausted)throw Error("physical_ev_unavailable");
   return{fresh,report,outcome};
@@ -204,7 +196,7 @@ function restorePrevious(){
     if(restored){
       model=restored.fresh;lastReport=restored.report;
       render(restored.report,next[next.length-1]);
-      status("已返回上一筆點數；該筆重新使用全新的 96 粒子模擬。");
+      status("已返回上一筆點數；該筆重新獨立計算。");
       return restored.report;
     }
     model=new PhysicsForecastFirstEngine(CONFIG);lastReport=null;
