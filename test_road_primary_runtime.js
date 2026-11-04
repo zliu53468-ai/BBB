@@ -14,7 +14,7 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
  for(const [file,hash]of Object.entries(fixture.protected_hashes)){
   if(file==='auth-client.js'){
     // V2.4 only bumps the web panel cache key, not authentication flow.
-    const raw=fs.readFileSync(file,'utf8').replace(/^  "deplete_mc_runtime\.js[^\n]*\n/gm,'').replace(/-deplete-shadow-v1/g,'').replace(/-exact-score-v1/g,'')
+    const raw=fs.readFileSync(file,'utf8').replace(/^  "deplete_mc_runtime\.js[^\n]*\n/gm,'').replace(/-deplete-(?:shadow|active)-v1/g,'').replace(/-exact-score-v1/g,'')
       .replace('quant256_online_runtime.js?v=20261104-pf96-l256-m96-v1',
         'quant256_online_runtime.js?v=20261103-v23-points-v1')
       .replace('physics_forecast_first_runtime.js?v=20261104-two-hand-length-v1',
@@ -34,7 +34,7 @@ const signature=p=>plain({p:p.finalProbability.finalPB,physics:p.finalProbabilit
     assert(html.includes('id="drawLengthDiagnostics"')&&
       html.includes('id="drawLengthJointMatrix"'),
       'Two-hand length diagnostics must appear in new web UI');
-    const raw=html.replace(/-deplete-shadow-v1/g,'').replace(/-exact-score-v1/g,'')
+    const raw=html.replace(/-deplete-(?:shadow|active)-v1/g,'').replace(/-exact-score-v1/g,'')
       .replace(/\n      <details class="bbb-clear-details" id="drawLengthDiagnostics" hidden>[\s\S]*?      <\/details>/, '')
       .replace('auth-client.js?v=20261104-visible-gate-v4',
         'auth-client.js?v=20261103-v25-ev-manual-v1');

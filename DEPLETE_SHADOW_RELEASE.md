@@ -1,3 +1,5 @@
+> Historical shadow release: superseded by DEPLETE_ACTIVE_RELEASE.md. The web panel now uses the user-requested 80/20 active blend.
+
 # Independent Deplete MC V1 — web shadow release
 
 The existing PF96/V4 model remains the sole source of formal Banker/Player/SKIP display. The user explicitly selected comparison-only deployment after the candidate failed to demonstrate higher hit rate or commission-adjusted return. LINE is unchanged.

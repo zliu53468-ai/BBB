@@ -14,7 +14,7 @@
  const BASE=Object.freeze({B:.458597,P:.446247,T:.095156});
  const INITIAL=Object.freeze([128,32,32,32,32,32,32,32,32,32]);
  const CONFIG=Object.freeze({batches:8,shoesPerBatch:32,samplesPerShoe:128,
-  proposalBudget:4096,candidateWeight:.20,defaultMode:'shadow'});
+  proposalBudget:4096,candidateWeight:.20,defaultMode:'candidate'});
  const valid=v=>Number.isInteger(v)&&v>=0&&v<=9;
  const rngFor=seed=>{let s=seed>>>0||0xa341316c;return()=>{
   s^=s<<13;s^=s>>>17;s^=s<<5;return(s>>>0)/4294967296;
@@ -123,5 +123,11 @@
    mode:'shadow',affects_display:false,validated_hit_rate_gain:false,
    reason:'auxiliary_calculation_unavailable'}};}
  }
- return Object.freeze({VERSION,CONFIG,estimate,attach,attachShadow,dealWithUniforms});
+ function attachPrediction(report,pair){
+  try{return attach(report,pair,{mode:'candidate'});}
+  catch(_){return {...report,deplete_mc:{version:VERSION,status:'unavailable',
+   mode:'candidate',affects_display:false,validated_hit_rate_gain:false,
+   reason:'auxiliary_calculation_unavailable'}};}
+ }
+ return Object.freeze({VERSION,CONFIG,estimate,attach,attachShadow,attachPrediction,dealWithUniforms});
 });
