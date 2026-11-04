@@ -96,8 +96,8 @@ assert.deepEqual(moderateStats,{B:44,P:37,SKIP:19,rawB:56,rawP:44,total:100},
 assert.equal(stats.rawB,56);assert.equal(stats.rawP,44);
 assert.deepEqual(v3Stats,{B:36,P:34,SKIP:30,rawB:56,rawP:44,total:100},
   "V3 rollback must stay exact");
-assert(stats.SKIP>=35&&stats.SKIP<=45,
-  "V4 should be visibly more selective without an extreme 50%+ fixed-score SKIP");
+assert.deepEqual(stats,{B:33,P:29,SKIP:38,rawB:56,rawP:44,total:100},
+  "V4 fixed-score selectivity must match BGS; no raw direction changes");
 const auth=fs.readFileSync("auth-client.js","utf8");
 const idx=auth.indexOf("point_signal_quality_guard.js");
 const panel=auth.indexOf("quant256_online_panel.js");
