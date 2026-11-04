@@ -148,7 +148,8 @@
     history_length:1,point_score_observation_count:1,
     observed_card_evidence:false,physical_ev:physical,
     ev_banker:physical.ev_banker,ev_player:physical.ev_player,
-    quality:early.diagnostics};
+    quality:early.diagnostics,early_shoe_guard:early.diagnostics,
+    effective_research_gate:null,research_signal:{direction:null,available:false}};
    const eor=computeEOR(pf,pair,{particles:this.config.eorParticleCount,
     samples:this.config.eorSamples});
    const checked=deplete.attachShadow(core,pair);
