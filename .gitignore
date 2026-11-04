@@ -1,0 +1,5 @@
+# Generated reproducibly by the validation workflow; retain only aggregate report in Git.
+tools/exact_score/exact_scores.tsv
+tools/exact_score/comparison.tsv
+tools/exact_score/million_results.tsv
+tools/exact_score/*.cases.bin

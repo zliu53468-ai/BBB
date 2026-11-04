@@ -92,6 +92,6 @@ assert(auth.includes("quant256_online_runtime.js?v=20261104-pf96-l256-m96-v1"));
 assert(auth.includes("quant256_online_panel.js?v=20261104-visible-gate-v4"));
 assert(page.includes("auth-client.js?v=20261104-visible-gate-v4"));
 assert(page.includes("viewport-fit.js?v=20261102-mobile-stable-v2"));
-assert(panel.includes("單局獨立模擬"),"web panel uses independently scored hands while underlying distribution guard is unchanged");
+assert(panel.includes("單局獨立精算"),"web panel uses independently scored hands while underlying distribution guard is unchanged");
 assert(!page.includes("side-bet-card"));
 console.log("PASS V2 dynamic distribution monitor: 8/16/24 causal Bayes shift, unchanged physical EV formula/96-256-96, no direction flip, replay, auth and mobile UI");
