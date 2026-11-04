@@ -28,7 +28,9 @@ const opposed=Array.from({length:20},()=>({eor_direction:'B',actual:'P'}));asser
 assert.equal(x.diagnostic(opposed.slice(0,3)).penalty,0);
 const auth=fs.readFileSync('auth-client.js','utf8'),loaders=auth.match(/const scripts=\[[\s\S]*?\];/)[0];
 assert(!/LinUCB|quant256|road|markov|physics_forecast/.test(loaders));
-assert(loaders.includes('pure_card_panel.js'));
+// 舊核心保留作回復測試；新版正式入口可切換至總點數時間序列。
+assert(loaders.includes('pure_card_panel.js')||
+ (loaders.includes('point_transition_runtime.js')&&loaders.includes('point_transition_panel.js')));
 const canonical=auth.replace(/\r\n/g,'\n').replace(/const scripts=\[[\s\S]*?\];/,'const scripts=[];');
 assert.equal(require('crypto').createHash('sha256').update(canonical).digest('hex'),
  '21485e0daaf2436ec343bc672b70a1587f093f374c2afc1175e2b80a7a33030a','license logic outside script inventory must be unchanged');
