@@ -92,7 +92,7 @@
   const direction=evB>=evP?'B':'P',deviation=evB-evP-baseGap;
   // These branches share the SAME observation; do not multiply likelihoods,
   // shrink uncertainty as independent evidence, or alter the V4 thresholds.
-  const d=report.early_shoe_guard;
+  const d=report.adaptive_score_smoothing||report.early_shoe_guard;
   const quality={...d,mc_gap_se:Math.max(d.mc_gap_se,diagnostic.paired_mc_gap_se)};
   const gate=report.effective_research_gate;
   const available=Number.isFinite(gate)&&Math.abs(deviation)>=gate;
