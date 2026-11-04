@@ -43,7 +43,7 @@
         <div class="brand-copy">
           <p class="eyebrow">BANKER SLAYER · AI ANALYSIS</p>
           <h1>莊家剋星AI百家程式</h1>
-          <p class="brand-subtitle">即時牌路分析・智慧決策輔助</p>
+          <p class="brand-subtitle">逐張牌面分析・局部牌靴推估</p>
         </div>
       </div>
       <div class="status-area">
@@ -58,10 +58,10 @@
         <div class="metrics">
           <div class="metric"><span>物理 EV 差異（非勝率）</span><strong id="confidence">—</strong></div>
           <div class="metric"><span>下注狀態</span><strong id="regime">—</strong></div>
-          <div class="metric"><span>莊／閒 EV（模擬）</span><strong id="strength">—</strong></div>
+          <div class="metric"><span>莊／閒 EV（理論）</span><strong id="strength">—</strong></div>
         </div>
       </div>
-      <div class="message" id="message" aria-live="polite">請輸入當局閒、莊點數，再按開始分析</div>
+      <div class="message" id="message" aria-live="polite">請輸入當局閒、莊逐張牌面，再按開始分析</div>
       <details class="bbb-clear-details" id="drawLengthDiagnostics" hidden>
         <summary>發牌張數聯合模擬：當局 × 下一局（4／5／6 張）</summary>
         <div class="message" id="drawLengthJointMatrix" style="white-space:pre-line;line-height:1.75;" aria-live="polite"></div>
@@ -77,20 +77,20 @@
           <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
         </div>
       </div>
-      <div class="bbb-point-entry" id="bbbPointEntry" aria-label="當局最終點數輸入">
-        <div class="bbb-point-heading"><strong>輸入當局最終點數</strong><small>左閒、右莊 · 手動開始分析下一局</small></div>
+      <div class="bbb-point-entry" id="bbbPointEntry" aria-label="當局逐張牌面輸入">
+        <div class="bbb-point-heading"><strong>輸入當局逐張牌面</strong><small>左閒、右莊 · 手動開始分析下一局</small></div>
         <div class="bbb-point-grid">
           <label for="pointPlayerFinal" class="bbb-player-label">閒 PLAYER
-            <input id="pointPlayerFinal" type="number" min="0" max="9" step="1"
-              inputmode="numeric" autocomplete="off" placeholder="輸入 0–9" aria-label="閒家最終點數">
+            <input id="pointPlayerFinal" type="text" maxlength="20"
+              inputmode="text" autocomplete="off" placeholder="例如 J+5+2" aria-label="閒家逐張牌面">
           </label>
           <label for="pointBankerFinal" class="bbb-banker-label">莊 BANKER
-            <input id="pointBankerFinal" type="number" min="0" max="9" step="1"
-              inputmode="numeric" autocomplete="off" placeholder="輸入 0–9" aria-label="莊家最終點數">
+            <input id="pointBankerFinal" type="text" maxlength="20"
+              inputmode="text" autocomplete="off" placeholder="例如 3+4" aria-label="莊家逐張牌面">
           </label>
         </div>
         <button class="action-btn primary bbb-point-analyze" id="btnPointAnalyze" type="button">開始分析</button>
-        <p id="pointInputStatus" role="status" aria-live="polite">輸入兩邊 0–9 點數後按開始分析；電腦可按 Enter</p>
+        <p id="pointInputStatus" role="status" aria-live="polite">每邊輸入 2～3 張牌，如 J+5+2；不是最終總點。電腦可按 Enter。</p>
       </div>
       <p id="experimentalNoSkipStatus" class="experiment-note" role="status" aria-live="polite" hidden>未驗證實驗版｜不保證勝率；測試方向不等於正式下注資格</p>
       <p id="localCalibrationStatus" role="status" aria-live="polite">本機校準：等待模型就緒</p>
@@ -107,7 +107,7 @@
       <details class="bbb-clear-details"><summary>結束分析與資料清除說明</summary><div class="clear-note">結束分析會清空此開通碼的牌路、分析快照與歷史觀測；會員裝置授權仍會保留。未連線裝置將在下次驗證時同步清空。</div></details>
     </section>
 
-    <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">每局莊／閒／和結果保留在本機，可返回上一局或匯出離線紀錄。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
+    <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">逐張牌面、局部模型與已結算下一局結果保留在本機；漏局或換桌請重設連續診斷。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
 
     <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
     </div>
@@ -115,7 +115,7 @@
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
-  <script src="auth-client.js?v=20261104-visible-gate-v4-exact-score-v1-deplete-active-v1"></script>
+  <script src="auth-client.js?v=20261105-local-card-v1"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
