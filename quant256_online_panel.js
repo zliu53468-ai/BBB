@@ -119,6 +119,11 @@ function render(report,pair){
     "｜莊 EV "+percent(evB)+"｜閒 EV "+percent(evP);
   if(orb)orb.className="direction-orb "+(skip?"idle":dir==="B"?"banker":"player");
   if(pill)pill.textContent="PHYSICS 5× · ROAD 0.1× · V2.6 點數平滑";
+  const comparison=report.deplete_mc;
+  const depleteText=comparison?.status==="complete"?
+    "｜獨立牌組對照：莊 EV "+percent(comparison.ev_banker)+
+      "、閒 EV "+percent(comparison.ev_player)+"（僅對照，不影響本次訊號）":
+    "｜牌組對照未完成，正式訊號仍使用原 PF";
   const name=resultOf(pair)==="B"?"莊":resultOf(pair)==="P"?"閒":"和";
   if(message)message.textContent=
     "已結算：閒 "+pair.player+"／莊 "+pair.banker+"（"+name+"）"+
@@ -128,6 +133,7 @@ function render(report,pair){
     "、閒 EV "+(evP*100).toFixed(2)+"%"+
     "｜觀望判斷："+guardReason+
     "｜模式："+(display.entry_profile||"品質不足")+
+    depleteText+
     "｜原研究訊號門檻 "+percent(report.dynamic_gate)+"（"+(signal?"通過":"未通過")+"）"+
     "｜最終點數不等於實際牌張，較高 EV 不代表正 EV 或較高實際勝率";
   // Suppress stake suggestions when quality display guard abstains.
@@ -140,8 +146,12 @@ function computeSingle(pair){
   if(!validPair(pair))throw Error("invalid_point_observation");
   const fresh=new PhysicsForecastFirstEngine(CONFIG);
   const outcome=resultOf(pair);
-  const report=fresh.syncHistory([outcome],
+  const primaryReport=fresh.syncHistory([outcome],
     [{player:pair.player,banker:pair.banker}]);
+  // Shadow branch shares this observation; never count it as extra evidence.
+  const report=root.BBBDepleteMC?.attachShadow?
+    root.BBBDepleteMC.attachShadow(primaryReport,pair):
+    {...primaryReport,deplete_mc:{status:"unavailable",mode:"shadow",affects_display:false}};
   if(fresh.history.length!==1||report.history_length!==1||
     report.point_score_observation_count!==1||
     fresh.quant.physics.size!==96)throw Error("independent_particle_contract_failed");

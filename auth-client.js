@@ -31,7 +31,8 @@ const scripts=[
   "markov_residual_runtime.js?v=20261103-v22-markov-shadow-v1",
   "physics_forecast_first_runtime.js?v=20261104-two-hand-length-v1-exact-score-v1",
   "point_signal_quality_guard.js?v=20261104-selective-entry-v4",
-  "quant256_online_panel.js?v=20261104-visible-gate-v4-exact-score-v1",
+  "deplete_mc_runtime.js?v=20261104-deplete-shadow-v1",
+  "quant256_online_panel.js?v=20261104-visible-gate-v4-exact-score-v1-deplete-shadow-v1",
   "quant256_bankroll_ui.js?v=20261101-e323-v2-restore"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;

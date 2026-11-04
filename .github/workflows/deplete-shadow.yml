@@ -1,0 +1,31 @@
+name: Independent deplete shadow and synthetic holdout
+on:
+  pull_request:
+    branches: [main]
+    paths: ["deplete_mc_runtime.js", "test_deplete_shadow.js", "tools/validate_deplete.js", "validation/deplete_*.json", "quant256_online_panel.js", "auth-client.js", ".github/workflows/deplete-shadow.yml"]
+  push:
+    branches: [main]
+    paths: ["deplete_mc_runtime.js", "test_deplete_shadow.js", "tools/validate_deplete.js", "validation/deplete_*.json", "quant256_online_panel.js", "auth-client.js", ".github/workflows/deplete-shadow.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deplete-shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node --check deplete_mc_runtime.js && node --check quant256_online_panel.js
+      - name: Independent million-case synthetic validation
+        run: WRITE_DEPLETE_TRACE=1 node tools/validate_deplete.js
+      - name: All inputs preserve primary forecasts, failure fallback, real UI
+        run: node test_deplete_shadow.js && node test_v23_point_ui.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deplete-shadow-million-validation
+          path: |
+            validation/deplete_validation.json
+            validation/deplete_cases.bin
