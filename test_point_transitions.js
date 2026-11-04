@@ -1,0 +1,38 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('fs'),crypto=require('crypto');
+const api=require('./point_transition_runtime.js'),{PointTransitionPredictor,StatisticalV4Filter,DEFAULTS}=api;
+const m=new PointTransitionPredictor();
+assert.throws(()=>m.observe(10,3));assert.throws(()=>m.observe(5.5,3));assert.equal(m.totalRounds,0);
+const first=m.observe(0,0);assert.equal(first.direction,'SKIP');assert.equal(first.sampleSize,0);
+m.observe(0,9);assert.equal(m.matrix.row(0)[9],1);
+assert.equal(m.events[0].actualNext,'B');assert.equal(m.events[1].actualNext,null);
+const frozen=JSON.stringify(m.snapshot());m.forecast();m.forecast();assert.equal(JSON.stringify(m.snapshot()),frozen);
+const restored=new PointTransitionPredictor(JSON.parse(frozen));assert.deepEqual(restored.snapshot(),m.snapshot());
+restored.observe(9,0);assert.equal(restored.matrix.row(9)[90],1);restored.undo();assert.deepEqual(restored.snapshot(),m.snapshot());
+const beforeBreak=restored.matrix.snapshot();restored.startNewSequence();restored.observe(9,9);
+assert.deepEqual(restored.matrix.snapshot(),beforeBreak,'new sequence must not create a fabricated transition');
+const learning=new PointTransitionPredictor();
+for(let i=0;i<14;i++){learning.observe(0,0);learning.observe(0,9);}
+learning.consecutiveSkips=4;const signal=learning.observe(0,0);
+assert.equal(signal.direction,'B');assert.equal(signal.relaxed,true);assert.equal(learning.consecutiveSkips,0);
+assert.equal(learning.forecast().relaxed,false,'a signal resets the threshold for the next evaluation');
+assert.equal(learning.matrix.row(0)[9],14);
+const row=Array(100).fill(0);row[9]=10;row[90]=2;
+const filter=new StatisticalV4Filter(DEFAULTS),normal=filter.evaluate(row,false),relaxed=filter.evaluate(row,true);
+assert.equal(relaxed.threshold,normal.threshold*.75);
+row[9]=1;row[90]=0;assert.equal(filter.evaluate(row,true).direction,'SKIP','relaxation never bypasses minimum support');
+const tieRow=Array(100).fill(0);tieRow[55]=100;assert.equal(filter.evaluate(tieRow,true).direction,'SKIP');
+assert.throws(()=>new PointTransitionPredictor({version:'wrong'}));
+assert.throws(()=>new api.StateTransitionMatrix({'101':Array(100).fill(0)}));
+// Persisted global matrix keeps older transitions after recent details are bounded.
+const long=new PointTransitionPredictor();for(let i=0;i<2200;i++)long.observe(0,i%2?9:0);
+assert.equal(long.totalRounds,2200);assert.equal(long.events.length,2161);
+assert.equal(long.matrix.row(0)[9],1100);
+const roundTrip=new PointTransitionPredictor(JSON.parse(JSON.stringify(long.snapshot())));
+roundTrip.observe(0,0);assert.equal(roundTrip.totalRounds,2201);assert.equal(roundTrip.matrix.row(9)[0],1100);
+const auth=fs.readFileSync('auth-client.js','utf8'),list=auth.match(/const scripts=\[[\s\S]*?\];/)[0];
+assert(!/pure_card|quant256|physics|deplete|eor|road|context/i.test(list));
+assert(list.includes('point_transition_runtime.js')&&list.includes('point_transition_panel.js'));
+const canonical=auth.replace(/\r\n/g,'\n').replace(/const scripts=\[[\s\S]*?\];/,'const scripts=[];');
+assert.equal(crypto.createHash('sha256').update(canonical).digest('hex'),'21485e0daaf2436ec343bc672b70a1587f093f374c2afc1175e2b80a7a33030a');
+console.log('PASS cumulative transitions, exact-state support, causal settlement, reload persistence, bounded details/full matrix, undo, sequence break, 25% relaxation/reset, support floor and license integrity');
