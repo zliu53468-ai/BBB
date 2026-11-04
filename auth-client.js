@@ -30,7 +30,7 @@ const scripts=[
   "shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1",
   "markov_residual_runtime.js?v=20261103-v22-markov-shadow-v1",
   "physics_forecast_first_runtime.js?v=20261104-two-hand-length-v1",
-  "point_signal_quality_guard.js?v=20261104-selective-entry-v3",
+  "point_signal_quality_guard.js?v=20261104-selective-entry-v4",
   "quant256_online_panel.js?v=20261104-two-hand-length-v1",
   "quant256_bankroll_ui.js?v=20261101-e323-v2-restore"
 ];
