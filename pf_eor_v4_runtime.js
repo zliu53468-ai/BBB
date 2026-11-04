@@ -48,14 +48,16 @@
    !Number.isInteger(particles)||particles<1||particles>rows.length||
    !Number.isInteger(samples)||samples<16||samples>1024)
     throw Error("invalid_eor_samples");
-  const delta=Array(10).fill(0),supported=Array(10).fill(0);
-  let scenarios=0;
+  const delta=Array(10).fill(0),supported=Array(10).fill(0),pointMass=Array(10).fill(0);
+  let scenarios=0,validSampledParticles=0;
   // 分層選取後驗粒子；每次在同一假想組成中扣掉一張 0–9 點數牌，
   // 與未再扣牌版本使用相同亂數，降低 EOR 差分的蒙地卡羅雜訊。
   for(let i=0;i<particles;i++){
    const idx=Math.min(rows.length-1,Math.floor((i+.5)*rows.length/particles));
    const counts=rows[idx],total=counts.reduce((a,b)=>a+b,0);
    if(total<7)continue;
+   validSampledParticles++;
+   for(let rank=0;rank<10;rank++)pointMass[rank]+=counts[rank]/total;
    const rng=seeded(0x45d3e77^Math.imul(pair.player+1,0x9e3779b1)^
     Math.imul(pair.banker+1,0x85ebca6b)^Math.imul(idx+1,0x27d4eb2f));
    // 同一個假想剩餘組成計算 10 種點數移除的配對差值；
@@ -74,8 +76,8 @@
   const effects=delta.map((v,i)=>supported[i]?v/supported[i]:null);
   if(effects.some(v=>v===null))throw Error("eor_insufficient_support");
   const maxAbs=Math.max(...effects.map(abs));
-  const weightedMean=effects.reduce((v,e,i)=>v+e*(rows[0]?.[i]??0),0)/
-    (rows[0]?.reduce((a,b)=>a+b,0)||1);
+  const weightedMean=effects.reduce((v,e,i)=>v+e*pointMass[i],0)/
+    Math.max(1,validSampledParticles);
   return{effects_by_point:effects,max_abs_ev_gap_delta:maxAbs,
    weighted_ev_gap_delta:weightedMean,simulated_paired_scenarios:scenarios,
    hypothetically_removed_cards:1,diagnostic_only:true,
