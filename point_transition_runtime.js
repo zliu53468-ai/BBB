@@ -6,9 +6,19 @@
 })(typeof self!=='undefined'?self:this,function(){
  'use strict';
  const VERSION='BBB_POINT_TRANSITIONS_ADAPTIVE_V1';
- const DEFAULTS=Object.freeze({minSamples:12,minDecisive:8,baseGap:.06,z:1.96,
-  relaxation:.75,relaxAfterSkips:4,windows:Object.freeze([240,720,2160,0]),
-  retainedEvents:2161,priorPerOutcome:.5,targetWindow:6,targetSignalsMin:1,targetSignalsMax:2});
+ // 保留既有儲存版本，避免已累積的總點數資料因 V4 升級而無法恢復。
+ const MODEL_REVISION='TOTAL_POINTS_V4_DYNAMIC_1024';
+ const DEFAULTS=Object.freeze({
+  // 最低樣本限制不會因連續觀望而取消，避免「保底」憑空製造高信心。
+  minSamples:12,minDecisive:8,priorPerOutcome:.5,
+  // 依「累積輸入筆數」調整，並非牌張數或任何物理發牌狀態。
+  baseGap:.12,minGap:.04,gapDecayPerRound:.0015,
+  // 已連續觀望超過六次後，下一次評估暫時降低為正常門檻的七折。
+  relaxation:.7,relaxAfterSkips:6,
+  particleCount:1024,particleStdMax:.08,particleOverrideGap:.045,
+  windows:Object.freeze([240,720,2160,0]),retainedEvents:2161,
+  targetWindow:6,targetSignalsMin:1,targetSignalsMax:2
+ });
  const valid=x=>Number.isInteger(x)&&x>=0&&x<=9;
  const outcome=state=>state%10>Math.floor(state/10)?'B':state%10<Math.floor(state/10)?'P':'T';
  function encode(player,banker){if(!valid(player)||!valid(banker))throw Error('閒、莊必須各為 0～9 的整數總點');return player*10+banker;}
@@ -35,25 +45,94 @@
   snapshot(){return Object.fromEntries(Object.entries(this.rows).map(([k,v])=>[k,v.slice()]));}
  }
 
- class StatisticalV4Filter{
+
+ // 重現性亂數來源：相同觀測頻率每次重繪得到相同的可信度數值。
+ // 不借助牌數、牌組組成或任何發牌物理資訊。
+ function seededRandom(seed){
+  let s=seed>>>0;
+  return function(){
+   s=(s+0x6D2B79F5)>>>0;
+   let t=s;t=Math.imul(t^(t>>>15),t|1);
+   t^=t+Math.imul(t^(t>>>7),t|61);
+   return ((t^(t>>>14))>>>0)/4294967296;
+  };
+ }
+ function frequencySeed(counts){
+  let seed=2166136261;
+  for(const value of [counts.B,counts.P,counts.T]){
+   seed=Math.imul(seed^(value>>>0),16777619)>>>0;
+  }
+  return seed||1;
+ }
+
+ class ParticleConfidenceSampler{
   constructor(config){this.config=config;}
-  evaluate(row,relaxed){
+  // 1024 個「條件機率後驗粒子」，不是實體牌組粒子。
+  // 將 100 個下一局總點狀態的頻率依莊／閒／和聚合，再以
+  // Dirichlet(B+0.5, P+0.5, T+0.5) 產生 1024 個可能的下一局機率向量。
+  // 標準差代表歷史估計的不確定性，不代表真實未來局的勝率保證。
+  sample(counts){
+   const next=seededRandom(frequencySeed(counts));
+   const normal=()=>{
+    const u=Math.max(next(),1e-12),v=next();
+    return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+   };
+   const gamma=shape=>{
+    if(shape<1)return gamma(shape+1)*Math.pow(Math.max(next(),1e-12),1/shape);
+    const d=shape-1/3,c=1/Math.sqrt(9*d);
+    for(let tries=0;tries<1000;tries++){
+     const x=normal(),v0=1+c*x;
+     if(v0<=0)continue;
+     const v=v0*v0*v0,u=Math.max(next(),1e-12);
+     if(u<1-.0331*x*x*x*x||Math.log(u)<.5*x*x+d*(1-v+Math.log(v)))return d*v;
+    }
+    throw Error('後驗粒子採樣未收斂');
+   };
+   let meanB=0,meanP=0,meanGap=0,m2B=0,m2P=0,m2Gap=0;
+   for(let i=1;i<=this.config.particleCount;i++){
+    const b=gamma(counts.B+this.config.priorPerOutcome),
+     p=gamma(counts.P+this.config.priorPerOutcome),
+     t=gamma(counts.T+this.config.priorPerOutcome),sum=b+p+t;
+    const pb=b/sum,pp=p/sum,gap=pb-pp;
+    const db=pb-meanB;meanB+=db/i;m2B+=db*(pb-meanB);
+    const dp=pp-meanP;meanP+=dp/i;m2P+=dp*(pp-meanP);
+    const dg=gap-meanGap;meanGap+=dg/i;m2Gap+=dg*(gap-meanGap);
+   }
+   const denominator=Math.max(1,this.config.particleCount-1);
+   return {count:this.config.particleCount,stdBanker:Math.sqrt(m2B/denominator),
+    stdPlayer:Math.sqrt(m2P/denominator),stdGap:Math.sqrt(m2Gap/denominator)};
+  }
+ }
+
+ class StatisticalV4Filter{
+  constructor(config){this.config=config;this.sampler=new ParticleConfidenceSampler(config);}
+  evaluate(row,relaxed,currentRound=0){
    const c=this.config,n=row.reduce((a,b)=>a+b,0),counts={B:0,P:0,T:0};
    row.forEach((v,state)=>counts[outcome(state)]+=v);
    const decisive=counts.B+counts.P,prior=c.priorPerOutcome,total=n+3*prior;
-   // Jeffreys 型每結果 0.5 偽計數，避免全勝小樣本產生零誤差。
+   // 平滑三種結果，避免小樣本出現 0%／100% 的誤導性機率。
    const p={B:(counts.B+prior)/total,P:(counts.P+prior)/total,T:(counts.T+prior)/total};
    const delta=p.B-p.P,gap=Math.abs(delta);
-   // X=+1（莊）、-1（閒）、0（和）：Var(X)=pB+pP-(pB-pP)^2。
    const se=Math.sqrt(Math.max(0,p.B+p.P-delta*delta)/total);
-   const standardThreshold=Math.max(c.baseGap,c.z*se);
+   // currentRound 只看已累積的總點數輸入次數，不涉及實體局序或殘牌。
+   const round=Math.max(0,Math.floor(Number.isFinite(currentRound)?currentRound:0));
+   const standardThreshold=Math.max(c.minGap,c.baseGap-round*c.gapDecayPerRound);
    const threshold=standardThreshold*(relaxed?c.relaxation:1);
    const sufficient=n>=c.minSamples&&decisive>=c.minDecisive;
-   const direction=sufficient&&gap>threshold?(delta>0?'B':'P'):'SKIP';
+   const particles=sufficient?this.sampler.sample(counts):null;
+   const lowVariance=Boolean(particles&&
+    Math.max(particles.stdBanker,particles.stdPlayer)<c.particleStdMax);
+   const standardPass=sufficient&&gap>threshold;
+   // 低變異例外仍需樣本充分、差值超過 4.5%，不可將低標準差當成必贏。
+   const variancePass=sufficient&&lowVariance&&gap>c.particleOverrideGap;
+   const pass=standardPass||variancePass;
+   const direction=pass?(delta>0?'B':'P'):'SKIP';
+   const signalType=!pass?null:standardPass?'dynamic_gap':'low_variance_override';
    return {direction,counts,sampleSize:n,decisiveSamples:decisive,probability:p,
-    gap,standardError:se,standardThreshold,threshold,relaxed,
-    reason:!sufficient?'insufficient_samples':gap<=threshold?'gap_below_threshold':'transition_signal',
-    // 自適應選窗與放寬會影響檢定覆蓋率；不能宣稱通過就是校準的 95% 保證。
+    gap,standardError:se,standardThreshold,threshold,currentRound:round,
+    particleStd:particles,particleStdMax:c.particleStdMax,lowVariance,signalType,relaxed,
+    reason:!sufficient?'insufficient_samples':!pass?'gap_below_threshold':
+      standardPass?'dynamic_gap_signal':'low_variance_signal',
     statisticallyCalibrated:false,validatedAccuracyGain:false};
   }
  }
@@ -61,7 +140,7 @@
  class AdaptiveObservationController{
   constructor(config){this.config=config;}
   choose(matrix,events,state,skips){
-   const c=this.config,relaxed=skips>=c.relaxAfterSkips;
+   const c=this.config,relaxed=skips>c.relaxAfterSkips;
    // 先掃短窗口。連續觀望時起點擴至下一層；不足樣本仍繼續擴大。
    const start=relaxed?1:0;
    let selected;
@@ -106,7 +185,7 @@
    if(!this.events.length)return null;
    const current=this.events[this.events.length-1];
    const chosen=this.controller.choose(this.matrix,this.events,current.state,this.consecutiveSkips);
-   const result=this.filter.evaluate(chosen.row,chosen.relaxed);
+   const result=this.filter.evaluate(chosen.row,chosen.relaxed,this.totalRounds);
    const predictions=this.events.slice(-this.config.targetWindow).map(e=>e.forecast?.direction);
    const recentSignals=predictions.filter(d=>d==='B'||d==='P').length;
    return {...result,version:VERSION,state:{player:Math.floor(current.state/10),banker:current.state%10},
@@ -143,6 +222,6 @@
   snapshot(){return {version:VERSION,matrix:this.matrix.snapshot(),events:JSON.parse(JSON.stringify(this.events)),
    totalRounds:this.totalRounds,consecutiveSkips:this.consecutiveSkips,nextIsBreak:this.nextIsBreak};}
  }
- return Object.freeze({VERSION,DEFAULTS,encode,outcome,StateTransitionMatrix,StatisticalV4Filter,
+ return Object.freeze({VERSION,MODEL_REVISION,DEFAULTS,encode,outcome,StateTransitionMatrix,ParticleConfidenceSampler,StatisticalV4Filter,
   AdaptiveObservationController,PointTransitionPredictor});
 });
