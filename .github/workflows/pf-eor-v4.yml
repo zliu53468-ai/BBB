@@ -1,0 +1,30 @@
+name: V4 score-only PF EOR and Deplete production
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  v4-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Production script syntax
+        run: |
+          node --check quant256_online_runtime.js
+          node --check physics_forecast_first_runtime.js
+          node --check deplete_mc_runtime.js
+          node --check pf_eor_v4_runtime.js
+          node --check pf_eor_v4_panel.js
+          node --check auth-client.js
+      - name: Physical V4 regression
+        run: node test_pf_eor_v4.js
+      - name: License isolation and ending session
+        run: node test_license_storage.mjs && node test_end_analysis_reload.js
