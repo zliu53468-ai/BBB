@@ -108,6 +108,6 @@ assert(auth.indexOf("markov_residual_runtime.js?v=20261103-v22-markov-shadow-v1"
 assert(auth.includes("point_signal_quality_guard.js?v=20261104-selective-entry-v4"));
 assert(auth.includes("quant256_online_panel.js?v=20261104-visible-gate-v4"));
 assert(html.includes("auth-client.js?v=20261104-visible-gate-v4"));
-assert(panel.includes("單局精確枚舉"),"web uses exact single-score engine; legacy Markov V2.2 shadow remains");
+assert(panel.includes("V2.6 點數平滑"),"web-only presentation changed; core Markov V2.2 shadow remains");
 assert(!panel.includes("雙向偏移"));
 console.log("PASS V2.2 causal Markov shadow, first-order 64-prior/12-support, tie bypass, max 0.003, no BET/PF/EV override, deterministic replay and loader");

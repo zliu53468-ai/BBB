@@ -28,8 +28,8 @@ assert(q.includes("updated[i]=chosen?priorWeight*pHat:0"),
 assert(q.includes("this.rng()*likelihoodMass<mass"),
   "conditional weighted reservoir sampling required");
 assert(p.includes("function summarizeHypotheses(physics,_history,{samplesPerParticle=96}={}){"));
-assert(panel.includes("exactEnumeration:true"));
-assert(panel.includes("ExactScoreEngine:PhysicsForecastFirstEngine"));
+assert(panel.includes("lossGate:.035,simulationsPerParticle:96,"));
+assert(panel.includes("quantOptions:{lambda:.82,alpha:.15,particles:96}"));
 assert.equal(BASE_EV_GATE,.005);
 assert.equal(OVERDRIVE_GATE,0);
 assert.equal(ONE_HAND_CUSHION,.035);
