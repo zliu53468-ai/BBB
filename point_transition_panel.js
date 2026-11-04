@@ -17,7 +17,8 @@
   text('directionText',skip?'觀望':r.direction==='B'?'莊':'閒');
   text('directionCode',skip?'SKIP':r.relaxed?'ADAPTIVE SIGNAL':'TRANSITION SIGNAL');
   text('confidence','莊閒機率差 '+pct(r.gap));
-  text('strength','莊 '+pct(r.probability.B)+'｜閒 '+pct(r.probability.P)+'｜和 '+pct(r.probability.T));
+  text('strength',r.sampleSize<api.DEFAULTS.minSamples?'樣本不足，先累積紀錄':
+   '莊 '+pct(r.probability.B)+'｜閒 '+pct(r.probability.P)+'｜和 '+pct(r.probability.T));
   text('regime',r.relaxed?'門檻放寬 25%（探索訊號）':'標準統計門檻');
   const reason=r.reason==='insufficient_samples'?'此點數組合後續樣本不足':r.reason==='gap_below_threshold'?'機率差未超過動態門檻':'點數轉移方向通過門檻';
   text('message','目前狀態：閒 '+r.state.player+'／莊 '+r.state.banker+
@@ -28,7 +29,7 @@
    '｜歷史相關不代表下一局必然重複。');
   if($('directionOrb'))$('directionOrb').className='direction-orb '+(skip?'idle':r.direction==='B'?'banker':'player');
   text('localCalibrationStatus','已累積 '+model.totalRounds+' 局；精確狀態樣本至少 '+api.DEFAULTS.minSamples+
-   '、非和局至少 '+api.DEFAULTS.minDecisive+'；每 6 局 1～2 次訊號為目標，不強制出手。');
+   '、非和局至少 '+api.DEFAULTS.minDecisive+'；近 6 局訊號 '+r.recentSignals+' 次，目標 1～2 次，不強制出手。');
  }
  async function persist(candidate){
   root.localStorage.setItem(KEY,JSON.stringify(candidate.snapshot()));

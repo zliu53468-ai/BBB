@@ -126,6 +126,7 @@
    const result=this.forecast();
    this.consecutiveSkips=result.direction==='SKIP'?this.consecutiveSkips+1:0;
    const event=this.events[this.events.length-1];event.forecast=result;event.skipsAfter=this.consecutiveSkips;
+   result.recentSignals=this.events.slice(-this.config.targetWindow).filter(e=>e.forecast.direction!=='SKIP').length;
    return {...result,consecutiveSkipsAfter:this.consecutiveSkips};
   }
   latest(){return this.events.length?JSON.parse(JSON.stringify(this.events[this.events.length-1].forecast)):null;}
