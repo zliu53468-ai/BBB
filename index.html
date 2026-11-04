@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
-  <meta name="description" content="莊家剋星AI百家程式｜即時牌路分析面板">
+  <meta name="description" content="莊家剋星AI百家程式｜PF–EOR–EV–Deplete V4 獨立總點數分析">
   <link rel="stylesheet" href="styles.css?v=20261103-v25-manual-input-v1">
 
 </head>
@@ -43,7 +43,7 @@
         <div class="brand-copy">
           <p class="eyebrow">BANKER SLAYER · AI ANALYSIS</p>
           <h1>莊家剋星AI百家程式</h1>
-          <p class="brand-subtitle">即時牌路分析・智慧決策輔助</p>
+          <p class="brand-subtitle">總點數 PF ・ EOR 敏感度 ・ Deplete MC ・ V4 觀望</p>
         </div>
       </div>
       <div class="status-area">
@@ -56,16 +56,13 @@
       <div class="prediction-layout">
         <div class="direction-orb idle" id="directionOrb"><span id="directionText">—</span><small id="directionCode">等待分析</small></div>
         <div class="metrics">
-          <div class="metric"><span>物理 EV 差異（非勝率）</span><strong id="confidence">—</strong></div>
-          <div class="metric"><span>下注狀態</span><strong id="regime">—</strong></div>
-          <div class="metric"><span>莊／閒 EV（模擬）</span><strong id="strength">—</strong></div>
+          <div class="metric"><span>模擬 EV 差異（非勝率）</span><strong id="confidence">—</strong></div>
+          <div class="metric"><span>V4 品質狀態</span><strong id="regime">—</strong></div>
+          <div class="metric"><span>下一局莊／閒／和（模擬）</span><strong id="strength">—</strong></div>
         </div>
       </div>
       <div class="message" id="message" aria-live="polite">請輸入當局閒、莊點數，再按開始分析</div>
-      <details class="bbb-clear-details" id="drawLengthDiagnostics" hidden>
-        <summary>發牌張數聯合模擬：當局 × 下一局（4／5／6 張）</summary>
-        <div class="message" id="drawLengthJointMatrix" style="white-space:pre-line;line-height:1.75;" aria-live="polite"></div>
-      </details>
+      
     </section>
 
     <section class="card controls-card">
@@ -107,7 +104,7 @@
       <details class="bbb-clear-details"><summary>結束分析與資料清除說明</summary><div class="clear-note">結束分析會清空此開通碼的牌路、分析快照與歷史觀測；會員裝置授權仍會保留。未連線裝置將在下次驗證時同步清空。</div></details>
     </section>
 
-    <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">每局莊／閒／和結果保留在本機，可返回上一局或匯出離線紀錄。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
+    <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">歷史僅供返回上一局與 Markov 旁路診斷，不會改變本次 PF 預測方向。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
 
     <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
     </div>
@@ -115,7 +112,7 @@
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
-  <script src="auth-client.js?v=20261104-visible-gate-v4-exact-score-v1-deplete-active-v1"></script>
+  <script src="auth-client.js?v=20261105-revert1dfe-pf-eor-deplete-v4"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
