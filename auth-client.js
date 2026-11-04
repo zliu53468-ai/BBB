@@ -9,8 +9,31 @@ const message=document.getElementById("licenseMessage"),submit=document.getEleme
 // Public server URL is not a secret; only Cloudflare holds ADMIN_TOKEN and LICENSE_PEPPER.
 const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu53468.workers.dev").replace(/\/+$/,"");
 const scripts=[
-  "point_transition_runtime.js?v=20261105-total-transition-v4",
-  "point_transition_panel.js?v=20261105-total-transition-v4"
+  "app256forward.js",
+  "app256continuation.js",
+  "particle_filter_runtime.js?v=20261029-point-card-v2",
+  "macro_ema.js?v=20261023-middle-late-v2",
+  "browser_calibration.js?v=20261028-pr56-restore",
+  "pf_display_smoothing.js?v=20261029-pf10000-tuned",
+  "pf_primary_runtime.js?v=20261029-pf-primary-v1",
+  "road_primary_runtime.js?v=20261030-pf-light-v1",
+  "vnext/dual_core_fusion_runtime.js?v=20261030-pf-light-v1",
+  "pf_light_runtime.js?v=20261030-pf-light-v1",
+  "physics_correction_runtime.js?v=20261030-pf-light-v1",
+  "xgb_adaptive_runtime.js?v=20261030-pf-light-v1",
+  "bayes_markov_runtime.js?v=20261031-quant256-v6",
+  "vnext/relative_baseline_runtime.js?v=20261030-pf-light-v1",
+  "final_probability_runtime.js?v=20261030-pf-light-v1",
+  "run_survival_pf_runtime.js?v=20261031-quant256-v6",
+  "quant256_runtime.js?v=20261031-quant256-v6",
+  "quant256_online_runtime.js?v=20261104-pf96-l256-m96-v1-exact-score-v1",
+  "shoe_distribution_guard.js?v=20261103-dynamic-shoe-guard-v1",
+  "markov_residual_runtime.js?v=20261103-v22-markov-shadow-v1",
+  "physics_forecast_first_runtime.js?v=20261104-two-hand-length-v1-exact-score-v1",
+  "point_signal_quality_guard.js?v=20261104-selective-entry-v4",
+  "deplete_mc_runtime.js?v=20261104-deplete-active-v1",
+  "quant256_online_panel.js?v=20261104-visible-gate-v4-exact-score-v1-deplete-active-v1",
+  "quant256_bankroll_ui.js?v=20261101-e323-v2-restore"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
