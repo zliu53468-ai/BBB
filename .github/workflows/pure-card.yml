@@ -1,0 +1,20 @@
+name: Local-card EOR PF and strict V4
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pure-card:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --check pure_card_worker.js && node --check pure_card_panel.js
+      - run: node test_pure_cards.js && node test_pure_card_panel.js
