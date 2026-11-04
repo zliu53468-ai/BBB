@@ -1,5 +1,5 @@
 "use strict";
-/** Regression for V3 moderate-high display SKIP, V2/V1 rollback and immutable physical EV. */
+/** Regression for V4 selective SKIP, V3/V2/V1 rollback and immutable physical EV. */
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const {PhysicsForecastFirstEngine}=require("./physics_forecast_first_runtime.js");
@@ -14,14 +14,18 @@ const base={
 const weak=guard.decide(base);
 const legacyWeak=guard.decide(base,{enabled:false});
 const priorWeak=guard.decide(base,{profile:"moderate"});
-assert(weak.threshold>priorWeak.threshold);
+const v3Weak=guard.decide(base,{profile:"moderate_high"});
+assert(weak.threshold>v3Weak.threshold);
+assert(v3Weak.threshold>priorWeak.threshold);
 assert(priorWeak.threshold>legacyWeak.threshold);
 assert(weak.threshold>legacyWeak.threshold);
 assert.equal(weak.moderate_entry_enabled,true);
 assert.equal(legacyWeak.moderate_entry_enabled,false);
 assert.equal(legacyWeak.threshold_addition,0);
-assert.equal(guard.MODERATE_ENTRY.pf_quality_threshold,.68);
-assert.equal(guard.ACTIVE_PROFILE,"moderate_high");
+assert.equal(guard.MODERATE_ENTRY.pf_quality_threshold,.70);
+assert.equal(guard.ACTIVE_PROFILE,"selective_v4");
+assert.equal(guard.ENTRY_PROFILES.selective_v4.additional_ev_gap,.00300);
+assert.equal(guard.ENTRY_PROFILES.selective_v4.high_uncertainty_extra,.00040);
 assert.equal(guard.ENTRY_PROFILES.moderate.additional_ev_gap,.00105);
 assert.equal(guard.ENTRY_PROFILES.moderate_high.additional_ev_gap,.00200);
 assert.equal(guard.ENTRY_PROFILES.moderate_high.low_quality_extra,.00055);
@@ -41,6 +45,7 @@ assert.equal(guard.decide({...base,early_shoe_guard:null}).direction,"SKIP");
 const stats={B:0,P:0,SKIP:0,rawB:0,rawP:0,total:0};
 const rollbackStats={B:0,P:0,SKIP:0,rawB:0,rawP:0,total:0};
 const moderateStats={B:0,P:0,SKIP:0,rawB:0,rawP:0,total:0};
+const v3Stats={B:0,P:0,SKIP:0,rawB:0,rawP:0,total:0};
 for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   const outcome=banker>player?"B":player>banker?"P":"T";
   const model=new PhysicsForecastFirstEngine({
@@ -53,6 +58,10 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   const choice=guard.decide(r);
   const rollback=guard.decide(r,{enabled:false});
   const moderate=guard.decide(r,{profile:"moderate"});
+  const v3=guard.decide(r,{profile:"moderate_high"});
+  assert(choice.threshold>=v3.threshold);
+  assert(v3.direction===choice.direction||choice.direction==="SKIP",
+    "V4 must only abstain, not flip or enable new directions");
   assert(choice.threshold>=moderate.threshold);
   assert(moderate.threshold>=rollback.threshold);
   assert(choice.raw_direction===moderate.raw_direction);
@@ -75,6 +84,7 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
   stats[choice.direction]++;stats[choice.raw_direction==="B"?"rawB":"rawP"]++;stats.total++;
   rollbackStats[rollback.direction]++;rollbackStats[rollback.raw_direction==="B"?"rawB":"rawP"]++;rollbackStats.total++;
   moderateStats[moderate.direction]++;moderateStats[moderate.raw_direction==="B"?"rawB":"rawP"]++;moderateStats.total++;
+  v3Stats[v3.direction]++;v3Stats[v3.raw_direction==="B"?"rawB":"rawP"]++;v3Stats.total++;
 }
 assert.equal(stats.total,100);
 assert.equal(stats.rawB+stats.rawP,100);
@@ -84,8 +94,10 @@ assert.deepEqual(rollbackStats,{B:48,P:40,SKIP:12,rawB:56,rawP:44,total:100},
 assert.deepEqual(moderateStats,{B:44,P:37,SKIP:19,rawB:56,rawP:44,total:100},
   "Previous moderate V2 profile must remain exactly reversible");
 assert.equal(stats.rawB,56);assert.equal(stats.rawP,44);
-assert.deepEqual(stats,{B:36,P:34,SKIP:30,rawB:56,rawP:44,total:100},
-  "V3 fixed 100-score benchmark must match BGS (no EV/direction change)");
+assert.deepEqual(v3Stats,{B:36,P:34,SKIP:30,rawB:56,rawP:44,total:100},
+  "V3 rollback must stay exact");
+assert.deepEqual(stats,{B:33,P:29,SKIP:38,rawB:56,rawP:44,total:100},
+  "V4 fixed-score selectivity must match BGS; no raw direction changes");
 const auth=fs.readFileSync("auth-client.js","utf8");
 const idx=auth.indexOf("point_signal_quality_guard.js");
 const panel=auth.indexOf("quant256_online_panel.js");
@@ -93,4 +105,4 @@ assert(idx>0&&panel>idx,"Quality gate must load before panel");
 const page=fs.readFileSync("quant256_online_panel.js","utf8");
 assert(page.includes("signalGuard.decide(report)"));
 assert(page.includes('skip?"觀望"'));
-console.log("PASS BBB V2.6 V3 selective SKIP (physical EV intact):",JSON.stringify({v3:stats,v2:moderateStats,legacy:rollbackStats}));
+console.log("PASS BBB V2.6 V4 selective SKIP (physical EV intact):",JSON.stringify({v4:stats,v3:v3Stats,v2:moderateStats,legacy:rollbackStats}));

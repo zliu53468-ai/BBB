@@ -108,7 +108,10 @@ assert.equal(v.elements.directionText.textContent,"閒",
   "even when research gate says SKIP, the larger physical EV must show P");
 assert(v.elements.regime.textContent.includes("原研究門檻未通過"));
 assert(v.elements.regime.textContent.includes("未確認正 EV"));
-assert(!v.elements.message.textContent.includes("觀望"));
+assert(v.elements.message.textContent.includes("下一局顯示訊號：閒"));
+assert(v.elements.message.textContent.includes("觀望判斷："));
+assert(v.elements.strength.textContent.includes("觀望門檻 "));
+assert(v.elements.strength.textContent.includes("目前 EV 差距 "));
 assert.equal(v.elements.pointPlayerFinal.value,"");
 assert.equal(v.elements.pointBankerFinal.value,"");
 assert.equal(storage.getItem(OLD),oldStored,"old B/P/T history never modified");
