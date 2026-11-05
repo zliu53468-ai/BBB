@@ -9,7 +9,7 @@
  const VERSION='BBB_V41_ADAPTIVE_BATCH_STABILITY_V1';
 
  // Explicit user policy: SE is uncertainty, never a win probability.
- const USER_ENTRY=Object.freeze({minEstimatorSE:.0055,minAbsoluteEVGap:.00128,minBatchAgreement:.8});
+ const USER_ENTRY=Object.freeze({minEstimatorSE:.0055,minAbsoluteEVGap:.00128});
  function userEntryDecision(report){
   const se=report?.quality?.estimator_gap_se;
   const b=report?.ev_banker,p=report?.ev_player;
@@ -27,16 +27,9 @@
     reasons.push('user_ev_gap_below_0128pp');
    if(!candidate||rb===rp||(b>p)!==(rb>rp))reasons.push('user_ev_direction_conflict');
   }
-  const agreement=report?.sampling_stability?.agreement;
-  const depleteConsistent=report?.legacy_v4_decision?.deplete_consistent===true&&
-   report?.deplete_mc?.status==='complete';
-  if(!Number.isFinite(agreement)||agreement<USER_ENTRY.minBatchAgreement||agreement>1)
-   reasons.push('user_batch_agreement_below_80_percent');
-  if(!depleteConsistent)reasons.push('user_deplete_not_consistent');
   return {direction:reasons.length?'SKIP':candidate,candidate,
    reason:reasons[0]||'user_entry_pass',reasons,
    estimator_gap_se:se,user_smoothed_ev_gap:gap,user_raw_ev_gap:rawGap,
-   user_batch_agreement:agreement,user_deplete_consistent:depleteConsistent,
    user_entry_policy:USER_ENTRY,validated_hit_rate:false,verified_edge:false};
  }
 
@@ -117,12 +110,12 @@
   if(!stable)reasons.push('batch_direction_unstable');if(!refOK)reasons.push('exact_reference_disagreement');
   report.v4={...decision,direction:reasons.length?'SKIP':candidate,reason:reasons[0]||'quality_pass',reasons};
   report.legacy_v4_decision=report.v4;
+  report.v4={...decision,...userEntryDecision(report)};
   report.sampling_stability={batches:k,min_batches:3,max_batches:5,votes,agreement,required_agreement:.8,
    stable,per_batch_samples:config.particles*config.simulationsPerParticle,
    seeds:batches.map(r=>r.randomization.seed),batch_mean_variance:measuredVar,analytic_mean_variance:mcVar+latentVar};
   report.exact_reference={probability:refProb,neutral_ev_gap:refGap,pf_raw_gap:g,deviation:delta,tolerance,
    consistent:refOK,independent_evidence:false,model_assumption:reference.assumption,used_for_direction:false};
-  report.v4={...decision,...userEntryDecision(report)};
   return report;
  }
  class StablePhysicalPointV4{
