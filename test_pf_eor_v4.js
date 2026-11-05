@@ -127,7 +127,8 @@ assert(active[0].indexOf('deplete_mc_runtime.js')<active[0].indexOf('pf_eor_v4_r
 assert(active[0].indexOf('pf_eor_v4_runtime.js')<active[0].indexOf('pf_eor_v4_panel.js'));
 const panel=fs.readFileSync('pf_eor_v4_panel.js','utf8');
 const runtime=fs.readFileSync('pf_eor_v4_runtime.js','utf8');
-assert(panel.includes('engine.analyze(pair.player,pair.banker,replay)'));
+assert(panel.includes('await calculate(pair,replay)'));
+assert(panel.includes('root.Worker'));
 assert(panel.includes('const replay=undo&&Number.isInteger(pair.analysis_seed)'));
 assert(panel.includes('transitionStats?.(audit.map(outcome))'));
 assert(runtime.includes('physics.adaptiveScoreSmoother(raw,pf)'));

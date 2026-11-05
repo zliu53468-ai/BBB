@@ -4,15 +4,29 @@
  */
 (function(root){
  "use strict";
- if(!root?.document||!root.BBBPhysicalV4)throw Error("physical_v4_ui_dependency_missing");
- const {PhysicalPointV4,CONFIG,VERSION}=root.BBBPhysicalV4;
+ if(!root?.document||!root.BBBPhysicalV4||!root.BBBStability)throw Error("physical_v4_ui_dependency_missing");
+ const {CONFIG}=root.BBBPhysicalV4;
+ const {VERSION}=root.BBBStability;
  const KEY="bgs_v24_independent_point_audit";
  const el=id=>root.document.getElementById(id);
  const valid=x=>Number.isInteger(x)&&x>=0&&x<=9;
  const isPair=x=>x&&valid(x.player)&&valid(x.banker);
  const outcome=x=>x.banker>x.player?"B":x.player>x.banker?"P":"T";
  const pct=n=>Number.isFinite(n)?(n*100).toFixed(3)+"%":"—";
- const engine=new PhysicalPointV4();
+ let worker=null,job=0,cancelActive=null;
+ function calculate(pair,options){
+  if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
+  return new Promise((resolve,reject)=>{
+   const id=++job,instance=new root.Worker("stability_worker.js?v=20261105-batch-stability-v1");worker=instance;
+   const cleanup=()=>{clearTimeout(timer);instance.terminate();if(worker===instance){worker=null;cancelActive=null;}};
+   const timer=setTimeout(()=>{cleanup();reject(Error("batch_calculation_timeout"));},15000);
+   cancelActive=()=>{cleanup();reject(Error("analysis_cancelled"));};
+   instance.onerror=()=>{cleanup();reject(Error("worker_execution_failed"));};
+   instance.onmessage=event=>{if(event.data.id!==id||id!==job)return;const value=event.data;cleanup();
+    value.error?reject(Error(value.error)):value.report?.version!==VERSION?reject(Error("batch_version_mismatch")):resolve(value.report);};
+   instance.postMessage({id,player:pair.player,banker:pair.banker,options});
+  });
+ }
  let busy=false,last=null,audit=[];
  const set=(id,text)=>{if(el(id))el(id).textContent=text;};
  function restoreAudit(){
@@ -63,10 +77,13 @@
    (direction==="SKIP"?"idle":direction==="B"?"banker":"player");
   const deplete=report.deplete_mc;
   set("message","本局閒 "+pair.player+"／莊 "+pair.banker+
-   "｜PF96（每次全新）、每粒子 MC"+CONFIG.simulationsPerParticle+
+   "｜獨立批次 "+report.sampling_stability.batches+"（每批 PF96／MC"+CONFIG.simulationsPerParticle+"）"+
    "｜平滑 EV：莊 "+pct(report.ev_banker)+"、閒 "+pct(report.ev_player)+
    "｜原始含抽佣 EV：莊 "+pct(report.original_pf_ev.B)+"、閒 "+pct(report.original_pf_ev.P)+
    "｜平滑保留比 "+pct(report.adaptive_score_smoothing.blend)+
+   "｜批次方向一致 "+pct(report.sampling_stability.agreement)+
+   "｜精確先驗核對 "+(report.exact_reference.consistent?"相容":"有分歧")+
+   "｜品質原因 "+(choice.reasons||[choice.reason]).join("、")+
    "｜抽樣編號 "+report.randomization.seed+
    "｜平滑 EV 差 "+pct(choice.ev_difference)+
    "｜中立基準差 "+pct(choice.baseline_ev_gap)+
@@ -80,23 +97,23 @@
    "｜假想組成不是實際牌值；訊號不代表已驗證盈利優勢；中立比較不等於勝率或出手各50%。");
   set("localCalibrationStatus","獨立點數 PF → EOR → 組成機率／EV → Deplete MC 交叉檢查 → V4"+
    "｜"+markovDiagnostics());
-  set("modePill","PF96 · V4.1 中立平滑");
+  set("modePill","多批穩定性 · 中立平滑");
  }
- function saveAndRender(pair,{undo=false}={}){
+ async function saveAndRender(pair,{undo=false}={}){
   if(busy)return null;
   if(!isPair(pair))throw Error("total_points_must_be_0_to_9");
-  busy=true;
+  busy=true;last=null;setIdle("背景多批計算中，先觀望…");set("directionText","觀望");
   const btn=el("btnPointAnalyze");if(btn)btn.disabled=true;
   try{
    // 先算後存；任一階段失敗時不覆寫已確認的紀錄或方向。
    const replay=undo&&Number.isInteger(pair.analysis_seed)?{seed:pair.analysis_seed}:undefined;
-   const r=engine.analyze(pair.player,pair.banker,replay);
+   const r=await calculate(pair,replay);
    const next=undo?audit.slice(0,-1):[...audit,{...pair,analysis_seed:r.randomization.seed}].slice(-500);
    persist(next);audit=next;last=r;render(r,pair);
    set("pointInputStatus","已完成一次獨立分析，僅需輸入下一局雙方最終總點（0–9）。");
    return r;
   }catch(e){
-   last=null;setIdle("分析未完成：獨立組成估計或資料儲存失敗，未產生方向。");
+   last=null;setIdle("分析未完成：獨立組成估計或資料儲存失敗，未產生方向。");set("directionText","觀望");
    set("pointInputStatus","本次觀望，請檢查輸入／授權儲存："+String(e.message||e));
    return null;
   }finally{
@@ -104,14 +121,15 @@
   }
  }
  function submitPoints(player,banker){return saveAndRender({player,banker});}
- function analyzeEnteredPoints(){
+ async function analyzeEnteredPoints(){
+  if(busy)return null;
   const p=String(el("pointPlayerFinal")?.value??"").trim(),
    b=String(el("pointBankerFinal")?.value??"").trim();
   if(!/^[0-9]$/.test(p)||!/^[0-9]$/.test(b)){
-   set("pointInputStatus","閒／莊只能各輸入一個 0–9 最終總點。");return null;
+   last=null;setIdle("輸入不合法，觀望。");set("directionText","觀望");set("pointInputStatus","閒／莊只能各輸入一個 0–9 最終總點。");return null;
   }
-  const r=submitPoints(Number(p),Number(b));
-  if(r){el("pointPlayerFinal").value="";el("pointBankerFinal").value="";}
+  const r=await submitPoints(Number(p),Number(b));
+  if(r&&String(el("pointPlayerFinal").value).trim()===p&&String(el("pointBankerFinal").value).trim()===b){el("pointPlayerFinal").value="";el("pointBankerFinal").value="";}
   return r;
  }
  function restorePrevious(){
@@ -143,7 +161,7 @@
   e.preventDefault();e.stopImmediatePropagation();restorePrevious();
  },true);
  el("btnEnd")?.addEventListener("click",()=>{
-  audit=[];last=null;setIdle("正在結束分析與清除紀錄…");
+  job++;cancelActive?.();audit=[];last=null;setIdle("正在結束分析與清除紀錄…");
  },false);
  for(const id of ["btnExportTraining","btnExportObservations"])
   el(id)?.addEventListener("click",()=>{
@@ -160,7 +178,7 @@
   get markov(){return root.BBBMarkovResidual?.transitionStats?.(audit.map(outcome))||null;}
  };
  setIdle("只輸入本局閒／莊最終點數各一個 0–9；每次重新建立 PF，不使用歷史改變方向。");
- set("modePill","PF96 · V4.1 中立平滑");
+ set("modePill","多批穩定性 · 中立平滑");
  set("pointInputStatus","已記錄 "+audit.length+" 次總點數（僅供返回／Markov 診斷）；可開始新的獨立分析。");
  set("localCalibrationStatus",markovDiagnostics());
 })(typeof window!=="undefined"?window:null);
