@@ -9,7 +9,7 @@
  const VERSION='BBB_V41_ADAPTIVE_BATCH_STABILITY_V1';
 
  // Explicit user policy: SE is uncertainty, never a win probability.
- const USER_ENTRY=Object.freeze({minEstimatorSE:.0055,minAbsoluteEVGap:.00128,minBatchAgreement:.65});
+ const USER_ENTRY=Object.freeze({minEstimatorSE:.0055,minAbsoluteEVGap:.00128,minBatchAgreement:.55});
  function userEntryDecision(report){
   const se=report?.quality?.estimator_gap_se;
   const b=report?.ev_banker,p=report?.ev_player;
@@ -29,7 +29,7 @@
   }
   const agreement=report?.sampling_stability?.agreement;
   if(!Number.isFinite(agreement)||agreement<USER_ENTRY.minBatchAgreement||agreement>1)
-   reasons.push('user_batch_agreement_below_65_percent');
+   reasons.push('user_batch_agreement_below_55_percent');
   return {direction:reasons.length?'SKIP':candidate,candidate,
    reason:reasons[0]||'user_entry_pass',reasons,
    estimator_gap_se:se,user_smoothed_ev_gap:gap,user_raw_ev_gap:rawGap,
@@ -37,7 +37,7 @@
    user_entry_policy:USER_ENTRY,validated_hit_rate:false,verified_edge:false};
  }
 
- const SETTINGS=Object.freeze({minBatches:3,maxBatches:5,minAgreement:.65,nearThresholdFraction:.5,
+ const SETTINGS=Object.freeze({minBatches:3,maxBatches:5,minAgreement:.55,nearThresholdFraction:.5,
   referenceZ:2.5,referenceFloor:.005});
  if(reference?.rows?.length!==100)throw Error('exact_reference_missing');
  let evidence=0;reference.rows.forEach((r,i)=>{if(r[0]*10+r[1]!==i||!r.every(Number.isFinite)||r[2]<=0||
@@ -114,7 +114,7 @@
   if(!stable)reasons.push('batch_direction_unstable');if(!refOK)reasons.push('exact_reference_disagreement');
   report.v4={...decision,direction:reasons.length?'SKIP':candidate,reason:reasons[0]||'quality_pass',reasons};
   report.legacy_v4_decision=report.v4;
-  report.sampling_stability={batches:k,min_batches:3,max_batches:5,votes,agreement,required_agreement:.65,
+  report.sampling_stability={batches:k,min_batches:3,max_batches:5,votes,agreement,required_agreement:.55,
    stable,per_batch_samples:config.particles*config.simulationsPerParticle,
    seeds:batches.map(r=>r.randomization.seed),batch_mean_variance:measuredVar,analytic_mean_variance:mcVar+latentVar};
   report.exact_reference={probability:refProb,neutral_ev_gap:refGap,pf_raw_gap:g,deviation:delta,tolerance,
