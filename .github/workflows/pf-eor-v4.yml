@@ -28,3 +28,23 @@ jobs:
         run: node test_pf_eor_v4.js
       - name: License isolation and ending session
         run: node test_license_storage.mjs && node test_end_analysis_reload.js
+      - name: V4.1 A-B numerical comparison (not real holdout)
+        run: node tools/v41_compare.js
+      - name: Chrome desktop and mobile CPU simulation
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 >"$RUNNER_TEMP/v41-http.log" 2>&1 &
+          V41_HTTP_PID=$!
+          google-chrome --headless=new --no-sandbox --no-first-run --disable-dev-shm-usage --remote-debugging-port=9333 --user-data-dir="$RUNNER_TEMP/v41-chrome" about:blank >"$RUNNER_TEMP/v41-chrome.log" 2>&1 &
+          V41_CHROME_PID=$!
+          trap 'kill "$V41_HTTP_PID" "$V41_CHROME_PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 40); do
+            if curl --silent --fail http://127.0.0.1:9333/json/version >/dev/null; then break; fi
+            sleep 1
+          done
+          node tools/v41_browser_check.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v41-numerical-and-browser-report
+          path: |
+            validation/v41_comparison.json
+            validation/v41_browser_performance.json

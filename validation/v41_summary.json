@@ -1,0 +1,164 @@
+{
+  "baseline_commit": "48f6451aac009d0d2eca1cba341538780649398b",
+  "kind": "functional_and_numerical_grid_not_real_holdout",
+  "real_holdout_status": "INSUFFICIENT_REAL_HOLDOUT_DATA",
+  "A_config": {
+    "particles": 96,
+    "simulationsPerParticle": 160,
+    "eorParticleCount": 16,
+    "eorSamples": 96,
+    "minEvGap": 0.005,
+    "noiseGuardMultiplier": 0.7,
+    "minPosteriorQuality": 0.5,
+    "eorFragilityFloor": 0.025,
+    "crossCheckZ": 2.5,
+    "crossCheckFloor": 0.008
+  },
+  "B_config": {
+    "particles": 96,
+    "simulationsPerParticle": 256,
+    "eorParticleCount": 24,
+    "eorSamples": 96,
+    "minEvGap": 0.005,
+    "noiseGuardMultiplier": 0.7,
+    "minPosteriorQuality": 0.5,
+    "eorFragilityFloor": 0.025,
+    "crossCheckZ": 2.5,
+    "crossCheckFloor": 0.008
+  },
+  "C_experiment_config": {
+    "particles": 96,
+    "simulationsPerParticle": 256,
+    "eorParticleCount": 24,
+    "eorSamples": 96,
+    "minEvGap": 0.005,
+    "noiseGuardMultiplier": 0.8,
+    "minPosteriorQuality": 0.5,
+    "eorFragilityFloor": 0.025,
+    "crossCheckZ": 2.5,
+    "crossCheckFloor": 0.008
+  },
+  "A": {
+    "grid_counts": {
+      "B": 27,
+      "P": 16,
+      "SKIP": 57
+    },
+    "skip_reasons": {
+      "deplete_disagreement": 2,
+      "quality_pass": 43,
+      "weak_ev_gap": 52,
+      "opposite_deplete_direction": 2,
+      "eor_fragile": 1
+    },
+    "pf_deplete_raw_opposite_grid_count": 52,
+    "mean_mc_gap_se": 0.015111091089583771,
+    "mean_estimator_gap_se": 0.015578986231877225,
+    "latency_ms": {
+      "mean": 93.22533600000006,
+      "p50": 86.27109999999993,
+      "p95": 130.0566000000008,
+      "max": 143.40949999999975
+    }
+  },
+  "B": {
+    "grid_counts": {
+      "B": 29,
+      "P": 8,
+      "SKIP": 63
+    },
+    "skip_reasons": {
+      "quality_pass": 37,
+      "weak_ev_gap": 60,
+      "opposite_deplete_direction": 2,
+      "deplete_disagreement": 1
+    },
+    "pf_deplete_raw_opposite_grid_count": 56,
+    "mean_mc_gap_se": 0.011959494810834964,
+    "mean_estimator_gap_se": 0.012301261728497303,
+    "latency_ms": {
+      "mean": 96.98489500000012,
+      "p50": 90.02910000000156,
+      "p95": 131.65329999999994,
+      "max": 144.10459999999875
+    }
+  },
+  "C": {
+    "grid_counts": {
+      "B": 25,
+      "P": 7,
+      "SKIP": 68
+    },
+    "skip_reasons": {
+      "quality_pass": 32,
+      "weak_ev_gap": 65,
+      "opposite_deplete_direction": 2,
+      "deplete_disagreement": 1
+    },
+    "pf_deplete_raw_opposite_grid_count": 56,
+    "mean_mc_gap_se": 0.011959494810834964,
+    "mean_estimator_gap_se": 0.012301261728497303,
+    "latency_ms": {
+      "mean": 96.98489500000012,
+      "p50": 90.02910000000156,
+      "p95": 131.65329999999994,
+      "max": 144.10459999999875
+    }
+  },
+  "eor_stability": {
+    "method": "8 fixed pairs, 4 diagnostic RNG streams, same posterior particles; limited diagnostic, not a confidence guarantee",
+    "rows": [
+      {
+        "player": 0,
+        "banker": 0,
+        "A_mean_variance": 3.166211092913592e-05,
+        "B_mean_variance": 2.6893827650282112e-05
+      },
+      {
+        "player": 5,
+        "banker": 3,
+        "A_mean_variance": 0.00011517650992782025,
+        "B_mean_variance": 2.9361544322575063e-05
+      },
+      {
+        "player": 2,
+        "banker": 8,
+        "A_mean_variance": 0.00010720656536243578,
+        "B_mean_variance": 5.610976199554318e-05
+      },
+      {
+        "player": 9,
+        "banker": 9,
+        "A_mean_variance": 9.938370739972149e-05,
+        "B_mean_variance": 2.769932138576429e-05
+      },
+      {
+        "player": 8,
+        "banker": 1,
+        "A_mean_variance": 5.961916181776258e-05,
+        "B_mean_variance": 2.4543032234097704e-05
+      },
+      {
+        "player": 4,
+        "banker": 6,
+        "A_mean_variance": 2.8597142961290146e-05,
+        "B_mean_variance": 5.529970789151917e-05
+      },
+      {
+        "player": 1,
+        "banker": 4,
+        "A_mean_variance": 0.00014043308187414096,
+        "B_mean_variance": 4.4657860273196364e-05
+      },
+      {
+        "player": 7,
+        "banker": 2,
+        "A_mean_variance": 3.707499857302065e-05,
+        "B_mean_variance": 6.343786216076509e-05
+      }
+    ],
+    "A_mean_variance": 7.739415985566597e-05,
+    "B_mean_variance": 4.1000364739217874e-05
+  },
+  "decision": "Use 0.70 in production: no real holdout superiority supports 0.80; retain 0.80 as comparison only"
+}

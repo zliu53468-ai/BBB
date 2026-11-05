@@ -8,8 +8,8 @@ assert.equal(a.point_observation_independent,true);
 assert.equal(a.history_length,1);
 assert.equal(a.model_posterior.sampled_compositions,CONFIG.particles);
 assert.equal(CONFIG.particles,96);
-assert.equal(CONFIG.simulationsPerParticle,160);
-assert.equal(a.physical_ev.samples,96*160);
+assert.equal(CONFIG.simulationsPerParticle,256);
+assert.equal(a.physical_ev.samples,96*256);
 assert.equal(a.deplete_mc.status,'complete');
 assert.equal(a.deplete_mc.mode,'shadow');
 assert.equal(a.deplete_mc.affects_display,false);
@@ -132,3 +132,10 @@ assert(panel.includes('transitionStats?.(audit.map(outcome))'));
 assert(!runtime.includes('physics.adaptiveScoreSmoother('));
 assert(runtime.includes('const physical=raw,quality=rawQualityDiagnostics(raw,pf)'));
 console.log('PASS raw physical EV, moderate uncertainty gate (not a CI), EOR/Deplete, independent point-input V4');
+
+assert.equal(CONFIG.eorParticleCount,24);
+for(const patch of [{particles:97},{simulationsPerParticle:0},{eorParticleCount:97},
+ {eorSamples:15},{noiseGuardMultiplier:NaN},{crossCheckZ:Infinity},{minPosteriorQuality:2}])
+ assert.throws(()=>new PhysicalPointV4({...CONFIG,...patch}));
+const mutable={...CONFIG};const safe=new PhysicalPointV4(mutable);mutable.simulationsPerParticle=8;
+assert.equal(safe.config.simulationsPerParticle,256);assert(Object.isFrozen(safe.config));

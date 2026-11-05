@@ -20,11 +20,11 @@
  if(!quant?.BlindPhysicsEstimator||!physics?.summarizeHypotheses||
    !physics?.BASE||!deplete?.attachShadow||!deplete?.dealWithUniforms)
    throw Error("missing_physical_v4_dependencies");
- const VERSION="BBB_PF_EOR_DEPLETE_V4_MODERATE_NOISE_GATE";
+ const VERSION="BBB_PF_EOR_DEPLETE_V4_1_PRECISION_MODERATE";
  const CONFIG=Object.freeze({
-  particles:96,simulationsPerParticle:160,
-  // 使用 16 個分層抽取的假想粒子，每個點數影響各做 96 次配對模擬。
-  eorParticleCount:16,eorSamples:96,
+  particles:96,simulationsPerParticle:256,
+  // 使用 24 個分層抽取的假想粒子，每個點數影響各做 96 次配對模擬。
+  eorParticleCount:24,eorSamples:96,
   // Floor and sampling-uncertainty multiplier for an adaptive EV-gap gate.
   // 0.70 is a moderate signal-noise heuristic, NOT a statistical z-score or
   // an observed win-rate confidence interval.
@@ -34,6 +34,18 @@
   eorFragilityFloor:.025,
   crossCheckZ:2.5,crossCheckFloor:.008
  });
+ // 參數集中在 CONFIG；0.80 僅留在對照工具，不由前端環境變數偷偷覆寫。
+ function validateConfig(c){
+  if(!c||typeof c!=="object")throw Error("invalid_v41_config");
+  const integer=(name,lo,hi)=>{if(!Number.isInteger(c[name])||c[name]<lo||c[name]>hi)throw Error("invalid_"+name);};
+  integer("particles",8,96);integer("simulationsPerParticle",8,1024);
+  integer("eorParticleCount",1,c.particles);integer("eorSamples",16,1024);
+  for(const [name,lo,hi] of [["minEvGap",0,.5],["noiseGuardMultiplier",0,5],
+   ["minPosteriorQuality",0,1],["eorFragilityFloor",0,1],["crossCheckZ",0,5],["crossCheckFloor",0,1]]){
+   if(!Number.isFinite(c[name])||c[name]<lo||c[name]>hi)throw Error("invalid_"+name);
+  }
+  return Object.freeze({...c});
+ }
  function valid(x){return Number.isInteger(x)&&x>=0&&x<=9;}
  function outcome(p,b){return b>p?"B":p>b?"P":"T";}
  const abs=Math.abs,finite=Number.isFinite;
@@ -113,7 +125,7 @@ function rawQualityDiagnostics(raw,pf){
  }
 
  class QualityFilterV4{
-  constructor(config=CONFIG){this.config=config;}
+  constructor(config=CONFIG){this.config=validateConfig(config);}
   decide(report){
    const c=this.config,d=report?.quality,eor=report?.eor,shadow=report?.deplete_mc;
    const evB=report?.ev_banker,evP=report?.ev_player;
@@ -172,7 +184,7 @@ function rawQualityDiagnostics(raw,pf){
 
 
  class PhysicalPointV4{
-  constructor(config=CONFIG){this.config=config;this.filter=new QualityFilterV4(config);}
+  constructor(config=CONFIG){this.config=validateConfig(config);this.filter=new QualityFilterV4(this.config);}
   analyze(player,banker){
    if(!valid(player)||!valid(banker))throw Error("invalid_total_points");
    const pair={player,banker},result=outcome(player,banker);
@@ -208,6 +220,6 @@ function rawQualityDiagnostics(raw,pf){
    return{...report,v4:this.filter.decide(report)};
   }
  }
- return Object.freeze({VERSION,CONFIG,computeEOR,rawQualityDiagnostics,
+ return Object.freeze({VERSION,CONFIG,validateConfig,computeEOR,rawQualityDiagnostics,
   QualityFilterV4,PhysicalPointV4});
 });
