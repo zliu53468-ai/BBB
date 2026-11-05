@@ -62,7 +62,7 @@
    (direction==="SKIP"?"idle":direction==="B"?"banker":"player");
   const deplete=report.deplete_mc;
   set("message","本局閒 "+pair.player+"／莊 "+pair.banker+
-   "｜PF96（每次全新）、每粒子 MC160"+
+   "｜PF96（每次全新）、每粒子 MC"+CONFIG.simulationsPerParticle+
    "｜莊 EV "+pct(report.ev_banker)+"、閒 EV "+pct(report.ev_player)+
    "｜原始 EV 差 "+pct(choice.ev_difference)+
    "｜EV 估計標準誤 "+pct(choice.estimator_gap_se)+
@@ -74,7 +74,7 @@
    "｜假想組成不是實際牌值；訊號不代表已驗證盈利優勢。");
   set("localCalibrationStatus","獨立點數 PF → EOR → 組成機率／EV → Deplete MC 交叉檢查 → V4"+
    "｜"+markovDiagnostics());
-  set("modePill","PF96 · 原始EV · 中度品質門檻");
+  set("modePill","PF96 · V4.1 精度升級 · 原始EV");
  }
  function saveAndRender(pair,{undo=false}={}){
   if(busy)return null;
@@ -153,7 +153,7 @@
   get markov(){return root.BBBMarkovResidual?.transitionStats?.(audit.map(outcome))||null;}
  };
  setIdle("只輸入本局閒／莊最終點數各一個 0–9；每次重新建立 PF，不使用歷史改變方向。");
- set("modePill","PF96 · 原始EV · 中度品質門檻");
+ set("modePill","PF96 · V4.1 精度升級 · 原始EV");
  set("pointInputStatus","已記錄 "+audit.length+" 次總點數（僅供返回／Markov 診斷）；可開始新的獨立分析。");
  set("localCalibrationStatus",markovDiagnostics());
 })(typeof window!=="undefined"?window:null);
