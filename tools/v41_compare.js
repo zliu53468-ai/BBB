@@ -12,13 +12,13 @@ for(let p=0;p<10;p++)for(let b=0;b<10;b++){
  t=performance.now();const v=modelB.analyze(p,b,{seed:0}),bMs=performance.now()-t;
  for(const r of [a,v]){
   if(![r.ev_banker,r.ev_player,r.v4.estimator_gap_se,r.eor.max_abs_ev_gap_delta].every(Number.isFinite))throw Error('nonfinite diagnostic');
-  if(r.v4.candidate!==(r.ev_banker-r.ev_player>=core.BASE_GAP?'B':'P'))throw Error('EV direction changed');
+  if(r.v4.candidate!==(r.ev_banker>=r.ev_player?'B':'P'))throw Error('EV direction changed');
  }
  rows.push({player:p,banker:b,A:a,B:v,C:filterC.decide(v),aMs,bMs});
 }
 function summary(key){const counts={B:0,P:0,SKIP:0},reasons={};let opposite=0;
  for(const row of rows){const r=key==='A'?row.A:row.B,d=key==='C'?row.C:r.v4;counts[d.direction]++;reasons[d.reason]=(reasons[d.reason]||0)+1;
-  if((r.ev_banker-r.ev_player-core.BASE_GAP)*(r.deplete_mc.ev_banker-r.deplete_mc.ev_player-core.BASE_GAP)<0)opposite++;}
+  if((r.ev_banker-r.ev_player)*(r.deplete_mc.ev_banker-r.deplete_mc.ev_player)<0)opposite++;}
  return {grid_counts:counts,skip_reasons:reasons,pf_deplete_raw_opposite_grid_count:opposite,
   mean_mc_gap_se:stats(rows.map(r=>(key==='A'?r.A:r.B).quality.mc_gap_se)).mean,
   mean_estimator_gap_se:stats(rows.map(r=>(key==='A'?r.A:r.B).quality.estimator_gap_se)).mean,
@@ -38,7 +38,7 @@ for(const [p,b] of [[0,0],[5,3],[2,8],[9,9],[8,1],[4,6],[1,4],[7,2]]){
  const dispersion=name=>Array.from({length:10},(_,i)=>{const a=sets[name].map(s=>s[i]),m=a.reduce((x,y)=>x+y,0)/a.length;return a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1);}).reduce((a,b)=>a+b,0)/10;
  stability.push({player:p,banker:b,A_mean_variance:dispersion('A'),B_mean_variance:dispersion('B')});
 }
-const result={baseline_commit:'4f0ea49fe04925f775813b968a14db26abf40983',decision_rule:'baseline_centered_EV_for_all_config_variants',kind:'functional_and_numerical_grid_not_real_holdout',
+const result={baseline_commit:'c5e2caf243e2a26fd58338a1ea66819d05ea6719',decision_rule:'commission_adjusted_raw_EV_for_all_config_variants',kind:'functional_and_numerical_grid_not_real_holdout',
  real_holdout_status:'INSUFFICIENT_REAL_HOLDOUT_DATA',A_config:A,B_config:B,C_experiment_config:C,
  A:summary('A'),B:summary('B'),C:summary('C'),
  eor_stability:{method:'8 fixed pairs, 4 diagnostic RNG streams, same posterior particles; limited diagnostic, not a confidence guarantee',rows:stability,
