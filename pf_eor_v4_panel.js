@@ -17,7 +17,7 @@
  function calculate(pair,options){
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   return new Promise((resolve,reject)=>{
-   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-conservative-se052-2se-v4");worker=instance;
+   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-se052-1se-v5");worker=instance;
    const cleanup=()=>{clearTimeout(timer);instance.terminate();if(worker===instance){worker=null;cancelActive=null;}};
    const timer=setTimeout(()=>{cleanup();reject(Error("batch_calculation_timeout"));},15000);
    cancelActive=()=>{cleanup();reject(Error("analysis_cancelled"));};
@@ -66,7 +66,7 @@
   set("confidence","中立 EV 偏移 "+pct(choice.gap)+"｜估計標準誤 "+pct(choice.estimator_gap_se)+"（非勝率）");
   set("regime",choice.reason==="user_entry_pass"?"自訂門檻通過（非勝率驗證）":
    choice.reason==="user_se_above_052_percent"?"觀望：估計標準誤超過上限 0.52%":
-   choice.reason==="user_signal_below_2se"?"觀望：同向基準校正偏移不足標準誤 2 倍":
+   choice.reason==="user_signal_below_1se"?"觀望：同向基準校正偏移不足標準誤 1 倍":
    choice.reason==="user_chosen_ev_not_positive"?"觀望：選定方向兩組扣佣 EV 未同時為正":
    choice.reason==="user_ev_direction_conflict"?"觀望：EV 相同或平滑與原始 EV 方向不一致":
    choice.reason==="quality_pass"?"V4 品質通過":choice.reason==="weak_ev_gap"?
@@ -99,7 +99,7 @@
    "｜原始 EV 絕對差 "+pct(choice.user_raw_ev_gap)+
    "｜兩組 EV 同向且選定方向扣佣 EV 均 >0"+
    "｜基準校正偏移 "+pct(choice.user_centered_signal)+
-   "｜最低偏移（2×標準誤） "+pct(choice.user_signal_threshold)+
+   "｜最低偏移（1×標準誤） "+pct(choice.user_signal_threshold)+
    "｜EOR 最大敏感度 "+pct(report.eor.max_abs_ev_gap_delta)+
    "｜Deplete "+(deplete.status==="complete"?
      "交叉核對 "+(choice.deplete_consistent?"一致":"有分歧")+
