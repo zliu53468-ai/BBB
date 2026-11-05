@@ -28,13 +28,13 @@ assert(Math.abs(Object.values(a.simulated_probability).reduce((x,y)=>x+y,0)-1)<1
 assert(Math.abs(a.ev_banker-(.95*a.simulated_probability.B-a.simulated_probability.P))<1e-12);
 assert(Math.abs(a.ev_player-(a.simulated_probability.P-a.simulated_probability.B))<1e-12);
 
-// Raw PF B/P/T and commission-adjusted EV may NOT be shrunk towards a baseline.
+// 原始PF另行保留；正式機率恢復既有自適應平滑，抽佣只計算一次。
 assert.equal(a.early_shoe_guard,undefined);
-assert.equal(a.adaptive_score_smoothing,undefined);
-assert.equal(a.quality.mode,'adaptive_confidence_only');
-assert.equal(a.quality.ev_modified,false);
-assert.equal(a.quality.probability_shrinkage,0);
-assert.deepEqual(a.original_pf_ev,{B:a.ev_banker,P:a.ev_player});
+assert.equal(a.adaptive_score_smoothing.active,true);
+assert.equal(a.quality.mode,'adaptive_confidence_with_score_smoothing');
+assert.equal(a.quality.ev_modified,true);
+assert.equal(a.quality.probability_shrinkage,1-a.adaptive_score_smoothing.blend);
+assert.equal(a.original_pf_ev.B,.95*a.raw_simulated_probability.B-a.raw_simulated_probability.P);
 assert.equal(a.v4.candidate,a.ev_banker-a.ev_player>=core.BASE_GAP?'B':'P');
 assert.equal(a.v4.decision_metric,'baseline_centered_ev_gap');
 assert(Math.abs(a.v4.ev_difference-(a.ev_banker-a.ev_player))<1e-12);
@@ -104,13 +104,13 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
  const r=sample.analyze(player,banker,{seed:0});
  grid[r.v4.direction]++;
  assert.equal(r.v4.candidate,r.ev_banker-r.ev_player>=core.BASE_GAP?'B':'P');
- assert.equal(r.quality.probability_shrinkage,0);
- assert.deepEqual(r.original_pf_ev,{B:r.ev_banker,P:r.ev_player});
+ assert(r.quality.probability_shrinkage>0);
+ assert.equal(r.original_pf_ev.B,.95*r.raw_simulated_probability.B-r.raw_simulated_probability.P);
  assert.equal(r.deplete_mc.status,'complete');
 }
-assert(grid.B>=10&&grid.P>=8&&grid.SKIP>=20,
+assert(grid.B>=1&&grid.P>=1&&grid.SKIP>=20,
  'V4 moderate noise gate must keep both B/P directions and observation available');
-assert(grid.B+grid.P>=25&&grid.B+grid.P<=70,
+assert(grid.B+grid.P>=2&&grid.B+grid.P<=70,
  'No all-SKIP regression on the deterministic input-grid smoke test; not a real-world signal-rate claim');
 console.log('V4 100-input score-grid diagnostic (not real-world frequency)',grid);
 
@@ -130,8 +130,8 @@ const runtime=fs.readFileSync('pf_eor_v4_runtime.js','utf8');
 assert(panel.includes('engine.analyze(pair.player,pair.banker,replay)'));
 assert(panel.includes('const replay=undo&&Number.isInteger(pair.analysis_seed)'));
 assert(panel.includes('transitionStats?.(audit.map(outcome))'));
-assert(!runtime.includes('physics.adaptiveScoreSmoother('));
-assert(runtime.includes('const physical=raw,quality=rawQualityDiagnostics(raw,pf)'));
+assert(runtime.includes('physics.adaptiveScoreSmoother(raw,pf)'));
+assert(runtime.includes('const physical=smoothed.physical,rawQuality=rawQualityDiagnostics(raw,pf)'));
 console.log('PASS raw physical EV, moderate uncertainty gate (not a CI), EOR/Deplete, independent point-input V4');
 
 assert.equal(CONFIG.eorParticleCount,24);
@@ -157,8 +157,8 @@ assert.equal(CONFIG.minEvGap,.005);assert.equal(CONFIG.minPosteriorQuality,.50);
 assert.equal(CONFIG.eorFragilityFloor,.025);assert.equal(CONFIG.crossCheckZ,2.5);assert.equal(CONFIG.crossCheckFloor,.008);
 for(const fixture of require('./validation/neutral_raw_fixtures.json')){
  const r=sample.analyze(fixture.player,fixture.banker,{seed:0});
- const raw={probability:r.simulated_probability,ev_banker:r.ev_banker,ev_player:r.ev_player,
-  quality:r.quality,eor:r.eor,deplete:r.deplete_mc};
+ const raw={probability:r.raw_simulated_probability,ev_banker:r.original_pf_ev.B,ev_player:r.original_pf_ev.P,
+  quality:r.raw_quality,eor:r.eor,deplete:r.deplete_raw};
  assert.equal(require('crypto').createHash('sha256').update(JSON.stringify(raw)).digest('hex'),fixture.sha256,
   'neutral reference must not change raw V4.1 calculations');
 }
@@ -181,3 +181,15 @@ const path=require('path'),vm=require('vm'),sandbox={module:{exports:{}},require
 vm.runInNewContext(fs.readFileSync('pf_eor_v4_runtime.js','utf8'),sandbox);
 assert.throws(()=>new sandbox.module.exports.PhysicalPointV4().analyze(5,3),/secure_random_unavailable/);
 console.log('PASS fresh entropy, separate PF/EOR/Deplete streams and exact seed replay');
+
+// 平滑一次、扣佣一次；中立偏移與Deplete使用相同比例，品質誤差不縮小。
+for(const r of [a,b,...freshReports]){
+ const k=r.adaptive_score_smoothing.blend;
+ assert(k>=.24&&k<=.82);
+ for(const side of ['B','P','T'])assert(Math.abs(r.simulated_probability[side]-(r.baseline_probability[side]+k*(r.raw_simulated_probability[side]-r.baseline_probability[side])))<1e-12);
+ assert(Math.abs(r.v4.decision_ev_gap-k*(r.original_pf_ev.B-r.original_pf_ev.P-core.BASE_GAP))<1e-12);
+ assert.equal(r.quality.estimator_gap_se,r.raw_quality.estimator_gap_se);
+ assert(Math.abs(r.deplete_mc.comparison_ev_banker-(core.BASE_EV.B+k*(r.deplete_raw.ev_banker-core.BASE_EV.B)))<1e-12);
+ assert.equal(r.deplete_mc.affects_display,false);
+}
+console.log('PASS adaptive smoothing, single 5% commission, neutral comparison and unchanged conservative errors');
