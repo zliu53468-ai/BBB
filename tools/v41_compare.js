@@ -3,8 +3,8 @@
 const fs=require('fs'),path=require('path'),vm=require('vm'),{performance}=require('perf_hooks');
 const root=path.resolve(__dirname,'..'),core=require(root+'/pf_eor_v4_runtime.js');
 const quant=require(root+'/quant256_online_runtime.js');
-const A={...core.CONFIG,simulationsPerParticle:160,eorParticleCount:16,noiseGuardMultiplier:.70};
-const B={...core.CONFIG,noiseGuardMultiplier:.70},C={...core.CONFIG,noiseGuardMultiplier:.80};
+const A={...core.CONFIG,simulationsPerParticle:160,eorParticleCount:16};
+const B={...core.CONFIG},C={...core.CONFIG,noiseGuardMultiplier:.80};
 function stats(values){const s=values.slice().sort((a,b)=>a-b);return {mean:s.reduce((a,b)=>a+b,0)/s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.min(s.length-1,Math.floor(s.length*.95))],max:s.at(-1)};}
 const rows=[],modelA=new core.PhysicalPointV4(A),modelB=new core.PhysicalPointV4(B),filterC=new core.QualityFilterV4(C);
 for(let p=0;p<10;p++)for(let b=0;b<10;b++){
@@ -43,7 +43,7 @@ const result={baseline_commit:'4f0ea49fe04925f775813b968a14db26abf40983',decisio
  A:summary('A'),B:summary('B'),C:summary('C'),
  eor_stability:{method:'8 fixed pairs, 4 diagnostic RNG streams, same posterior particles; limited diagnostic, not a confidence guarantee',rows:stability,
  A_mean_variance:stats(stability.map(r=>r.A_mean_variance)).mean,B_mean_variance:stats(stability.map(r=>r.B_mean_variance)).mean},
- decision:'Use 0.70 in production: no real holdout superiority supports 0.80; retain 0.80 as comparison only',
+ decision:'Use 0.65 in production as a small observation reduction; no real holdout evidence of higher hit rate. Retain 0.80 as comparison only',
  rows:rows.map(r=>({player:r.player,banker:r.banker,A:r.A.v4,B:r.B.v4,C:r.C,aMs:r.aMs,bMs:r.bMs}))};
 fs.mkdirSync(root+'/validation',{recursive:true});fs.writeFileSync(root+'/validation/v41_comparison.json',JSON.stringify(result,null,2));
 console.log(JSON.stringify({...result,rows:undefined},null,2));
