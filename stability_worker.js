@@ -4,14 +4,14 @@ self.window=self;
 self.onmessage=event=>{const {id,player,banker,options}=event.data;
  try{
   if(!self.BBBStability)importScripts(
-   'quant256_online_runtime.js?v=20261106-gap0128-agreement80-v10',
-   'shoe_distribution_guard.js?v=20261106-gap0128-agreement80-v10',
-   'markov_residual_runtime.js?v=20261106-gap0128-agreement80-v10',
-   'physics_forecast_first_runtime.js?v=20261106-gap0128-agreement80-v10',
-   'deplete_mc_runtime.js?v=20261106-gap0128-agreement80-v10',
-   'pf_eor_v4_runtime.js?v=20261106-gap0128-agreement80-v10',
-   'stability_reference.js?v=20261106-gap0128-agreement80-v10',
-   'stability_runtime.js?v=20261106-gap0128-agreement80-v10');
+   'quant256_online_runtime.js?v=20261106-gap0128-agreement65-v11',
+   'shoe_distribution_guard.js?v=20261106-gap0128-agreement65-v11',
+   'markov_residual_runtime.js?v=20261106-gap0128-agreement65-v11',
+   'physics_forecast_first_runtime.js?v=20261106-gap0128-agreement65-v11',
+   'deplete_mc_runtime.js?v=20261106-gap0128-agreement65-v11',
+   'pf_eor_v4_runtime.js?v=20261106-gap0128-agreement65-v11',
+   'stability_reference.js?v=20261106-gap0128-agreement65-v11',
+   'stability_runtime.js?v=20261106-gap0128-agreement65-v11');
   const report=new self.BBBStability.StablePhysicalPointV4().analyze(player,banker,options);
   self.postMessage({id,report});
  }catch(e){self.postMessage({id,error:String(e.message||e)});}

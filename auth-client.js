@@ -11,15 +11,15 @@ const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu5346
 // V4 正式入口只載入必要核心；原版本其他模組留在 GitHub 供回溯，
 // 不實例化 LinUCB、256 維上下文或任何牌路決策器。
 const scripts=[
- "quant256_online_runtime.js?v=20261106-gap0128-agreement80-v10",
- "shoe_distribution_guard.js?v=20261106-gap0128-agreement80-v10",
- "markov_residual_runtime.js?v=20261106-gap0128-agreement80-v10",
- "physics_forecast_first_runtime.js?v=20261106-gap0128-agreement80-v10",
- "deplete_mc_runtime.js?v=20261106-gap0128-agreement80-v10",
- "pf_eor_v4_runtime.js?v=20261106-gap0128-agreement80-v10",
- "stability_reference.js?v=20261106-gap0128-agreement80-v10",
- "stability_runtime.js?v=20261106-gap0128-agreement80-v10",
- "pf_eor_v4_panel.js?v=20261106-gap0128-agreement80-v10"
+ "quant256_online_runtime.js?v=20261106-gap0128-agreement65-v11",
+ "shoe_distribution_guard.js?v=20261106-gap0128-agreement65-v11",
+ "markov_residual_runtime.js?v=20261106-gap0128-agreement65-v11",
+ "physics_forecast_first_runtime.js?v=20261106-gap0128-agreement65-v11",
+ "deplete_mc_runtime.js?v=20261106-gap0128-agreement65-v11",
+ "pf_eor_v4_runtime.js?v=20261106-gap0128-agreement65-v11",
+ "stability_reference.js?v=20261106-gap0128-agreement65-v11",
+ "stability_runtime.js?v=20261106-gap0128-agreement65-v11",
+ "pf_eor_v4_panel.js?v=20261106-gap0128-agreement65-v11"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
