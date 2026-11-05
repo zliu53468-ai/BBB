@@ -17,7 +17,7 @@
  function calculate(pair,options){
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   return new Promise((resolve,reject)=>{
-   const id=++job,instance=new root.Worker("stability_worker.js?v=20261105-moderate-floor-v2");worker=instance;
+   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-user-se55-gap5-v1");worker=instance;
    const cleanup=()=>{clearTimeout(timer);instance.terminate();if(worker===instance){worker=null;cancelActive=null;}};
    const timer=setTimeout(()=>{cleanup();reject(Error("batch_calculation_timeout"));},15000);
    cancelActive=()=>{cleanup();reject(Error("analysis_cancelled"));};
@@ -64,7 +64,11 @@
   set("directionCode",direction==="SKIP"?"V4 / SKIP · 模擬偏"+candidateLabel:
    direction==="B"?"PF / BANKER":"PF / PLAYER");
   set("confidence","中立 EV 偏移 "+pct(choice.gap)+"｜估計標準誤 "+pct(choice.estimator_gap_se)+"（非勝率）");
-  set("regime",choice.reason==="quality_pass"?"V4 品質通過":choice.reason==="weak_ev_gap"?
+  set("regime",choice.reason==="user_entry_pass"?"自訂門檻通過（非勝率驗證）":
+   choice.reason==="user_se_not_above_55_percent"?"觀望：EV 估計標準誤未超過 55%":
+   choice.reason==="user_ev_gap_below_5_percentage_points"?"觀望：兩組 EV 差距須各達 5 個百分點":
+   choice.reason==="user_ev_direction_conflict"?"觀望：平滑與原始 EV 方向不一致":
+   choice.reason==="quality_pass"?"V4 品質通過":choice.reason==="weak_ev_gap"?
    "V4 觀望：EV 差距不足以超過抽樣誤差":choice.reason==="eor_fragile"?
    "V4 觀望：EOR 假設扣牌過度敏感":choice.reason==="poor_posterior_quality"?
    "V4 觀望：PF 後驗品質不足":choice.reason==="opposite_deplete_direction"?
@@ -89,7 +93,10 @@
    "｜中立基準差 "+pct(choice.baseline_ev_gap)+
    "｜基準校正偏移 "+pct(choice.decision_ev_gap)+
    "｜EV 估計標準誤 "+pct(choice.estimator_gap_se)+
-   "｜中度觀望門檻 "+pct(choice.threshold)+
+   "｜自訂條件：EV 估計標準誤 >55%（誤差，非勝率）"+
+   "｜平滑 EV 絕對差 "+pct(choice.user_smoothed_ev_gap)+
+   "｜原始 EV 絕對差 "+pct(choice.user_raw_ev_gap)+
+   "｜兩組差距各須 ≥5 個百分點且同向"+
    "｜EOR 最大敏感度 "+pct(report.eor.max_abs_ev_gap_delta)+
    "｜Deplete "+(deplete.status==="complete"?
      "交叉核對 "+(choice.deplete_consistent?"一致":"有分歧")+
