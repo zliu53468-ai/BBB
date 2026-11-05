@@ -154,7 +154,7 @@ assert(Math.abs(shifted.decision_ev_gap+.0001)<1e-12);
 // Constants/thresholds and source probabilities remain unchanged.
 assert.equal(CONFIG.noiseGuardMultiplier,.70);assert.equal(CONFIG.simulationsPerParticle,256);
 assert.equal(CONFIG.eorParticleCount,24);assert.equal(CONFIG.eorSamples,96);
-assert.equal(CONFIG.minEvGap,.005);assert.equal(CONFIG.minPosteriorQuality,.50);
+assert.equal(CONFIG.minEvGap,.0045);assert.equal(CONFIG.minPosteriorQuality,.50);
 assert.equal(CONFIG.eorFragilityFloor,.025);assert.equal(CONFIG.crossCheckZ,2.5);assert.equal(CONFIG.crossCheckFloor,.008);
 for(const fixture of require('./validation/neutral_raw_fixtures.json')){
  const r=sample.analyze(fixture.player,fixture.banker,{seed:0});
@@ -194,3 +194,10 @@ for(const r of [a,b,...freshReports]){
  assert.equal(r.deplete_mc.affects_display,false);
 }
 console.log('PASS adaptive smoothing, single 5% commission, neutral comparison and unchanged conservative errors');
+
+// 只放寬訊號底線，Deplete反向否決底線固定原值。
+assert.equal(CONFIG.crossCheckDirectionFloor,.005);
+assert.throws(()=>new PhysicalPointV4({...CONFIG,crossCheckDirectionFloor:NaN}));
+const narrow=gate.decide({...good,ev_banker:core.BASE_GAP+.005,ev_player:0,
+ deplete_mc:{...good.deplete_mc,ev_banker:core.BASE_GAP-.0047,ev_player:0,paired_mc_gap_se:.0001}});
+assert.equal(narrow.direction,'B');assert.equal(narrow.deplete_consistent,true);

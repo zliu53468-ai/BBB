@@ -28,11 +28,11 @@
   // Floor and sampling-uncertainty multiplier for an adaptive EV-gap gate.
   // 0.70 is a moderate signal-noise heuristic, NOT a statistical z-score or
   // an observed win-rate confidence interval.
-  minEvGap:.005,noiseGuardMultiplier:.70,minPosteriorQuality:.50,
+  minEvGap:.0045,noiseGuardMultiplier:.70,minPosteriorQuality:.50,
   // EOR can veto a fragile signal when a one-card hypothetical perturbation
   // is as large as the indicated EV-gap; it never chooses the direction.
   eorFragilityFloor:.025,
-  crossCheckZ:2.5,crossCheckFloor:.008
+  crossCheckZ:2.5,crossCheckFloor:.008,crossCheckDirectionFloor:.005
  });
  // 參數集中在 CONFIG；0.80 僅留在對照工具，不由前端環境變數偷偷覆寫。
  function validateConfig(c){
@@ -41,7 +41,7 @@
   integer("particles",8,96);integer("simulationsPerParticle",8,1024);
   integer("eorParticleCount",1,c.particles);integer("eorSamples",16,1024);
   for(const [name,lo,hi] of [["minEvGap",0,.5],["noiseGuardMultiplier",0,5],
-   ["minPosteriorQuality",0,1],["eorFragilityFloor",0,1],["crossCheckZ",0,5],["crossCheckFloor",0,1]]){
+   ["minPosteriorQuality",0,1],["eorFragilityFloor",0,1],["crossCheckZ",0,5],["crossCheckFloor",0,1],["crossCheckDirectionFloor",0,.5]]){
    if(!Number.isFinite(c[name])||c[name]<lo||c[name]>hi)throw Error("invalid_"+name);
   }
   return Object.freeze({...c});
@@ -168,7 +168,7 @@ function rawQualityDiagnostics(raw,pf){
    const deviation=abs(signed-mcSigned);
    const stable=deviation<=tolerance;
    const opposite= signed*mcSigned<0 &&
-    abs(mcSigned)>Math.max(c.minEvGap,c.noiseGuardMultiplier*shadow.paired_mc_gap_se);
+    abs(mcSigned)>Math.max(c.crossCheckDirectionFloor,c.noiseGuardMultiplier*shadow.paired_mc_gap_se);
    const goodQuality=quality>=c.minPosteriorQuality;
    const pass=goodQuality&&gap>threshold&&!fragile&&stable&&!opposite;
    const reason=!goodQuality?"poor_posterior_quality":
