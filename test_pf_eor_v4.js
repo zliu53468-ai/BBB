@@ -42,8 +42,8 @@ assert(Math.abs(a.v4.estimator_gap_se-
   Math.hypot(a.quality.mc_gap_se,a.quality.posterior_mean_se_gap))<1e-12);
 assert(Math.abs(a.v4.threshold-
   Math.max(CONFIG.minEvGap,CONFIG.noiseGuardMultiplier*a.v4.estimator_gap_se))<1e-12);
-assert.equal(CONFIG.noiseGuardMultiplier,.70);
-assert.equal(a.v4.noise_guard_multiplier,.70);
+assert.equal(CONFIG.noiseGuardMultiplier,.65);
+assert.equal(a.v4.noise_guard_multiplier,.65);
 
 // Separate the per-particle MC sampling dispersion from posterior dispersion.
 const diag=a.physical_ev.ev_uncertainty_diagnostics;
@@ -152,9 +152,9 @@ const shifted=gate.decide({...good,ev_banker:core.BASE_EV.B-.0001,ev_player:core
 assert(shifted.ev_banker>shifted.ev_player);assert.equal(shifted.candidate,'P');
 assert(Math.abs(shifted.decision_ev_gap+.0001)<1e-12);
 // Constants/thresholds and source probabilities remain unchanged.
-assert.equal(CONFIG.noiseGuardMultiplier,.70);assert.equal(CONFIG.simulationsPerParticle,256);
+assert.equal(CONFIG.noiseGuardMultiplier,.65);assert.equal(CONFIG.simulationsPerParticle,256);
 assert.equal(CONFIG.eorParticleCount,24);assert.equal(CONFIG.eorSamples,96);
-assert.equal(CONFIG.minEvGap,.0045);assert.equal(CONFIG.minPosteriorQuality,.50);
+assert.equal(CONFIG.minEvGap,.0040);assert.equal(CONFIG.minPosteriorQuality,.50);
 assert.equal(CONFIG.eorFragilityFloor,.025);assert.equal(CONFIG.crossCheckZ,2.5);assert.equal(CONFIG.crossCheckFloor,.008);
 for(const fixture of require('./validation/neutral_raw_fixtures.json')){
  const r=sample.analyze(fixture.player,fixture.banker,{seed:0});
