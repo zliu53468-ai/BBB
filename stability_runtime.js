@@ -9,7 +9,7 @@
  const VERSION='BBB_V41_ADAPTIVE_BATCH_STABILITY_V1';
 
  // Explicit user policy: SE is uncertainty, never a win probability.
- const USER_ENTRY=Object.freeze({minEstimatorSE:.0055,minAbsoluteEVGap:.00256});
+ const USER_ENTRY=Object.freeze({minEstimatorSE:.0055,minAbsoluteEVGap:.00128});
  function userEntryDecision(report){
   const se=report?.quality?.estimator_gap_se;
   const b=report?.ev_banker,p=report?.ev_player;
@@ -22,9 +22,9 @@
   if(!valid)reasons.push('user_diagnostics_unavailable');
   else{
    if(!(se>USER_ENTRY.minEstimatorSE))reasons.push('user_se_not_above_055_percent');
-   // Tolerance only compensates binary rounding at the exact 0.256pp boundary.
+   // Tolerance only compensates binary rounding at the exact 0.128pp boundary.
    if(gap+1e-12<USER_ENTRY.minAbsoluteEVGap||rawGap+1e-12<USER_ENTRY.minAbsoluteEVGap)
-    reasons.push('user_ev_gap_below_0256pp');
+    reasons.push('user_ev_gap_below_0128pp');
    if(!candidate||rb===rp||(b>p)!==(rb>rp))reasons.push('user_ev_direction_conflict');
   }
   return {direction:reasons.length?'SKIP':candidate,candidate,
