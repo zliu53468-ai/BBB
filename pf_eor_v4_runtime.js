@@ -26,9 +26,9 @@
   // 使用 24 個分層抽取的假想粒子，每個點數影響各做 96 次配對模擬。
   eorParticleCount:24,eorSamples:96,
   // Floor and sampling-uncertainty multiplier for an adaptive EV-gap gate.
-  // 0.70 is a moderate signal-noise heuristic, NOT a statistical z-score or
+  // 0.65 is a moderate signal-noise heuristic, NOT a statistical z-score or
   // an observed win-rate confidence interval.
-  minEvGap:.0045,noiseGuardMultiplier:.70,minPosteriorQuality:.50,
+  minEvGap:.0040,noiseGuardMultiplier:.65,minPosteriorQuality:.50,
   // EOR can veto a fragile signal when a one-card hypothetical perturbation
   // is as large as the indicated EV-gap; it never chooses the direction.
   eorFragilityFloor:.025,
