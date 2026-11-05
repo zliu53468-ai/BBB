@@ -9,7 +9,7 @@
  const VERSION='BBB_V41_ADAPTIVE_BATCH_STABILITY_V1';
 
  // Explicit user policy: SE is uncertainty, never a win probability.
- const USER_ENTRY=Object.freeze({minEstimatorSE:.55});
+ const USER_ENTRY=Object.freeze({minEstimatorSE:.0052});
  function userEntryDecision(report){
   const se=report?.quality?.estimator_gap_se;
   const b=report?.ev_banker,p=report?.ev_player;
@@ -21,7 +21,7 @@
   const reasons=[];
   if(!valid)reasons.push('user_diagnostics_unavailable');
   else{
-   if(!(se>USER_ENTRY.minEstimatorSE))reasons.push('user_se_not_above_55_percent');
+   if(!(se>USER_ENTRY.minEstimatorSE))reasons.push('user_se_not_above_052_percent');
    if(!candidate||rb===rp||(b>p)!==(rb>rp))reasons.push('user_ev_direction_conflict');
   }
   return {direction:reasons.length?'SKIP':candidate,candidate,

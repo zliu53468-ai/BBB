@@ -17,7 +17,7 @@
  function calculate(pair,options){
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   return new Promise((resolve,reject)=>{
-   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-user-se55-anygap-v2");worker=instance;
+   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-user-se052-anygap-v3");worker=instance;
    const cleanup=()=>{clearTimeout(timer);instance.terminate();if(worker===instance){worker=null;cancelActive=null;}};
    const timer=setTimeout(()=>{cleanup();reject(Error("batch_calculation_timeout"));},15000);
    cancelActive=()=>{cleanup();reject(Error("analysis_cancelled"));};
@@ -65,7 +65,7 @@
    direction==="B"?"PF / BANKER":"PF / PLAYER");
   set("confidence","中立 EV 偏移 "+pct(choice.gap)+"｜估計標準誤 "+pct(choice.estimator_gap_se)+"（非勝率）");
   set("regime",choice.reason==="user_entry_pass"?"自訂門檻通過（非勝率驗證）":
-   choice.reason==="user_se_not_above_55_percent"?"觀望：EV 估計標準誤未超過 55%":
+   choice.reason==="user_se_not_above_052_percent"?"觀望：EV 估計標準誤未超過 0.52%":
    choice.reason==="user_ev_direction_conflict"?"觀望：EV 相同或平滑與原始 EV 方向不一致":
    choice.reason==="quality_pass"?"V4 品質通過":choice.reason==="weak_ev_gap"?
    "V4 觀望：EV 差距不足以超過抽樣誤差":choice.reason==="eor_fragile"?
@@ -92,7 +92,7 @@
    "｜中立基準差 "+pct(choice.baseline_ev_gap)+
    "｜基準校正偏移 "+pct(choice.decision_ev_gap)+
    "｜EV 估計標準誤 "+pct(choice.estimator_gap_se)+
-   "｜自訂條件：EV 估計標準誤 >55%（誤差，非勝率）"+
+   "｜自訂條件：EV 估計標準誤 >0.52%（誤差，非勝率）"+
    "｜平滑 EV 絕對差 "+pct(choice.user_smoothed_ev_gap)+
    "｜原始 EV 絕對差 "+pct(choice.user_raw_ev_gap)+
    "｜兩組 EV 只需有高低差且同向，無最小差距"+
