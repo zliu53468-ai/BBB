@@ -1,6 +1,6 @@
 /**
  * BBB V4 正式推論核心：僅輸入當局閒／莊 0–9 最終總點。
- * 方向來自條件式 PF 原始 EV 相對基準的偏移；EOR 量測敏感度；
+ * 方向來自條件式 PF 含5%莊佣金的原始 EV 比較；EOR 量測敏感度；
  * Deplete MC 使用相同資料獨立重新抽樣以交叉檢查，不當成額外證據。
  * 不建立 LinUCB、不計算 256D 上下文、不使用牌路特徵修改方向。
  */
@@ -20,7 +20,7 @@
  if(!quant?.BlindPhysicsEstimator||!physics?.summarizeHypotheses||
    !physics?.BASE||!deplete?.attachShadow||!deplete?.dealWithUniforms)
    throw Error("missing_physical_v4_dependencies");
- const VERSION="BBB_PF_EOR_DEPLETE_V4_1_NEUTRAL_FRESH_RANDOM";
+ const VERSION="BBB_PF_EOR_DEPLETE_V4_1_COMMISSION_FRESH_RANDOM";
  const CONFIG=Object.freeze({
   particles:96,simulationsPerParticle:256,
   // 使用 24 個分層抽取的假想粒子，每個點數影響各做 96 次配對模擬。
@@ -55,8 +55,7 @@
   return()=>{s^=s<<13;s^=s>>>17;s^=s<<5;return(s>>>0)/4294967296;};
  }
  const gapOf=prob=>1.95*prob.B-2*prob.P;
- // 「50/50 中立」是移除基準本身的 EV 不對稱，不修改真實機率或賠率。
- // 兩邊各自相對基準的 EV 改變相等時，方向偏移為零；門檻仍會觀望。
+ // 保留基準常數供診斷與相容使用；正式決策不再扣除基準差。
  const BASE_EV=Object.freeze({B:.95*physics.BASE.B-physics.BASE.P,
   P:physics.BASE.P-physics.BASE.B});
  const BASE_GAP=BASE_EV.B-BASE_EV.P;
@@ -134,9 +133,9 @@ function rawQualityDiagnostics(raw,pf){
   decide(report){
    const c=this.config,d=report?.quality,eor=report?.eor,shadow=report?.deplete_mc;
    const evB=report?.ev_banker,evP=report?.ev_player;
-   // Compare changes versus the baseline; retain raw commission-adjusted EV separately.
+   // Compare the original commission-adjusted EV; do not deduct commission twice.
    const rawSigned=finite(evB)&&finite(evP)?evB-evP:NaN;
-   const signed=rawSigned-BASE_GAP;
+   const signed=rawSigned;
    const candidate=finite(signed)?(signed>=0?"B":"P"):null;
    const mandatory=[
     evB,evP,d?.quality,d?.ess_ratio,d?.ancestor_diversity,
@@ -162,7 +161,7 @@ function rawQualityDiagnostics(raw,pf){
    const threshold=Math.max(c.minEvGap,c.noiseGuardMultiplier*estimatedSe);
    const gap=abs(signed),sensitivity=Math.max(0,eor.max_abs_ev_gap_delta);
    const fragile=sensitivity>Math.max(c.eorFragilityFloor,gap);
-   const mcSigned=shadow.ev_banker-shadow.ev_player-BASE_GAP;
+   const mcSigned=shadow.ev_banker-shadow.ev_player;
    const tolerance=Math.max(c.crossCheckFloor,c.crossCheckZ*
     Math.hypot(estimatedSe,Math.max(0,shadow.paired_mc_gap_se)));
    const deviation=abs(signed-mcSigned);
@@ -176,8 +175,8 @@ function rawQualityDiagnostics(raw,pf){
     !stable?"deplete_disagreement":
     opposite?"opposite_deplete_direction":"quality_pass";
    return{direction:pass?candidate:"SKIP",candidate,reason,
-    gap,threshold,quality,ev_difference:rawSigned,decision_ev_gap:signed,baseline_ev_gap:BASE_GAP,
-    ev_banker:evB,ev_player:evP,decision_metric:"baseline_centered_ev_gap",
+    gap,threshold,quality,ev_difference:rawSigned,decision_ev_gap:signed,baseline_ev_gap:BASE_GAP,baseline_correction_applied:false,
+    ev_banker:evB,ev_player:evP,decision_metric:"commission_adjusted_raw_ev_gap",
     chosen_ev:candidate==="B"?evB:evP,
     mc_gap_se:mcSe,posterior_mean_se:posteriorMeanSe,
     estimator_gap_se:estimatedSe,noise_guard_multiplier:c.noiseGuardMultiplier,

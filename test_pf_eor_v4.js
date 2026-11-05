@@ -35,8 +35,8 @@ assert.equal(a.quality.mode,'adaptive_confidence_only');
 assert.equal(a.quality.ev_modified,false);
 assert.equal(a.quality.probability_shrinkage,0);
 assert.deepEqual(a.original_pf_ev,{B:a.ev_banker,P:a.ev_player});
-assert.equal(a.v4.candidate,a.ev_banker-a.ev_player>=core.BASE_GAP?'B':'P');
-assert.equal(a.v4.decision_metric,'baseline_centered_ev_gap');
+assert.equal(a.v4.candidate,a.ev_banker>=a.ev_player?'B':'P');
+assert.equal(a.v4.decision_metric,'commission_adjusted_raw_ev_gap');
 assert(Math.abs(a.v4.ev_difference-(a.ev_banker-a.ev_player))<1e-12);
 assert(Math.abs(a.v4.estimator_gap_se-
   Math.hypot(a.quality.mc_gap_se,a.quality.posterior_mean_se_gap))<1e-12);
@@ -103,7 +103,7 @@ const grid={B:0,P:0,SKIP:0};
 for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
  const r=sample.analyze(player,banker,{seed:0});
  grid[r.v4.direction]++;
- assert.equal(r.v4.candidate,r.ev_banker-r.ev_player>=core.BASE_GAP?'B':'P');
+ assert.equal(r.v4.candidate,r.ev_banker>=r.ev_player?'B':'P');
  assert.equal(r.quality.probability_shrinkage,0);
  assert.deepEqual(r.original_pf_ev,{B:r.ev_banker,P:r.ev_player});
  assert.equal(r.deplete_mc.status,'complete');
@@ -141,15 +141,16 @@ for(const patch of [{particles:97},{simulationsPerParticle:0},{eorParticleCount:
 const mutable={...CONFIG};const safe=new PhysicalPointV4(mutable);mutable.simulationsPerParticle=8;
 assert.equal(safe.config.simulationsPerParticle,256);assert(Object.isFrozen(safe.config));
 
-// The reference itself is neutral and cannot pass the unchanged gate.
+// The reference raw EV gap remains nonzero but below the existing gate.
 const reference=gate.decide({...good,ev_banker:core.BASE_EV.B,ev_player:core.BASE_EV.P,
  deplete_mc:{...good.deplete_mc,ev_banker:core.BASE_EV.B,ev_player:core.BASE_EV.P}});
-assert(Math.abs(reference.decision_ev_gap)<1e-12);assert.equal(reference.direction,'SKIP');
+assert.equal(reference.decision_ev_gap,core.BASE_GAP);assert.equal(reference.direction,'SKIP');
 assert.equal(reference.ev_difference,core.BASE_GAP);
 const shifted=gate.decide({...good,ev_banker:core.BASE_EV.B-.0001,ev_player:core.BASE_EV.P,
  deplete_mc:{...good.deplete_mc,ev_banker:core.BASE_EV.B-.0001,ev_player:core.BASE_EV.P}});
-assert(shifted.ev_banker>shifted.ev_player);assert.equal(shifted.candidate,'P');
-assert(Math.abs(shifted.decision_ev_gap+.0001)<1e-12);
+assert(shifted.ev_banker>shifted.ev_player);assert.equal(shifted.candidate,'B');
+assert(Math.abs(shifted.decision_ev_gap-(core.BASE_GAP-.0001))<1e-12);
+assert.equal(shifted.baseline_correction_applied,false);
 // Constants/thresholds and source probabilities remain unchanged.
 assert.equal(CONFIG.noiseGuardMultiplier,.70);assert.equal(CONFIG.simulationsPerParticle,256);
 assert.equal(CONFIG.eorParticleCount,24);assert.equal(CONFIG.eorSamples,96);
@@ -174,10 +175,19 @@ for(const r of freshReports){
  const replay=sample.analyze(5,3,{seed:r.randomization.seed});
  for(const key of ['simulated_probability','quality','eor','deplete_mc','v4'])assert.deepEqual(replay[key],r[key]);
  assert.equal(replay.ev_banker,r.ev_banker);assert.equal(replay.ev_player,r.ev_player);
- assert.equal(r.v4.candidate,r.ev_banker-r.ev_player>=core.BASE_GAP?'B':'P');
+ assert.equal(r.v4.candidate,r.ev_banker>=r.ev_player?'B':'P');
 }
 assert.throws(()=>sample.analyze(5,3,{seed:-1}));assert.throws(()=>sample.analyze(5,3,{seed:1.5}));
 const path=require('path'),vm=require('vm'),sandbox={module:{exports:{}},require:n=>require(path.resolve(__dirname,n))};
 vm.runInNewContext(fs.readFileSync('pf_eor_v4_runtime.js','utf8'),sandbox);
 assert.throws(()=>new sandbox.module.exports.PhysicalPointV4().analyze(5,3),/secure_random_unavailable/);
 console.log('PASS fresh entropy, separate PF/EOR/Deplete streams and exact seed replay');
+
+// 莊勝機率稍高仍可能因5%佣金而具有較低EV；只扣一次佣金。
+for(const [pB,pP,expected]of [[.505,.495,'P'],[.52,.48,'B']]){
+ const evB=.95*pB-pP,evP=pP-pB;
+ const d=gate.decide({...good,ev_banker:evB,ev_player:evP,
+  deplete_mc:{...good.deplete_mc,ev_banker:evB,ev_player:evP}});
+ assert.equal(d.candidate,expected);assert.equal(d.ev_difference,evB-evP);
+ assert.equal(d.decision_ev_gap,d.ev_difference);assert.equal(d.baseline_correction_applied,false);
+}
