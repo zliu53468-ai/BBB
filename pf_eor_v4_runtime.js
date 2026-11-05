@@ -18,17 +18,19 @@
 })(typeof window!=="undefined"?window:null,function(quant,physics,deplete){
  "use strict";
  if(!quant?.BlindPhysicsEstimator||!physics?.summarizeHypotheses||
-   !physics?.adaptiveScoreSmoother||!deplete?.attachShadow||!deplete?.dealWithUniforms)
+   !physics?.BASE||!deplete?.attachShadow||!deplete?.dealWithUniforms)
    throw Error("missing_physical_v4_dependencies");
- const VERSION="BBB_PF_EOR_DEPLETE_V4_ADAPTIVE_SCORE";
- const BASE_GAP=1.95*physics.BASE.B-2*physics.BASE.P;
+ const VERSION="BBB_PF_EOR_DEPLETE_V4_ADAPTIVE_CONFIDENCE";
  const CONFIG=Object.freeze({
   particles:96,simulationsPerParticle:160,
   // 使用 16 個分層抽取的假想粒子，每個點數影響各做 96 次配對模擬。
   eorParticleCount:16,eorSamples:96,
-  minEvGap:.0028,maxEvGap:.012,
-  mcNoiseWeight:.09,posteriorSpreadWeight:.013,eorSensitivityWeight:.05,
-  poorQualityWeight:.0015,
+  // Floor and sampling-uncertainty multiplier for an adaptive EV-gap gate.
+  // These are heuristic MC estimator diagnostics, not predictive hit-rate CIs.
+  minEvGap:.005,confidenceZ:1.64,minPosteriorQuality:.50,
+  // EOR can veto a fragile signal when a one-card hypothetical perturbation
+  // is as large as the indicated EV-gap; it never chooses the direction.
+  eorFragilityFloor:.025,
   crossCheckZ:2.5,crossCheckFloor:.008
  });
  function valid(x){return Number.isInteger(x)&&x>=0&&x<=9;}
@@ -85,16 +87,42 @@
    actual_remaining_counts_known:false,independent_evidence:false};
  }
 
+function rawQualityDiagnostics(raw,pf){
+  const n=Math.max(1,pf.size||raw.particle_support);
+  const ess=clamp((raw.posterior_update_ess??n)/n,0,1);
+  const activeESS=clamp((raw.particle_ess??n)/n,0,1);
+  const ancestorDiversity=clamp(Array.isArray(pf.ancestorIds)?
+   new Set(pf.ancestorIds).size/n:1,0,1);
+  const likelihoodNoise=clamp(pf.lastLikelihoodRelativeSE??0,0,1);
+  const quality=clamp((.5*ess+.25*activeESS+.25*ancestorDiversity)/
+   (1+likelihoodNoise),0,1);
+  // Use the debiased posterior MEAN standard error, never the raw spread
+  // across 160-draw per-particle MC estimates as an estimator SE.
+  return{
+   mode:"adaptive_confidence_only",probability_shrinkage:0,ev_modified:false,
+   quality,ess_ratio:ess,active_ess_ratio:activeESS,
+   ancestor_diversity:ancestorDiversity,likelihood_relative_se:likelihoodNoise,
+   mc_gap_se:raw.mc_se_gap,
+   posterior_gap_spread:raw.posterior_sd_gap_debiased,
+   posterior_raw_gap_spread:raw.posterior_sd_gap,
+   posterior_mean_se_gap:raw.posterior_mean_se_gap,
+   estimator_gap_se:raw.pf_estimator_se_gap,
+   history_progress_used:false,validated_hit_rate:false
+  };
+ }
+
  class QualityFilterV4{
   constructor(config=CONFIG){this.config=config;}
   decide(report){
    const c=this.config,d=report?.quality,eor=report?.eor,shadow=report?.deplete_mc;
    const evB=report?.ev_banker,evP=report?.ev_player;
-   const signal=finite(evB)&&finite(evP)?evB-evP-BASE_GAP:NaN;
-   const candidate=finite(signal)?(signal>=0?"B":"P"):null;
+   // The actual 5%-commission EV comparison alone chooses B/P.
+   const signed=finite(evB)&&finite(evP)?evB-evP:NaN;
+   const candidate=finite(signed)?(signed>=0?"B":"P"):null;
    const mandatory=[
     evB,evP,d?.quality,d?.ess_ratio,d?.ancestor_diversity,
-    d?.mc_gap_se,d?.posterior_gap_spread,eor?.max_abs_ev_gap_delta,
+    d?.mc_gap_se,d?.posterior_gap_spread,d?.posterior_mean_se_gap,
+    d?.estimator_gap_se,eor?.max_abs_ev_gap_delta,
     shadow?.ev_banker,shadow?.ev_player,shadow?.paired_mc_gap_se
    ];
    if(!candidate||mandatory.some(v=>!finite(v))||
@@ -104,36 +132,43 @@
     return{direction:"SKIP",candidate,reason:"diagnostics_unavailable",
      validated_hit_rate:false,verified_edge:false};
    const quality=clamp(d.quality,0,1);
-   const noise=clamp(d.mc_gap_se,0,.10);
-   const posterior=clamp(d.posterior_gap_spread,0,.3);
-   const sensitivity=clamp(eor.max_abs_ev_gap_delta,0,.2);
-   // 在 EV 單位下比較，而不是把 EV 差距誤稱為勝率差距。
-   // 這是可回測、可微調的保守啟發式，並非經驗證的勝率置信區間。
-   const threshold=clamp(c.minEvGap+
-    c.mcNoiseWeight*noise+
-    c.posteriorSpreadWeight*posterior+
-    c.eorSensitivityWeight*sensitivity+
-    c.poorQualityWeight*(1-quality),c.minEvGap,c.maxEvGap);
-   const gap=abs(signal),pfSigned=signal;
-   const mcSigned=shadow.ev_banker-shadow.ev_player-BASE_GAP;
-   const deviation=abs(pfSigned-mcSigned);
-   // Deplete 僅負責相容性檢查：同一筆證據不可當成兩份獨立觀測融合。
+   const mcSe=Math.max(0,d.mc_gap_se),posteriorMeanSe=Math.max(0,d.posterior_mean_se_gap);
+   const estimatedSe=Math.hypot(mcSe,posteriorMeanSe);
+   // Fail closed if the supplied total does not match independently combined
+   // MC + latent-posterior estimator uncertainty.
+   if(Math.abs(estimatedSe-d.estimator_gap_se)>1e-8||
+    !finite(estimatedSe)||estimatedSe>.5)
+    return{direction:"SKIP",candidate,reason:"diagnostics_unavailable",
+     validated_hit_rate:false,verified_edge:false};
+   const threshold=Math.max(c.minEvGap,c.confidenceZ*estimatedSe);
+   const gap=abs(signed),sensitivity=Math.max(0,eor.max_abs_ev_gap_delta);
+   const fragile=sensitivity>Math.max(c.eorFragilityFloor,gap);
+   const mcSigned=shadow.ev_banker-shadow.ev_player;
    const tolerance=Math.max(c.crossCheckFloor,c.crossCheckZ*
-    Math.hypot(noise,shadow.paired_mc_gap_se));
+    Math.hypot(estimatedSe,Math.max(0,shadow.paired_mc_gap_se)));
+   const deviation=abs(signed-mcSigned);
    const stable=deviation<=tolerance;
-   const conflict=pfSigned*mcSigned<0&&abs(mcSigned)>threshold*.5;
-   const pass=gap>threshold&&stable&&!conflict;
-   return{direction:pass?candidate:"SKIP",candidate,
-    reason:gap<=threshold?"weak_ev_gap":!stable?"deplete_disagreement":
-     conflict?"opposite_deplete_direction":"quality_pass",
-    gap,threshold,quality,baseline_ev_gap:BASE_GAP,
-    relative_ev_signal:signal,decision_metric:"baseline_relative_ev_gap",
-    mc_gap_se:noise,posterior_spread:posterior,
-    eor_sensitivity:sensitivity,deplete_gap_deviation:deviation,
-    deplete_agreement_limit:tolerance,deplete_consistent:stable&&!conflict,
+   const opposite= signed*mcSigned<0 &&
+    abs(mcSigned)>Math.max(c.minEvGap,c.confidenceZ*shadow.paired_mc_gap_se);
+   const goodQuality=quality>=c.minPosteriorQuality;
+   const pass=goodQuality&&gap>threshold&&!fragile&&stable&&!opposite;
+   const reason=!goodQuality?"poor_posterior_quality":
+    gap<=threshold?"weak_ev_gap":fragile?"eor_fragile":
+    !stable?"deplete_disagreement":
+    opposite?"opposite_deplete_direction":"quality_pass";
+   return{direction:pass?candidate:"SKIP",candidate,reason,
+    gap,threshold,quality,ev_difference:signed,
+    ev_banker:evB,ev_player:evP,decision_metric:"raw_ev_gap",
+    chosen_ev:candidate==="B"?evB:evP,
+    mc_gap_se:mcSe,posterior_mean_se:posteriorMeanSe,
+    estimator_gap_se:estimatedSe,confidence_z:c.confidenceZ,
+    eor_sensitivity:sensitivity,eor_fragile:fragile,
+    deplete_gap_deviation:deviation,deplete_agreement_limit:tolerance,
+    deplete_consistent:stable&&!opposite,
     validated_hit_rate:false,verified_edge:false};
   }
  }
+
 
  class PhysicalPointV4{
   constructor(config=CONFIG){this.config=config;this.filter=new QualityFilterV4(config);}
@@ -148,13 +183,14 @@
     {samplesPerParticle:this.config.simulationsPerParticle});
    if(raw.simulation_exhausted||raw.particle_support!==this.config.particles)
     throw Error("pf_posterior_unavailable");
-   const smooth=physics.adaptiveScoreSmoother(raw,pf);
-   const physical=smooth.physical;
+   // Keep the raw simulated next-hand probability and commission-adjusted EV.
+   // Noise handling belongs solely to the separate V4 observation/skip gate.
+   const physical=raw,quality=rawQualityDiagnostics(raw,pf);
    const core={version:VERSION,point_observation_independent:true,
     history_length:1,point_score_observation_count:1,
     observed_card_evidence:false,physical_ev:physical,
     ev_banker:physical.ev_banker,ev_player:physical.ev_player,
-    quality:smooth.diagnostics,adaptive_score_smoothing:smooth.diagnostics,
+    quality,adaptive_confidence_gate:quality,
     effective_research_gate:null,research_signal:{direction:null,available:false}};
    const eor=computeEOR(pf,pair,{particles:this.config.eorParticleCount,
     samples:this.config.eorSamples});
@@ -171,5 +207,6 @@
    return{...report,v4:this.filter.decide(report)};
   }
  }
- return Object.freeze({VERSION,CONFIG,computeEOR,QualityFilterV4,PhysicalPointV4});
+ return Object.freeze({VERSION,CONFIG,computeEOR,rawQualityDiagnostics,
+  QualityFilterV4,PhysicalPointV4});
 });
