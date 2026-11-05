@@ -1,0 +1,17 @@
+[
+  {
+    "player": 5,
+    "banker": 3,
+    "sha256": "22fd6087b3d3e9ca38b60a6deebb4b91f18ecac9208253868320304487e9c7bc"
+  },
+  {
+    "player": 2,
+    "banker": 8,
+    "sha256": "514ffbb8960c701cce952e895d9f0b96f3683116badbe758fd43391659bf5b0d"
+  },
+  {
+    "player": 9,
+    "banker": 9,
+    "sha256": "12a02161be6a332fd75eb84d56d55dd9128a8364d84370a7f9b171ba8da7576e"
+  }
+]
