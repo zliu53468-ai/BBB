@@ -46,9 +46,11 @@
   const choice=report.v4,direction=choice.direction;
   set("directionText",direction==="SKIP"?"觀望":direction==="B"?"莊":"閒");
   set("directionCode",direction==="SKIP"?"V4 / SKIP":direction==="B"?"PF / BANKER":"PF / PLAYER");
-  set("confidence","相對基準 EV 訊號 "+pct(choice.relative_ev_signal)+"（非勝率）");
+  set("confidence","原始 EV 差距 "+pct(choice.gap)+"｜估計標準誤 "+pct(choice.estimator_gap_se)+"（非勝率）");
   set("regime",choice.reason==="quality_pass"?"V4 品質通過":choice.reason==="weak_ev_gap"?
-   "V4 觀望：EV 差距偏小":choice.reason==="opposite_deplete_direction"?
+   "V4 觀望：EV 差距不足以超過抽樣誤差":choice.reason==="eor_fragile"?
+   "V4 觀望：EOR 假設扣牌過度敏感":choice.reason==="poor_posterior_quality"?
+   "V4 觀望：PF 後驗品質不足":choice.reason==="opposite_deplete_direction"?
    "V4 觀望：Deplete 方向衝突":choice.reason==="deplete_disagreement"?
    "V4 觀望：Deplete 差異過大":"V4 觀望：品質資料不足");
   const p=report.simulated_probability;
@@ -59,9 +61,9 @@
   set("message","本局閒 "+pair.player+"／莊 "+pair.banker+
    "｜PF96（每次全新）、每粒子 MC160"+
    "｜莊 EV "+pct(report.ev_banker)+"、閒 EV "+pct(report.ev_player)+
-   "｜相對八副牌基準訊號 "+pct(choice.relative_ev_signal)+
-   "｜自適應平滑 "+pct(report.adaptive_score_smoothing.blend)+
-   "｜V4 門檻 "+pct(choice.threshold)+
+   "｜原始 EV 差 "+pct(choice.ev_difference)+
+   "｜EV 估計標準誤 "+pct(choice.estimator_gap_se)+
+   "｜自適應觀望門檻 "+pct(choice.threshold)+
    "｜EOR 最大敏感度 "+pct(report.eor.max_abs_ev_gap_delta)+
    "｜Deplete "+(deplete.status==="complete"?
      "交叉核對 "+(choice.deplete_consistent?"一致":"有分歧")+
@@ -69,7 +71,7 @@
    "｜假想組成不是實際牌值；訊號不代表已驗證盈利優勢。");
   set("localCalibrationStatus","獨立點數 PF → EOR → 組成機率／EV → Deplete MC 交叉檢查 → V4"+
    "｜"+markovDiagnostics());
-  set("modePill","PF96 · 自適應平滑 · EOR · V4");
+  set("modePill","PF96 · 原始EV · 自適應品質觀望");
  }
  function saveAndRender(pair,{undo=false}={}){
   if(busy)return null;
@@ -148,7 +150,7 @@
   get markov(){return root.BBBMarkovResidual?.transitionStats?.(audit.map(outcome))||null;}
  };
  setIdle("只輸入本局閒／莊最終點數各一個 0–9；每次重新建立 PF，不使用歷史改變方向。");
- set("modePill","PF96 · 自適應平滑 · EOR · V4");
+ set("modePill","PF96 · 原始EV · 自適應品質觀望");
  set("pointInputStatus","已記錄 "+audit.length+" 次總點數（僅供返回／Markov 診斷）；可開始新的獨立分析。");
  set("localCalibrationStatus",markovDiagnostics());
 })(typeof window!=="undefined"?window:null);
