@@ -20,7 +20,7 @@
  if(!quant?.BlindPhysicsEstimator||!physics?.summarizeHypotheses||
    !physics?.BASE||!deplete?.attachShadow||!deplete?.dealWithUniforms)
    throw Error("missing_physical_v4_dependencies");
- const VERSION="BBB_PF_EOR_DEPLETE_V4_1_NEUTRAL_REFERENCE";
+ const VERSION="BBB_PF_EOR_DEPLETE_V4_1_NEUTRAL_FRESH_RANDOM";
  const CONFIG=Object.freeze({
   particles:96,simulationsPerParticle:256,
   // 使用 24 個分層抽取的假想粒子，每個點數影響各做 96 次配對模擬。
@@ -63,7 +63,7 @@
  const gapScore=x=>x==="B"?1.95:x==="P"?-2:0;
 
  function computeEOR(estimator,pair,{particles=CONFIG.eorParticleCount,
-  samples=CONFIG.eorSamples}={}){
+  samples=CONFIG.eorSamples,seedSalt=0}={}){
   const rows=estimator.particles;
   if(!Array.isArray(rows)||rows.length<1||
    !Number.isInteger(particles)||particles<1||particles>rows.length||
@@ -79,7 +79,7 @@
    if(total<7)continue;
    validSampledParticles++;
    for(let rank=0;rank<10;rank++)pointMass[rank]+=counts[rank]/total;
-   const rng=seeded(0x45d3e77^Math.imul(pair.player+1,0x9e3779b1)^
+   const rng=seeded(0x45d3e77^seedSalt^Math.imul(pair.player+1,0x9e3779b1)^
     Math.imul(pair.banker+1,0x85ebca6b)^Math.imul(idx+1,0x27d4eb2f));
    // 同一個假想剩餘組成計算 10 種點數移除的配對差值；
    // 這些是敏感度導數的近似，不是額外觀察到的真實牌。
@@ -189,14 +189,29 @@ function rawQualityDiagnostics(raw,pf){
  }
 
 
+ // 僅改變抽樣流，不隨機選方向；沒有熵來源就失敗關閉。
+ function checkedSeed(value){
+  if(!Number.isInteger(value)||value<0||value>0xffffffff)throw Error("invalid_analysis_seed");
+  return value>>>0;
+ }
+ function freshSeed(){
+  const cryptoAPI=globalThis.crypto;
+  if(!cryptoAPI?.getRandomValues)throw Error("secure_random_unavailable");
+  return cryptoAPI.getRandomValues(new Uint32Array(1))[0];
+ }
  class PhysicalPointV4{
   constructor(config=CONFIG){this.config=validateConfig(config);this.filter=new QualityFilterV4(this.config);}
-  analyze(player,banker){
+  analyze(player,banker,{seed}={}){
    if(!valid(player)||!valid(banker))throw Error("invalid_total_points");
+   const replay=seed!==undefined;
+   const baseSeed=replay?checkedSeed(seed):freshSeed();
+   // 不同salt分離PF、EOR、Deplete的偽亂數流；它們仍共享同一觀察。
+   const eorSeed=Math.imul(baseSeed,0x85ebca6b)>>>0;
+   const depleteSeed=Math.imul(baseSeed,0xc2b2ae35)>>>0;
    const pair={player,banker},result=outcome(player,banker);
    // 每次重新建立與八副牌先驗一致的粒子後驗；上一局不寫入本次組成。
    const pf=new quant.BlindPhysicsEstimator({particles:this.config.particles,
-    exactSingleScore:true,seed:0xBBB256});
+    exactSingleScore:true,seed:(0xBBB256^baseSeed)>>>0});
    pf.observe(result,pair);
    const raw=physics.summarizeHypotheses(pf,[result],
     {samplesPerParticle:this.config.simulationsPerParticle});
@@ -212,9 +227,11 @@ function rawQualityDiagnostics(raw,pf){
     quality,adaptive_confidence_gate:quality,
     effective_research_gate:null,research_signal:{direction:null,available:false}};
    const eor=computeEOR(pf,pair,{particles:this.config.eorParticleCount,
-    samples:this.config.eorSamples});
-   const checked=deplete.attachShadow(core,pair);
+    samples:this.config.eorSamples,seedSalt:eorSeed});
+   const checked=deplete.attachShadow(core,pair,{seedSalt:depleteSeed});
    const report={...core,eor,deplete_mc:checked.deplete_mc,
+    randomization:{mode:replay?"explicit_seed_replay":"fresh_secure_seed",
+     seed:baseSeed,pf_seed:(0xBBB256^baseSeed)>>>0,eor_salt:eorSeed,deplete_salt:depleteSeed},
     model_posterior:{sampled_compositions:pf.size,model_based:true,
      actual_card_ranks_known:false},
     simulated_probability:physical.simulated_probability,

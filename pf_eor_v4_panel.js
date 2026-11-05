@@ -19,7 +19,8 @@
   try{
    const obj=JSON.parse(root.localStorage?.getItem(KEY)||"null");
    if(obj?.version!==1||!Array.isArray(obj.rows))return[];
-   return obj.rows.filter(isPair).slice(-500).map(x=>({player:x.player,banker:x.banker}));
+   return obj.rows.filter(isPair).slice(-500).map(x=>({player:x.player,banker:x.banker,
+    ...(Number.isInteger(x.analysis_seed)&&x.analysis_seed>=0&&x.analysis_seed<=0xffffffff?{analysis_seed:x.analysis_seed}:{})}));
   }catch(_){return[];}
  }
  audit=restoreAudit();
@@ -64,6 +65,7 @@
   set("message","本局閒 "+pair.player+"／莊 "+pair.banker+
    "｜PF96（每次全新）、每粒子 MC"+CONFIG.simulationsPerParticle+
    "｜莊 EV "+pct(report.ev_banker)+"、閒 EV "+pct(report.ev_player)+
+   "｜抽樣編號 "+report.randomization.seed+
    "｜原始 EV 差 "+pct(choice.ev_difference)+
    "｜中立基準差 "+pct(choice.baseline_ev_gap)+
    "｜基準校正偏移 "+pct(choice.decision_ev_gap)+
@@ -85,8 +87,9 @@
   const btn=el("btnPointAnalyze");if(btn)btn.disabled=true;
   try{
    // 先算後存；任一階段失敗時不覆寫已確認的紀錄或方向。
-   const r=engine.analyze(pair.player,pair.banker);
-   const next=undo?audit.slice(0,-1):[...audit,pair].slice(-500);
+   const replay=undo&&Number.isInteger(pair.analysis_seed)?{seed:pair.analysis_seed}:undefined;
+   const r=engine.analyze(pair.player,pair.banker,replay);
+   const next=undo?audit.slice(0,-1):[...audit,{...pair,analysis_seed:r.randomization.seed}].slice(-500);
    persist(next);audit=next;last=r;render(r,pair);
    set("pointInputStatus","已完成一次獨立分析，僅需輸入下一局雙方最終總點（0–9）。");
    return r;

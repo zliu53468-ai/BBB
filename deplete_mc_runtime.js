@@ -38,12 +38,13 @@
   }
   return b>p?'B':p>b?'P':'T';
  }
- function estimate(player,banker){
+ function estimate(player,banker,{seedSalt=0}={}){
+  if(!Number.isInteger(seedSalt)||seedSalt<0||seedSalt>0xffffffff)throw Error("invalid_deplete_seed");
   if(!valid(player)||!valid(banker))throw Error('invalid_point_observation');
   const outcome=banker>player?'B':player>banker?'P':'T';
   // Distinct streams for conditioning and prediction, and a new stream per request.
-  const condition=rngFor(0xd3e1e7e1^Math.imul(player+1,0x9e3779b1)^Math.imul(banker+1,0x85ebca6b));
-  const forecast=rngFor(0x51ad0b17^Math.imul(player+1,0xc2b2ae35)^Math.imul(banker+1,0x27d4eb2f));
+  const condition=rngFor(0xd3e1e7e1^seedSalt^Math.imul(player+1,0x9e3779b1)^Math.imul(banker+1,0x85ebca6b));
+  const forecast=rngFor(0x51ad0b17^Math.imul(seedSalt,0x9e3779b1)^Math.imul(player+1,0xc2b2ae35)^Math.imul(banker+1,0x27d4eb2f));
   const batchDeltas=[];let proposals=0,pairedDisagreements=0;
   for(let batch=0;batch<CONFIG.batches;batch++){
    const delta=[0,0,0];
@@ -106,9 +107,9 @@
    research_signal:{...report.research_signal,direction,score:Math.abs(deviation),available},
    action:'SKIP',bet_allowed:false,validated_edge:false};
  }
- function attach(report,pair,{mode=CONFIG.defaultMode}={}){
+ function attach(report,pair,{mode=CONFIG.defaultMode,seedSalt=0}={}){
   if(mode!=='shadow'&&mode!=='candidate')throw Error('invalid_deplete_mode');
-  const diagnostic=estimate(pair.player,pair.banker);
+  const diagnostic=estimate(pair.player,pair.banker,{seedSalt});
   const fused=candidate(report,diagnostic);
   const detail={...diagnostic,status:'complete',mode,candidate_weight:CONFIG.candidateWeight,
    candidate_ev_banker:fused.ev_banker,candidate_ev_player:fused.ev_player,
@@ -117,8 +118,8 @@
    affects_display:mode==='candidate',validated_hit_rate_gain:false};
   return {...(mode==='candidate'?fused:report),deplete_mc:detail};
  }
- function attachShadow(report,pair){
-  try{return attach(report,pair,{mode:'shadow'});}
+ function attachShadow(report,pair,{seedSalt=0}={}){
+  try{return attach(report,pair,{mode:'shadow',seedSalt});}
   catch(_){return {...report,deplete_mc:{version:VERSION,status:'unavailable',
    mode:'shadow',affects_display:false,validated_hit_rate_gain:false,
    reason:'auxiliary_calculation_unavailable'}};}
