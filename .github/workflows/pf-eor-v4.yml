@@ -26,6 +26,10 @@ jobs:
           node --check auth-client.js
       - name: Physical V4 regression
         run: node test_pf_eor_v4.js
+      - name: Independent batch stability and asynchronous panel
+        run: node test_stability.js && node test_stability_panel.js
+      - name: Complete stability input grid (not real holdout)
+        run: node tools/stability_grid.js
       - name: License isolation and ending session
         run: node test_license_storage.mjs && node test_end_analysis_reload.js
       - name: V4.1 A-B numerical comparison (not real holdout)
@@ -48,3 +52,4 @@ jobs:
           path: |
             validation/v41_comparison.json
             validation/v41_browser_performance.json
+            validation/stability_grid.json
