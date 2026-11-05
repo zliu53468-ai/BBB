@@ -41,7 +41,9 @@ assert(Math.abs(a.v4.ev_difference-(a.ev_banker-a.ev_player))<1e-12);
 assert(Math.abs(a.v4.estimator_gap_se-
   Math.hypot(a.quality.mc_gap_se,a.quality.posterior_mean_se_gap))<1e-12);
 assert(Math.abs(a.v4.threshold-
-  Math.max(CONFIG.minEvGap,CONFIG.confidenceZ*a.v4.estimator_gap_se))<1e-12);
+  Math.max(CONFIG.minEvGap,CONFIG.noiseGuardMultiplier*a.v4.estimator_gap_se))<1e-12);
+assert.equal(CONFIG.noiseGuardMultiplier,.70);
+assert.equal(a.v4.noise_guard_multiplier,.70);
 
 // Separate the per-particle MC sampling dispersion from posterior dispersion.
 const diag=a.physical_ev.ev_uncertainty_diagnostics;
@@ -79,8 +81,8 @@ assert.equal(passedPlayer.reason,'quality_pass');
 const small=gate.decide({...good,ev_banker:.001});
 assert.equal(small.direction,'SKIP');
 assert.equal(small.reason,'weak_ev_gap');
-const noisy={...quality,mc_gap_se:.025,posterior_mean_se_gap:0,
- estimator_gap_se:.025};
+const noisy={...quality,mc_gap_se:.055,posterior_mean_se_gap:0,
+ estimator_gap_se:.055};
 assert.equal(gate.decide({...good,quality:noisy}).reason,'weak_ev_gap');
 const fragile=gate.decide({...good,eor:{max_abs_ev_gap_delta:.050}});
 assert.equal(fragile.direction,'SKIP');
@@ -106,8 +108,10 @@ for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
  assert.deepEqual(r.original_pf_ev,{B:r.ev_banker,P:r.ev_player});
  assert.equal(r.deplete_mc.status,'complete');
 }
-assert(grid.B>0&&grid.P>0&&grid.SKIP>0,
- 'Both B/P directions must be reachable without artificial 50/50 targeting');
+assert(grid.B>=10&&grid.P>=8&&grid.SKIP>=20,
+ 'V4 moderate noise gate must keep both B/P directions and observation available');
+assert(grid.B+grid.P>=25&&grid.B+grid.P<=70,
+ 'No all-SKIP regression on the deterministic input-grid smoke test; not a real-world signal-rate claim');
 console.log('V4 100-input score-grid diagnostic (not real-world frequency)',grid);
 
 const auth=fs.readFileSync('auth-client.js','utf8');
@@ -127,4 +131,4 @@ assert(panel.includes('engine.analyze(pair.player,pair.banker)'));
 assert(panel.includes('transitionStats?.(audit.map(outcome))'));
 assert(!runtime.includes('physics.adaptiveScoreSmoother('));
 assert(runtime.includes('const physical=raw,quality=rawQualityDiagnostics(raw,pf)'));
-console.log('PASS raw physical EV, deconvolved uncertainty, adaptive confidence gate, EOR/Deplete, independent point-input V4');
+console.log('PASS raw physical EV, moderate uncertainty gate (not a CI), EOR/Deplete, independent point-input V4');

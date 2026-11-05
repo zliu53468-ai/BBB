@@ -20,14 +20,15 @@
  if(!quant?.BlindPhysicsEstimator||!physics?.summarizeHypotheses||
    !physics?.BASE||!deplete?.attachShadow||!deplete?.dealWithUniforms)
    throw Error("missing_physical_v4_dependencies");
- const VERSION="BBB_PF_EOR_DEPLETE_V4_ADAPTIVE_CONFIDENCE";
+ const VERSION="BBB_PF_EOR_DEPLETE_V4_MODERATE_NOISE_GATE";
  const CONFIG=Object.freeze({
   particles:96,simulationsPerParticle:160,
   // 使用 16 個分層抽取的假想粒子，每個點數影響各做 96 次配對模擬。
   eorParticleCount:16,eorSamples:96,
   // Floor and sampling-uncertainty multiplier for an adaptive EV-gap gate.
-  // These are heuristic MC estimator diagnostics, not predictive hit-rate CIs.
-  minEvGap:.005,confidenceZ:1.64,minPosteriorQuality:.50,
+  // 0.70 is a moderate signal-noise heuristic, NOT a statistical z-score or
+  // an observed win-rate confidence interval.
+  minEvGap:.005,noiseGuardMultiplier:.70,minPosteriorQuality:.50,
   // EOR can veto a fragile signal when a one-card hypothetical perturbation
   // is as large as the indicated EV-gap; it never chooses the direction.
   eorFragilityFloor:.025,
@@ -140,7 +141,7 @@ function rawQualityDiagnostics(raw,pf){
     !finite(estimatedSe)||estimatedSe>.5)
     return{direction:"SKIP",candidate,reason:"diagnostics_unavailable",
      validated_hit_rate:false,verified_edge:false};
-   const threshold=Math.max(c.minEvGap,c.confidenceZ*estimatedSe);
+   const threshold=Math.max(c.minEvGap,c.noiseGuardMultiplier*estimatedSe);
    const gap=abs(signed),sensitivity=Math.max(0,eor.max_abs_ev_gap_delta);
    const fragile=sensitivity>Math.max(c.eorFragilityFloor,gap);
    const mcSigned=shadow.ev_banker-shadow.ev_player;
@@ -149,7 +150,7 @@ function rawQualityDiagnostics(raw,pf){
    const deviation=abs(signed-mcSigned);
    const stable=deviation<=tolerance;
    const opposite= signed*mcSigned<0 &&
-    abs(mcSigned)>Math.max(c.minEvGap,c.confidenceZ*shadow.paired_mc_gap_se);
+    abs(mcSigned)>Math.max(c.minEvGap,c.noiseGuardMultiplier*shadow.paired_mc_gap_se);
    const goodQuality=quality>=c.minPosteriorQuality;
    const pass=goodQuality&&gap>threshold&&!fragile&&stable&&!opposite;
    const reason=!goodQuality?"poor_posterior_quality":
@@ -161,7 +162,7 @@ function rawQualityDiagnostics(raw,pf){
     ev_banker:evB,ev_player:evP,decision_metric:"raw_ev_gap",
     chosen_ev:candidate==="B"?evB:evP,
     mc_gap_se:mcSe,posterior_mean_se:posteriorMeanSe,
-    estimator_gap_se:estimatedSe,confidence_z:c.confidenceZ,
+    estimator_gap_se:estimatedSe,noise_guard_multiplier:c.noiseGuardMultiplier,
     eor_sensitivity:sensitivity,eor_fragile:fragile,
     deplete_gap_deviation:deviation,deplete_agreement_limit:tolerance,
     deplete_consistent:stable&&!opposite,

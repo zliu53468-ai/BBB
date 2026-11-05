@@ -44,8 +44,10 @@
  }
  function render(report,pair){
   const choice=report.v4,direction=choice.direction;
+  const candidateLabel=choice.candidate==="B"?"莊":"閒";
   set("directionText",direction==="SKIP"?"觀望":direction==="B"?"莊":"閒");
-  set("directionCode",direction==="SKIP"?"V4 / SKIP":direction==="B"?"PF / BANKER":"PF / PLAYER");
+  set("directionCode",direction==="SKIP"?"V4 / SKIP · 模擬偏"+candidateLabel:
+   direction==="B"?"PF / BANKER":"PF / PLAYER");
   set("confidence","原始 EV 差距 "+pct(choice.gap)+"｜估計標準誤 "+pct(choice.estimator_gap_se)+"（非勝率）");
   set("regime",choice.reason==="quality_pass"?"V4 品質通過":choice.reason==="weak_ev_gap"?
    "V4 觀望：EV 差距不足以超過抽樣誤差":choice.reason==="eor_fragile"?
@@ -54,7 +56,8 @@
    "V4 觀望：Deplete 方向衝突":choice.reason==="deplete_disagreement"?
    "V4 觀望：Deplete 差異過大":"V4 觀望：品質資料不足");
   const p=report.simulated_probability;
-  set("strength","下一局模擬｜莊 "+pct(p.B)+"｜閒 "+pct(p.P)+"｜和 "+pct(p.T));
+  set("strength","下一局模擬｜莊 "+pct(p.B)+"｜閒 "+pct(p.P)+"｜和 "+pct(p.T)+
+   "｜原始 EV 候選："+candidateLabel+(direction==="SKIP"?"（未通過門檻）":""));
   if(el("directionOrb"))el("directionOrb").className="direction-orb "+
    (direction==="SKIP"?"idle":direction==="B"?"banker":"player");
   const deplete=report.deplete_mc;
@@ -63,7 +66,7 @@
    "｜莊 EV "+pct(report.ev_banker)+"、閒 EV "+pct(report.ev_player)+
    "｜原始 EV 差 "+pct(choice.ev_difference)+
    "｜EV 估計標準誤 "+pct(choice.estimator_gap_se)+
-   "｜自適應觀望門檻 "+pct(choice.threshold)+
+   "｜中度觀望門檻 "+pct(choice.threshold)+
    "｜EOR 最大敏感度 "+pct(report.eor.max_abs_ev_gap_delta)+
    "｜Deplete "+(deplete.status==="complete"?
      "交叉核對 "+(choice.deplete_consistent?"一致":"有分歧")+
@@ -71,7 +74,7 @@
    "｜假想組成不是實際牌值；訊號不代表已驗證盈利優勢。");
   set("localCalibrationStatus","獨立點數 PF → EOR → 組成機率／EV → Deplete MC 交叉檢查 → V4"+
    "｜"+markovDiagnostics());
-  set("modePill","PF96 · 原始EV · 自適應品質觀望");
+  set("modePill","PF96 · 原始EV · 中度品質門檻");
  }
  function saveAndRender(pair,{undo=false}={}){
   if(busy)return null;
@@ -150,7 +153,7 @@
   get markov(){return root.BBBMarkovResidual?.transitionStats?.(audit.map(outcome))||null;}
  };
  setIdle("只輸入本局閒／莊最終點數各一個 0–9；每次重新建立 PF，不使用歷史改變方向。");
- set("modePill","PF96 · 原始EV · 自適應品質觀望");
+ set("modePill","PF96 · 原始EV · 中度品質門檻");
  set("pointInputStatus","已記錄 "+audit.length+" 次總點數（僅供返回／Markov 診斷）；可開始新的獨立分析。");
  set("localCalibrationStatus",markovDiagnostics());
 })(typeof window!=="undefined"?window:null);
