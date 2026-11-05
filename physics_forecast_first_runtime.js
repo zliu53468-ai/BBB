@@ -212,6 +212,18 @@ function summarizeHypotheses(physics,_history,{samplesPerParticle=96}={}){
   const posteriorVariance=estimates.reduce((v,e,i)=>
     v+weights[i]*(e.gap-gap)**2,0);
   const mcStd=Math.sqrt(mcVariance),hypothesisSpread=Math.sqrt(posteriorVariance);
+  // The observed dispersion of per-particle means includes MC noise from
+  // samplesPerParticle independent next-hand draws. Remove its expected
+  // contribution BEFORE treating between-shoe dispersion as latent variation.
+  // For an exact one-score posterior with independent accepted particles,
+  // an estimator standard error combines weighted within-shoe MC variance
+  // with a between-particle mean variance (NOT the raw dispersion itself).
+  const expectedSamplingSpread=estimates.reduce((v,e,i)=>
+    v+weights[i]*(1-weights[i])*e.gap_variance/samplesPerParticle,0);
+  const latentBetweenVariance=Math.max(0,posteriorVariance-expectedSamplingSpread);
+  const weightSquareMass=weights.reduce((v,w)=>v+w*w,0);
+  const posteriorMeanSE=Math.sqrt(latentBetweenVariance*weightSquareMass);
+  const estimatorGapSE=Math.hypot(mcStd,posteriorMeanSE);
   // Both hands use the SAME posterior / next-deal samples as the existing EV.
   // These are model-based virtual lengths, NOT observed card counts.
   const drawLengthDiagnostics=drawLengthEligible?{
@@ -233,6 +245,9 @@ function summarizeHypotheses(physics,_history,{samplesPerParticle=96}={}){
     se_gap:Math.sqrt(mcVariance+posteriorVariance),
     mc_se_gap:mcStd,
     posterior_sd_gap:hypothesisSpread,
+    posterior_sd_gap_debiased:Math.sqrt(latentBetweenVariance),
+    posterior_mean_se_gap:posteriorMeanSE,
+    pf_estimator_se_gap:estimatorGapSE,
     draw_length_diagnostics:drawLengthDiagnostics,
     // Diagnostics only. MC interval conditions on the sampled hypothesis
     // mixture; it is NOT a calibrated confidence interval for real outcomes.
@@ -240,6 +255,11 @@ function summarizeHypotheses(physics,_history,{samplesPerParticle=96}={}){
       likelihood_method:"rao_blackwell_third_card_given_first_four",
       mc_gap_interval_95_conditional:[gap-1.96*mcStd,gap+1.96*mcStd],
       posterior_gap_dispersion_sd:hypothesisSpread,
+      posterior_gap_dispersion_sd_debiased:Math.sqrt(latentBetweenVariance),
+      expected_sampling_spread_variance:expectedSamplingSpread,
+      between_particle_mean_se:posteriorMeanSE,
+      combined_estimator_se:estimatorGapSE,
+      estimated_uncertainty_only:true,calibrated_confidence_interval:false,
       likelihood_relative_se:physics.lastLikelihoodRelativeSE??null,
       rejuvenated_transitions:physics.lastRejuvenated??0,
       rejuvenation_fallbacks:physics.lastRejuvenationFallbacks??0,
