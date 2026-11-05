@@ -1,6 +1,6 @@
 /**
  * BBB V4 正式推論核心：僅輸入當局閒／莊 0–9 最終總點。
- * 方向來自條件式 PF 原始 EV 相對基準的偏移；EOR 量測敏感度；
+ * 方向來自條件式 PF 平滑後 EV 相對基準的偏移；原始值另行保留；
  * Deplete MC 使用相同資料獨立重新抽樣以交叉檢查，不當成額外證據。
  * 不建立 LinUCB、不計算 256D 上下文、不使用牌路特徵修改方向。
  */
@@ -17,10 +17,10 @@
  if(root)root.BBBPhysicalV4=api;
 })(typeof window!=="undefined"?window:null,function(quant,physics,deplete){
  "use strict";
- if(!quant?.BlindPhysicsEstimator||!physics?.summarizeHypotheses||
+ if(!quant?.BlindPhysicsEstimator||!physics?.summarizeHypotheses||!physics?.adaptiveScoreSmoother||
    !physics?.BASE||!deplete?.attachShadow||!deplete?.dealWithUniforms)
    throw Error("missing_physical_v4_dependencies");
- const VERSION="BBB_PF_EOR_DEPLETE_V4_1_NEUTRAL_FRESH_RANDOM";
+ const VERSION="BBB_PF_EOR_DEPLETE_V4_1_NEUTRAL_SMOOTHED_RANDOM";
  const CONFIG=Object.freeze({
   particles:96,simulationsPerParticle:256,
   // 使用 24 個分層抽取的假想粒子，每個點數影響各做 96 次配對模擬。
@@ -162,7 +162,7 @@ function rawQualityDiagnostics(raw,pf){
    const threshold=Math.max(c.minEvGap,c.noiseGuardMultiplier*estimatedSe);
    const gap=abs(signed),sensitivity=Math.max(0,eor.max_abs_ev_gap_delta);
    const fragile=sensitivity>Math.max(c.eorFragilityFloor,gap);
-   const mcSigned=shadow.ev_banker-shadow.ev_player-BASE_GAP;
+   const mcSigned=(shadow.comparison_ev_banker??shadow.ev_banker)-(shadow.comparison_ev_player??shadow.ev_player)-BASE_GAP;
    const tolerance=Math.max(c.crossCheckFloor,c.crossCheckZ*
     Math.hypot(estimatedSe,Math.max(0,shadow.paired_mc_gap_se)));
    const deviation=abs(signed-mcSigned);
@@ -217,9 +217,12 @@ function rawQualityDiagnostics(raw,pf){
     {samplesPerParticle:this.config.simulationsPerParticle});
    if(raw.simulation_exhausted||raw.particle_support!==this.config.particles)
     throw Error("pf_posterior_unavailable");
-   // Keep the raw simulated next-hand probability and commission-adjusted EV.
-   // Noise handling belongs solely to the separate V4 observation/skip gate.
-   const physical=raw,quality=rawQualityDiagnostics(raw,pf);
+   // 恢復既有自適應機率平滑。原始報告另外保留，不重複扣佣金。
+   const smoothed=physics.adaptiveScoreSmoother(raw,pf);
+   const physical=smoothed.physical,rawQuality=rawQualityDiagnostics(raw,pf);
+   // 不把資料相依平滑誤當新增證據：保留原始估計誤差，採保守品質門檻。
+   const quality={...rawQuality,mode:"adaptive_confidence_with_score_smoothing",
+    probability_shrinkage:1-smoothed.diagnostics.blend,ev_modified:true};
    const core={version:VERSION,point_observation_independent:true,
     history_length:1,point_score_observation_count:1,
     observed_card_evidence:false,physical_ev:physical,
@@ -228,8 +231,16 @@ function rawQualityDiagnostics(raw,pf){
     effective_research_gate:null,research_signal:{direction:null,available:false}};
    const eor=computeEOR(pf,pair,{particles:this.config.eorParticleCount,
     samples:this.config.eorSamples,seedSalt:eorSeed});
-   const checked=deplete.attachShadow(core,pair,{seedSalt:depleteSeed});
-   const report={...core,eor,deplete_mc:checked.deplete_mc,
+   const checked=deplete.attachShadow({...core,physical_ev:raw,
+    ev_banker:raw.ev_banker,ev_player:raw.ev_player,quality:rawQuality},pair,{seedSalt:depleteSeed});
+   const shadow=checked.deplete_mc,blend=smoothed.diagnostics.blend;
+   // 以相同平滑係數與同一基準核對，原始Deplete資料不覆寫。
+   const comparison=shadow.status==="complete"?{...shadow,
+    comparison_ev_banker:BASE_EV.B+blend*(shadow.ev_banker-BASE_EV.B),
+    comparison_ev_player:BASE_EV.P+blend*(shadow.ev_player-BASE_EV.P),
+    comparison_smoothing_blend:blend}:shadow;
+   const report={...core,eor,deplete_mc:comparison,deplete_raw:shadow,raw_quality:rawQuality,
+    raw_simulated_probability:raw.simulated_probability,adaptive_score_smoothing:smoothed.diagnostics,
     randomization:{mode:replay?"explicit_seed_replay":"fresh_secure_seed",
      seed:baseSeed,pf_seed:(0xBBB256^baseSeed)>>>0,eor_salt:eorSeed,deplete_salt:depleteSeed},
     model_posterior:{sampled_compositions:pf.size,model_based:true,

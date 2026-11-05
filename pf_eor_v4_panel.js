@@ -57,16 +57,18 @@
    "V4 觀望：Deplete 方向衝突":choice.reason==="deplete_disagreement"?
    "V4 觀望：Deplete 差異過大":"V4 觀望：品質資料不足");
   const p=report.simulated_probability;
-  set("strength","下一局模擬｜莊 "+pct(p.B)+"｜閒 "+pct(p.P)+"｜和 "+pct(p.T)+
+  set("strength","平滑後下一局｜莊 "+pct(p.B)+"｜閒 "+pct(p.P)+"｜和 "+pct(p.T)+
    "｜中立偏移候選："+candidateLabel+(direction==="SKIP"?"（未通過門檻）":""));
   if(el("directionOrb"))el("directionOrb").className="direction-orb "+
    (direction==="SKIP"?"idle":direction==="B"?"banker":"player");
   const deplete=report.deplete_mc;
   set("message","本局閒 "+pair.player+"／莊 "+pair.banker+
    "｜PF96（每次全新）、每粒子 MC"+CONFIG.simulationsPerParticle+
-   "｜莊 EV "+pct(report.ev_banker)+"、閒 EV "+pct(report.ev_player)+
+   "｜平滑 EV：莊 "+pct(report.ev_banker)+"、閒 "+pct(report.ev_player)+
+   "｜原始含抽佣 EV：莊 "+pct(report.original_pf_ev.B)+"、閒 "+pct(report.original_pf_ev.P)+
+   "｜平滑保留比 "+pct(report.adaptive_score_smoothing.blend)+
    "｜抽樣編號 "+report.randomization.seed+
-   "｜原始 EV 差 "+pct(choice.ev_difference)+
+   "｜平滑 EV 差 "+pct(choice.ev_difference)+
    "｜中立基準差 "+pct(choice.baseline_ev_gap)+
    "｜基準校正偏移 "+pct(choice.decision_ev_gap)+
    "｜EV 估計標準誤 "+pct(choice.estimator_gap_se)+
@@ -78,7 +80,7 @@
    "｜假想組成不是實際牌值；訊號不代表已驗證盈利優勢；中立比較不等於勝率或出手各50%。");
   set("localCalibrationStatus","獨立點數 PF → EOR → 組成機率／EV → Deplete MC 交叉檢查 → V4"+
    "｜"+markovDiagnostics());
-  set("modePill","PF96 · V4.1 中立基準");
+  set("modePill","PF96 · V4.1 中立平滑");
  }
  function saveAndRender(pair,{undo=false}={}){
   if(busy)return null;
@@ -158,7 +160,7 @@
   get markov(){return root.BBBMarkovResidual?.transitionStats?.(audit.map(outcome))||null;}
  };
  setIdle("只輸入本局閒／莊最終點數各一個 0–9；每次重新建立 PF，不使用歷史改變方向。");
- set("modePill","PF96 · V4.1 中立基準");
+ set("modePill","PF96 · V4.1 中立平滑");
  set("pointInputStatus","已記錄 "+audit.length+" 次總點數（僅供返回／Markov 診斷）；可開始新的獨立分析。");
  set("localCalibrationStatus",markovDiagnostics());
 })(typeof window!=="undefined"?window:null);
