@@ -9,7 +9,7 @@
  const VERSION='BBB_V41_ADAPTIVE_BATCH_STABILITY_V1';
 
  // Explicit user policy: SE is uncertainty, never a win probability.
- const USER_ENTRY=Object.freeze({minEstimatorSE:.0052});
+ const USER_ENTRY=Object.freeze({maxEstimatorSE:.0052,minSignalToSE:2});
  function userEntryDecision(report){
   const se=report?.quality?.estimator_gap_se;
   const b=report?.ev_banker,p=report?.ev_player;
@@ -18,15 +18,24 @@
    report?.physical_ev?.simulation_exhausted!==true;
   const gap=valid?Math.abs(b-p):null,rawGap=valid?Math.abs(rb-rp):null;
   const candidate=valid&&b!==p?(b>p?'B':'P'):null;
+  const signed=valid?b-p-base.BASE_GAP:null;
+  const signal=valid?Math.abs(signed):null,threshold=valid?USER_ENTRY.minSignalToSE*se:null;
+  const chosen=valid?(candidate==='B'?b:p):null;
+  const rawChosen=valid?(candidate==='B'?rb:rp):null;
   const reasons=[];
   if(!valid)reasons.push('user_diagnostics_unavailable');
   else{
-   if(!(se>USER_ENTRY.minEstimatorSE))reasons.push('user_se_not_above_052_percent');
+   if(se>USER_ENTRY.maxEstimatorSE)reasons.push('user_se_above_052_percent');
    if(!candidate||rb===rp||(b>p)!==(rb>rp))reasons.push('user_ev_direction_conflict');
+   if(!(signal>0)||signal<threshold||
+      (candidate==='B'?signed<=0:signed>=0))reasons.push('user_signal_below_2se');
+   if(!(chosen>0&&rawChosen>0))reasons.push('user_chosen_ev_not_positive');
   }
   return {direction:reasons.length?'SKIP':candidate,candidate,
    reason:reasons[0]||'user_entry_pass',reasons,
    estimator_gap_se:se,user_smoothed_ev_gap:gap,user_raw_ev_gap:rawGap,
+   user_centered_signal:signal,user_signal_threshold:threshold,
+   user_chosen_ev:chosen,user_raw_chosen_ev:rawChosen,
    user_entry_policy:USER_ENTRY,validated_hit_rate:false,verified_edge:false};
  }
 
