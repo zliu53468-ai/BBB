@@ -19,7 +19,7 @@ const scripts=[
  "pf_eor_v4_runtime.js?v=20261106-gap0128-agreement55-v12",
  "stability_reference.js?v=20261106-gap0128-agreement55-v12",
  "stability_runtime.js?v=20261106-gap0128-agreement55-v12",
- "pf_eor_v4_panel.js?v=20261106-gap0128-agreement55-v12"
+ "pf_eor_v4_panel.js?v=20261106-threshold-display-v13"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}

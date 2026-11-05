@@ -80,30 +80,14 @@
    "｜EV 較高方："+candidateLabel+(direction==="SKIP"?"（未通過門檻）":""));
   if(el("directionOrb"))el("directionOrb").className="direction-orb "+
    (direction==="SKIP"?"idle":direction==="B"?"banker":"player");
-  const deplete=report.deplete_mc;
-  set("message","本局閒 "+pair.player+"／莊 "+pair.banker+
-   "｜獨立批次 "+report.sampling_stability.batches+"（每批 PF96／MC"+CONFIG.simulationsPerParticle+"）"+
-   "｜平滑 EV：莊 "+pct(report.ev_banker)+"、閒 "+pct(report.ev_player)+
-   "｜原始含抽佣 EV：莊 "+pct(report.original_pf_ev.B)+"、閒 "+pct(report.original_pf_ev.P)+
-   "｜平滑保留比 "+pct(report.adaptive_score_smoothing.blend)+
-   "｜批次方向一致 "+pct(report.sampling_stability.agreement)+
-   "｜精確先驗核對 "+(report.exact_reference.consistent?"相容":"有分歧")+
-   "｜品質原因 "+(choice.reasons||[choice.reason]).join("、")+
-   "｜抽樣編號 "+report.randomization.seed+
-   "｜平滑 EV 差 "+pct(choice.ev_difference)+
-   "｜中立基準差 "+pct(choice.baseline_ev_gap)+
-   "｜基準校正偏移 "+pct(choice.decision_ev_gap)+
-   "｜EV 估計標準誤 "+pct(choice.estimator_gap_se)+
-   "｜自訂條件：EV 估計標準誤 >0.55%（誤差，非勝率）"+
-   "｜平滑 EV 絕對差 "+pct(choice.user_smoothed_ev_gap)+
-   "｜原始 EV 絕對差 "+pct(choice.user_raw_ev_gap)+
-   "｜兩組 EV 差距各須 ≥0.128 個百分點且同向；不限制正負"+
-   "｜批次方向一致率須 ≥55%；Deplete 僅顯示核對，不作出手限制"+
-   "｜EOR 最大敏感度 "+pct(report.eor.max_abs_ev_gap_delta)+
-   "｜Deplete "+(deplete.status==="complete"?
-     "交叉核對 "+(choice.deplete_consistent?"一致":"有分歧")+
-     "（"+deplete.samples+" 次、未融合）":"尚未完成")+
-   "｜假想組成不是實際牌值；訊號不代表已驗證盈利優勢；中立比較不等於勝率或出手各50%。");
+  set("message",
+   "EV 估計標準誤："+pct(choice.estimator_gap_se)+"（須 >0.55%，非勝率）"+
+   "｜平滑 EV 莊閒差："+pct(choice.user_smoothed_ev_gap)+"（須 ≥0.128 個百分點）"+
+   "｜原始 EV 莊閒差："+pct(choice.user_raw_ev_gap)+"（須 ≥0.128 個百分點）"+
+   "｜兩組 EV 方向："+(choice.reasons?.includes("user_ev_direction_conflict")?"不一致或相同":"同向")+
+   "（選數值較大方，不限正負）"+
+   "｜批次方向一致率："+pct(report.sampling_stability.agreement)+"（須 ≥55%）"+
+   "｜門檻結果："+(direction==="SKIP"?"觀望":"通過"));
   set("localCalibrationStatus","獨立點數 PF → EOR → 組成機率／EV → Deplete MC 交叉檢查 → V4"+
    "｜"+markovDiagnostics());
   set("modePill","多批穩定性 · 中立平滑");
