@@ -8,8 +8,8 @@ const B={...core.CONFIG,noiseGuardMultiplier:.70},C={...core.CONFIG,noiseGuardMu
 function stats(values){const s=values.slice().sort((a,b)=>a-b);return {mean:s.reduce((a,b)=>a+b,0)/s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.min(s.length-1,Math.floor(s.length*.95))],max:s.at(-1)};}
 const rows=[],modelA=new core.PhysicalPointV4(A),modelB=new core.PhysicalPointV4(B),filterC=new core.QualityFilterV4(C);
 for(let p=0;p<10;p++)for(let b=0;b<10;b++){
- let t=performance.now();const a=modelA.analyze(p,b),aMs=performance.now()-t;
- t=performance.now();const v=modelB.analyze(p,b),bMs=performance.now()-t;
+ let t=performance.now();const a=modelA.analyze(p,b,{seed:0}),aMs=performance.now()-t;
+ t=performance.now();const v=modelB.analyze(p,b,{seed:0}),bMs=performance.now()-t;
  for(const r of [a,v]){
   if(![r.ev_banker,r.ev_player,r.v4.estimator_gap_se,r.eor.max_abs_ev_gap_delta].every(Number.isFinite))throw Error('nonfinite diagnostic');
   if(r.v4.candidate!==(r.ev_banker-r.ev_player>=core.BASE_GAP?'B':'P'))throw Error('EV direction changed');

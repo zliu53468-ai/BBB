@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs');
 const core=require('./pf_eor_v4_runtime.js');
 const {PhysicalPointV4,QualityFilterV4,CONFIG}=core;
-const sample=new PhysicalPointV4(),a=sample.analyze(5,3);
+const sample=new PhysicalPointV4(),a=sample.analyze(5,3,{seed:0});
 
 assert.equal(a.point_observation_independent,true);
 assert.equal(a.history_length,1);
@@ -55,8 +55,8 @@ assert(Math.abs(a.physical_ev.pf_estimator_se_gap-
   Math.hypot(a.physical_ev.mc_se_gap,a.physical_ev.posterior_mean_se_gap))<1e-12);
 assert(['B','P','SKIP'].includes(a.v4.direction));
 
-const b=sample.analyze(2,8),again=sample.analyze(5,3);
-assert.deepEqual(again,a,'相同雙方總點必須獨立且可重現');
+const b=sample.analyze(2,8,{seed:0}),again=sample.analyze(5,3,{seed:0});
+assert.deepEqual(again,a,'相同雙方總點及明確種子必須獨立且可重現');
 assert.notDeepEqual(b.simulated_probability,a.simulated_probability);
 assert.throws(()=>sample.analyze(10,3));
 assert.throws(()=>sample.analyze(5.5,2));
@@ -101,7 +101,7 @@ assert.equal(gate.decide({...good,deplete_mc:{status:'unavailable'}}).direction,
 // A 10x10 functional grid checks accessibility; NOT a fabricated 50/50 quota.
 const grid={B:0,P:0,SKIP:0};
 for(let player=0;player<=9;player++)for(let banker=0;banker<=9;banker++){
- const r=sample.analyze(player,banker);
+ const r=sample.analyze(player,banker,{seed:0});
  grid[r.v4.direction]++;
  assert.equal(r.v4.candidate,r.ev_banker-r.ev_player>=core.BASE_GAP?'B':'P');
  assert.equal(r.quality.probability_shrinkage,0);
@@ -127,7 +127,8 @@ assert(active[0].indexOf('deplete_mc_runtime.js')<active[0].indexOf('pf_eor_v4_r
 assert(active[0].indexOf('pf_eor_v4_runtime.js')<active[0].indexOf('pf_eor_v4_panel.js'));
 const panel=fs.readFileSync('pf_eor_v4_panel.js','utf8');
 const runtime=fs.readFileSync('pf_eor_v4_runtime.js','utf8');
-assert(panel.includes('engine.analyze(pair.player,pair.banker)'));
+assert(panel.includes('engine.analyze(pair.player,pair.banker,replay)'));
+assert(panel.includes('const replay=undo&&Number.isInteger(pair.analysis_seed)'));
 assert(panel.includes('transitionStats?.(audit.map(outcome))'));
 assert(!runtime.includes('physics.adaptiveScoreSmoother('));
 assert(runtime.includes('const physical=raw,quality=rawQualityDiagnostics(raw,pf)'));
@@ -155,9 +156,28 @@ assert.equal(CONFIG.eorParticleCount,24);assert.equal(CONFIG.eorSamples,96);
 assert.equal(CONFIG.minEvGap,.005);assert.equal(CONFIG.minPosteriorQuality,.50);
 assert.equal(CONFIG.eorFragilityFloor,.025);assert.equal(CONFIG.crossCheckZ,2.5);assert.equal(CONFIG.crossCheckFloor,.008);
 for(const fixture of require('./validation/neutral_raw_fixtures.json')){
- const r=sample.analyze(fixture.player,fixture.banker);
+ const r=sample.analyze(fixture.player,fixture.banker,{seed:0});
  const raw={probability:r.simulated_probability,ev_banker:r.ev_banker,ev_player:r.ev_player,
   quality:r.quality,eor:r.eor,deplete:r.deplete_mc};
  assert.equal(require('crypto').createHash('sha256').update(JSON.stringify(raw)).digest('hex'),fixture.sha256,
   'neutral reference must not change raw V4.1 calculations');
 }
+
+// 正式預設每次新抽樣，且記錄種子供重播；不是隨機決定方向。
+const freshReports=Array.from({length:8},()=>sample.analyze(5,3));
+assert(new Set(freshReports.map(r=>r.randomization.seed)).size>1);
+assert(new Set(freshReports.map(r=>JSON.stringify(r.simulated_probability))).size>1);
+assert(new Set(freshReports.map(r=>JSON.stringify(r.eor.effects_by_point))).size>1);
+assert(new Set(freshReports.map(r=>JSON.stringify(r.deplete_mc.probability))).size>1);
+for(const r of freshReports){
+ assert.equal(r.randomization.mode,'fresh_secure_seed');
+ const replay=sample.analyze(5,3,{seed:r.randomization.seed});
+ for(const key of ['simulated_probability','quality','eor','deplete_mc','v4'])assert.deepEqual(replay[key],r[key]);
+ assert.equal(replay.ev_banker,r.ev_banker);assert.equal(replay.ev_player,r.ev_player);
+ assert.equal(r.v4.candidate,r.ev_banker-r.ev_player>=core.BASE_GAP?'B':'P');
+}
+assert.throws(()=>sample.analyze(5,3,{seed:-1}));assert.throws(()=>sample.analyze(5,3,{seed:1.5}));
+const path=require('path'),vm=require('vm'),sandbox={module:{exports:{}},require:n=>require(path.resolve(__dirname,n))};
+vm.runInNewContext(fs.readFileSync('pf_eor_v4_runtime.js','utf8'),sandbox);
+assert.throws(()=>new sandbox.module.exports.PhysicalPointV4().analyze(5,3),/secure_random_unavailable/);
+console.log('PASS fresh entropy, separate PF/EOR/Deplete streams and exact seed replay');
