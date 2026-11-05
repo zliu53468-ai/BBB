@@ -11,15 +11,15 @@ const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu5346
 // V4 正式入口只載入必要核心；原版本其他模組留在 GitHub 供回溯，
 // 不實例化 LinUCB、256 維上下文或任何牌路決策器。
 const scripts=[
- "quant256_online_runtime.js?v=20261106-user-se55-gap5-v1",
- "shoe_distribution_guard.js?v=20261106-user-se55-gap5-v1",
- "markov_residual_runtime.js?v=20261106-user-se55-gap5-v1",
- "physics_forecast_first_runtime.js?v=20261106-user-se55-gap5-v1",
- "deplete_mc_runtime.js?v=20261106-user-se55-gap5-v1",
- "pf_eor_v4_runtime.js?v=20261106-user-se55-gap5-v1",
- "stability_reference.js?v=20261106-user-se55-gap5-v1",
- "stability_runtime.js?v=20261106-user-se55-gap5-v1",
- "pf_eor_v4_panel.js?v=20261106-user-se55-gap5-v1"
+ "quant256_online_runtime.js?v=20261106-user-se55-anygap-v2",
+ "shoe_distribution_guard.js?v=20261106-user-se55-anygap-v2",
+ "markov_residual_runtime.js?v=20261106-user-se55-anygap-v2",
+ "physics_forecast_first_runtime.js?v=20261106-user-se55-anygap-v2",
+ "deplete_mc_runtime.js?v=20261106-user-se55-anygap-v2",
+ "pf_eor_v4_runtime.js?v=20261106-user-se55-anygap-v2",
+ "stability_reference.js?v=20261106-user-se55-anygap-v2",
+ "stability_runtime.js?v=20261106-user-se55-anygap-v2",
+ "pf_eor_v4_panel.js?v=20261106-user-se55-anygap-v2"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
