@@ -49,6 +49,8 @@ for(let seed=1;seed<=400;seed++){
 const empty=s.run([]);
 assert.equal(empty.direction,"SKIP");
 assert.equal(empty.feature_dimension,48);
+assert.equal(empty.feature_schema,"soft_shoe_bpt_48d_v2");
+assert.equal(empty.frozen_core.validated,false);
 assert.equal(empty.features48.length,48);
 assert.equal(empty.observed_actual_cards,false);
 assert.equal(empty.bankroll_fraction,0);
@@ -57,6 +59,11 @@ for(const h of [["B"],["P"],["T"],["B","P","T","B"],Array(18).fill("T")]){
  assert.deepEqual(first,second,"same observed sequence must be deterministic");
  assert.equal(first.observed_actual_cards,false);
  assert.equal(first.feature_dimension,48);
+ assert.equal(first.feature_schema,"soft_shoe_bpt_48d_v2");
+ assert.equal(first.sequence_weight_applied,0);
+ assert.deepEqual(first.features48.slice(-3),
+  [first.frozen_core.probabilities.B,first.frozen_core.probabilities.P,
+   first.frozen_core.probabilities.T]);
  assert(first.features48.every(Number.isFinite));
  assert.equal(first.simulation_samples,128*14);
  const p=first.probabilities;
@@ -83,7 +90,7 @@ const physical={B:.458597,P:.446247,T:.095156};
 assert.deepEqual(s.modelDecision(physical,[],s.frozenCore([]),null),
  {p:physical,model:"physics_only_untrained_decision_fallback"});
 const f=Array(48).fill(0);
-const mock={trained:true,calibrated:true,schema:"soft_shoe_bpt_48d_v1",feature_dimension:48,
+const mock={trained:true,calibrated:true,schema:"soft_shoe_bpt_48d_v2",feature_dimension:48,
  validation:{out_of_shoe_holdout:true,real_shoe_data:true},
  predict:()=>({B:.6,P:.3,T:.1})};
 assert.equal(s.modelDecision(physical,f,s.frozenCore(["B"]),mock).model,"validated_external_xgb");
@@ -112,13 +119,16 @@ const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-clien
 for(const id of ["btnB","btnP","btnT","btnStart","btnBack","btnEnd"])
  assert(html.includes('id="'+id+'"'));
 assert(html.includes("styles.css?v=20261106-bigroad-v1"));
-assert(html.includes("auth-client.js?v=20261106-bigroad-v1"));
-assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261106-moderate-v3"'));
+assert(html.includes("auth-client.js?v=20261106-layered-v4"));
+assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261106-layered-v4"'));
 assert(auth.includes('"bpt_big_road.js?v=20261106-bigroad-v1"'));
 assert(auth.includes('"soft_shoe_panel.js?v=20261106-bigroad-v1"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
 assert(panel.includes('for(const [id,side] of [["btnB","B"],["btnP","P"],["btnT","T"]]'));
-assert(worker.includes("soft_shoe_decision_runtime.js?v=20261106-moderate-v3"));
+assert(worker.includes("soft_shoe_decision_runtime.js?v=20261106-layered-v4"));
+assert(worker.includes('soft_shoe_frozen_lstm_runtime.js?v=20261106-layered-v4'));
+assert(worker.includes('soft_shoe_frozen_model_bundle.js?v=20261106-layered-v4'));
+assert(panel.includes("soft_shoe_worker.js?v=20261106-layered-v4"));
 assert(panel.includes('d=view.direction||"SKIP"'));
 assert(panel.includes('if(!report.research_view||!["B","P","SKIP"].includes(report.research_view.direction))'));
 assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望")'));
