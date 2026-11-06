@@ -25,13 +25,16 @@
   set("localCalibrationStatus","B/P/T 軟算牌 · 目前已記錄 "+history.length+" 局（同一牌靴）");
  }
  function show(report){
-  last=report;const d=report.direction,q=report.probabilities||{};
+  // Display the higher simulated EV candidate even when the independent
+  // wager-eligibility gate returns SKIP. Never present it as a BET signal.
+  last=report;const d=["B","P"].includes(report.candidate)?report.candidate:report.direction,
+   q=report.probabilities||{};
   set("directionText",d==="B"?"莊":d==="P"?"閒":"無法分析");
   set("directionCode",d==="B"?"方向測試 / BANKER":d==="P"?"方向測試 / PLAYER":"NO SIGNAL");
   $("directionOrb").className="direction-orb "+(d==="B"?"banker":d==="P"?"player":"idle");
   set("confidence","莊 EV "+pct(report.ev_banker)+"／閒 EV "+pct(report.ev_player)+
    "｜置信指標 "+pct(report.confidence));
-  set("regime",report.bet_qualified?
+  set("regime",report.validated_edge?
    "已通過模擬 EV 篩選（仍須實盤驗證）":
    report.reason==="trained_decision_model_unavailable"?
    "強制方向測試｜48D XGBoost 尚未驗證":
@@ -75,7 +78,7 @@
   set("message","正在估計隱藏牌靴組成及 EV；完成後直接顯示莊／閒測試方向。");
   try{
    const report=await compute(history.slice());
-   if(!["B","P"].includes(report.direction)){
+   if(!["B","P"].includes(report.candidate)){
     last=report;uiIdle("分析未完成："+String(report.reason));set("directionText","無法分析");
    }else show(report);
    set("pointInputStatus","同一牌靴已記錄 "+history.length+" 局，輸入下一局結果。");
