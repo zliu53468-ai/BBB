@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - soft_shoe_*.js
+      - bpt_big_road.js
+      - test_bpt_big_road.js
+      - styles.css
       - test_soft_shoe.js
       - auth-client.js
       - index.html
@@ -12,6 +15,9 @@ on:
     branches: [main]
     paths:
       - soft_shoe_*.js
+      - bpt_big_road.js
+      - test_bpt_big_road.js
+      - styles.css
       - test_soft_shoe.js
       - auth-client.js
       - index.html
@@ -35,5 +41,7 @@ jobs:
           node --check soft_shoe_panel.js
           node --check auth-client.js
           node test_soft_shoe.js
+          node --check bpt_big_road.js
+          node test_bpt_big_road.js
       - name: Licensed storage reset and isolation
         run: node test_license_storage.mjs
