@@ -15,7 +15,10 @@
   PARTICLE_COUNT:128,LIKELIHOOD_DRAWS:14,NEXT_HAND_DRAWS:14,
   MIN_EV_THRESHOLD:.0015,MIN_CONFIDENCE:.65,FRACTIONAL_KELLY:.30,
   MAX_BET_FRACTION:.025,AVERAGE_CARDS_PER_HAND:4.95,DEPTH_RELIABILITY:.5,
-  RESAMPLE_ESS_RATIO:.5,MAX_HANDS:72,LOWER_BOUND_Z:1.645,SEQUENCE_WEIGHT:0
+  RESAMPLE_ESS_RATIO:.5,MAX_HANDS:72,LOWER_BOUND_Z:1.645,SEQUENCE_WEIGHT:0,
+  MIN_DIRECTION_ROUNDS:3,MIN_DIRECTION_EV_GAP:.020,
+  MIN_DIRECTION_GAP_SNR:.70,MIN_DIRECTION_ESS_RATIO:.35,
+  MIN_DIRECTION_DIVERSITY:.20,MAX_DIRECTION_GAP_SE:.080
  });
  const BASE=[128,32,32,32,32,32,32,32,32,32],TOTAL=416;
  const BASE_PROB={B:.458597,P:.446247,T:.095156};
@@ -24,13 +27,16 @@
  const isResult=r=>r==="B"||r==="P"||r==="T";
  function config(c={}){
   const v={...DEFAULT,...c};
-  for(const k of ["PARTICLE_COUNT","LIKELIHOOD_DRAWS","NEXT_HAND_DRAWS","MAX_HANDS"])
+  for(const k of ["PARTICLE_COUNT","LIKELIHOOD_DRAWS","NEXT_HAND_DRAWS","MAX_HANDS","MIN_DIRECTION_ROUNDS"])
    if(!Number.isInteger(v[k])||v[k]<1||v[k]>(k==="MAX_HANDS"?75:512))throw Error("invalid_"+k);
   if(v.PARTICLE_COUNT<8||v.LIKELIHOOD_DRAWS<2||v.NEXT_HAND_DRAWS<2)throw Error("sample_budget_too_small");
   for(const [k,lo,hi] of [["MIN_EV_THRESHOLD",0,.1],["MIN_CONFIDENCE",0,1],
    ["FRACTIONAL_KELLY",0,1],["MAX_BET_FRACTION",0,.1],
    ["AVERAGE_CARDS_PER_HAND",4,6],["DEPTH_RELIABILITY",0,1],
-   ["RESAMPLE_ESS_RATIO",0,1],["LOWER_BOUND_Z",0,4],["SEQUENCE_WEIGHT",0,.05]])
+   ["RESAMPLE_ESS_RATIO",0,1],["LOWER_BOUND_Z",0,4],["SEQUENCE_WEIGHT",0,.05],
+   ["MIN_DIRECTION_EV_GAP",0,.2],["MIN_DIRECTION_GAP_SNR",0,4],
+   ["MIN_DIRECTION_ESS_RATIO",0,1],["MIN_DIRECTION_DIVERSITY",0,1],
+   ["MAX_DIRECTION_GAP_SE",.001,.5]])
    if(!Number.isFinite(v[k])||v[k]<lo||v[k]>hi)throw Error("invalid_"+k);
   return Object.freeze(v);
  }
@@ -264,6 +270,41 @@
   }
   return{p,model:"physics_only_untrained_decision_fallback"};
  }
+
+ // Moderate selective direction DISPLAY gate. This is not a validated betting
+ // edge or a calibrated confidence interval; it only chooses whether the
+ // model's B/P EV ordering is well-separated relative to its MC noise.
+ function moderateDirectionGate({candidate,ev,physical,observations,essRatio,diversity,config:cfg}){
+  const gap=ev.B-ev.P,absGap=Math.abs(gap),n=physical.samples;
+  // Gap payoff is +1.95 on Banker, -2 on Player, 0 on Tie.
+  const gapSecondMoment=1.95*1.95*physical.p.B+4*physical.p.P;
+  const oneHandVariance=Math.max(0,gapSecondMoment-gap*gap);
+  const mcVariance=oneHandVariance/Math.max(1,n);
+  const each=(physical.per||[]).map(h=>(1.95*h.B-2*h.P)/cfg.NEXT_HAND_DRAWS);
+  const m=each.length?sum(each)/each.length:gap;
+  const spread=each.length>1?sum(each.map(x=>(x-m)**2))/(each.length-1):0;
+  // Monte Carlo noise in a per-particle gap has variance variance/NEXT_HAND_DRAWS.
+  // Debias between-particle variation, then scale as an estimator-mean error.
+  const latentMeanVariance=Math.max(0,spread-oneHandVariance/cfg.NEXT_HAND_DRAWS)/
+   Math.max(1,each.length);
+  const gapSe=Math.sqrt(mcVariance+latentMeanVariance);
+  const snr=gapSe>0?absGap/gapSe:0;
+  const reasons=[];
+  if(observations<cfg.MIN_DIRECTION_ROUNDS)reasons.push("insufficient_rounds");
+  if(absGap<cfg.MIN_DIRECTION_EV_GAP)reasons.push("weak_ev_separation");
+  if(!(gapSe>0&&Number.isFinite(gapSe))||gapSe>cfg.MAX_DIRECTION_GAP_SE)
+   reasons.push("high_estimator_uncertainty");
+  if(snr<cfg.MIN_DIRECTION_GAP_SNR)reasons.push("low_gap_to_noise");
+  if(essRatio<cfg.MIN_DIRECTION_ESS_RATIO)reasons.push("low_particle_ess");
+  if(diversity<cfg.MIN_DIRECTION_DIVERSITY)reasons.push("low_particle_diversity");
+  return Object.freeze({
+   direction:reasons.length?"SKIP":candidate,
+   candidate,eligible:reasons.length===0,reason:reasons[0]||"moderate_gate_pass",
+   reasons,abs_ev_gap:absGap,ev_gap:gap,ev_gap_se:gapSe,
+   ev_gap_snr:snr,ess_ratio:essRatio,ancestor_diversity:diversity,
+   estimated_only:true,validated_betting_edge:false
+  });
+ }
  function run(history,opts={},externalModel=null){
   if(!Array.isArray(history)||history.some(x=>!isResult(x)))throw Error("invalid_bpt_history");
   const cfg=config(opts),seed=seedFor(history),post=posterior(history,cfg,seed);
@@ -295,6 +336,10 @@
   const lower=bestEV-cfg.LOWER_BOUND_Z*se;
   const enoughDepth=history.length<=cfg.MAX_HANDS&&post.particles.every(x=>sum(x)>=6);
   const quality=clamp((post.ess/cfg.PARTICLE_COUNT)*post.diversity,0,1);
+  const research_view=moderateDirectionGate({
+   candidate,ev,physical,observations:history.length,
+   essRatio:post.ess/cfg.PARTICLE_COUNT,diversity:post.diversity,config:cfg
+  });
   // Calibrated confidence is not available; fail closed on weak ESS/diversity.
   const qualifies=history.length>0&&enoughDepth&&quality>=.65&&
    bestEV>=cfg.MIN_EV_THRESHOLD&&confidence>=cfg.MIN_CONFIDENCE&&lower>cfg.MIN_EV_THRESHOLD &&
@@ -318,10 +363,11 @@
     1-sum(post.particles.map(x=>sum(x)))/post.particles.length/TOTAL,
    eor:effects,features48:vector,feature_dimension:48,frozen_core:frozen,
    model:applied.model,simulation_samples:physical.samples,bankroll_fraction:fraction,
+   research_view,
    validated_edge:qualifies,observed_actual_cards:false,calibrated_confidence:false,
    seed,config:cfg
   };
  }
  return Object.freeze({VERSION,DEFAULT,config,seedFor,deal,posterior,frozenCore,
-  handProbabilities,evs,eor,features48,evaluateXgbTree,predictXgbJson,modelDecision,run});
+  handProbabilities,evs,eor,features48,evaluateXgbTree,predictXgbJson,modelDecision,moderateDirectionGate,run});
 });
