@@ -21,7 +21,7 @@ for(let seed=1;seed<=400;seed++){
  assert.equal(r.result,r.banker>r.player?"B":r.player>r.banker?"P":"T");
 }
 const empty=s.run([]);
-assert(["B","P"].includes(empty.direction));
+assert.equal(empty.direction,"SKIP");
 assert.equal(empty.feature_dimension,48);
 assert.equal(empty.features48.length,48);
 assert.equal(empty.observed_actual_cards,false);
@@ -38,13 +38,10 @@ for(const h of [["B"],["P"],["T"],["B","P","T","B"],Array(18).fill("T")]){
  assert(Math.abs(first.ev_banker-(.95*p.B-p.P))<1e-12);
  assert(Math.abs(first.ev_player-(p.P-p.B))<1e-12);
  assert(Math.abs(first.ev_tie-(9*p.T-1))<1e-12);
- assert(["Direction Banker","Direction Player"].includes(first.action));
- assert(["B","P"].includes(first.direction),"every valid forecast shows a side");
- assert.equal(first.direction,first.candidate,"force the higher modeled EV side");
- assert.equal(first.forced_direction,true);
- assert.equal(first.bet_qualified,false,"untrained model cannot authorize wagers");
- assert.equal(first.direction_is_bet_advice,false);
- assert.equal(first.bankroll_fraction,0,"do not authorize bet size without validation");
+ assert(["B","P"].includes(first.candidate),"candidate available for every valid forecast");
+ assert.equal(first.direction,"SKIP","keep independent wager-eligibility gate");
+ assert.equal(first.action,"Skip","no unvalidated betting recommendation");
+ assert.equal(first.bankroll_fraction,0,"no staking advice without validation");
  assert.equal(first.frozen_core.trained,false);
  assert.equal(first.model,"physics_only_untrained_decision_fallback");
  assert(first.estimated_penetration>0);
@@ -91,6 +88,8 @@ assert(auth.includes('"soft_shoe_panel.js?v=20261106-nonskip-v2"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
 assert(panel.includes('for(const [id,side] of [["btnB","B"],["btnP","P"],["btnT","T"]]'));
 assert(worker.includes("soft_shoe_decision_runtime.js?v=20261106-nonskip-v2"));
+assert(panel.includes('const d=["B","P"].includes(report.candidate)?report.candidate:report.direction'));
+assert(panel.includes('if(!["B","P"].includes(report.candidate))'));
 assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"無法分析")'));
 assert(panel.includes("強制方向測試"));
 assert(!panel.includes('觀望'));
