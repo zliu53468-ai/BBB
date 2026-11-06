@@ -97,7 +97,7 @@ assert(index.includes("auth-client.js?v=20261106-bigroad-v1"));
 assert(auth.includes('"bpt_big_road.js?v=20261106-bigroad-v1"'));
 assert(auth.indexOf('bpt_big_road.js?v=')<auth.indexOf('soft_shoe_panel.js?v='));
 assert(panel.includes("const syncBigRoad=()=>root.BBBBigRoad.render"));
-assert.equal(panel.split("  syncBigRoad();").length-1,3,"initial load, input and undo all synchronize");
+assert.equal((panel.match(/\bsyncBigRoad\(\);/g)||[]).length,3,"initial load, input and undo all synchronize");
 assert(css.includes("grid-template-columns:repeat(15,minmax(0,1fr))"));
 assert(css.includes("max-width:300px"));
 assert(css.includes(".bpt-road-has-tie::after"));
