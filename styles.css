@@ -300,7 +300,6 @@ html.bbb-viewport-locked,body.bbb-viewport-locked{
 
 /* BBB V2.3: alternate the original history buttons with one compact P/B score row. */
 #predictionApp .bbb-point-entry[hidden]{display:none!important}
-#predictionApp.bbb-point-mode .bbb-results-block{display:none}
 #predictionApp.bbb-point-mode #btnStart,
 #predictionApp.bbb-point-mode #forecastGap,
 #predictionApp.bbb-point-mode label[for="forecastGap"]{display:none}
@@ -331,8 +330,7 @@ html.bbb-viewport-locked,body.bbb-viewport-locked{
   #predictionApp .bbb-point-heading small{font-size:9px}
 }
 
-/* BBB V2.4 WEB: immediately show point totals; never display history bootstrap. */
-#predictionApp .bbb-results-block,
+/* BBB V2.4 legacy point-entry controls: keep B/P/T result panel visible in Soft Shoe mode. */
 #predictionApp #btnStart,
 #predictionApp #btnNoSkipTest,
 #predictionApp #forecastGap,

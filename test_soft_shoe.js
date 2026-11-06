@@ -70,10 +70,17 @@ assert.equal(s.modelDecision(physical,Array(48).fill(0),s.frozenCore(["B"]),
 assert.equal(s.modelDecision(physical,f,s.frozenCore(["B"]),
  {...mock,validation:{out_of_shoe_holdout:true,real_shoe_data:false}}).model,
  "physics_only_untrained_decision_fallback");
+const css=fs.readFileSync("styles.css","utf8");
+assert(!/#predictionApp\s+\.bbb-results-block\s*,/.test(css),
+ "legacy point-entry CSS must not hide the B/P/T panel");
+assert(!/#predictionApp\.bbb-point-mode\s+\.bbb-results-block\s*\{\s*display:\s*none/.test(css),
+ "stale point-mode class must not hide B/P/T buttons");
+assert(css.includes(".result-buttons{display:grid;grid-template-columns:repeat(3,1fr)"));
 const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-client.js","utf8"),
  panel=fs.readFileSync("soft_shoe_panel.js","utf8"),worker=fs.readFileSync("soft_shoe_worker.js","utf8");
 for(const id of ["btnB","btnP","btnT","btnStart","btnBack","btnEnd"])
  assert(html.includes('id="'+id+'"'));
+assert(html.includes("styles.css?v=20261106-bpt-ui-fix-v2"));
 assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261106-bpt-v1"'));
 assert(auth.includes('"soft_shoe_panel.js?v=20261106-bpt-v1"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
