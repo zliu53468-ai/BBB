@@ -27,3 +27,6 @@
 - A truly trained/frozen LSTM or tiny Transformer and real-shoe trained 48D XGB, with walk-forward/out-of-shoe evaluation, are **still required** for the complete requested architecture. There is no responsible substitute for such training data.
 - Dedicated tests: \`node test_soft_shoe.js\`. The legacy V4 modules and their tests remain in the repository for rollback/comparison; they are no longer loaded by the production license manifest.
 - Roll back by restoring \`auth-client.js\` and \`index.html\` from baseline \`74100946\`. The new isolated history key will then remain unused.
+
+## Deployment retry
+The initial Pages upload succeeded but the deployment failed on an intermittent OIDC token timeout. A failed-job retry then encountered duplicate `github-pages` artifacts. This commit triggers a fresh workflow run with a single upload artifact; consult the new run status for publication confirmation.
