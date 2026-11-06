@@ -33,7 +33,7 @@ assert.equal(s.moderateDirectionGate({...gateArgs,essRatio:.1}).reason,"low_part
 assert.equal(s.moderateDirectionGate({...gateArgs,diversity:.05}).reason,"low_particle_diversity");
 assert.equal(s.moderateDirectionGate({...gateArgs,physical:{...gateArgs.physical,samples:100}})
  .reason,"high_estimator_uncertainty");
-assert.equal(s.moderateDirectionGate({...gateArgs,config:{...s.DEFAULT,MIN_DIRECTION_GAP_SNR:4}})
+assert.equal(s.moderateDirectionGate({...gateArgs,ev:{B:.025,P:0}})
  .reason,"low_gap_to_noise");
 
 assert.throws(()=>s.run(["X"]),/invalid_bpt_history/);
@@ -124,5 +124,24 @@ assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望")
 assert(panel.includes("適度觀望"));
 assert(panel.includes("觀望：EV 差異估計誤差過大"));
 assert(panel.includes("觀望：有效粒子不足"));
+
+
+const diagnosticCounts={B:0,P:0,SKIP:0};
+let diagnosticState=0x516ec24d;
+for(let i=0;i<32;i++){
+ const history=[];
+ for(let j=0;j<3+(i%18);j++){
+  diagnosticState=(Math.imul(diagnosticState,1664525)+1013904223)>>>0;
+  const u=diagnosticState/4294967296;
+  history.push(u<.459?"B":u<.905?"P":"T");
+ }
+ const report=s.run(history);
+ const d=report.research_view?.direction||"SKIP";
+ assert(["B","P","SKIP"].includes(d));
+ diagnosticCounts[d]++;
+ assert.equal(report.bankroll_fraction,0);
+ assert.equal(report.validated_edge,false);
+}
+console.log("Moderate-gate synthetic BPT sequences (not holdout/hitrate)",diagnosticCounts);
 
 console.log("PASS BPT latent PF, legal baccarat deals, 48D features, model guard and interface");
