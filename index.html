@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
   <meta name="description" content="莊家剋星AI百家程式｜PF–EOR–EV–Deplete V4 獨立總點數分析">
-  <link rel="stylesheet" href="styles.css?v=20261103-v25-manual-input-v1">
+  <link rel="stylesheet" href="styles.css?v=20261106-bpt-v1">
 
 </head>
 <body>
@@ -43,7 +43,7 @@
         <div class="brand-copy">
           <p class="eyebrow">BANKER SLAYER · AI ANALYSIS</p>
           <h1>莊家剋星AI百家程式</h1>
-          <p class="brand-subtitle">總點數 PF ・ EOR 敏感度 ・ Deplete MC ・ V4 觀望</p>
+          <p class="brand-subtitle">Soft Shoe 粒子濾波 ・ B/P/T ・ EV 不確定性</p>
         </div>
       </div>
       <div class="status-area">
@@ -56,25 +56,25 @@
       <div class="prediction-layout">
         <div class="direction-orb idle" id="directionOrb"><span id="directionText">—</span><small id="directionCode">等待分析</small></div>
         <div class="metrics">
-          <div class="metric"><span>模擬 EV 差異（非勝率）</span><strong id="confidence">—</strong></div>
-          <div class="metric"><span>V4 品質狀態</span><strong id="regime">—</strong></div>
+          <div class="metric"><span>估計 EV／信心（非保證）</span><strong id="confidence">—</strong></div>
+          <div class="metric"><span>EV 決策品質</span><strong id="regime">—</strong></div>
           <div class="metric"><span>下一局莊／閒／和（模擬）</span><strong id="strength">—</strong></div>
         </div>
       </div>
-      <div class="message" id="message" aria-live="polite">請輸入當局閒、莊點數，再按開始分析</div>
+      <div class="message" id="message" aria-live="polite">請點選莊、閒、和記錄本局結果；每局結果更新鞋狀態估計</div>
       
     </section>
 
     <section class="card controls-card">
       <div class="bbb-results-block" aria-label="每局結果輸入">
-        <div class="bbb-input-head"><strong>記錄本局結果</strong><small>輸入莊／閒／和，再分析下一局</small></div>
+        <div class="bbb-input-head"><strong>記錄本局結果</strong><small>每局結果累積分析下一局</small></div>
         <div class="result-buttons">
           <button class="result-btn banker" id="btnB" type="button"><strong>莊</strong><small>BANKER</small></button>
           <button class="result-btn player" id="btnP" type="button"><strong>閒</strong><small>PLAYER</small></button>
           <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
         </div>
       </div>
-      <div class="bbb-point-entry" id="bbbPointEntry" aria-label="當局最終點數輸入">
+      <div class="bbb-point-entry" id="bbbPointEntry" hidden aria-label="當局最終點數輸入">
         <div class="bbb-point-heading"><strong>輸入當局最終點數</strong><small>左閒、右莊 · 手動開始分析下一局</small></div>
         <div class="bbb-point-grid">
           <label for="pointPlayerFinal" class="bbb-player-label">閒 PLAYER
@@ -112,7 +112,7 @@
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
-  <script src="auth-client.js?v=20261106-pf192-mc512-fixed5-v15"></script>
+  <script src="auth-client.js?v=20261106-bpt-v1"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
