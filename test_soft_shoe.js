@@ -52,10 +52,23 @@ const physical={B:.458597,P:.446247,T:.095156};
 assert.deepEqual(s.modelDecision(physical,[],s.frozenCore([]),null),
  {p:physical,model:"physics_only_untrained_decision_fallback"});
 const f=Array(48).fill(0);
-const mock={trained:true,calibrated:true,feature_dimension:48,
- validation:{out_of_shoe_holdout:true},predict:()=>({B:.6,P:.3,T:.1})};
+const mock={trained:true,calibrated:true,schema:"soft_shoe_bpt_48d_v1",feature_dimension:48,
+ validation:{out_of_shoe_holdout:true,real_shoe_data:true},
+ predict:()=>({B:.6,P:.3,T:.1})};
 assert.equal(s.modelDecision(physical,f,s.frozenCore(["B"]),mock).model,"validated_external_xgb");
 assert.equal(s.modelDecision(physical,f,s.frozenCore(["B"]),{...mock,feature_dimension:57}).model,
+ "physics_only_untrained_decision_fallback");
+const goodTree={nodeid:0,split:"f0",split_condition:0.5,yes:1,no:2,
+ children:[{nodeid:1,leaf:0.8},{nodeid:2,leaf:-0.4}]};
+assert.equal(s.evaluateXgbTree(goodTree,Array(48).fill(0)),0.8);
+const bundle={trees:[goodTree],base_logits:[0,0,0],tree_info:[0],learning_rate:1,temperature:1};
+const evaluated=s.predictXgbJson(bundle,Array(48).fill(0));
+assert(evaluated.B>evaluated.P);
+assert(Math.abs(evaluated.B+evaluated.P+evaluated.T-1)<1e-10);
+assert.equal(s.modelDecision(physical,Array(48).fill(0),s.frozenCore(["B"]),
+ {...mock,predict:undefined,...bundle}).model,"validated_external_xgb");
+assert.equal(s.modelDecision(physical,f,s.frozenCore(["B"]),
+ {...mock,validation:{out_of_shoe_holdout:true,real_shoe_data:false}}).model,
  "physics_only_untrained_decision_fallback");
 const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-client.js","utf8"),
  panel=fs.readFileSync("soft_shoe_panel.js","utf8"),worker=fs.readFileSync("soft_shoe_worker.js","utf8");
