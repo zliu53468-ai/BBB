@@ -214,13 +214,49 @@
   if(f.length!==48||f.some(x=>!Number.isFinite(x)))throw Error("invalid_48d_features");
   return f;
  }
+ function evaluateXgbTree(tree,features){
+  let node=typeof tree==="string"?JSON.parse(tree):tree;
+  for(let d=0;d<64;d++){
+   if(Number.isFinite(node?.leaf))return node.leaf;
+   const index=Number(String(node?.split??"").replace(/^f/,""));
+   if(!Number.isInteger(index)||index<0||index>=48||
+      !Number.isFinite(node?.split_condition)||!Array.isArray(node.children))
+    throw Error("invalid_xgb_tree");
+   const childId=features[index]<node.split_condition?node.yes:node.no;
+   node=node.children.find(c=>c.nodeid===childId);
+   if(!node)throw Error("xgb_child_missing");
+  }
+  throw Error("xgb_tree_depth_exceeded");
+ }
+ function predictXgbJson(model,features){
+  if(!Array.isArray(model.trees)||!model.trees.length||
+     model.trees.length>2000||!Array.isArray(model.base_logits)||
+     model.base_logits.length!==3||model.base_logits.some(v=>!Number.isFinite(v)))
+   throw Error("invalid_xgb_bundle");
+  const scores=model.base_logits.slice();
+  const eta=Number.isFinite(model.learning_rate)?model.learning_rate:1;
+  if(!(eta>0&&eta<=1))throw Error("invalid_xgb_learning_rate");
+  for(let i=0;i<model.trees.length;i++){
+   const cls=model.tree_info?.[i]??i%3;
+   if(!Number.isInteger(cls)||cls<0||cls>2)throw Error("invalid_xgb_class");
+   scores[cls]+=eta*evaluateXgbTree(model.trees[i],features);
+  }
+  const temperature=model.temperature??1;
+  if(!Number.isFinite(temperature)||temperature<=0)throw Error("invalid_xgb_temperature");
+  const m=Math.max(...scores),exps=scores.map(x=>Math.exp((x-m)/temperature)),z=sum(exps);
+  return{B:exps[0]/z,P:exps[1]/z,T:exps[2]/z};
+ }
  function modelDecision(p,features,frozen,model){
-  // Only use an externally trained/calibrated model with an EXACT schema.
-  // Historical 57D XGB files are incompatible and must not be silently used.
-  if(model&&model.trained===true&&model.calibrated===true&&
-     model.feature_dimension===48&&model.validation?.out_of_shoe_holdout===true&&
-     typeof model.predict==="function"){
-   const candidate=model.predict(features,frozen.probabilities);
+  // Incompatible 57D historical XGB / synthetic-only fits never qualify.
+  const verified=Boolean(model?.trained===true&&model.calibrated===true&&
+    model.schema==="soft_shoe_bpt_48d_v1"&&model.feature_dimension===48&&
+    model.validation?.out_of_shoe_holdout===true&&
+    model.validation?.real_shoe_data===true);
+  if(verified){
+   let candidate=null;
+   try{candidate=typeof model.predict==="function"?
+     model.predict(features,frozen.probabilities):predictXgbJson(model,features);}
+   catch(_){candidate=null;}
    if(candidate&&["B","P","T"].every(x=>Number.isFinite(candidate[x])&&candidate[x]>=0)){
     const z=candidate.B+candidate.P+candidate.T;
     if(Math.abs(z-1)<1e-6)return{p:candidate,model:"validated_external_xgb"};
@@ -287,5 +323,5 @@
   };
  }
  return Object.freeze({VERSION,DEFAULT,config,seedFor,deal,posterior,frozenCore,
-  handProbabilities,evs,eor,features48,modelDecision,run});
+  handProbabilities,evs,eor,features48,evaluateXgbTree,predictXgbJson,modelDecision,run});
 });
