@@ -16,6 +16,26 @@ assert.equal(s.DEFAULT.MIN_DIRECTION_GAP_SNR,.70);
 assert.equal(s.DEFAULT.MIN_DIRECTION_ESS_RATIO,.35);
 assert.equal(s.DEFAULT.MIN_DIRECTION_DIVERSITY,.20);
 assert.equal(s.DEFAULT.MAX_DIRECTION_GAP_SE,.080);
+
+const gateArgs={
+ candidate:"B",ev:{B:.12,P:-.15},
+ physical:{samples:128*14,p:{B:.53,P:.38,T:.09},
+  per:Array.from({length:128},()=>({B:7,P:5,T:2}))},
+ observations:8,essRatio:.85,diversity:.70,config:s.DEFAULT
+};
+const eligible=s.moderateDirectionGate(gateArgs);
+assert.equal(eligible.direction,"B","clear modeled EV separation should display candidate");
+assert.equal(eligible.eligible,true);
+assert.equal(eligible.validated_betting_edge,false);
+assert.equal(s.moderateDirectionGate({...gateArgs,observations:1}).reason,"insufficient_rounds");
+assert.equal(s.moderateDirectionGate({...gateArgs,ev:{B:.003,P:0}}).reason,"weak_ev_separation");
+assert.equal(s.moderateDirectionGate({...gateArgs,essRatio:.1}).reason,"low_particle_ess");
+assert.equal(s.moderateDirectionGate({...gateArgs,diversity:.05}).reason,"low_particle_diversity");
+assert.equal(s.moderateDirectionGate({...gateArgs,physical:{...gateArgs.physical,samples:100}})
+ .reason,"high_estimator_uncertainty");
+assert.equal(s.moderateDirectionGate({...gateArgs,config:{...s.DEFAULT,MIN_DIRECTION_GAP_SNR:4}})
+ .reason,"low_gap_to_noise");
+
 assert.throws(()=>s.run(["X"]),/invalid_bpt_history/);
 assert.throws(()=>s.config({PARTICLE_COUNT:1024}),/invalid_PARTICLE_COUNT/);
 const counts=[128,32,32,32,32,32,32,32,32,32];
