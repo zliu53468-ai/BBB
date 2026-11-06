@@ -30,3 +30,20 @@
 
 ## Deployment retry
 The initial Pages upload succeeded but the deployment failed on an intermittent OIDC token timeout. A failed-job retry then encountered duplicate `github-pages` artifacts. This commit triggers a fresh workflow run with a single upload artifact; consult the new run status for publication confirmation.
+
+
+## Moderate observation display (PR #158)
+The previous always-display B/P research direction is replaced by a separate **research-only moderate gate**. The model still computes candidate B/P with the greater estimated EV on each successfully sampled hand. The website shows that side only if all of the following pass; otherwise it shows **觀望** and a specific reason.
+
+| Parameter | Recommended baseline | Purpose |
+| --- | ---: | --- |
+| \`MIN_DIRECTION_ROUNDS\` | 3 | Avoid directional claims on a near-empty shoe |
+| \`MIN_DIRECTION_EV_GAP\` | 0.020 (2.0 pp) | Minimum modeled Banker-vs-Player EV separation |
+| \`MIN_DIRECTION_GAP_SNR\` | 0.70 | Modeled EV difference / estimated MC gap standard error |
+| \`MIN_DIRECTION_ESS_RATIO\` | 0.35 | Ensure enough particle weight support |
+| \`MIN_DIRECTION_DIVERSITY\` | 0.20 | Guard against repeated particle ancestry |
+| \`MAX_DIRECTION_GAP_SE\` | 0.080 (8 pp) | Reject exceptionally noisy gap estimates |
+
+The gap estimator combines outcome Monte Carlo variance with a nonnegative, debiased between-particle mean uncertainty contribution. It is **not** a calibrated confidence interval. These are heuristic defaults tuned to avoid unconditional forced directions and exhaustive skipping; they do not demonstrate improved hit rate or a real positive EV. They do **not** change the independent wagering gate, which continues to require a real-shoe validated 48D model. Consequently authorized bet sizes remain zero until that separate requirement is satisfied.
+
+The original \`PARTICLE_COUNT=128\`, \`LIKELIHOOD_DRAWS=14\` and \`NEXT_HAND_DRAWS=14\`, licensing, input buttons and history storage are unchanged. A clean real-shoe holdout must be run before representing this as a predictive or staking advantage.
