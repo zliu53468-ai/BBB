@@ -38,9 +38,10 @@ for(const h of [["B"],["P"],["T"],["B","P","T","B"],Array(18).fill("T")]){
  assert(Math.abs(first.ev_banker-(.95*p.B-p.P))<1e-12);
  assert(Math.abs(first.ev_player-(p.P-p.B))<1e-12);
  assert(Math.abs(first.ev_tie-(9*p.T-1))<1e-12);
- assert.equal(first.action,"Skip","no validated 48D model -> no betting claims");
- assert.equal(first.direction,"SKIP");
- assert.equal(first.bankroll_fraction,0);
+ assert(["B","P"].includes(first.candidate),"candidate available for every valid forecast");
+ assert.equal(first.direction,"SKIP","keep independent wager-eligibility gate");
+ assert.equal(first.action,"Skip","no unvalidated betting recommendation");
+ assert.equal(first.bankroll_fraction,0,"no staking advice without validation");
  assert.equal(first.frozen_core.trained,false);
  assert.equal(first.model,"physics_only_untrained_decision_fallback");
  assert(first.estimated_penetration>0);
@@ -81,9 +82,16 @@ const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-clien
 for(const id of ["btnB","btnP","btnT","btnStart","btnBack","btnEnd"])
  assert(html.includes('id="'+id+'"'));
 assert(html.includes("styles.css?v=20261106-bpt-ui-fix-v2"));
-assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261106-bpt-v1"'));
-assert(auth.includes('"soft_shoe_panel.js?v=20261106-bpt-v1"'));
+assert(html.includes("auth-client.js?v=20261106-nonskip-v2"));
+assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261106-nonskip-v2"'));
+assert(auth.includes('"soft_shoe_panel.js?v=20261106-nonskip-v2"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
 assert(panel.includes('for(const [id,side] of [["btnB","B"],["btnP","P"],["btnT","T"]]'));
-assert(worker.includes("soft_shoe_decision_runtime.js"));
+assert(worker.includes("soft_shoe_decision_runtime.js?v=20261106-nonskip-v2"));
+assert(panel.includes('const d=["B","P"].includes(report.candidate)?report.candidate:report.direction'));
+assert(panel.includes('if(!["B","P"].includes(report.candidate))'));
+assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"無法分析")'));
+assert(panel.includes("強制方向測試"));
+assert(!panel.includes('觀望'));
+
 console.log("PASS BPT latent PF, legal baccarat deals, 48D features, model guard and interface");
