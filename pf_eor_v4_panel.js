@@ -17,7 +17,7 @@
  function calculate(pair,options){
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   return new Promise((resolve,reject)=>{
-   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-adaptive-pf192-mc512-v16");worker=instance;
+   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-pf192-mc512-fixed5-v15");worker=instance;
    const cleanup=()=>{clearTimeout(timer);instance.terminate();if(worker===instance){worker=null;cancelActive=null;}};
    const timer=setTimeout(()=>{cleanup();reject(Error("batch_calculation_timeout"));},15000);
    cancelActive=()=>{cleanup();reject(Error("analysis_cancelled"));};

@@ -4,14 +4,14 @@ self.window=self;
 self.onmessage=event=>{const {id,player,banker,options}=event.data;
  try{
   if(!self.BBBStability)importScripts(
-   'quant256_online_runtime.js?v=20261106-adaptive-pf192-mc512-v16',
-   'shoe_distribution_guard.js?v=20261106-adaptive-pf192-mc512-v16',
-   'markov_residual_runtime.js?v=20261106-adaptive-pf192-mc512-v16',
-   'physics_forecast_first_runtime.js?v=20261106-adaptive-pf192-mc512-v16',
-   'deplete_mc_runtime.js?v=20261106-adaptive-pf192-mc512-v16',
-   'pf_eor_v4_runtime.js?v=20261106-adaptive-pf192-mc512-v16',
-   'stability_reference.js?v=20261106-adaptive-pf192-mc512-v16',
-   'stability_runtime.js?v=20261106-adaptive-pf192-mc512-v16');
+   'quant256_online_runtime.js?v=20261106-pf192-mc512-fixed5-v15',
+   'shoe_distribution_guard.js?v=20261106-pf192-mc512-fixed5-v15',
+   'markov_residual_runtime.js?v=20261106-pf192-mc512-fixed5-v15',
+   'physics_forecast_first_runtime.js?v=20261106-pf192-mc512-fixed5-v15',
+   'deplete_mc_runtime.js?v=20261106-pf192-mc512-fixed5-v15',
+   'pf_eor_v4_runtime.js?v=20261106-pf192-mc512-fixed5-v15',
+   'stability_reference.js?v=20261106-pf192-mc512-fixed5-v15',
+   'stability_runtime.js?v=20261106-pf192-mc512-fixed5-v15');
   const report=new self.BBBStability.StablePhysicalPointV4().analyze(player,banker,options);
   self.postMessage({id,report});
  }catch(e){self.postMessage({id,error:String(e.message||e)});}

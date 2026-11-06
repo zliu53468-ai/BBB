@@ -14,7 +14,7 @@ assert.equal(a.deplete_mc.status,'complete');
 assert.equal(a.deplete_mc.mode,'shadow');
 assert.equal(a.deplete_mc.affects_display,false);
 assert.equal(a.deplete_blended_into_primary,false);
-assert.equal(a.deplete_mc.samples,32768);
+assert.equal(a.deplete_mc.samples,65536);
 assert.equal(a.eor.effects_by_point.length,10);
 assert(a.eor.effects_by_point.every(Number.isFinite));
 assert(a.eor.max_abs_ev_gap_delta>=0);
@@ -135,7 +135,7 @@ assert(runtime.includes('physics.adaptiveScoreSmoother(raw,pf)'));
 assert(runtime.includes('const physical=smoothed.physical,rawQuality=rawQualityDiagnostics(raw,pf)'));
 console.log('PASS raw physical EV, moderate uncertainty gate (not a CI), EOR/Deplete, independent point-input V4');
 
-assert.equal(CONFIG.eorParticleCount,24);
+assert.equal(CONFIG.eorParticleCount,48);
 for(const patch of [{particles:193},{simulationsPerParticle:0},{eorParticleCount:193},
  {eorSamples:15},{noiseGuardMultiplier:NaN},{crossCheckZ:Infinity},{minPosteriorQuality:2}])
  assert.throws(()=>new PhysicalPointV4({...CONFIG,...patch}));
@@ -153,7 +153,7 @@ assert(shifted.ev_banker>shifted.ev_player);assert.equal(shifted.candidate,'P');
 assert(Math.abs(shifted.decision_ev_gap+.0001)<1e-12);
 // Constants/thresholds and source probabilities remain unchanged.
 assert.equal(CONFIG.noiseGuardMultiplier,.65);assert.equal(CONFIG.simulationsPerParticle,512);
-assert.equal(CONFIG.eorParticleCount,24);assert.equal(CONFIG.eorSamples,96);
+assert.equal(CONFIG.eorParticleCount,48);assert.equal(CONFIG.eorSamples,192);
 assert.equal(CONFIG.minEvGap,.0040);assert.equal(CONFIG.minPosteriorQuality,.50);
 assert.equal(CONFIG.eorFragilityFloor,.025);assert.equal(CONFIG.crossCheckZ,2.5);assert.equal(CONFIG.crossCheckFloor,.008);
 for(const fixture of require('./validation/neutral_raw_fixtures.json')){
