@@ -1,11 +1,13 @@
 /** B/P/T-only panel: retains existing licensed shell, result controls and exports. */
 (function(root){
  "use strict";
- if(!root||!root.document||!root.BBBSoftShoe)throw Error("soft_shoe_ui_dependencies_missing");
+ if(!root||!root.document||!root.BBBSoftShoe||!root.BBBBigRoad)
+  throw Error("soft_shoe_ui_dependencies_missing");
  const core=root.BBBSoftShoe,KEY="bgs_soft_shoe_bpt_v1",VERSION=core.VERSION;
  const $=id=>root.document.getElementById(id);
  const set=(id,x)=>{if($(id))$(id).textContent=x;};
  const pct=x=>Number.isFinite(x)?(100*x).toFixed(2)+"%":"—";
+ const syncBigRoad=()=>root.BBBBigRoad.render($("bptBigRoad"),history,$("bptRoundCounter"));
  const old=root.localStorage?.getItem(KEY);
  let history=[],busy=false,worker=null,request=0,last=null;
  try{
@@ -105,12 +107,14 @@
   try{persist();}catch(e){
    history=before;set("message","紀錄未成功儲存，已拒絕預測："+String(e.message||e));return;
   }
+  syncBigRoad();
   recalculate();
  }
  function back(){
   if(busy||!history.length)return;
   const before=history.slice();history.pop();
   try{persist();}catch(e){history=before;set("message","無法保存返回操作，未修改紀錄。");return;}
+  syncBigRoad();
   recalculate();
  }
  function exportHistory(){
@@ -140,6 +144,7 @@
   version:VERSION,add,back,recalculate,
   get history(){return history.slice();},get latestReport(){return last;}
  };
+ syncBigRoad();
  uiIdle("點選「莊／閒／和」記錄本局結果，再估計下一局；每局觀測會累積在同一牌靴。");
  set("modePill","Soft Shoe · 適度觀望");
  set("pointInputStatus","已記錄 "+history.length+" 局；更換牌靴請按「結束分析」。");

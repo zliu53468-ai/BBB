@@ -111,10 +111,11 @@ const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-clien
  panel=fs.readFileSync("soft_shoe_panel.js","utf8"),worker=fs.readFileSync("soft_shoe_worker.js","utf8");
 for(const id of ["btnB","btnP","btnT","btnStart","btnBack","btnEnd"])
  assert(html.includes('id="'+id+'"'));
-assert(html.includes("styles.css?v=20261106-bpt-ui-fix-v2"));
-assert(html.includes("auth-client.js?v=20261106-moderate-v3"));
+assert(html.includes("styles.css?v=20261106-bigroad-v1"));
+assert(html.includes("auth-client.js?v=20261106-bigroad-v1"));
 assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261106-moderate-v3"'));
-assert(auth.includes('"soft_shoe_panel.js?v=20261106-moderate-v3"'));
+assert(auth.includes('"bpt_big_road.js?v=20261106-bigroad-v1"'));
+assert(auth.includes('"soft_shoe_panel.js?v=20261106-bigroad-v1"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
 assert(panel.includes('for(const [id,side] of [["btnB","B"],["btnP","P"],["btnT","T"]]'));
 assert(worker.includes("soft_shoe_decision_runtime.js?v=20261106-moderate-v3"));
@@ -122,6 +123,8 @@ assert(panel.includes('d=view.direction||"SKIP"'));
 assert(panel.includes('if(!report.research_view||!["B","P","SKIP"].includes(report.research_view.direction))'));
 assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望")'));
 assert(panel.includes("適度觀望"));
+assert(panel.includes("syncBigRoad();"));
+assert(auth.indexOf('"bpt_big_road.js')<auth.indexOf('"soft_shoe_panel.js'));
 assert(panel.includes("觀望：EV 差異估計誤差過大"));
 assert(panel.includes("觀望：有效粒子不足"));
 

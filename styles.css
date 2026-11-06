@@ -345,3 +345,57 @@ html.bbb-viewport-locked,body.bbb-viewport-locked{
 #predictionApp .bbb-point-grid input[type=number]{appearance:textfield;-moz-appearance:textfield;}
 #predictionApp .bbb-point-analyze{width:100%;min-height:42px;font-weight:850;}
 #predictionApp .metrics>.metric:last-child:nth-child(odd){grid-column:1/-1;}
+
+
+/* Compact display-only 6x15 Baccarat Big Road (history UI, not forecasting logic). */
+#predictionApp .bpt-road-compact{
+  display:grid;gap:4px;padding:7px 8px 5px;margin:0 0 7px;
+  border:1px solid rgba(164,128,246,.27);border-radius:12px;
+  background:rgba(19,13,37,.70);min-width:0;
+}
+#predictionApp .bpt-road-heading{
+  display:flex;justify-content:space-between;align-items:center;gap:6px;
+  font-size:11px;min-width:0;line-height:1.2;
+}
+#predictionApp .bpt-road-heading strong{font-size:12px;white-space:nowrap;color:#f0e9ff}
+#predictionApp .bpt-road-heading strong small{font-size:10px;color:#9b88bd;font-weight:600}
+#predictionApp #bptRoundCounter{font-size:10px;color:#e5d7ff;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+#predictionApp .bpt-road-grid{
+  width:100%;max-width:300px;margin:0 auto;box-sizing:border-box;
+  display:grid;grid-template-columns:repeat(15,minmax(0,1fr));gap:0;
+  border-top:1px solid rgba(166,145,201,.20);
+  border-left:1px solid rgba(166,145,201,.20);
+  border-radius:4px;overflow:hidden;background:rgba(10,7,21,.74);
+}
+#predictionApp .bpt-road-cell{
+  aspect-ratio:1;min-width:0;position:relative;
+  display:grid;place-items:center;box-sizing:border-box;
+  border-right:1px solid rgba(166,145,201,.20);
+  border-bottom:1px solid rgba(166,145,201,.20);
+}
+#predictionApp .bpt-road-bead{
+  width:76%;height:76%;box-sizing:border-box;border-radius:50%;position:relative;display:block;
+}
+#predictionApp .bpt-road-banker{border:2px solid #ff6585;background:rgba(249,72,112,.23)}
+#predictionApp .bpt-road-player{border:2px solid #54baff;background:rgba(68,164,255,.23)}
+#predictionApp .bpt-road-tie-only{border:0;background:transparent}
+#predictionApp .bpt-road-has-tie::after{
+  content:"";position:absolute;left:calc(50% - 1.7px);top:-12%;
+  width:3.4px;height:124%;border-radius:3px;transform:rotate(45deg);
+  background:#31e993;box-shadow:0 0 3px #061f15;
+}
+#predictionApp .bpt-road-legend{
+  display:flex;align-items:center;gap:11px;justify-content:center;
+  color:#a79abf;font-size:9px;line-height:1.2;white-space:nowrap;
+}
+#predictionApp .bpt-road-legend .legend-b{color:#ff7892}
+#predictionApp .bpt-road-legend .legend-p{color:#67c0ff}
+#predictionApp .bpt-road-legend .legend-t{color:#36e899}
+#predictionApp .bpt-road-legend small{font-size:9px;color:#8c82a5}
+@media(max-width:380px){
+  #predictionApp .bpt-road-compact{padding:6px}
+  #predictionApp .bpt-road-heading strong{font-size:11px}
+  #predictionApp #bptRoundCounter{font-size:9px}
+  #predictionApp .bpt-road-legend{gap:7px;font-size:8px}
+  #predictionApp .bpt-road-legend small{font-size:8px}
+}

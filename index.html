@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#090716">
   <title>莊家剋星AI百家程式</title>
   <meta name="description" content="莊家剋星AI百家程式｜PF–EOR–EV–Deplete V4 獨立總點數分析">
-  <link rel="stylesheet" href="styles.css?v=20261106-bpt-ui-fix-v2">
+  <link rel="stylesheet" href="styles.css?v=20261106-bigroad-v1">
 
 </head>
 <body>
@@ -74,6 +74,14 @@
           <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
         </div>
       </div>
+      <section class="bpt-road-compact" aria-label="本靴局數與百家樂大路">
+        <div class="bpt-road-heading">
+          <strong>百家樂大路 <small>6 × 15</small></strong>
+          <span id="bptRoundCounter" aria-live="polite">已開 0 局 · 下局第 1 局</span>
+        </div>
+        <div id="bptBigRoad" class="bpt-road-grid" aria-label="百家樂大路"></div>
+        <div class="bpt-road-legend" aria-hidden="true"><span class="legend-b">● 莊</span><span class="legend-p">● 閒</span><span class="legend-t">╱ 和</span><small>超過 15 欄顯示最新區段</small></div>
+      </section>
       <div class="bbb-point-entry" id="bbbPointEntry" hidden aria-label="當局最終點數輸入">
         <div class="bbb-point-heading"><strong>輸入當局最終點數</strong><small>左閒、右莊 · 手動開始分析下一局</small></div>
         <div class="bbb-point-grid">
@@ -112,7 +120,7 @@
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
-  <script src="auth-client.js?v=20261106-moderate-v3"></script>
+  <script src="auth-client.js?v=20261106-bigroad-v1"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
