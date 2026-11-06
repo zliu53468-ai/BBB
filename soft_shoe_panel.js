@@ -25,22 +25,31 @@
   set("localCalibrationStatus","B/P/T 軟算牌 · 目前已記錄 "+history.length+" 局（同一牌靴）");
  }
  function show(report){
-  // Display the higher simulated EV candidate even when the independent
-  // wager-eligibility gate returns SKIP. Never present it as a BET signal.
-  last=report;const d=["B","P"].includes(report.candidate)?report.candidate:report.direction,
-   q=report.probabilities||{};
-  set("directionText",d==="B"?"莊":d==="P"?"閒":"無法分析");
-  set("directionCode",d==="B"?"方向測試 / BANKER":d==="P"?"方向測試 / PLAYER":"NO SIGNAL");
+  // Model-only moderate observation; it never overrides the true wager gate.
+  last=report;const view=report.research_view||{},
+   d=view.direction||"SKIP",q=report.probabilities||{};
+  set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望");
+  set("directionCode",d==="B"?"研究方向 / BANKER":d==="P"?"研究方向 / PLAYER":"MODERATE / SKIP");
   $("directionOrb").className="direction-orb "+(d==="B"?"banker":d==="P"?"player":"idle");
   set("confidence","莊 EV "+pct(report.ev_banker)+"／閒 EV "+pct(report.ev_player)+
    "｜置信指標 "+pct(report.confidence));
-  set("regime",report.validated_edge?
-   "已通過模擬 EV 篩選（仍須實盤驗證）":
-   report.reason==="trained_decision_model_unavailable"?
-   "強制方向測試｜48D XGBoost 尚未驗證":
-   "強制方向測試｜未通過下注門檻："+String(report.reason||"資料不足"));
+  const reasonNames={
+   insufficient_rounds:"觀望：樣本局數不足",
+   weak_ev_separation:"觀望：莊閒 EV 差距不足",
+   high_estimator_uncertainty:"觀望：EV 差異估計誤差過大",
+   low_gap_to_noise:"觀望：方向訊號未超過噪音門檻",
+   low_particle_ess:"觀望：有效粒子不足",
+   low_particle_diversity:"觀望：粒子多樣性不足"
+  };
+  set("regime",view.eligible?"中度篩選通過（僅研究方向）":
+   reasonNames[view.reason]||"觀望：方向品質未達門檻");
   set("strength","下一局模型估計：莊 "+pct(q.B)+"｜閒 "+pct(q.P)+"｜和 "+pct(q.T));
   set("message","已輸入 "+report.observations+" 局｜候選方向 "+(report.candidate==="B"?"莊":"閒")+
+   "｜估計 EV 差距 "+pct(view.abs_ev_gap)+
+   "｜差距標準誤 "+pct(view.ev_gap_se)+
+   "｜差距／噪音 "+(Number(view.ev_gap_snr)||0).toFixed(2)+"×"+
+   "｜後驗 ESS "+pct(view.ess_ratio)+
+   "｜後驗多樣性 "+pct(view.ancestor_diversity)+
    "｜保守 EV 下界 "+pct(report.conservative_lower_ev)+
    "｜估計誤差（莊 "+pct(report.se_banker)+"／閒 "+pct(report.se_player)+"）"+
    "｜模型粒子 "+core.DEFAULT.PARTICLE_COUNT+
@@ -49,7 +58,7 @@
    "｜有效粒子 "+Number(report.particle_ess||0).toFixed(1)+
    "｜合格下注比例 "+pct(report.bankroll_fraction)+
    "｜強制方向不代表下注建議；只有 B/P/T，實際發牌與殘牌未知；未驗證獲利優勢。");
-  set("modePill","Soft Shoe · 強制方向測試");
+  set("modePill","Soft Shoe · 適度觀望");
   set("localCalibrationStatus","48 維物理特徵＋Frozen 序列診斷＋XGBoost 安全閘門"+
    "｜模型："+String(report.model||"不可用"));
  }
@@ -57,7 +66,7 @@
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   const id=++request;
   return new Promise((resolve,reject)=>{
-   const w=new root.Worker("soft_shoe_worker.js?v=20261106-nonskip-v2");worker=w;
+   const w=new root.Worker("soft_shoe_worker.js?v=20261106-moderate-v3");worker=w;
    const close=()=>{clearTimeout(timer);w.terminate();if(worker===w)worker=null;};
    const timer=setTimeout(()=>{close();reject(Error("worker_timeout"));},15000);
    w.onerror=()=>{close();reject(Error("worker_execution_failed"));};
@@ -75,10 +84,10 @@
   if(busy)return;busy=true;set("directionText","計算中");
   const controls=["btnB","btnP","btnT","btnStart","btnBack"].map($).filter(Boolean);
   controls.forEach(x=>x.disabled=true);
-  set("message","正在估計隱藏牌靴組成及 EV；完成後直接顯示莊／閒測試方向。");
+  set("message","正在計算 EV 及不確定性；品質未通過會顯示觀望。");
   try{
    const report=await compute(history.slice());
-   if(!["B","P"].includes(report.candidate)){
+   if(!report.research_view||!["B","P","SKIP"].includes(report.research_view.direction)){
     last=report;uiIdle("分析未完成："+String(report.reason));set("directionText","無法分析");
    }else show(report);
    set("pointInputStatus","同一牌靴已記錄 "+history.length+" 局，輸入下一局結果。");
@@ -132,6 +141,6 @@
   get history(){return history.slice();},get latestReport(){return last;}
  };
  uiIdle("點選「莊／閒／和」記錄本局結果，再估計下一局；每局觀測會累積在同一牌靴。");
- set("modePill","Soft Shoe · 強制方向");
+ set("modePill","Soft Shoe · 適度觀望");
  set("pointInputStatus","已記錄 "+history.length+" 局；更換牌靴請按「結束分析」。");
 })(typeof window!=="undefined"?window:null);
