@@ -300,7 +300,6 @@ html.bbb-viewport-locked,body.bbb-viewport-locked{
 
 /* BBB V2.3: alternate the original history buttons with one compact P/B score row. */
 #predictionApp .bbb-point-entry[hidden]{display:none!important}
-#predictionApp.bbb-point-mode .bbb-results-block{display:none}
 #predictionApp.bbb-point-mode #btnStart,
 #predictionApp.bbb-point-mode #forecastGap,
 #predictionApp.bbb-point-mode label[for="forecastGap"]{display:none}
