@@ -1,0 +1,39 @@
+name: Soft Shoe BPT EV engine and UI checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - soft_shoe_*.js
+      - test_soft_shoe.js
+      - auth-client.js
+      - index.html
+      - .github/workflows/soft-shoe-checks.yml
+  push:
+    branches: [main]
+    paths:
+      - soft_shoe_*.js
+      - test_soft_shoe.js
+      - auth-client.js
+      - index.html
+      - .github/workflows/soft-shoe-checks.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  soft-shoe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and deterministic BPT PF safety contract
+        run: |
+          node --check soft_shoe_decision_runtime.js
+          node --check soft_shoe_worker.js
+          node --check soft_shoe_panel.js
+          node --check auth-client.js
+          node test_soft_shoe.js
+      - name: Licensed storage reset and isolation
+        run: node test_license_storage.mjs
