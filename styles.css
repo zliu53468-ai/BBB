@@ -331,8 +331,7 @@ html.bbb-viewport-locked,body.bbb-viewport-locked{
   #predictionApp .bbb-point-heading small{font-size:9px}
 }
 
-/* BBB V2.4 WEB: immediately show point totals; never display history bootstrap. */
-#predictionApp .bbb-results-block,
+/* BBB V2.4 legacy point-entry controls: keep B/P/T result panel visible in Soft Shoe mode. */
 #predictionApp #btnStart,
 #predictionApp #btnNoSkipTest,
 #predictionApp #forecastGap,
