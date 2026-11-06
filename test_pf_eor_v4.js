@@ -7,14 +7,14 @@ const sample=new PhysicalPointV4(),a=sample.analyze(5,3,{seed:0});
 assert.equal(a.point_observation_independent,true);
 assert.equal(a.history_length,1);
 assert.equal(a.model_posterior.sampled_compositions,CONFIG.particles);
-assert.equal(CONFIG.particles,96);
-assert.equal(CONFIG.simulationsPerParticle,256);
-assert.equal(a.physical_ev.samples,96*256);
+assert.equal(CONFIG.particles,192);
+assert.equal(CONFIG.simulationsPerParticle,512);
+assert.equal(a.physical_ev.samples,192*512);
 assert.equal(a.deplete_mc.status,'complete');
 assert.equal(a.deplete_mc.mode,'shadow');
 assert.equal(a.deplete_mc.affects_display,false);
 assert.equal(a.deplete_blended_into_primary,false);
-assert.equal(a.deplete_mc.samples,32768);
+assert.equal(a.deplete_mc.samples,65536);
 assert.equal(a.eor.effects_by_point.length,10);
 assert(a.eor.effects_by_point.every(Number.isFinite));
 assert(a.eor.max_abs_ev_gap_delta>=0);
@@ -135,12 +135,12 @@ assert(runtime.includes('physics.adaptiveScoreSmoother(raw,pf)'));
 assert(runtime.includes('const physical=smoothed.physical,rawQuality=rawQualityDiagnostics(raw,pf)'));
 console.log('PASS raw physical EV, moderate uncertainty gate (not a CI), EOR/Deplete, independent point-input V4');
 
-assert.equal(CONFIG.eorParticleCount,24);
-for(const patch of [{particles:97},{simulationsPerParticle:0},{eorParticleCount:97},
+assert.equal(CONFIG.eorParticleCount,48);
+for(const patch of [{particles:193},{simulationsPerParticle:0},{eorParticleCount:193},
  {eorSamples:15},{noiseGuardMultiplier:NaN},{crossCheckZ:Infinity},{minPosteriorQuality:2}])
  assert.throws(()=>new PhysicalPointV4({...CONFIG,...patch}));
 const mutable={...CONFIG};const safe=new PhysicalPointV4(mutable);mutable.simulationsPerParticle=8;
-assert.equal(safe.config.simulationsPerParticle,256);assert(Object.isFrozen(safe.config));
+assert.equal(safe.config.simulationsPerParticle,512);assert(Object.isFrozen(safe.config));
 
 // The reference itself is neutral and cannot pass the unchanged gate.
 const reference=gate.decide({...good,ev_banker:core.BASE_EV.B,ev_player:core.BASE_EV.P,
@@ -152,8 +152,8 @@ const shifted=gate.decide({...good,ev_banker:core.BASE_EV.B-.0001,ev_player:core
 assert(shifted.ev_banker>shifted.ev_player);assert.equal(shifted.candidate,'P');
 assert(Math.abs(shifted.decision_ev_gap+.0001)<1e-12);
 // Constants/thresholds and source probabilities remain unchanged.
-assert.equal(CONFIG.noiseGuardMultiplier,.65);assert.equal(CONFIG.simulationsPerParticle,256);
-assert.equal(CONFIG.eorParticleCount,24);assert.equal(CONFIG.eorSamples,96);
+assert.equal(CONFIG.noiseGuardMultiplier,.65);assert.equal(CONFIG.simulationsPerParticle,512);
+assert.equal(CONFIG.eorParticleCount,48);assert.equal(CONFIG.eorSamples,192);
 assert.equal(CONFIG.minEvGap,.0040);assert.equal(CONFIG.minPosteriorQuality,.50);
 assert.equal(CONFIG.eorFragilityFloor,.025);assert.equal(CONFIG.crossCheckZ,2.5);assert.equal(CONFIG.crossCheckFloor,.008);
 for(const fixture of require('./validation/neutral_raw_fixtures.json')){

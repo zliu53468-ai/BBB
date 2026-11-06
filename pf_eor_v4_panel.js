@@ -17,7 +17,7 @@
  function calculate(pair,options){
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   return new Promise((resolve,reject)=>{
-   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-anygap-agreement55-v14");worker=instance;
+   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-pf192-mc512-fixed5-v15");worker=instance;
    const cleanup=()=>{clearTimeout(timer);instance.terminate();if(worker===instance){worker=null;cancelActive=null;}};
    const timer=setTimeout(()=>{cleanup();reject(Error("batch_calculation_timeout"));},15000);
    cancelActive=()=>{cleanup();reject(Error("analysis_cancelled"));};
@@ -81,7 +81,7 @@
    (direction==="SKIP"?"idle":direction==="B"?"banker":"player");
   const deplete=report.deplete_mc;
   set("message","本局閒 "+pair.player+"／莊 "+pair.banker+
-   "｜獨立批次 "+report.sampling_stability.batches+"（每批 PF96／MC"+CONFIG.simulationsPerParticle+"）"+
+   "｜獨立批次 "+report.sampling_stability.batches+"（每批 PF192／MC"+CONFIG.simulationsPerParticle+"）"+
    "｜平滑 EV：莊 "+pct(report.ev_banker)+"、閒 "+pct(report.ev_player)+
    "｜原始含抽佣 EV：莊 "+pct(report.original_pf_ev.B)+"、閒 "+pct(report.original_pf_ev.P)+
    "｜平滑保留比 "+pct(report.adaptive_score_smoothing.blend)+
