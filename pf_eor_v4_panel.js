@@ -17,7 +17,7 @@
  function calculate(pair,options){
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   return new Promise((resolve,reject)=>{
-   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-gap0128-agreement55-v12");worker=instance;
+   const id=++job,instance=new root.Worker("stability_worker.js?v=20261106-anygap-agreement55-v14");worker=instance;
    const cleanup=()=>{clearTimeout(timer);instance.terminate();if(worker===instance){worker=null;cancelActive=null;}};
    const timer=setTimeout(()=>{cleanup();reject(Error("batch_calculation_timeout"));},15000);
    cancelActive=()=>{cleanup();reject(Error("analysis_cancelled"));};
@@ -67,7 +67,6 @@
   set("regime",choice.reason==="user_entry_pass"?"自訂門檻通過（非勝率驗證）":
    choice.reason==="user_batch_agreement_below_55_percent"?"觀望：批次方向一致率未達 55% 或資料不足":
    choice.reason==="user_se_not_above_055_percent"?"觀望：EV 估計標準誤未超過 0.55%":
-   choice.reason==="user_ev_gap_below_0128pp"?"觀望：兩組 EV 莊閒差距須各達 0.128 個百分點":
    choice.reason==="user_ev_direction_conflict"?"觀望：EV 相同或平滑與原始 EV 方向不一致":
    choice.reason==="quality_pass"?"V4 品質通過":choice.reason==="weak_ev_gap"?
    "V4 觀望：EV 差距不足以超過抽樣誤差":choice.reason==="eor_fragile"?
@@ -97,7 +96,7 @@
    "｜自訂條件：EV 估計標準誤 >0.55%（誤差，非勝率）"+
    "｜平滑 EV 絕對差 "+pct(choice.user_smoothed_ev_gap)+
    "｜原始 EV 絕對差 "+pct(choice.user_raw_ev_gap)+
-   "｜兩組 EV 差距各須 ≥0.128 個百分點且同向；不限制正負"+
+   "｜兩組 EV 只需有高低差且同向；無最低差距，不限制正負"+
    "｜批次方向一致率須 ≥55%；Deplete 僅顯示核對，不作出手限制"+
    "｜EOR 最大敏感度 "+pct(report.eor.max_abs_ev_gap_delta)+
    "｜Deplete "+(deplete.status==="complete"?
