@@ -11,7 +11,7 @@ const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu5346
 // V4 正式入口只載入必要核心；原版本其他模組留在 GitHub 供回溯，
 // 不實例化 LinUCB、256 維上下文或任何牌路決策器。
 const scripts=[
- "soft_shoe_decision_runtime.js?v=20261106-layered-v4",
+ "soft_shoe_decision_runtime.js?v=20261107-bet-gates-v5",
  "bpt_big_road.js?v=20261106-bigroad-v1",
  "soft_shoe_panel.js?v=20261106-bigroad-v1"
 ];
