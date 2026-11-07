@@ -93,7 +93,7 @@ const auth=fs.readFileSync("auth-client.js","utf8");
 const css=fs.readFileSync("styles.css","utf8");
 assert(index.includes('id="bptRoundCounter"')&&index.includes('id="bptBigRoad"'));
 assert(index.includes("styles.css?v=20261106-bigroad-v1"));
-assert(index.includes("auth-client.js?v=20261107-bet-gates-v5"));
+assert(index.includes("auth-client.js?v=20261108-pf300-l32-m48-v6"));
 assert(auth.includes('"bpt_big_road.js?v=20261106-bigroad-v1"'));
 assert(auth.indexOf('bpt_big_road.js?v=')<auth.indexOf('soft_shoe_panel.js?v='));
 assert(panel.includes("const syncBigRoad=()=>root.BBBBigRoad.render"));

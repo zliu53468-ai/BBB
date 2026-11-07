@@ -1,9 +1,9 @@
 "use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs");
 const s=require("./soft_shoe_decision_runtime.js");
-assert.equal(s.DEFAULT.PARTICLE_COUNT,128);
-assert.equal(s.DEFAULT.LIKELIHOOD_DRAWS,14);
-assert.equal(s.DEFAULT.NEXT_HAND_DRAWS,14);
+assert.equal(s.DEFAULT.PARTICLE_COUNT,300);
+assert.equal(s.DEFAULT.LIKELIHOOD_DRAWS,32);
+assert.equal(s.DEFAULT.NEXT_HAND_DRAWS,48);
 assert.equal(s.DEFAULT.MIN_EV_THRESHOLD,.0030);
 assert.equal(s.DEFAULT.MID_SHOE_MIN_EV_THRESHOLD,.00235);
 assert.equal(s.DEFAULT.LATE_SHOE_MIN_EV_THRESHOLD,.0019);
@@ -65,7 +65,7 @@ assert.equal(policy(.2999).min_ev_threshold,.0019,"below 30% late tier");
 assert.equal(policy(.35).min_confidence,.75,"at 35% remain uses standard");
 assert.equal(policy(.3499).min_confidence,.80,"below 35% remain confidence 80%");
 const strong={
- cfg,remainingCards:416*.70,ess:115,quality:.82,
+ cfg,remainingCards:416*.70,ess:230,quality:.82,
  ev:{B:.05,P:.012,T:0},candidate:"B",
  confidence:.88,se:.020,lower:.012,enoughDepth:true,observations:12,
  model:"validated_external_xgb"
@@ -78,8 +78,8 @@ assert.equal(gate({model:"physics_only_untrained_decision_fallback"}).eligible,f
  "no verified XGB cannot authorize a stake");
 assert.equal(gate({observations:0}).eligible,false);
 assert.equal(gate({enoughDepth:false}).eligible,false);
-assert.equal(gate({ess:.45*128}).eligible,true,"ESS 45% exact threshold passes");
-assert(gate({ess:.45*128-.001}).reasons.includes("low_particle_ess"));
+assert.equal(gate({ess:.45*300}).eligible,true,"ESS 45% exact threshold passes");
+assert(gate({ess:.45*300-.001}).reasons.includes("low_particle_ess"));
 assert(gate({quality:.649}).reasons.includes("low_particle_quality"));
 assert(gate({ev:{B:.05,P:.048501,T:0}}).reasons.includes("ev_gap_too_small"));
 assert.equal(gate({ev:{B:.05,P:.0485,T:0}}).eligible,true,
@@ -145,7 +145,7 @@ for(const h of [["B"],["P"],["T"],["B","P","T","B"],Array(18).fill("T")]){
   [first.frozen_core.probabilities.B,first.frozen_core.probabilities.P,
    first.frozen_core.probabilities.T]);
  assert(first.features48.every(Number.isFinite));
- assert.equal(first.simulation_samples,128*14);
+ assert.equal(first.simulation_samples,300*48);
  const p=first.probabilities;
  assert(Math.abs(p.B+p.P+p.T-1)<1e-10);
  assert(Math.abs(first.ev_banker-(.95*p.B-p.P))<1e-12);
@@ -163,7 +163,7 @@ for(const h of [["B"],["P"],["T"],["B","P","T","B"],Array(18).fill("T")]){
  assert.equal(first.model,"physics_only_untrained_decision_fallback");
  assert(first.estimated_penetration>0);
  assert(first.estimated_penetration<1);
- assert(first.particle_ess>=1&&first.particle_ess<=128+1e-8);
+ assert(first.particle_ess>=1&&first.particle_ess<=300+1e-8);
 }
 assert.equal(s.run(Array(73).fill("B")).reason,"shoe_depth_limit");
 const physical={B:.458597,P:.446247,T:.095156};
@@ -199,16 +199,16 @@ const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-clien
 for(const id of ["btnB","btnP","btnT","btnStart","btnBack","btnEnd"])
  assert(html.includes('id="'+id+'"'));
 assert(html.includes("styles.css?v=20261106-bigroad-v1"));
-assert(html.includes("auth-client.js?v=20261107-bet-gates-v5"));
-assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261107-bet-gates-v5"'));
+assert(html.includes("auth-client.js?v=20261108-pf300-l32-m48-v6"));
+assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261108-pf300-l32-m48-v6"'));
 assert(auth.includes('"bpt_big_road.js?v=20261106-bigroad-v1"'));
 assert(auth.includes('"soft_shoe_panel.js?v=20261106-bigroad-v1"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
 assert(panel.includes('for(const [id,side] of [["btnB","B"],["btnP","P"],["btnT","T"]]'));
-assert(worker.includes("soft_shoe_decision_runtime.js?v=20261107-bet-gates-v5"));
+assert(worker.includes("soft_shoe_decision_runtime.js?v=20261108-pf300-l32-m48-v6"));
 assert(worker.includes('soft_shoe_frozen_lstm_runtime.js?v=20261106-layered-v4'));
 assert(worker.includes('soft_shoe_frozen_model_bundle.js?v=20261106-layered-v4'));
-assert(panel.includes("soft_shoe_worker.js?v=20261107-bet-gates-v5"));
+assert(panel.includes("soft_shoe_worker.js?v=20261108-pf300-l32-m48-v6"));
 assert(panel.includes('d=view.direction||"SKIP"'));
 assert(panel.includes('if(!report.research_view||!["B","P","SKIP"].includes(report.research_view.direction))'));
 assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望")'));
