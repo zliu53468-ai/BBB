@@ -73,3 +73,35 @@ Optional \`SEQUENCE_WEIGHT\` is 0 by default. If supplied in configuration, nonz
 **Verification**: \`node test_soft_shoe.js && node test_soft_shoe_frozen_lstm.js && node test_bpt_big_road.js && node test_license_storage.mjs\`. Dedicated CI checks model schema compatibility, deterministic physical equivalence when the LSTM is untrained, valid LSTM inference with synthetic test-only weights, observed-signal updates, betting eligibility fail-closed behavior, and the preserved UI/license contracts. A true LSTM training run, genuine held-out XGBoost training and real-shoe profit validation cannot be completed without labeled real shoe histories; **do not represent the architecture as proven profitable**.
 
 **Cross-repo note**: \`BGS0.3V.1\` LINE OCR repo previously vendors an immutable copy of BBB \`ededd462\` V1. This BBB-only change intentionally does NOT modify BGS; a separately requested verified port would be needed to align the LINE bot with this v2 model.
+
+
+## Formal wager-only dynamic gate parameters (2026-11-07)
+
+Only the **formal wager eligibility and fractional Kelly stake-sizing policy** was changed. The existing latent Particle Filter, physics simulation, EOR, 48D feature schema, Frozen LSTM, XGBoost adapter, B/P/SKIP research-display gate, license/session data, buttons, 6×15 Big Road and page design remain unchanged. Asset version strings are refreshed solely to avoid stale browser JS.
+
+| Config key | Default | Description |
+| --- | ---: | --- |
+| \`MIN_EV_THRESHOLD\` | 0.00300 | Remaining fraction > 0.60: 0.30% modeled EV |
+| \`MID_SHOE_MIN_EV_THRESHOLD\` | 0.00235 | 0.30 ≤ remaining fraction ≤ 0.60: 0.235% |
+| \`LATE_SHOE_MIN_EV_THRESHOLD\` | 0.00190 | Remaining fraction < 0.30: 0.19% |
+| \`EARLY_SHOE_REMAINING_RATIO\` | 0.60 | Top EV tier boundary |
+| \`LATE_SHOE_REMAINING_RATIO\` | 0.30 | Bottom EV tier boundary |
+| \`MIN_CONFIDENCE\` | 0.75 | Standard modeled confidence threshold |
+| \`LATE_CONFIDENCE_REMAINING_RATIO\` | 0.35 | Confidence becomes stricter below this fraction |
+| \`LATE_MIN_CONFIDENCE\` | 0.80 | Late-shoe modeled confidence threshold |
+| \`MIN_BET_EV_GAP\` | 0.0015 | Minimum absolute Banker–Player EV difference |
+| \`MIN_BET_ESS_RATIO\` | 0.45 | Require posterior ESS ≥ 45% of particle count |
+| \`MIN_BET_QUALITY\` | 0.65 | Preserve earlier composite ESS × diversity quality gate |
+| \`MAX_BET_EV_SE\` | 0.060 | Reject selected-side EV estimator SE > 6.0 percentage points |
+| \`FRACTIONAL_KELLY\` | 0.225 | Use 22.5% of full Kelly, if formally qualified |
+| \`MAX_BET_FRACTION\` | 0.0175 | Single wager maximum 1.75% of bankroll |
+| \`MIN_REMAINING_CARDS_FOR_BET\` | 25 | End-shoe wager blocker threshold |
+| \`END_SHOE_OVERRIDE_MIN_EV\` | 0.025 | Exception requires ≥2.5% modeled EV |
+| \`END_SHOE_OVERRIDE_CONFIDENCE\` | 0.90 | Exception requires ≥90% modeled confidence |
+| \`END_SHOE_OVERRIDE_MAX_EV_SE\` | 0.030 | Exception requires selected-side EV SE ≤3 pp |
+
+Estimated remaining cards are the **mean across all posterior particles**, not a known card count. The existing 72-hand maximum means <25 estimated cards is unlikely in the default configuration, but the condition is explicitly implemented and unit-tested.
+
+The model also retains the previous conservative EV lower-bound requirement: \`EV_candidate − 1.645 × estimated_EV_SE > effective_min_EV_threshold\`. Formally qualified stakes are zero unless **every requirement** is met and a real-shoe trained, calibrated, independently held-out matching \`soft_shoe_bpt_48d_v2\` XGBoost decision model is installed. No such validated model is currently included, so official bet authorization remains \`Skip\` and bankroll fraction remains 0. Research-view B/P/SKIP display rules remain identical to the earlier implementation.
+
+These policy values are **hypotheses, not empirical validation**: a 53–54% conditional hit rate has not been demonstrated. Backtesting must track actual qualifying bets and uncertainty using separate held-out real shoes, including class frequencies, actual commission, bet frequency, observed hit rate, and confidence intervals. A more restrictive policy may lower bet frequency without increasing hit rate.
