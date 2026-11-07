@@ -4,10 +4,21 @@ const s=require("./soft_shoe_decision_runtime.js");
 assert.equal(s.DEFAULT.PARTICLE_COUNT,128);
 assert.equal(s.DEFAULT.LIKELIHOOD_DRAWS,14);
 assert.equal(s.DEFAULT.NEXT_HAND_DRAWS,14);
-assert.equal(s.DEFAULT.MIN_EV_THRESHOLD,.0015);
-assert.equal(s.DEFAULT.MIN_CONFIDENCE,.65);
-assert.equal(s.DEFAULT.FRACTIONAL_KELLY,.30);
-assert.equal(s.DEFAULT.MAX_BET_FRACTION,.025);
+assert.equal(s.DEFAULT.MIN_EV_THRESHOLD,.0030);
+assert.equal(s.DEFAULT.MID_SHOE_MIN_EV_THRESHOLD,.00235);
+assert.equal(s.DEFAULT.LATE_SHOE_MIN_EV_THRESHOLD,.0019);
+assert.equal(s.DEFAULT.MIN_CONFIDENCE,.75);
+assert.equal(s.DEFAULT.LATE_MIN_CONFIDENCE,.80);
+assert.equal(s.DEFAULT.MIN_BET_EV_GAP,.0015);
+assert.equal(s.DEFAULT.MIN_BET_ESS_RATIO,.45);
+assert.equal(s.DEFAULT.MIN_BET_QUALITY,.65);
+assert.equal(s.DEFAULT.MAX_BET_EV_SE,.060);
+assert.equal(s.DEFAULT.FRACTIONAL_KELLY,.225);
+assert.equal(s.DEFAULT.MAX_BET_FRACTION,.0175);
+assert.equal(s.DEFAULT.MIN_REMAINING_CARDS_FOR_BET,25);
+assert.equal(s.DEFAULT.END_SHOE_OVERRIDE_MIN_EV,.025);
+assert.equal(s.DEFAULT.END_SHOE_OVERRIDE_CONFIDENCE,.90);
+assert.equal(s.DEFAULT.END_SHOE_OVERRIDE_MAX_EV_SE,.030);
 assert.equal(s.DEFAULT.AVERAGE_CARDS_PER_HAND,4.95);
 assert.equal(s.DEFAULT.DEPTH_RELIABILITY,.5);
 assert.equal(s.DEFAULT.MIN_DIRECTION_ROUNDS,3);
@@ -38,6 +49,75 @@ assert.equal(s.moderateDirectionGate({...gateArgs,ev:{B:.025,P:0}})
 
 assert.throws(()=>s.run(["X"]),/invalid_bpt_history/);
 assert.throws(()=>s.config({PARTICLE_COUNT:1024}),/invalid_PARTICLE_COUNT/);
+assert.throws(()=>s.config({MAX_BET_EV_SE:-1}),/invalid_MAX_BET_EV_SE/);
+assert.throws(()=>s.config({MID_SHOE_MIN_EV_THRESHOLD:.005}),/invalid_wager_gate_tier_order/);
+assert.throws(()=>s.config({LATE_MIN_CONFIDENCE:.6}),/invalid_wager_gate_tier_order/);
+assert.throws(()=>s.config({END_SHOE_OVERRIDE_MAX_EV_SE:.09}),/invalid_wager_gate_tier_order/);
+
+// Formal wager-layer contract only. These deterministic synthetic boundary
+// fixtures are not retrospective real-shoe results and do not predict a 53%-54% hit rate.
+const cfg=s.config();
+const policy=remainingRatio=>s.wagerPolicy(416*remainingRatio,cfg);
+assert.equal(policy(.61).min_ev_threshold,.0030,"early shoe >60% threshold");
+assert.equal(policy(.60).min_ev_threshold,.00235,"60% inclusive in middle tier");
+assert.equal(policy(.30).min_ev_threshold,.00235,"30% inclusive in middle tier");
+assert.equal(policy(.2999).min_ev_threshold,.0019,"below 30% late tier");
+assert.equal(policy(.35).min_confidence,.75,"at 35% remain uses standard");
+assert.equal(policy(.3499).min_confidence,.80,"below 35% remain confidence 80%");
+const strong={
+ cfg,remainingCards:416*.70,ess:115,quality:.82,
+ ev:{B:.05,P:.012,T:0},candidate:"B",
+ confidence:.88,se:.020,lower:.012,enoughDepth:true,observations:12,
+ model:"validated_external_xgb"
+};
+const gate=(patch={})=>s.wagerGate({...strong,...patch});
+assert.equal(gate().eligible,true,"all formal hypothetical thresholds pass");
+assert.equal(gate().min_ev_threshold,.0030);
+assert.equal(gate().min_confidence,.75);
+assert.equal(gate({model:"physics_only_untrained_decision_fallback"}).eligible,false,
+ "no verified XGB cannot authorize a stake");
+assert.equal(gate({observations:0}).eligible,false);
+assert.equal(gate({enoughDepth:false}).eligible,false);
+assert.equal(gate({ess:.45*128}).eligible,true,"ESS 45% exact threshold passes");
+assert(gate({ess:.45*128-.001}).reasons.includes("low_particle_ess"));
+assert(gate({quality:.649}).reasons.includes("low_particle_quality"));
+assert(gate({ev:{B:.05,P:.048501,T:0}}).reasons.includes("ev_gap_too_small"));
+assert.equal(gate({ev:{B:.05,P:.0485,T:0}}).eligible,true,
+ "exact gap 0.0015 passes");
+assert(gate({confidence:.749}).reasons.includes("confidence_below_dynamic_gate"));
+assert(gate({remainingCards:416*.34,confidence:.799}).reasons.includes("confidence_below_dynamic_gate"));
+assert.equal(gate({remainingCards:416*.34,confidence:.80}).eligible,true);
+assert(gate({remainingCards:416*.7,ev:{B:.0029,P:-.015}}).reasons.includes("ev_below_dynamic_threshold"));
+assert.equal(gate({remainingCards:416*.7,ev:{B:.003,P:-.015}}).eligible,true);
+assert(gate({se:.06001}).reasons.includes("ev_uncertainty_too_high"));
+assert(gate({lower:.003}).reasons.includes("ev_lower_bound_too_low"));
+assert.equal(gate({lower:.0030001}).eligible,true);
+assert(gate({remainingCards:24.999}).reasons.includes("shoe_end_no_bet"));
+assert.equal(gate({remainingCards:25}).eligible,true,
+ "exact 25 cards does not require special override");
+assert.equal(gate({
+ remainingCards:20,ev:{B:.025,P:0,T:0},
+ confidence:.90,se:.030,lower:.010
+}).eligible,true,"exception demands high EV, high confidence and low SE");
+assert(gate({
+ remainingCards:20,ev:{B:.0249,P:0,T:0},
+ confidence:.90,se:.030
+}).reasons.includes("shoe_end_no_bet"));
+assert(gate({
+ remainingCards:20,ev:{B:.025,P:0,T:0},
+ confidence:.899,se:.030
+}).reasons.includes("shoe_end_no_bet"));
+assert(gate({
+ remainingCards:20,ev:{B:.025,P:0,T:0},
+ confidence:.90,se:.03001
+}).reasons.includes("shoe_end_no_bet"));
+const noModel=s.run(["B","P","T","B","B"]);
+assert.equal(noModel.wager_gate.model_verified,false);
+assert.equal(noModel.wager_gate.min_ev_threshold,.003);
+assert.equal(noModel.action,"Skip");
+assert.equal(noModel.bankroll_fraction,0);
+assert.deepEqual(noModel.wager_gate.reasons[0],"trained_decision_model_unavailable");
+
 const counts=[128,32,32,32,32,32,32,32,32,32];
 for(let seed=1;seed<=400;seed++){
  let r=s.deal(counts,(()=>{let x=seed>>>0;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};})());
