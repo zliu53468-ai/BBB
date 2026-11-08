@@ -1,9 +1,9 @@
 "use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs");
 const s=require("./soft_shoe_decision_runtime.js");
-assert.equal(s.DEFAULT.PARTICLE_COUNT,300);
-assert.equal(s.DEFAULT.LIKELIHOOD_DRAWS,40);
-assert.equal(s.DEFAULT.NEXT_HAND_DRAWS,64);
+assert.equal(s.DEFAULT.PARTICLE_COUNT,448);
+assert.equal(s.DEFAULT.LIKELIHOOD_DRAWS,80);
+assert.equal(s.DEFAULT.NEXT_HAND_DRAWS,128);
 assert.equal(s.DEFAULT.MIN_EV_THRESHOLD,.0030);
 assert.equal(s.DEFAULT.MID_SHOE_MIN_EV_THRESHOLD,.00235);
 assert.equal(s.DEFAULT.LATE_SHOE_MIN_EV_THRESHOLD,.0019);
@@ -22,11 +22,11 @@ assert.equal(s.DEFAULT.END_SHOE_OVERRIDE_MAX_EV_SE,.030);
 assert.equal(s.DEFAULT.AVERAGE_CARDS_PER_HAND,4.95);
 assert.equal(s.DEFAULT.DEPTH_RELIABILITY,.5);
 assert.equal(s.DEFAULT.MIN_DIRECTION_ROUNDS,3);
-assert.equal(s.DEFAULT.MIN_DIRECTION_EV_GAP,.025);
-assert.equal(s.DEFAULT.MIN_DIRECTION_GAP_SNR,.90);
-assert.equal(s.DEFAULT.MIN_DIRECTION_ESS_RATIO,.40);
-assert.equal(s.DEFAULT.MIN_DIRECTION_DIVERSITY,.25);
-assert.equal(s.DEFAULT.MAX_DIRECTION_GAP_SE,.070);
+assert.equal(s.DEFAULT.MIN_DIRECTION_EV_GAP,.015);
+assert.equal(s.DEFAULT.MIN_DIRECTION_GAP_SNR,1.15);
+assert.equal(s.DEFAULT.MIN_DIRECTION_ESS_RATIO,.45);
+assert.equal(s.DEFAULT.MIN_DIRECTION_DIVERSITY,.30);
+assert.equal(s.DEFAULT.MAX_DIRECTION_GAP_SE,.060);
 
 const gateArgs={
  candidate:"B",ev:{B:.12,P:-.15},
@@ -44,7 +44,7 @@ assert.equal(s.moderateDirectionGate({...gateArgs,essRatio:.1}).reason,"low_part
 assert.equal(s.moderateDirectionGate({...gateArgs,diversity:.05}).reason,"low_particle_diversity");
 assert.equal(s.moderateDirectionGate({...gateArgs,physical:{...gateArgs.physical,samples:100}})
  .reason,"high_estimator_uncertainty");
-assert.equal(s.moderateDirectionGate({...gateArgs,ev:{B:.025,P:0}})
+assert.equal(s.moderateDirectionGate({...gateArgs,ev:{B:.040,P:0}})
  .reason,"low_gap_to_noise");
 
 assert.throws(()=>s.run(["X"]),/invalid_bpt_history/);
@@ -78,8 +78,8 @@ assert.equal(gate({model:"physics_only_untrained_decision_fallback"}).eligible,f
  "no verified XGB cannot authorize a stake");
 assert.equal(gate({observations:0}).eligible,false);
 assert.equal(gate({enoughDepth:false}).eligible,false);
-assert.equal(gate({ess:.45*300}).eligible,true,"ESS 45% exact threshold passes");
-assert(gate({ess:.45*300-.001}).reasons.includes("low_particle_ess"));
+assert.equal(gate({ess:.45*448}).eligible,true,"ESS 45% exact threshold passes");
+assert(gate({ess:.45*448-.001}).reasons.includes("low_particle_ess"));
 assert(gate({quality:.649}).reasons.includes("low_particle_quality"));
 assert(gate({ev:{B:.05,P:.048501,T:0}}).reasons.includes("ev_gap_too_small"));
 assert.equal(gate({ev:{B:.05,P:.0485,T:0}}).eligible,true,
@@ -145,7 +145,7 @@ for(const h of [["B"],["P"],["T"],["B","P","T","B"],Array(18).fill("T")]){
   [first.frozen_core.probabilities.B,first.frozen_core.probabilities.P,
    first.frozen_core.probabilities.T]);
  assert(first.features48.every(Number.isFinite));
- assert.equal(first.simulation_samples,300*64);
+ assert.equal(first.simulation_samples,448*128);
  const p=first.probabilities;
  assert(Math.abs(p.B+p.P+p.T-1)<1e-10);
  assert(Math.abs(first.ev_banker-(.95*p.B-p.P))<1e-12);
@@ -163,7 +163,7 @@ for(const h of [["B"],["P"],["T"],["B","P","T","B"],Array(18).fill("T")]){
  assert.equal(first.model,"physics_only_untrained_decision_fallback");
  assert(first.estimated_penetration>0);
  assert(first.estimated_penetration<1);
- assert(first.particle_ess>=1&&first.particle_ess<=300+1e-8);
+ assert(first.particle_ess>=1&&first.particle_ess<=448+1e-8);
 }
 // Sequential importance sampling: only ESS-triggered iterations resample.
 const oneHand=s.posterior(["B"]);
@@ -175,7 +175,7 @@ const forced=s.posterior(["B","P","T","B","P"],{RESAMPLE_ESS_RATIO:1});
 assert(forced.resampleCount>0,"high ESS threshold activates systematic resampling");
 assert(Math.abs(forced.weights.reduce((a,b)=>a+b,0)-1)<1e-9);
 const pWeighted=s.handProbabilities(oneHand.particles,s.DEFAULT,oneHand.seed,oneHand.weights);
-assert.equal(pWeighted.samples,300*64);
+assert.equal(pWeighted.samples,448*128);
 assert(Math.abs(Object.values(pWeighted.p).reduce((a,b)=>a+b)-1)<1e-9);
 assert(pWeighted.sd.B>=0&&Number.isFinite(pWeighted.sd.B));
 // CPU diagnostic only (synthetic history), NOT evidence of wagering accuracy.
@@ -224,16 +224,16 @@ const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-clien
 for(const id of ["btnB","btnP","btnT","btnStart","btnBack","btnEnd"])
  assert(html.includes('id="'+id+'"'));
 assert(html.includes("styles.css?v=20261106-bigroad-v1"));
-assert(html.includes("auth-client.js?v=20261108-adaptive-pf-v7"));
-assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261108-adaptive-pf-v7"'));
+assert(html.includes("auth-client.js?v=20261108-pf448-l80-m128-v8"));
+assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261108-pf448-l80-m128-v8"'));
 assert(auth.includes('"bpt_big_road.js?v=20261106-bigroad-v1"'));
 assert(auth.includes('"soft_shoe_panel.js?v=20261106-bigroad-v1"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
 assert(panel.includes('for(const [id,side] of [["btnB","B"],["btnP","P"],["btnT","T"]]'));
-assert(worker.includes("soft_shoe_decision_runtime.js?v=20261108-adaptive-pf-v7"));
+assert(worker.includes("soft_shoe_decision_runtime.js?v=20261108-pf448-l80-m128-v8"));
 assert(worker.includes('soft_shoe_frozen_lstm_runtime.js?v=20261106-layered-v4'));
 assert(worker.includes('soft_shoe_frozen_model_bundle.js?v=20261106-layered-v4'));
-assert(panel.includes("soft_shoe_worker.js?v=20261108-adaptive-pf-v7"));
+assert(panel.includes("soft_shoe_worker.js?v=20261108-pf448-l80-m128-v8"));
 assert(panel.includes('d=view.direction||"SKIP"'));
 assert(panel.includes('if(!report.research_view||!["B","P","SKIP"].includes(report.research_view.direction))'));
 assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望")'));
@@ -245,6 +245,7 @@ assert(panel.includes("觀望：有效粒子不足"));
 
 
 const diagnosticCounts={B:0,P:0,SKIP:0};
+const diagnosticViews=[];
 let diagnosticState=0x516ec24d;
 for(let i=0;i<32;i++){
  const history=[];
@@ -257,9 +258,48 @@ for(let i=0;i<32;i++){
  const d=report.research_view?.direction||"SKIP";
  assert(["B","P","SKIP"].includes(d));
  diagnosticCounts[d]++;
+ diagnosticViews.push({observations:history.length,view:report.research_view||{}});
  assert.equal(report.bankroll_fraction,0);
  assert.equal(report.validated_edge,false);
 }
+assert(diagnosticCounts.B+diagnosticCounts.P>=1,"do not ship all-SKIP synthetic regression");
 console.log("Moderate-gate synthetic BPT sequences (not holdout/hitrate)",diagnosticCounts);
+const conditionBreakdown={gap:0,snr:0,ess:0,div:0,se:0,all:0};
+const profileCurrent={gap:.025,snr:.90,ess:.40,div:.25,maxSe:.070};
+for(const {view} of diagnosticViews){
+ if(view.abs_ev_gap>=profileCurrent.gap)conditionBreakdown.gap++;
+ if(view.ev_gap_snr>=profileCurrent.snr)conditionBreakdown.snr++;
+ if(view.ess_ratio>=profileCurrent.ess)conditionBreakdown.ess++;
+ if(view.ancestor_diversity>=profileCurrent.div)conditionBreakdown.div++;
+ if(view.ev_gap_se>0&&view.ev_gap_se<=profileCurrent.maxSe)conditionBreakdown.se++;
+}
+console.log("[SOFT_SHOE_CONDITION_BREAKDOWN]",JSON.stringify(conditionBreakdown));
+console.log("[SOFT_SHOE_DIRECTION_SAMPLES]",JSON.stringify(diagnosticViews.map(({observations,view})=>({
+ r:observations,gap:+(view.abs_ev_gap||0).toFixed(4),snr:+(view.ev_gap_snr||0).toFixed(3),
+ se:+(view.ev_gap_se||0).toFixed(4),ess:+(view.ess_ratio||0).toFixed(3),
+ div:+(view.ancestor_diversity||0).toFixed(3),
+ candidate:view.candidate
+})).slice(0,16)));
+const researchProfiles={
+ previous:{gap:.025,snr:.90,ess:.40,div:.25,maxSe:.070},
+ middle:{gap:.030,snr:1.00,ess:.40,div:.25,maxSe:.070},
+ conservative:{gap:.035,snr:1.15,ess:.45,div:.30,maxSe:.060},
+ soft:{gap:.025,snr:.85,ess:.35,div:.20,maxSe:.080},
+ signalA:{gap:.012,snr:1.15,ess:.45,div:.30,maxSe:.060},
+ signalB:{gap:.015,snr:1.15,ess:.45,div:.30,maxSe:.060},
+ signalC:{gap:.018,snr:1.15,ess:.45,div:.30,maxSe:.060},
+ signalD:{gap:.020,snr:1.00,ess:.40,div:.25,maxSe:.070},
+};
+for(const [label,p] of Object.entries(researchProfiles)){
+ const counts={B:0,P:0,SKIP:0};
+ for(const {observations,view} of diagnosticViews){
+  const pass=observations>=3&&view.abs_ev_gap>=p.gap&&view.ev_gap_se>0&&
+    Number.isFinite(view.ev_gap_se)&&view.ev_gap_se<=p.maxSe&&
+    view.ev_gap_snr>=p.snr&&view.ess_ratio>=p.ess&&
+    view.ancestor_diversity>=p.div;
+  const dir=pass?view.candidate:"SKIP";counts[dir||"SKIP"]++;
+ }
+ console.log("[SOFT_SHOE_GATE_SWEEP]",JSON.stringify({label,...counts}));
+}
 
 console.log("PASS BPT latent PF, legal baccarat deals, 48D features, model guard and interface");
