@@ -22,7 +22,7 @@ assert.equal(s.DEFAULT.END_SHOE_OVERRIDE_MAX_EV_SE,.030);
 assert.equal(s.DEFAULT.AVERAGE_CARDS_PER_HAND,4.95);
 assert.equal(s.DEFAULT.DEPTH_RELIABILITY,.5);
 assert.equal(s.DEFAULT.MIN_DIRECTION_ROUNDS,3);
-assert.equal(s.DEFAULT.MIN_DIRECTION_EV_GAP,.035);
+assert.equal(s.DEFAULT.MIN_DIRECTION_EV_GAP,.015);
 assert.equal(s.DEFAULT.MIN_DIRECTION_GAP_SNR,1.15);
 assert.equal(s.DEFAULT.MIN_DIRECTION_ESS_RATIO,.45);
 assert.equal(s.DEFAULT.MIN_DIRECTION_DIVERSITY,.30);
@@ -262,6 +262,7 @@ for(let i=0;i<32;i++){
  assert.equal(report.bankroll_fraction,0);
  assert.equal(report.validated_edge,false);
 }
+assert(diagnosticCounts.B+diagnosticCounts.P>=1,"do not ship all-SKIP synthetic regression");
 console.log("Moderate-gate synthetic BPT sequences (not holdout/hitrate)",diagnosticCounts);
 const conditionBreakdown={gap:0,snr:0,ess:0,div:0,se:0,all:0};
 const profileCurrent={gap:.025,snr:.90,ess:.40,div:.25,maxSe:.070};
