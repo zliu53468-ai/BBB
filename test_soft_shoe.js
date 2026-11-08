@@ -284,6 +284,10 @@ const researchProfiles={
  middle:{gap:.030,snr:1.00,ess:.40,div:.25,maxSe:.070},
  conservative:{gap:.035,snr:1.15,ess:.45,div:.30,maxSe:.060},
  soft:{gap:.025,snr:.85,ess:.35,div:.20,maxSe:.080},
+ signalA:{gap:.012,snr:1.15,ess:.45,div:.30,maxSe:.060},
+ signalB:{gap:.015,snr:1.15,ess:.45,div:.30,maxSe:.060},
+ signalC:{gap:.018,snr:1.15,ess:.45,div:.30,maxSe:.060},
+ signalD:{gap:.020,snr:1.00,ess:.40,div:.25,maxSe:.070},
 };
 for(const [label,p] of Object.entries(researchProfiles)){
  const counts={B:0,P:0,SKIP:0};
