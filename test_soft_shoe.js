@@ -2,8 +2,8 @@
 const assert=require("node:assert/strict"),fs=require("node:fs");
 const s=require("./soft_shoe_decision_runtime.js");
 assert.equal(s.DEFAULT.PARTICLE_COUNT,300);
-assert.equal(s.DEFAULT.LIKELIHOOD_DRAWS,32);
-assert.equal(s.DEFAULT.NEXT_HAND_DRAWS,48);
+assert.equal(s.DEFAULT.LIKELIHOOD_DRAWS,40);
+assert.equal(s.DEFAULT.NEXT_HAND_DRAWS,64);
 assert.equal(s.DEFAULT.MIN_EV_THRESHOLD,.0030);
 assert.equal(s.DEFAULT.MID_SHOE_MIN_EV_THRESHOLD,.00235);
 assert.equal(s.DEFAULT.LATE_SHOE_MIN_EV_THRESHOLD,.0019);
@@ -22,11 +22,11 @@ assert.equal(s.DEFAULT.END_SHOE_OVERRIDE_MAX_EV_SE,.030);
 assert.equal(s.DEFAULT.AVERAGE_CARDS_PER_HAND,4.95);
 assert.equal(s.DEFAULT.DEPTH_RELIABILITY,.5);
 assert.equal(s.DEFAULT.MIN_DIRECTION_ROUNDS,3);
-assert.equal(s.DEFAULT.MIN_DIRECTION_EV_GAP,.020);
-assert.equal(s.DEFAULT.MIN_DIRECTION_GAP_SNR,.70);
-assert.equal(s.DEFAULT.MIN_DIRECTION_ESS_RATIO,.35);
-assert.equal(s.DEFAULT.MIN_DIRECTION_DIVERSITY,.20);
-assert.equal(s.DEFAULT.MAX_DIRECTION_GAP_SE,.080);
+assert.equal(s.DEFAULT.MIN_DIRECTION_EV_GAP,.025);
+assert.equal(s.DEFAULT.MIN_DIRECTION_GAP_SNR,.90);
+assert.equal(s.DEFAULT.MIN_DIRECTION_ESS_RATIO,.40);
+assert.equal(s.DEFAULT.MIN_DIRECTION_DIVERSITY,.25);
+assert.equal(s.DEFAULT.MAX_DIRECTION_GAP_SE,.070);
 
 const gateArgs={
  candidate:"B",ev:{B:.12,P:-.15},
@@ -145,7 +145,7 @@ for(const h of [["B"],["P"],["T"],["B","P","T","B"],Array(18).fill("T")]){
   [first.frozen_core.probabilities.B,first.frozen_core.probabilities.P,
    first.frozen_core.probabilities.T]);
  assert(first.features48.every(Number.isFinite));
- assert.equal(first.simulation_samples,300*48);
+ assert.equal(first.simulation_samples,300*64);
  const p=first.probabilities;
  assert(Math.abs(p.B+p.P+p.T-1)<1e-10);
  assert(Math.abs(first.ev_banker-(.95*p.B-p.P))<1e-12);
@@ -165,6 +165,19 @@ for(const h of [["B"],["P"],["T"],["B","P","T","B"],Array(18).fill("T")]){
  assert(first.estimated_penetration<1);
  assert(first.particle_ess>=1&&first.particle_ess<=300+1e-8);
 }
+// Sequential importance sampling: only ESS-triggered iterations resample.
+const oneHand=s.posterior(["B"]);
+assert.equal(oneHand.available,true);
+assert.equal(oneHand.weights.length,s.DEFAULT.PARTICLE_COUNT);
+assert(Math.abs(oneHand.weights.reduce((a,b)=>a+b,0)-1)<1e-9);
+assert.equal(oneHand.resampleCount,0,"high first-hand ESS does not force resampling");
+const forced=s.posterior(["B","P","T","B","P"],{RESAMPLE_ESS_RATIO:1});
+assert(forced.resampleCount>0,"high ESS threshold activates systematic resampling");
+assert(Math.abs(forced.weights.reduce((a,b)=>a+b,0)-1)<1e-9);
+const pWeighted=s.handProbabilities(oneHand.particles,s.DEFAULT,oneHand.seed,oneHand.weights);
+assert.equal(pWeighted.samples,300*64);
+assert(Math.abs(Object.values(pWeighted.p).reduce((a,b)=>a+b)-1)<1e-9);
+assert(pWeighted.sd.B>=0&&Number.isFinite(pWeighted.sd.B));
 assert.equal(s.run(Array(73).fill("B")).reason,"shoe_depth_limit");
 const physical={B:.458597,P:.446247,T:.095156};
 assert.deepEqual(s.modelDecision(physical,[],s.frozenCore([]),null),
