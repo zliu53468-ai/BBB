@@ -178,6 +178,18 @@ const pWeighted=s.handProbabilities(oneHand.particles,s.DEFAULT,oneHand.seed,one
 assert.equal(pWeighted.samples,300*64);
 assert(Math.abs(Object.values(pWeighted.p).reduce((a,b)=>a+b)-1)<1e-9);
 assert(pWeighted.sd.B>=0&&Number.isFinite(pWeighted.sd.B));
+// CPU diagnostic only (synthetic history), NOT evidence of wagering accuracy.
+// Keep sample timings visible in CI before promoting to LINE's 8-second worker.
+for(const length of [10,30,50,70]){
+ const history=Array.from({length},(_,i)=>"BPPBTBBPPT"[i%10]);
+ const start=performance.now();
+ const result=s.run(history);
+ const elapsed=performance.now()-start;
+ console.log("[SOFT_SHOE_PERF]",JSON.stringify({length,ms:+elapsed.toFixed(2),
+  available:!!result.probabilities,reason:result.reason||"",resamples:
+  s.posterior(history).resampleCount}));
+ assert(result.probabilities&&Number.isFinite(result.ev_banker));
+}
 assert.equal(s.run(Array(73).fill("B")).reason,"shoe_depth_limit");
 const physical={B:.458597,P:.446247,T:.095156};
 assert.deepEqual(s.modelDecision(physical,[],s.frozenCore([]),null),
