@@ -245,6 +245,7 @@ assert(panel.includes("觀望：有效粒子不足"));
 
 
 const diagnosticCounts={B:0,P:0,SKIP:0};
+const diagnosticViews=[];
 let diagnosticState=0x516ec24d;
 for(let i=0;i<32;i++){
  const history=[];
@@ -257,9 +258,27 @@ for(let i=0;i<32;i++){
  const d=report.research_view?.direction||"SKIP";
  assert(["B","P","SKIP"].includes(d));
  diagnosticCounts[d]++;
+ diagnosticViews.push({observations:history.length,view:report.research_view||{}});
  assert.equal(report.bankroll_fraction,0);
  assert.equal(report.validated_edge,false);
 }
 console.log("Moderate-gate synthetic BPT sequences (not holdout/hitrate)",diagnosticCounts);
+const researchProfiles={
+ previous:{gap:.025,snr:.90,ess:.40,div:.25,maxSe:.070},
+ middle:{gap:.030,snr:1.00,ess:.40,div:.25,maxSe:.070},
+ conservative:{gap:.035,snr:1.15,ess:.45,div:.30,maxSe:.060},
+ soft:{gap:.025,snr:.85,ess:.35,div:.20,maxSe:.080},
+};
+for(const [label,p] of Object.entries(researchProfiles)){
+ const counts={B:0,P:0,SKIP:0};
+ for(const {observations,view} of diagnosticViews){
+  const pass=observations>=3&&view.abs_ev_gap>=p.gap&&view.ev_gap_se>0&&
+    Number.isFinite(view.ev_gap_se)&&view.ev_gap_se<=p.maxSe&&
+    view.ev_gap_snr>=p.snr&&view.ess_ratio>=p.ess&&
+    view.ancestor_diversity>=p.div;
+  const dir=pass?view.candidate:"SKIP";counts[dir||"SKIP"]++;
+ }
+ console.log("[SOFT_SHOE_GATE_SWEEP]",JSON.stringify({label,...counts}));
+}
 
 console.log("PASS BPT latent PF, legal baccarat deals, 48D features, model guard and interface");
