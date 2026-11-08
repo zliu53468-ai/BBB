@@ -263,6 +263,22 @@ for(let i=0;i<32;i++){
  assert.equal(report.validated_edge,false);
 }
 console.log("Moderate-gate synthetic BPT sequences (not holdout/hitrate)",diagnosticCounts);
+const conditionBreakdown={gap:0,snr:0,ess:0,div:0,se:0,all:0};
+const profileCurrent={gap:.025,snr:.90,ess:.40,div:.25,maxSe:.070};
+for(const {view} of diagnosticViews){
+ if(view.abs_ev_gap>=profileCurrent.gap)conditionBreakdown.gap++;
+ if(view.ev_gap_snr>=profileCurrent.snr)conditionBreakdown.snr++;
+ if(view.ess_ratio>=profileCurrent.ess)conditionBreakdown.ess++;
+ if(view.ancestor_diversity>=profileCurrent.div)conditionBreakdown.div++;
+ if(view.ev_gap_se>0&&view.ev_gap_se<=profileCurrent.maxSe)conditionBreakdown.se++;
+}
+console.log("[SOFT_SHOE_CONDITION_BREAKDOWN]",JSON.stringify(conditionBreakdown));
+console.log("[SOFT_SHOE_DIRECTION_SAMPLES]",JSON.stringify(diagnosticViews.map(({observations,view})=>({
+ r:observations,gap:+(view.abs_ev_gap||0).toFixed(4),snr:+(view.ev_gap_snr||0).toFixed(3),
+ se:+(view.ev_gap_se||0).toFixed(4),ess:+(view.ess_ratio||0).toFixed(3),
+ div:+(view.ancestor_diversity||0).toFixed(3),
+ candidate:view.candidate
+})).slice(0,16)));
 const researchProfiles={
  previous:{gap:.025,snr:.90,ess:.40,div:.25,maxSe:.070},
  middle:{gap:.030,snr:1.00,ess:.40,div:.25,maxSe:.070},
