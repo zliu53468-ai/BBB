@@ -78,8 +78,8 @@ assert.equal(gate({model:"physics_only_untrained_decision_fallback"}).eligible,f
  "no verified XGB cannot authorize a stake");
 assert.equal(gate({observations:0}).eligible,false);
 assert.equal(gate({enoughDepth:false}).eligible,false);
-assert.equal(gate({ess:.45*300}).eligible,true,"ESS 45% exact threshold passes");
-assert(gate({ess:.45*300-.001}).reasons.includes("low_particle_ess"));
+assert.equal(gate({ess:.45*448}).eligible,true,"ESS 45% exact threshold passes");
+assert(gate({ess:.45*448-.001}).reasons.includes("low_particle_ess"));
 assert(gate({quality:.649}).reasons.includes("low_particle_quality"));
 assert(gate({ev:{B:.05,P:.048501,T:0}}).reasons.includes("ev_gap_too_small"));
 assert.equal(gate({ev:{B:.05,P:.0485,T:0}}).eligible,true,
