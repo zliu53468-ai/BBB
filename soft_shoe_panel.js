@@ -27,11 +27,14 @@
   set("localCalibrationStatus","B/P/T 軟算牌 · 目前已記錄 "+history.length+" 局（同一牌靴）");
  }
  function show(report){
-  // Model-only moderate observation; it never overrides the true wager gate.
+  // Display the model candidate even when the research quality gate abstains.
+  // This is a directional estimate only; never promote it to a verified BET.
   last=report;const view=report.research_view||{},
-   d=view.direction||"SKIP",q=report.probabilities||{};
+   qualified=view.eligible===true,
+   d=["B","P"].includes(report.candidate)?report.candidate:"SKIP",
+   q=report.probabilities||{};
   set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望");
-  set("directionCode",d==="B"?"研究方向 / BANKER":d==="P"?"研究方向 / PLAYER":"MODERATE / SKIP");
+  set("directionCode",d==="B"?"候選方向 / BANKER":d==="P"?"候選方向 / PLAYER":"候選不可用 / SKIP");
   $("directionOrb").className="direction-orb "+(d==="B"?"banker":d==="P"?"player":"idle");
   set("confidence","莊 EV "+pct(report.ev_banker)+"／閒 EV "+pct(report.ev_player)+
    "｜置信指標 "+pct(report.confidence));
@@ -43,8 +46,8 @@
    low_particle_ess:"觀望：有效粒子不足",
    low_particle_diversity:"觀望：粒子多樣性不足"
   };
-  set("regime",view.eligible?"中度篩選通過（僅研究方向）":
-   reasonNames[view.reason]||"觀望：方向品質未達門檻");
+  set("regime",qualified?"品質篩選通過（候選方向，非下注建議）":
+   "候選未通過品質篩選｜"+(reasonNames[view.reason]||"方向品質未達門檻"));
   set("strength","下一局模型估計：莊 "+pct(q.B)+"｜閒 "+pct(q.P)+"｜和 "+pct(q.T));
   set("message","已輸入 "+report.observations+" 局｜候選方向 "+(report.candidate==="B"?"莊":"閒")+
    "｜估計 EV 差距 "+pct(view.abs_ev_gap)+
@@ -59,8 +62,9 @@
    "、預測抽樣 "+core.DEFAULT.NEXT_HAND_DRAWS+
    "｜有效粒子 "+Number(report.particle_ess||0).toFixed(1)+
    "｜合格下注比例 "+pct(report.bankroll_fraction)+
-   "｜強制方向不代表下注建議；只有 B/P/T，實際發牌與殘牌未知；未驗證獲利優勢。");
-  set("modePill","Soft Shoe · 適度觀望");
+   "｜品質狀態 "+(qualified?"通過研究篩選":"未通過研究篩選（僅顯示候選）")+
+   "｜候選方向不代表下注建議；只有 B/P/T，實際發牌與殘牌未知；未驗證獲利優勢。");
+  set("modePill","Soft Shoe · 候選方向（保留品質警示）");
   set("localCalibrationStatus","48 維物理特徵＋Frozen 序列診斷＋XGBoost 安全閘門"+
    "｜模型："+String(report.model||"不可用"));
  }
@@ -86,10 +90,11 @@
   if(busy)return;busy=true;set("directionText","計算中");
   const controls=["btnB","btnP","btnT","btnStart","btnBack"].map($).filter(Boolean);
   controls.forEach(x=>x.disabled=true);
-  set("message","正在計算 EV 及不確定性；品質未通過會顯示觀望。");
+  set("message","正在計算候選方向與 EV；品質不足時仍顯示候選，但會明確標示未通過。");
   try{
    const report=await compute(history.slice());
-   if(!report.research_view||!["B","P","SKIP"].includes(report.research_view.direction)){
+   if(!report.research_view||!["B","P","SKIP"].includes(report.research_view.direction)||
+      !["B","P"].includes(report.candidate)){
     last=report;uiIdle("分析未完成："+String(report.reason));set("directionText","無法分析");
    }else show(report);
    set("pointInputStatus","同一牌靴已記錄 "+history.length+" 局，輸入下一局結果。");
