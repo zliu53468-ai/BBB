@@ -13,7 +13,7 @@ const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu5346
 const scripts=[
  "soft_shoe_decision_runtime.js?v=20261108-pf448-l80-m128-v8",
  "bpt_big_road.js?v=20261106-bigroad-v1",
- "soft_shoe_panel.js?v=20261106-bigroad-v1"
+ "soft_shoe_panel.js?v=20261110-candidate-display-v1"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
