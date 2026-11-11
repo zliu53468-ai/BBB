@@ -32,11 +32,14 @@ assert.equal(s.DEFAULT.END_SHOE_OVERRIDE_MAX_EV_SE,.030);
 assert.equal(s.DEFAULT.AVERAGE_CARDS_PER_HAND,4.95);
 assert.equal(s.DEFAULT.DEPTH_RELIABILITY,.5);
 assert.equal(s.DEFAULT.MIN_DIRECTION_ROUNDS,3);
-assert.equal(s.DEFAULT.MIN_DIRECTION_EV_GAP,.015);
-assert.equal(s.DEFAULT.MIN_DIRECTION_GAP_SNR,1.15);
-assert.equal(s.DEFAULT.MIN_DIRECTION_ESS_RATIO,.45);
-assert.equal(s.DEFAULT.MIN_DIRECTION_DIVERSITY,.30);
-assert.equal(s.DEFAULT.MAX_DIRECTION_GAP_SE,.060);
+assert.equal(s.DEFAULT.MIN_DIRECTION_EV_GAP,.010);
+assert.equal(s.DEFAULT.MIN_DIRECTION_GAP_SNR,1.05);
+assert.equal(s.DEFAULT.MIN_DIRECTION_ESS_RATIO,.40);
+assert.equal(s.DEFAULT.MIN_DIRECTION_DIVERSITY,.25);
+assert.equal(s.DEFAULT.MAX_DIRECTION_GAP_SE,.070);
+assert.equal(s.DEFAULT.RESEARCH_DIRECTION_RELAXED,true);
+assert.throws(()=>s.config({RESEARCH_DIRECTION_RELAXED:"false"}),
+ /invalid_RESEARCH_DIRECTION_RELAXED/);
 
 const gateArgs={
  candidate:"B",ev:{B:.12,P:-.15},
@@ -48,6 +51,23 @@ const eligible=s.moderateDirectionGate(gateArgs);
 assert.equal(eligible.direction,"B","clear modeled EV separation should display candidate");
 assert.equal(eligible.eligible,true);
 assert.equal(eligible.validated_betting_edge,false);
+assert.equal(eligible.estimated_only,true);
+// Synthetic boundary fixture: it passes the relaxed display gate but fails the
+// V5 strict gate. Values are model diagnostics, not actual observed cards.
+const criticalPhysical={samples:128*250,p:{B:.4,P:.384,T:.216},
+ per:Array.from({length:128},(_,i)=>i<64?{B:120,P:100,T:30}:{B:80,P:92,T:78}),
+ weights:Array(128).fill(1/128)};
+const criticalArgs={candidate:"B",ev:s.evs(criticalPhysical.p),physical:criticalPhysical,
+ observations:3,essRatio:.43,diversity:.27,config:s.config()};
+const relaxedCritical=s.moderateDirectionGate(criticalArgs);
+const strictCritical=s.moderateDirectionGate({...criticalArgs,
+ config:s.config({RESEARCH_DIRECTION_RELAXED:false})});
+assert.equal(relaxedCritical.eligible,true,"near-threshold research case passes relaxed gate");
+assert.equal(relaxedCritical.direction,"B");
+assert(relaxedCritical.ev_gap_snr>=1.05&&relaxedCritical.ev_gap_snr<1.15);
+assert.equal(strictCritical.eligible,false,"rollback restores V5 strict threshold behavior");
+assert.equal(strictCritical.direction,"SKIP");
+assert(strictCritical.reasons.includes("weak_ev_separation"));
 assert.equal(s.moderateDirectionGate({...gateArgs,observations:1}).reason,"insufficient_rounds");
 assert.equal(s.moderateDirectionGate({...gateArgs,ev:{B:.003,P:0}}).reason,"weak_ev_separation");
 assert.equal(s.moderateDirectionGate({...gateArgs,essRatio:.1}).reason,"low_particle_ess");
@@ -122,10 +142,19 @@ assert(gate({
  confidence:.90,se:.03001
 }).reasons.includes("shoe_end_no_bet"));
 const noModel=s.run(["B","P","T","B","B"]);
+const noModelStrict=s.run(["B","P","T","B","B"],{RESEARCH_DIRECTION_RELAXED:false});
 assert.equal(noModel.wager_gate.model_verified,false);
 assert.equal(noModel.wager_gate.min_ev_threshold,.003);
 assert.equal(noModel.action,"Skip");
+assert.equal(noModelStrict.action,"Skip","research rollback never opens formal betting");
 assert.equal(noModel.bankroll_fraction,0);
+assert.equal(noModelStrict.bankroll_fraction,0);
+assert.deepEqual(noModel.physical_probabilities,noModelStrict.physical_probabilities,
+ "research threshold setting does not change forecast probabilities");
+assert.deepEqual(noModel.adaptive_sampling,noModelStrict.adaptive_sampling,
+ "research threshold setting does not change adaptive next-hand sampling");
+assert.equal(noModel.research_view.estimated_only,true);
+assert.equal(noModel.research_view.validated_betting_edge,false);
 assert.deepEqual(noModel.wager_gate.reasons[0],"trained_decision_model_unavailable");
 
 const counts=[128,32,32,32,32,32,32,32,32,32];
@@ -276,16 +305,16 @@ const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-clien
 for(const id of ["btnB","btnP","btnT","btnStart","btnBack","btnEnd"])
  assert(html.includes('id="'+id+'"'));
 assert(html.includes("styles.css?v=20261106-bigroad-v1"));
-assert(html.includes("auth-client.js?v=20261112-v5-1-adaptive-mh"));
-assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261112-v5-1-adaptive-mh"'));
+assert(html.includes("auth-client.js?v=20261112-v5-1-research-direction"));
+assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261112-v5-1-research-direction"'));
 assert(auth.includes('"bpt_big_road.js?v=20261106-bigroad-v1"'));
-assert(auth.includes('"soft_shoe_panel.js?v=20261112-v5-1-adaptive-mh"'));
+assert(auth.includes('"soft_shoe_panel.js?v=20261112-v5-1-research-direction"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
 assert(panel.includes('for(const [id,side] of [["btnB","B"],["btnP","P"],["btnT","T"]]'));
-assert(worker.includes("soft_shoe_decision_runtime.js?v=20261112-v5-1-adaptive-mh"));
+assert(worker.includes("soft_shoe_decision_runtime.js?v=20261112-v5-1-research-direction"));
 assert(worker.includes('soft_shoe_frozen_lstm_runtime.js?v=20261106-layered-v4'));
 assert(worker.includes('soft_shoe_frozen_model_bundle.js?v=20261106-layered-v4'));
-assert(panel.includes("soft_shoe_worker.js?v=20261112-v5-1-adaptive-mh"));
+assert(panel.includes("soft_shoe_worker.js?v=20261112-v5-1-research-direction"));
 assert(panel.includes('d=["B","P"].includes(view.direction)?view.direction:"SKIP"'));
 assert(panel.includes('!["B","P","SKIP"].includes(report.research_view.direction)'));
 assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望")'));
