@@ -315,7 +315,7 @@ assert(worker.includes("soft_shoe_decision_runtime.js?v=20261112-v5-1-research-d
 assert(worker.includes('soft_shoe_frozen_lstm_runtime.js?v=20261106-layered-v4'));
 assert(worker.includes('soft_shoe_frozen_model_bundle.js?v=20261106-layered-v4'));
 assert(panel.includes("soft_shoe_worker.js?v=20261112-v5-1-research-direction"));
-assert(panel.includes('d=["B","P"].includes(view.direction)?view.direction:"SKIP"'));
+assert(panel.includes('d=qualified&&["B","P"].includes(view.direction)?view.direction:"SKIP"'));
 assert(panel.includes('!["B","P","SKIP"].includes(report.research_view.direction)'));
 assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望")'));
 assert(panel.includes("觀望規則"));
