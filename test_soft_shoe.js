@@ -10,6 +10,10 @@ assert.equal(s.DEFAULT.ADAPTIVE_MULTI_HORIZON_ENABLED,true);
 assert.equal(s.DEFAULT.ADAPTIVE_HORIZON_HANDS,2);
 assert.equal(s.DEFAULT.ADAPTIVE_HORIZON_WEIGHT,.15);
 assert.equal(s.DEFAULT.ADAPTIVE_GAP_MARGIN,.008);
+assert.throws(()=>s.config({ADAPTIVE_EXTRA_DRAWS:49}),/adaptive_sample_budget_exceeded/);
+assert.throws(()=>s.config({ADAPTIVE_EXTRA_DRAWS_MAX:49}),/invalid_ADAPTIVE_EXTRA_DRAWS_MAX/);
+assert.throws(()=>s.config({ADAPTIVE_MULTI_HORIZON_ENABLED:"true"}),
+ /invalid_ADAPTIVE_MULTI_HORIZON_ENABLED/);
 assert.equal(s.DEFAULT.MIN_EV_THRESHOLD,.0030);
 assert.equal(s.DEFAULT.MID_SHOE_MIN_EV_THRESHOLD,.00235);
 assert.equal(s.DEFAULT.LATE_SHOE_MIN_EV_THRESHOLD,.0019);
