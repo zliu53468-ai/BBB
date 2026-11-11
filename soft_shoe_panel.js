@@ -78,7 +78,7 @@
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   const id=++request;
   return new Promise((resolve,reject)=>{
-   const w=new root.Worker("soft_shoe_worker.js?v=20261112-v5-1-adaptive-mh");worker=w;
+   const w=new root.Worker("soft_shoe_worker.js?v=20261112-v5-1-research-direction");worker=w;
    const close=()=>{clearTimeout(timer);w.terminate();if(worker===w)worker=null;};
    const timer=setTimeout(()=>{close();reject(Error("worker_timeout"));},15000);
    w.onerror=()=>{close();reject(Error("worker_execution_failed"));};
