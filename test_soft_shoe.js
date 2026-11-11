@@ -5,7 +5,15 @@ assert.equal(s.DEFAULT.PARTICLE_COUNT,448);
 assert.equal(s.DEFAULT.LIKELIHOOD_DRAWS,80);
 assert.equal(s.DEFAULT.NEXT_HAND_DRAWS,128);
 assert.equal(s.DEFAULT.ADAPTIVE_EXTRA_DRAWS,32);
+assert.equal(s.DEFAULT.ADAPTIVE_EXTRA_DRAWS_MAX,48);
+assert.equal(s.DEFAULT.ADAPTIVE_MULTI_HORIZON_ENABLED,true);
+assert.equal(s.DEFAULT.ADAPTIVE_HORIZON_HANDS,2);
+assert.equal(s.DEFAULT.ADAPTIVE_HORIZON_WEIGHT,.15);
 assert.equal(s.DEFAULT.ADAPTIVE_GAP_MARGIN,.008);
+assert.throws(()=>s.config({ADAPTIVE_EXTRA_DRAWS:49}),/adaptive_sample_budget_exceeded/);
+assert.throws(()=>s.config({ADAPTIVE_EXTRA_DRAWS_MAX:49}),/invalid_ADAPTIVE_EXTRA_DRAWS_MAX/);
+assert.throws(()=>s.config({ADAPTIVE_MULTI_HORIZON_ENABLED:"true"}),
+ /invalid_ADAPTIVE_MULTI_HORIZON_ENABLED/);
 assert.equal(s.DEFAULT.MIN_EV_THRESHOLD,.0030);
 assert.equal(s.DEFAULT.MID_SHOE_MIN_EV_THRESHOLD,.00235);
 assert.equal(s.DEFAULT.LATE_SHOE_MIN_EV_THRESHOLD,.0019);
@@ -147,9 +155,18 @@ for(const h of [["B"],["P"],["T"],["B","P","T","B"],Array(18).fill("T")]){
   [first.frozen_core.probabilities.B,first.frozen_core.probabilities.P,
    first.frozen_core.probabilities.T]);
  assert(first.features48.every(Number.isFinite));
- assert([448*128,448*160].includes(first.simulation_samples));
+ assert([448*128,448*(128+19)].includes(first.simulation_samples));
  assert.equal(first.adaptive_sampling.baseline_draws,128);
  assert([0,32].includes(first.adaptive_sampling.extra_draws));
+ assert.equal(first.adaptive_sampling.accepted,
+  first.adaptive_sampling.extra_draws===32);
+ assert(first.future_path);
+ assert.equal(first.future_path.estimated_only,true);
+ assert.equal(first.future_path.validated_betting_edge,false);
+ if(first.future_path.available){
+  assert(first.future_path.future_edge_score>=0&&first.future_path.future_edge_score<=1);
+  assert(first.future_path.path_consistency>=0&&first.future_path.path_consistency<=1);
+ }
  const p=first.probabilities;
  assert(Math.abs(p.B+p.P+p.T-1)<1e-10);
  assert(Math.abs(first.ev_banker-(.95*p.B-p.P))<1e-12);
@@ -195,6 +212,37 @@ for(const length of [10,30,50,70]){
  assert(result.probabilities&&Number.isFinite(result.ev_banker));
 }
 assert.equal(s.run(Array(73).fill("B")).reason,"shoe_depth_limit");
+const adaptiveCfg=s.config();
+const nearThreshold={abs_ev_gap:.013,ev_gap_snr:1.18};
+const farThreshold={abs_ev_gap:.040,ev_gap_snr:2.00};
+assert.equal(s.shouldRefine(nearThreshold,3,.60,.40,adaptiveCfg),true,
+ "near EV-gap/SNR threshold with adequate posterior quality refines");
+assert.equal(s.shouldRefine(farThreshold,3,.60,.40,adaptiveCfg),false,
+ "non-critical estimate does not refine");
+assert.equal(s.shouldRefine(nearThreshold,3,.41,.40,adaptiveCfg),false,
+ "ESS below 0.42 does not refine");
+assert.equal(s.shouldRefine(nearThreshold,3,.60,.27,adaptiveCfg),false,
+ "diversity below 0.28 does not refine");
+assert.equal(s.shouldRefine(nearThreshold,3,.75,.40,adaptiveCfg),false,
+ "highly concentrated ESS does not refine");
+assert.equal(s.shouldRollbackAdaptive(
+ {ess_ratio:.60,diversity:.50},{ess_ratio:.55,diversity:.50},adaptiveCfg),true,
+ "more than 8% ESS decline rolls back");
+assert.equal(s.shouldRollbackAdaptive(
+ {ess_ratio:.60,diversity:.50},{ess_ratio:.60,diversity:.47},adaptiveCfg),false,
+ "diversity decline under 8% does not roll back");
+assert.equal(s.directionConsistency(["B","T","P"],"B"),.5,
+ "ties are excluded from direction consistency");
+const futureScore=s.futureEdgeScore(1.20,.80,.25);
+assert(futureScore>=0&&futureScore<=1);
+assert.equal(futureScore,1,"future score is clamped to 0..1");
+assert.equal(s.futureEdgeScore(1,.5,null),null,
+ "incomplete path metrics do not create a score");
+const disabled=s.run(["B","P","B"],{ADAPTIVE_MULTI_HORIZON_ENABLED:false});
+assert.equal(disabled.adaptive_sampling.accepted,false);
+assert.equal(disabled.simulation_samples,448*128);
+assert.equal(disabled.future_path.reason,"feature_disabled",
+ "switch restores V5 sampling and disables new diagnostics");
 const physical={B:.458597,P:.446247,T:.095156};
 assert.deepEqual(s.modelDecision(physical,[],s.frozenCore([]),null),
  {p:physical,model:"physics_only_untrained_decision_fallback"});
@@ -228,21 +276,23 @@ const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-clien
 for(const id of ["btnB","btnP","btnT","btnStart","btnBack","btnEnd"])
  assert(html.includes('id="'+id+'"'));
 assert(html.includes("styles.css?v=20261106-bigroad-v1"));
-assert(html.includes("auth-client.js?v=20261108-pf448-l80-m128-v8"));
-assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261111-v5-adaptive32"'));
+assert(html.includes("auth-client.js?v=20261112-v5-1-adaptive-mh"));
+assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261112-v5-1-adaptive-mh"'));
 assert(auth.includes('"bpt_big_road.js?v=20261106-bigroad-v1"'));
-assert(auth.includes('"soft_shoe_panel.js?v=20261111-v5-adaptive32"'));
+assert(auth.includes('"soft_shoe_panel.js?v=20261112-v5-1-adaptive-mh"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
 assert(panel.includes('for(const [id,side] of [["btnB","B"],["btnP","P"],["btnT","T"]]'));
-assert(worker.includes("soft_shoe_decision_runtime.js?v=20261111-v5-adaptive32"));
+assert(worker.includes("soft_shoe_decision_runtime.js?v=20261112-v5-1-adaptive-mh"));
 assert(worker.includes('soft_shoe_frozen_lstm_runtime.js?v=20261106-layered-v4'));
 assert(worker.includes('soft_shoe_frozen_model_bundle.js?v=20261106-layered-v4'));
-assert(panel.includes("soft_shoe_worker.js?v=20261111-v5-adaptive32"));
+assert(panel.includes("soft_shoe_worker.js?v=20261112-v5-1-adaptive-mh"));
 assert(panel.includes('d=["B","P"].includes(view.direction)?view.direction:"SKIP"'));
 assert(panel.includes('!["B","P","SKIP"].includes(report.research_view.direction)'));
 assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望")'));
 assert(panel.includes("觀望規則"));
 assert(panel.includes("syncBigRoad();"));
+assert(panel.includes("Future Edge"));
+assert(panel.includes("路徑 EV₂"));
 assert(auth.indexOf('"bpt_big_road.js')<auth.indexOf('"soft_shoe_panel.js'));
 assert(panel.includes("觀望：EV 差異估計誤差過大"));
 assert(panel.includes("觀望：有效粒子不足"));

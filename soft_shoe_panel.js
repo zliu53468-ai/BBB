@@ -30,6 +30,7 @@
   // Match the LINE Soft Shoe adapter: use the quality-gated research direction.
   // The unqualified candidate remains diagnostic-only and never becomes a BET.
   last=report;const view=report.research_view||{},
+   adaptive=report.adaptive_sampling||{},future=report.future_path||{},
    qualified=view.eligible===true,
    d=["B","P"].includes(view.direction)?view.direction:"SKIP",
    q=report.probabilities||{};
@@ -46,8 +47,8 @@
    low_particle_ess:"觀望：有效粒子不足",
    low_particle_diversity:"觀望：粒子多樣性不足"
   };
-  set("regime",qualified?"品質篩選通過（研究方向，非下注建議）":
-   reasonNames[view.reason]||"觀望：方向品質未達門檻");
+  set("regime",future.research_label|| (qualified?"品質篩選通過（研究方向，非下注建議）":
+   reasonNames[view.reason]||"觀望：方向品質未達門檻"));
   set("strength","下一局模型估計：莊 "+pct(q.B)+"｜閒 "+pct(q.P)+"｜和 "+pct(q.T));
   set("message","已輸入 "+report.observations+" 局｜候選方向 "+(report.candidate==="B"?"莊":"閒")+
    "｜估計 EV 差距 "+pct(view.abs_ev_gap)+
@@ -63,6 +64,11 @@
    "｜有效粒子 "+Number(report.particle_ess||0).toFixed(1)+
    "｜合格下注比例 "+pct(report.bankroll_fraction)+
    "｜品質狀態 "+(qualified?"通過研究篩選":"未通過研究篩選（顯示觀望）")+
+   "｜Adaptive "+(adaptive.accepted?"採用":"未採用")+
+   (adaptive.rollback_reason?"（回退："+adaptive.rollback_reason+"）":"")+
+   "｜路徑 EV₂ "+pct(future.path_ev_2)+"／EV₃ "+pct(future.path_ev_3)+
+   "｜Future Edge "+(Number.isFinite(future.future_edge_score)?
+    Number(future.future_edge_score).toFixed(3):"—")+
    "｜候選方向不代表下注建議；只有 B/P/T，實際發牌與殘牌未知；未驗證獲利優勢。");
   set("modePill","Soft Shoe · LINE Soft Shoe 觀望規則");
   set("localCalibrationStatus","48 維物理特徵＋Frozen 序列診斷＋XGBoost 安全閘門"+
@@ -72,7 +78,7 @@
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   const id=++request;
   return new Promise((resolve,reject)=>{
-   const w=new root.Worker("soft_shoe_worker.js?v=20261111-v5-adaptive32");worker=w;
+   const w=new root.Worker("soft_shoe_worker.js?v=20261112-v5-1-adaptive-mh");worker=w;
    const close=()=>{clearTimeout(timer);w.terminate();if(worker===w)worker=null;};
    const timer=setTimeout(()=>{close();reject(Error("worker_timeout"));},15000);
    w.onerror=()=>{close();reject(Error("worker_execution_failed"));};
