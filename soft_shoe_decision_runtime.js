@@ -23,9 +23,10 @@
   END_SHOE_OVERRIDE_MIN_EV:.025,END_SHOE_OVERRIDE_CONFIDENCE:.90,
   END_SHOE_OVERRIDE_MAX_EV_SE:.030,
   RESAMPLE_ESS_RATIO:.5,MAX_HANDS:72,LOWER_BOUND_Z:1.645,SEQUENCE_WEIGHT:0,
-  MIN_DIRECTION_ROUNDS:3,MIN_DIRECTION_EV_GAP:.015,
-  MIN_DIRECTION_GAP_SNR:1.15,MIN_DIRECTION_ESS_RATIO:.45,
-  MIN_DIRECTION_DIVERSITY:.30,MAX_DIRECTION_GAP_SE:.060,
+  MIN_DIRECTION_ROUNDS:3,MIN_DIRECTION_EV_GAP:.010,
+  MIN_DIRECTION_GAP_SNR:1.05,MIN_DIRECTION_ESS_RATIO:.40,
+  MIN_DIRECTION_DIVERSITY:.25,MAX_DIRECTION_GAP_SE:.070,
+  RESEARCH_DIRECTION_RELAXED:true,
   ADAPTIVE_EXTRA_DRAWS:32,ADAPTIVE_EXTRA_DRAWS_MAX:48,
   ADAPTIVE_MULTI_HORIZON_ENABLED:true,ADAPTIVE_NEXT_HAND_SHARE:.60,
   ADAPTIVE_HORIZON_HANDS:2,ADAPTIVE_HORIZON_WEIGHT:.15,
@@ -34,6 +35,11 @@
   ADAPTIVE_IMPORTANCE_MIX:.10,
   ADAPTIVE_GAP_MARGIN:.008,ADAPTIVE_SNR_MARGIN:.25
  });
+ // Research-display thresholds before V5.1's display-only relaxation.
+ // Adaptive next-hand refinement keeps these references unchanged.
+ const STRICT_DIRECTION_GATE=Object.freeze({MIN_DIRECTION_EV_GAP:.015,
+  MIN_DIRECTION_GAP_SNR:1.15,MIN_DIRECTION_ESS_RATIO:.45,
+  MIN_DIRECTION_DIVERSITY:.30,MAX_DIRECTION_GAP_SE:.060});
  const BASE=[128,32,32,32,32,32,32,32,32,32],TOTAL=416;
  const BASE_PROB={B:.458597,P:.446247,T:.095156};
  const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -51,6 +57,8 @@
    throw Error("sample_budget_too_small");
   if(typeof v.ADAPTIVE_MULTI_HORIZON_ENABLED!=="boolean")
    throw Error("invalid_ADAPTIVE_MULTI_HORIZON_ENABLED");
+  if(typeof v.RESEARCH_DIRECTION_RELAXED!=="boolean")
+   throw Error("invalid_RESEARCH_DIRECTION_RELAXED");
   if(v.ADAPTIVE_EXTRA_DRAWS>v.ADAPTIVE_EXTRA_DRAWS_MAX||
      v.NEXT_HAND_DRAWS+v.ADAPTIVE_EXTRA_DRAWS_MAX>512)
    throw Error("adaptive_sample_budget_exceeded");
@@ -285,9 +293,9 @@
      essRatio<cfg.ADAPTIVE_MIN_ESS_RATIO||
      diversity<cfg.ADAPTIVE_MIN_DIVERSITY||
      essRatio>=cfg.ADAPTIVE_MAX_ESS_RATIO)return false;
-  const nearGap=Math.abs(v.abs_ev_gap-cfg.MIN_DIRECTION_EV_GAP)<=
+  const nearGap=Math.abs(v.abs_ev_gap-STRICT_DIRECTION_GATE.MIN_DIRECTION_EV_GAP)<=
    cfg.ADAPTIVE_GAP_MARGIN;
-  const nearSnr=Math.abs(v.ev_gap_snr-cfg.MIN_DIRECTION_GAP_SNR)<=
+  const nearSnr=Math.abs(v.ev_gap_snr-STRICT_DIRECTION_GATE.MIN_DIRECTION_GAP_SNR)<=
    cfg.ADAPTIVE_SNR_MARGIN;
   return nearGap||nearSnr;
  }
@@ -519,6 +527,7 @@
  // edge or a calibrated confidence interval; it only chooses whether the
  // model's B/P EV ordering is well-separated relative to its MC noise.
  function moderateDirectionGate({candidate,ev,physical,observations,essRatio,diversity,config:cfg}){
+  const gate=cfg.RESEARCH_DIRECTION_RELAXED?cfg:{...cfg,...STRICT_DIRECTION_GATE};
   const gap=ev.B-ev.P,absGap=Math.abs(gap),n=physical.samples;
   // Gap payoff is +1.95 on Banker, -2 on Player, 0 on Tie.
   const gapSecondMoment=1.95*1.95*physical.p.B+4*physical.p.P;
@@ -542,13 +551,13 @@
   const gapSe=Math.sqrt(mcVariance+latentMeanVariance);
   const snr=gapSe>0?absGap/gapSe:0;
   const reasons=[];
-  if(observations<cfg.MIN_DIRECTION_ROUNDS)reasons.push("insufficient_rounds");
-  if(absGap<cfg.MIN_DIRECTION_EV_GAP)reasons.push("weak_ev_separation");
-  if(!(gapSe>0&&Number.isFinite(gapSe))||gapSe>cfg.MAX_DIRECTION_GAP_SE)
+  if(observations<gate.MIN_DIRECTION_ROUNDS)reasons.push("insufficient_rounds");
+  if(absGap<gate.MIN_DIRECTION_EV_GAP)reasons.push("weak_ev_separation");
+  if(!(gapSe>0&&Number.isFinite(gapSe))||gapSe>gate.MAX_DIRECTION_GAP_SE)
    reasons.push("high_estimator_uncertainty");
-  if(snr<cfg.MIN_DIRECTION_GAP_SNR)reasons.push("low_gap_to_noise");
-  if(essRatio<cfg.MIN_DIRECTION_ESS_RATIO)reasons.push("low_particle_ess");
-  if(diversity<cfg.MIN_DIRECTION_DIVERSITY)reasons.push("low_particle_diversity");
+  if(snr<gate.MIN_DIRECTION_GAP_SNR)reasons.push("low_gap_to_noise");
+  if(essRatio<gate.MIN_DIRECTION_ESS_RATIO)reasons.push("low_particle_ess");
+  if(diversity<gate.MIN_DIRECTION_DIVERSITY)reasons.push("low_particle_diversity");
   return Object.freeze({
    direction:reasons.length?"SKIP":candidate,
    candidate,eligible:reasons.length===0,reason:reasons[0]||"moderate_gate_pass",
