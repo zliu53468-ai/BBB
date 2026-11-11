@@ -32,7 +32,7 @@
   last=report;const view=report.research_view||{},
    adaptive=report.adaptive_sampling||{},future=report.future_path||{},
    qualified=view.eligible===true,
-   d=["B","P"].includes(view.direction)?view.direction:"SKIP",
+   d=qualified&&["B","P"].includes(view.direction)?view.direction:"SKIP",
    q=report.probabilities||{};
   set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望");
   set("directionCode",d==="B"?"研究方向 / BANKER":d==="P"?"研究方向 / PLAYER":"品質觀望 / SKIP");
@@ -78,7 +78,7 @@
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   const id=++request;
   return new Promise((resolve,reject)=>{
-   const w=new root.Worker("soft_shoe_worker.js?v=20261112-v5-1-adaptive-mh");worker=w;
+   const w=new root.Worker("soft_shoe_worker.js?v=20261112-v5-1-research-direction");worker=w;
    const close=()=>{clearTimeout(timer);w.terminate();if(worker===w)worker=null;};
    const timer=setTimeout(()=>{close();reject(Error("worker_timeout"));},15000);
    w.onerror=()=>{close();reject(Error("worker_execution_failed"));};
