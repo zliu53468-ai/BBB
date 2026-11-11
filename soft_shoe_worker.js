@@ -2,7 +2,7 @@
 self.onmessage=event=>{
  const {id,history}=event.data||{};
  try{
-  if(!self.BBBSoftShoe)importScripts("soft_shoe_decision_runtime.js?v=20261108-pf448-l80-m128-v8");
+  if(!self.BBBSoftShoe)importScripts("soft_shoe_decision_runtime.js?v=20261111-v5-adaptive32");
   if(!self.BBB_SOFT_SHOE_XGB_MODEL)importScripts("soft_shoe_model_bundle.js?v=20261106-layered-v4");
   if(!self.BBBFrozenSequenceLSTM)importScripts("soft_shoe_frozen_lstm_runtime.js?v=20261106-layered-v4");
   if(!self.BBB_SOFT_SHOE_LSTM_MODEL)importScripts("soft_shoe_frozen_model_bundle.js?v=20261106-layered-v4");
