@@ -32,7 +32,7 @@
   last=report;const view=report.research_view||{},
    adaptive=report.adaptive_sampling||{},future=report.future_path||{},
    qualified=view.eligible===true,
-   d=["B","P"].includes(view.direction)?view.direction:"SKIP",
+   d=qualified&&["B","P"].includes(view.direction)?view.direction:"SKIP",
    q=report.probabilities||{};
   set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望");
   set("directionCode",d==="B"?"研究方向 / BANKER":d==="P"?"研究方向 / PLAYER":"品質觀望 / SKIP");
