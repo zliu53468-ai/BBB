@@ -11,9 +11,10 @@ const api=String(window.BBB_AUTH_API_BASE||"https://bbb-license-gateway.zliu5346
 // V4 正式入口只載入必要核心；原版本其他模組留在 GitHub 供回溯，
 // 不實例化 LinUCB、256 維上下文或任何牌路決策器。
 const scripts=[
- "soft_shoe_decision_runtime.js?v=20261112-v5-1-research-direction",
+ "derived_road_aux.js?v=20261112-v5-1-road-aux-1",
+ "soft_shoe_decision_runtime.js?v=20261112-v5-1-road-aux-1",
  "bpt_big_road.js?v=20261106-bigroad-v1",
- "soft_shoe_panel.js?v=20261112-v5-1-research-direction"
+ "soft_shoe_panel.js?v=20261112-v5-1-road-aux-1"
 ];
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}

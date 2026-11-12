@@ -23,6 +23,7 @@
  function uiIdle(message){
   set("directionText","—");set("directionCode","等待分析");
   set("confidence","—");set("regime","等待輸入");set("strength","—");
+  set("roadAuxStatus","—");
   set("message",message);$("directionOrb").className="direction-orb idle";
   set("localCalibrationStatus","B/P/T 軟算牌 · 目前已記錄 "+history.length+" 局（同一牌靴）");
  }
@@ -36,6 +37,12 @@
    q=report.probabilities||{};
   set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望");
   set("directionCode",d==="B"?"研究方向 / BANKER":d==="P"?"研究方向 / PLAYER":"品質觀望 / SKIP");
+  const road=report.road_aux||{};
+  set("roadAuxStatus",view.road_confirmed===true?"路同向｜非保證勝率":
+   view.road_near_confirmed===true?"近門檻路同向｜仍觀望":
+   view.road_conflict===true?"路分歧｜物理方向不翻轉":
+   road.available?"牌路未達確認條件":"牌路樣本不足或已停用");
+
   $("directionOrb").className="direction-orb "+(d==="B"?"banker":d==="P"?"player":"idle");
   set("confidence","莊 EV "+pct(report.ev_banker)+"／閒 EV "+pct(report.ev_player)+
    "｜置信指標 "+pct(report.confidence));
@@ -69,7 +76,7 @@
    "｜路徑 EV₂ "+pct(future.path_ev_2)+"／EV₃ "+pct(future.path_ev_3)+
    "｜Future Edge "+(Number.isFinite(future.future_edge_score)?
     Number(future.future_edge_score).toFixed(3):"—")+
-   "｜候選方向不代表下注建議；只有 B/P/T，實際發牌與殘牌未知；未驗證獲利優勢。");
+   "｜牌路為輔助圖案訊號，非保證勝率；候選方向不代表下注建議；只有 B/P/T，實際發牌與殘牌未知；未驗證獲利優勢。");
   set("modePill","Soft Shoe · LINE Soft Shoe 觀望規則");
   set("localCalibrationStatus","48 維物理特徵＋Frozen 序列診斷＋XGBoost 安全閘門"+
    "｜模型："+String(report.model||"不可用"));
@@ -78,7 +85,7 @@
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   const id=++request;
   return new Promise((resolve,reject)=>{
-   const w=new root.Worker("soft_shoe_worker.js?v=20261112-v5-1-research-direction");worker=w;
+   const w=new root.Worker("soft_shoe_worker.js?v=20261112-v5-1-road-aux-1");worker=w;
    const close=()=>{clearTimeout(timer);w.terminate();if(worker===w)worker=null;};
    const timer=setTimeout(()=>{close();reject(Error("worker_timeout"));},15000);
    w.onerror=()=>{close();reject(Error("worker_execution_failed"));};

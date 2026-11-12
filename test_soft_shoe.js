@@ -1,6 +1,125 @@
 "use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs");
 const s=require("./soft_shoe_decision_runtime.js");
+
+const roadAux=require("./derived_road_aux.js");
+const roadDefaults={
+ ROAD_AUX_ENABLED:true,ROAD_AUX_MIN_HISTORY:12,
+ ROAD_AUX_AGREEMENT_MIN:.67,ROAD_AUX_CONFIDENCE_MIN:.45,
+ ROAD_AUX_MAX_BOOST:.08,ROAD_AUX_CONFLICT_PENALTY:.06,
+ ROAD_AUX_REQUIRE_SOFT_ELIGIBLE:true
+};
+for(const [key,value] of Object.entries(roadDefaults))
+ assert.equal(s.DEFAULT[key],value,"road auxiliary default "+key);
+assert.throws(()=>s.config({ROAD_AUX_MAX_BOOST:.11}),/invalid_ROAD_AUX_MAX_BOOST/);
+assert.throws(()=>s.config({ROAD_AUX_MIN_HISTORY:0}),/invalid_ROAD_AUX_MIN_HISTORY/);
+assert.throws(()=>s.config({ROAD_AUX_AGREEMENT_MIN:1.01}),/invalid_ROAD_AUX_AGREEMENT_MIN/);
+assert.throws(()=>s.config({ROAD_AUX_CONFIDENCE_MIN:-.01}),/invalid_ROAD_AUX_CONFIDENCE_MIN/);
+assert.throws(()=>s.config({ROAD_AUX_CONFLICT_PENALTY:1.01}),/invalid_ROAD_AUX_CONFLICT_PENALTY/);
+assert.throws(()=>s.config({ROAD_AUX_ENABLED:"false"}),/invalid_ROAD_AUX_ENABLED/);
+assert.throws(()=>s.config({ROAD_AUX_REQUIRE_SOFT_ELIGIBLE:0}),/invalid_ROAD_AUX_REQUIRE_SOFT_ELIGIBLE/);
+// Derived roads are deterministic pattern bookkeeping. T never creates a bead.
+const roadShort=roadAux.analyze(Array(11).fill("B"));
+assert.equal(roadShort.available,false);
+assert.equal(roadShort.reason,"insufficient_non_tie_history");
+assert.equal(roadShort.big_road_depth,11);
+const roadTies=roadAux.analyze(Array(12).fill("T"));
+assert.equal(roadTies.big_road_depth,0);
+assert.deepEqual(roadTies.probes,{big_eye:"N",small:"N",cockroach:"N"});
+const roadSingleColumn=roadAux.analyze(Array(12).fill("B"));
+assert.equal(roadSingleColumn.available,false);
+assert.equal(roadSingleColumn.reason,"insufficient_derived_road_columns");
+const roadAlternating=roadAux.analyze(Array.from({length:12},(_,i)=>i%2?"P":"B"));
+assert.equal(roadAlternating.big_road_columns,12);
+assert.equal(roadAlternating.road_agreement,1);
+assert.deepEqual(roadAlternating.probes,{big_eye:"R",small:"R",cockroach:"R"});
+assert.equal(roadAlternating.road_side,"P","majority R maps to last side (research heuristic)");
+assert.equal(roadAlternating.estimated_only,true);
+assert.equal(roadAlternating.validated_betting_edge,false);
+const withTies=["B","T","P","T","B","T","P","T","B","T","P","T",
+ "B","T","P","T","B","T","P","T","B","T","P","T"];
+assert.deepEqual(roadAux.analyze(withTies),roadAlternating,
+ "ties are ignored in the derived-road structure");
+const cols=[{depth:2},{depth:2},{depth:1},{depth:3},{depth:1}];
+assert.equal(roadAux.deriveColor(cols,2,0,1),"R");
+assert.equal(roadAux.deriveColor([{depth:2},{depth:1},{depth:1}],2,0,1),"B");
+assert.equal(roadAux.deriveColor(cols,1,2,1),"B",
+ "one missing left cell but occupied above produces blue");
+assert.equal(roadAux.deriveColor(cols,1,3,1),"R",
+ "two missing cells to the left produce red");
+assert.equal(roadAux.mapRoadSide("B",0,3),"P");
+assert.equal(roadAux.mapRoadSide("P",2,2),"NEUTRAL");
+// Isolated display-score fusion: never grants betting or flips Soft candidate.
+const syntheticResearch={eligible:true,direction:"B",candidate:"B",ev_gap_snr:1.4,
+ estimated_only:true,validated_betting_edge:false};
+const syntheticPath={available:true,future_edge_score:.50,
+ estimated_only:true,validated_betting_edge:false};
+const makeRoad=side=>({...roadAlternating,available:true,road_side:side,
+ road_agreement:1,road_confidence:.8,estimated_only:true,
+ validated_betting_edge:false});
+const confirmed=s.fuseRoadResearch(syntheticResearch,syntheticPath,
+ makeRoad("B"),s.config(),"B");
+assert.equal(confirmed.research_view.road_confirmed,true);
+assert.equal(confirmed.research_view.direction,"B");
+assert(Math.abs(confirmed.future_path.future_edge_score-.58)<1e-12);
+assert.equal(confirmed.future_path.unadjusted_future_edge_score,.5);
+const conflict=s.fuseRoadResearch(syntheticResearch,syntheticPath,
+ makeRoad("P"),s.config(),"B");
+assert.equal(conflict.research_view.road_conflict,true);
+assert.equal(conflict.research_view.direction,"B");
+assert(Math.abs(conflict.future_path.future_edge_score-.44)<1e-12);
+const capped=s.fuseRoadResearch(syntheticResearch,
+ {...syntheticPath,future_edge_score:.98},makeRoad("B"),s.config(),"B");
+assert.equal(capped.future_path.future_edge_score,1);
+const notEligible=s.fuseRoadResearch({...syntheticResearch,eligible:false,
+ direction:"SKIP"},syntheticPath,makeRoad("B"),s.config(),"B");
+assert.equal(notEligible.research_view.eligible,false);
+assert.equal(notEligible.research_view.road_confirmed,false);
+assert.equal(notEligible.research_view.direction,"SKIP");
+const nearResearch={...syntheticResearch,eligible:false,direction:"SKIP",
+ abs_ev_gap:.0095,ev_gap_snr:1.02,ess_ratio:.6,ancestor_diversity:.5,
+ ev_gap_se:.02};
+const nearOn=s.fuseRoadResearch(nearResearch,syntheticPath,makeRoad("B"),
+ s.config({ROAD_AUX_REQUIRE_SOFT_ELIGIBLE:false}),"B");
+assert.equal(nearOn.research_view.eligible,false);
+assert.equal(nearOn.research_view.direction,"SKIP");
+assert.equal(nearOn.research_view.road_confirmed,false);
+assert.equal(nearOn.research_view.road_near_confirmed,true);
+assert(nearOn.future_path.future_edge_score>syntheticPath.future_edge_score);
+const nearOff=s.fuseRoadResearch(nearResearch,syntheticPath,makeRoad("B"),
+ s.config(),"B");
+assert.equal(nearOff.research_view.road_near_confirmed,false);
+assert.equal(nearOff.future_path.future_edge_score,syntheticPath.future_edge_score);
+const roadOff=s.fuseRoadResearch(syntheticResearch,syntheticPath,
+ makeRoad("P"),s.config({ROAD_AUX_ENABLED:false}),"B");
+assert.strictEqual(roadOff.research_view,syntheticResearch);
+assert.strictEqual(roadOff.future_path,syntheticPath);
+// Full runtime: toggling road affects only display fields and config.
+const sameHistory=Array.from({length:21},(_,i)=>"BPPBTBBPPT"[i%10]);
+const liveOn=s.run(sameHistory);
+const liveOff=s.run(sameHistory,{ROAD_AUX_ENABLED:false});
+for(const k of ["version","candidate","action","direction","probabilities",
+ "physical_probabilities","ev_banker","ev_player","ev_tie","particle_ess",
+ "ancestor_diversity","adaptive_sampling","wager_gate","bankroll_fraction",
+ "simulation_samples","features48","seed"]){
+ assert.deepEqual(liveOn[k],liveOff[k],"road must not change physical/formal "+k);
+}
+assert.equal(liveOn.research_view.direction,liveOff.research_view.direction);
+assert.equal(liveOn.research_view.eligible,liveOff.research_view.eligible);
+assert.equal(liveOn.action,"Skip");
+assert.equal(liveOff.action,"Skip");
+assert.equal(liveOn.validated_edge,false);
+assert.equal(liveOff.validated_edge,false);
+assert.equal(liveOn.road_aux.estimated_only,true);
+assert.equal(liveOff.road_aux.reason,"disabled");
+const postOn=s.posterior(sameHistory,s.config());
+const postOff=s.posterior(sameHistory,s.config({ROAD_AUX_ENABLED:false}));
+assert.deepEqual(postOn.particles,postOff.particles,
+ "road switch cannot change physical posterior particles");
+assert.deepEqual(postOn.weights,postOff.weights,
+ "road switch cannot change particle weight fingerprint");
+assert.equal(s.run(Array(10).fill("B")).road_aux.available,false);
+
 assert.equal(s.DEFAULT.PARTICLE_COUNT,448);
 assert.equal(s.DEFAULT.LIKELIHOOD_DRAWS,80);
 assert.equal(s.DEFAULT.NEXT_HAND_DRAWS,128);
@@ -305,20 +424,26 @@ const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-clien
 for(const id of ["btnB","btnP","btnT","btnStart","btnBack","btnEnd"])
  assert(html.includes('id="'+id+'"'));
 assert(html.includes("styles.css?v=20261106-bigroad-v1"));
-assert(html.includes("auth-client.js?v=20261112-v5-1-research-direction"));
-assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261112-v5-1-research-direction"'));
+assert(html.includes("auth-client.js?v=20261112-v5-1-road-aux-1"));
+assert(auth.includes('"derived_road_aux.js?v=20261112-v5-1-road-aux-1"'));
+assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261112-v5-1-road-aux-1"'));
 assert(auth.includes('"bpt_big_road.js?v=20261106-bigroad-v1"'));
-assert(auth.includes('"soft_shoe_panel.js?v=20261112-v5-1-research-direction"'));
+assert(auth.includes('"soft_shoe_panel.js?v=20261112-v5-1-road-aux-1"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
 assert(panel.includes('for(const [id,side] of [["btnB","B"],["btnP","P"],["btnT","T"]]'));
-assert(worker.includes("soft_shoe_decision_runtime.js?v=20261112-v5-1-research-direction"));
+assert(worker.includes("derived_road_aux.js?v=20261112-v5-1-road-aux-1"));
+assert(worker.includes("soft_shoe_decision_runtime.js?v=20261112-v5-1-road-aux-1"));
 assert(worker.includes('soft_shoe_frozen_lstm_runtime.js?v=20261106-layered-v4'));
 assert(worker.includes('soft_shoe_frozen_model_bundle.js?v=20261106-layered-v4'));
-assert(panel.includes("soft_shoe_worker.js?v=20261112-v5-1-research-direction"));
+assert(panel.includes("soft_shoe_worker.js?v=20261112-v5-1-road-aux-1"));
 assert(panel.includes('d=qualified&&["B","P"].includes(view.direction)?view.direction:"SKIP"'));
 assert(panel.includes('!["B","P","SKIP"].includes(report.research_view.direction)'));
 assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望")'));
 assert(panel.includes("觀望規則"));
+assert(html.includes('id="roadAuxStatus"'));
+assert(panel.includes("路同向"));
+assert(panel.includes("路分歧"));
+assert(panel.includes("牌路為輔助圖案訊號，非保證勝率"));
 assert(panel.includes("syncBigRoad();"));
 assert(panel.includes("Future Edge"));
 assert(panel.includes("路徑 EV₂"));
