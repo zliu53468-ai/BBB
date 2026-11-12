@@ -39,6 +39,7 @@
   set("directionCode",d==="B"?"研究方向 / BANKER":d==="P"?"研究方向 / PLAYER":"品質觀望 / SKIP");
   const road=report.road_aux||{};
   set("roadAuxStatus",view.road_confirmed===true?"路同向｜非保證勝率":
+   view.road_near_confirmed===true?"近門檻路同向｜仍觀望":
    view.road_conflict===true?"路分歧｜物理方向不翻轉":
    road.available?"牌路未達確認條件":"牌路樣本不足或已停用");
 
