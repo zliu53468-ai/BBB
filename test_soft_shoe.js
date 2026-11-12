@@ -76,6 +76,20 @@ const notEligible=s.fuseRoadResearch({...syntheticResearch,eligible:false,
 assert.equal(notEligible.research_view.eligible,false);
 assert.equal(notEligible.research_view.road_confirmed,false);
 assert.equal(notEligible.research_view.direction,"SKIP");
+const nearResearch={...syntheticResearch,eligible:false,direction:"SKIP",
+ abs_ev_gap:.0095,ev_gap_snr:1.02,ess_ratio:.6,ancestor_diversity:.5,
+ ev_gap_se:.02};
+const nearOn=s.fuseRoadResearch(nearResearch,syntheticPath,makeRoad("B"),
+ s.config({ROAD_AUX_REQUIRE_SOFT_ELIGIBLE:false}),"B");
+assert.equal(nearOn.research_view.eligible,false);
+assert.equal(nearOn.research_view.direction,"SKIP");
+assert.equal(nearOn.research_view.road_confirmed,false);
+assert.equal(nearOn.research_view.road_near_confirmed,true);
+assert(nearOn.future_path.future_edge_score>syntheticPath.future_edge_score);
+const nearOff=s.fuseRoadResearch(nearResearch,syntheticPath,makeRoad("B"),
+ s.config(),"B");
+assert.equal(nearOff.research_view.road_near_confirmed,false);
+assert.equal(nearOff.future_path.future_edge_score,syntheticPath.future_edge_score);
 const roadOff=s.fuseRoadResearch(syntheticResearch,syntheticPath,
  makeRoad("P"),s.config({ROAD_AUX_ENABLED:false}),"B");
 assert.strictEqual(roadOff.research_view,syntheticResearch);
