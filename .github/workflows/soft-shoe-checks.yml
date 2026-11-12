@@ -5,6 +5,7 @@ on:
     paths:
       - soft_shoe_*.js
       - derived_road_aux.js
+      - backtest_road_aux.js
       - ROAD_AUX.md
       - test_soft_shoe_frozen_lstm.js
       - bpt_big_road.js
@@ -19,6 +20,7 @@ on:
     paths:
       - soft_shoe_*.js
       - derived_road_aux.js
+      - backtest_road_aux.js
       - ROAD_AUX.md
       - test_soft_shoe_frozen_lstm.js
       - bpt_big_road.js
@@ -43,6 +45,7 @@ jobs:
       - name: Syntax and deterministic BPT PF safety contract
         run: |
           node --check derived_road_aux.js
+          node --check backtest_road_aux.js
           node --check soft_shoe_decision_runtime.js
           node --check soft_shoe_worker.js
           node --check soft_shoe_panel.js
