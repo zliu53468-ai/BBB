@@ -636,26 +636,35 @@
   const snr=Math.max(0,Number(research?.ev_gap_snr)||0);
   const base=Number.isFinite(futurePath?.future_edge_score)?
    clamp(futurePath.future_edge_score,0,1):clamp(snr/(1+snr),0,1);
-  let edge=base,confirmed=false,conflict=false;
+  let edge=base,confirmed=false,nearConfirmed=false,conflict=false;
   if(road?.available&&road.estimated_only===true&&
      road.validated_betting_edge===false){
    const agreementOk=road.road_agreement>=cfg.ROAD_AUX_AGREEMENT_MIN;
    const confidenceOk=road.road_confidence>=cfg.ROAD_AUX_CONFIDENCE_MIN;
    const eligible=research?.eligible===true;
-   // ROAD_AUX_REQUIRE_SOFT_ELIGIBLE defaults true; eligibility is NEVER
-   // granted by the road regardless of this knob.
-   if((!cfg.ROAD_AUX_REQUIRE_SOFT_ELIGIBLE||eligible)&&eligible&&
-      agreementOk&&confidenceOk&&road.road_side===candidate){
+   // If explicitly relaxed, allow a *near-eligible* diagnostic score boost
+   // only with adequate ESS, diversity and SE. Never promote eligibility.
+   const nearEligible=!eligible&&!cfg.ROAD_AUX_REQUIRE_SOFT_ELIGIBLE&&
+    research?.candidate===candidate&&
+    research.abs_ev_gap>=.9*cfg.MIN_DIRECTION_EV_GAP&&
+    research.ev_gap_snr>=.9*cfg.MIN_DIRECTION_GAP_SNR&&
+    research.ess_ratio>=cfg.MIN_DIRECTION_ESS_RATIO&&
+    research.ancestor_diversity>=cfg.MIN_DIRECTION_DIVERSITY&&
+    research.ev_gap_se>0&&research.ev_gap_se<=cfg.MAX_DIRECTION_GAP_SE;
+   if((eligible||nearEligible)&&agreementOk&&confidenceOk&&
+      road.road_side===candidate){
     edge=clamp(edge+Math.min(cfg.ROAD_AUX_MAX_BOOST,.10)*
      road.road_agreement,0,1);
-    confirmed=true;
+    confirmed=eligible;
+    nearConfirmed=nearEligible;
    }else if(agreementOk&&road.road_side!=="NEUTRAL"&&
              road.road_side!==candidate){
     edge=clamp(edge-cfg.ROAD_AUX_CONFLICT_PENALTY,0,1);
     conflict=true;
    }
   }
-  const label=confirmed?"雙訊號同向":conflict?
+  const label=confirmed?"雙訊號同向":nearConfirmed?
+   "接近門檻但仍觀望（牌路同向）":conflict?
    "物理與牌路分歧（觀望偏安全）":null;
   const adjustedPath={...futurePath,
    ...(Number.isFinite(futurePath?.future_edge_score)?
@@ -664,7 +673,8 @@
    research_aux_edge_score:edge,road_aux_adjustment:edge-base,
    estimated_only:true,validated_betting_edge:false};
   return {
-   research_view:{...research,road_confirmed:confirmed,road_conflict:conflict,
+   research_view:{...research,road_confirmed:confirmed,
+    road_near_confirmed:nearConfirmed,road_conflict:conflict,
     road_confidence_label:label,research_aux_edge_score:edge,
     research_aux_base_edge_score:base,estimated_only:true,
     validated_betting_edge:false},
