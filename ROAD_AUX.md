@@ -31,7 +31,7 @@ For a newly appended Big Road bead at zero-indexed column `c`, row `r`, compute 
 | `ROAD_AUX_CONFIDENCE_MIN` | `0.45` | Minimum heuristic confidence for confirmation |
 | `ROAD_AUX_MAX_BOOST` | `0.08` | Max additive research score adjustment; config cap 0.10 |
 | `ROAD_AUX_CONFLICT_PENALTY` | `0.06` | Deduction from the research score; no candidate reversal |
-| `ROAD_AUX_REQUIRE_SOFT_ELIGIBLE` | `true` | Road confirmation requires original research `eligible` regardless of setting; no path promotes an ineligible Soft signal |
+| `ROAD_AUX_REQUIRE_SOFT_ELIGIBLE` | `true` | Only original research `eligible` may confirm; false allows bounded **near-eligible score diagnostics** when EV gap / SNR are within 90% of research thresholds and ESS / diversity / SE pass; never promotes `eligible` or direction |
 
 The road confidence is a bounded function of observed non-tie depth, usable derived roads, and vote agreement; **it is not the chance of winning**. Agreement and confidence thresholds only affect optional research display annotations.
 
