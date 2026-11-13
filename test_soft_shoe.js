@@ -1,6 +1,7 @@
 "use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs");
 const s=require("./soft_shoe_decision_runtime.js");
+require("./test_soft_shoe_strict_display.js");
 
 const roadAux=require("./derived_road_aux.js");
 const roadDefaults={
@@ -500,19 +501,19 @@ const html=fs.readFileSync("index.html","utf8"),auth=fs.readFileSync("auth-clien
 for(const id of ["btnB","btnP","btnT","btnStart","btnBack","btnEnd"])
  assert(html.includes('id="'+id+'"'));
 assert(html.includes("styles.css?v=20261106-bigroad-v1"));
-assert(html.includes("auth-client.js?v=20261113-road-aux-adaptive-v1"));
+assert(html.includes("auth-client.js?v=20261113-strict-dual-v1"));
 assert(auth.includes('"derived_road_aux.js?v=20261113-road-aux-adaptive-v1"'));
-assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261113-road-aux-adaptive-v1"'));
+assert(auth.includes('"soft_shoe_decision_runtime.js?v=20261113-strict-dual-v1"'));
 assert(auth.includes('"bpt_big_road.js?v=20261106-bigroad-v1"'));
-assert(auth.includes('"soft_shoe_panel.js?v=20261113-road-aux-adaptive-v1"'));
+assert(auth.includes('"soft_shoe_panel.js?v=20261113-strict-dual-v1"'));
 assert(!/const scripts=\[[\s\S]*?pf_eor_v4_panel\.js/.test(auth));
 assert(panel.includes('for(const [id,side] of [["btnB","B"],["btnP","P"],["btnT","T"]]'));
 assert(worker.includes("derived_road_aux.js?v=20261113-road-aux-adaptive-v1"));
-assert(worker.includes("soft_shoe_decision_runtime.js?v=20261113-road-aux-adaptive-v1"));
+assert(worker.includes("soft_shoe_decision_runtime.js?v=20261113-strict-dual-v1"));
 assert(worker.includes('soft_shoe_frozen_lstm_runtime.js?v=20261106-layered-v4'));
 assert(worker.includes('soft_shoe_frozen_model_bundle.js?v=20261106-layered-v4'));
-assert(panel.includes("soft_shoe_worker.js?v=20261113-road-aux-adaptive-v1"));
-assert(panel.includes('d=qualified&&["B","P"].includes(view.direction)?view.direction:"SKIP"'));
+assert(panel.includes("soft_shoe_worker.js?v=20261113-strict-dual-v1"));
+assert(panel.includes('d=qualified&&["B","P"].includes(displayDirection)?displayDirection:"SKIP"'));
 assert(panel.includes('!["B","P","SKIP"].includes(report.research_view.direction)'));
 assert(panel.includes('set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望")'));
 assert(panel.includes("觀望規則"));
