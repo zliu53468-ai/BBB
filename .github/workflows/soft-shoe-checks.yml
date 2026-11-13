@@ -12,6 +12,7 @@ on:
       - test_bpt_big_road.js
       - styles.css
       - test_soft_shoe.js
+      - test_soft_shoe_strict_display.js
       - auth-client.js
       - index.html
       - .github/workflows/soft-shoe-checks.yml
@@ -27,6 +28,7 @@ on:
       - test_bpt_big_road.js
       - styles.css
       - test_soft_shoe.js
+      - test_soft_shoe_strict_display.js
       - auth-client.js
       - index.html
       - .github/workflows/soft-shoe-checks.yml

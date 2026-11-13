@@ -28,12 +28,15 @@
   set("localCalibrationStatus","B/P/T 軟算牌 · 目前已記錄 "+history.length+" 局（同一牌靴）");
  }
  function show(report){
-  // Match the LINE Soft Shoe adapter: use the quality-gated research direction.
+  // Match LINE: strict display is separate from research diagnostics and BET.
   // The unqualified candidate remains diagnostic-only and never becomes a BET.
   last=report;const view=report.research_view||{},
    adaptive=report.adaptive_sampling||{},future=report.future_path||{},
-   qualified=view.eligible===true,
-   d=qualified&&["B","P"].includes(view.direction)?view.direction:"SKIP",
+   strict=report.strict_display||{},
+   strictEnabled=report.config?.STRICT_DUAL_DISPLAY_ENABLED!==false,
+   displayDirection=strictEnabled?report.strict_display_direction:view.direction,
+   qualified=strictEnabled?strict.passed===true:view.eligible===true,
+   d=qualified&&["B","P"].includes(displayDirection)?displayDirection:"SKIP",
    q=report.probabilities||{};
   set("directionText",d==="B"?"莊":d==="P"?"閒":"觀望");
   set("directionCode",d==="B"?"研究方向 / BANKER":d==="P"?"研究方向 / PLAYER":"品質觀望 / SKIP");
@@ -54,7 +57,7 @@
    low_particle_ess:"觀望：有效粒子不足",
    low_particle_diversity:"觀望：粒子多樣性不足"
   };
-  set("regime",future.research_label|| (qualified?"品質篩選通過（研究方向，非下注建議）":
+  set("regime",strictEnabled?(strict.label||"觀望"):future.research_label|| (qualified?"品質篩選通過（研究方向，非下注建議）":
    reasonNames[view.reason]||"觀望：方向品質未達門檻"));
   set("strength","下一局模型估計：莊 "+pct(q.B)+"｜閒 "+pct(q.P)+"｜和 "+pct(q.T));
   set("message","已輸入 "+report.observations+" 局｜候選方向 "+(report.candidate==="B"?"莊":"閒")+
@@ -77,7 +80,7 @@
    "｜Future Edge "+(Number.isFinite(future.future_edge_score)?
     Number(future.future_edge_score).toFixed(3):"—")+
    "｜牌路為輔助圖案訊號，非保證勝率；候選方向不代表下注建議；只有 B/P/T，實際發牌與殘牌未知；未驗證獲利優勢。");
-  set("modePill","Soft Shoe · LINE Soft Shoe 觀望規則");
+  set("modePill","Soft Shoe · LINE Soft Shoe "+(strictEnabled?"雙訊號嚴格顯示":"觀望規則"));
   set("localCalibrationStatus","48 維物理特徵＋Frozen 序列診斷＋XGBoost 安全閘門"+
    "｜模型："+String(report.model||"不可用"));
  }
@@ -85,7 +88,7 @@
   if(!root.Worker)return Promise.reject(Error("worker_unavailable"));
   const id=++request;
   return new Promise((resolve,reject)=>{
-   const w=new root.Worker("soft_shoe_worker.js?v=20261113-road-aux-adaptive-v1");worker=w;
+   const w=new root.Worker("soft_shoe_worker.js?v=20261113-strict-dual-v1");worker=w;
    const close=()=>{clearTimeout(timer);w.terminate();if(worker===w)worker=null;};
    const timer=setTimeout(()=>{close();reject(Error("worker_timeout"));},15000);
    w.onerror=()=>{close();reject(Error("worker_execution_failed"));};
@@ -164,6 +167,6 @@
  };
  syncBigRoad();
  uiIdle("點選「莊／閒／和」記錄本局結果，再估計下一局；每局觀測會累積在同一牌靴。");
- set("modePill","Soft Shoe · 適度觀望");
+ set("modePill","Soft Shoe · "+(core.DEFAULT.STRICT_DUAL_DISPLAY_ENABLED?"雙訊號嚴格顯示":"適度觀望"));
  set("pointInputStatus","已記錄 "+history.length+" 局；更換牌靴請按「結束分析」。");
 })(typeof window!=="undefined"?window:null);
