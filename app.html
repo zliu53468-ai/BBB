@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090716">
+  <title>莊家剋星AI百家程式</title>
+  <meta name="description" content="莊家剋星 AI 百家樂分析面板。">
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="stylesheet" href="styles.css?v=20261106-bigroad-v1">
+
+</head>
+<body>
+  <section id="licenseGate" class="license-gate" aria-label="程式授權登入">
+    <div class="license-shell">
+      <div class="license-logo"><img src="assets/logo-baccarat-slayer.webp" alt="莊家剋星"></div>
+      <div class="license-kicker">BANKER SLAYER · LICENSE ACCESS</div>
+      <h1>莊家剋星 AI 百家程式</h1>
+      <p class="license-desc">請輸入程式開通碼，通過裝置驗證後才會進入分析面板。</p>
+      <form id="licenseForm" class="license-form">
+        <label for="licenseCode">程式開通碼</label>
+        <input id="licenseCode" type="text" autocomplete="off" autocapitalize="characters" maxlength="32" placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX" required>
+        <button type="submit" id="licenseSubmit">驗證開通碼並進入</button>
+      </form>
+      <p id="licenseMessage" class="license-message" role="status" aria-live="polite">正在載入開通系統…</p>
+      <p class="license-detail">首次開通會綁定本瀏覽器的裝置金鑰。換手機、重裝瀏覽器或清除網站資料，請聯絡管理者重置。</p>
+      <p><a href="/expired/" style="color:#bfc8ff">授權到期或停用？前往官方客服頁</a></p>
+    </div>
+  </section>
+  <main class="app-shell" id="predictionApp" hidden>
+    <div class="brand-hero" aria-hidden="true">
+      <img class="hero-art" src="assets/hero-baccarat-slayer.webp" alt="">
+      <div class="hero-vignette" aria-hidden="true"></div>
+      <div class="hero-scan" aria-hidden="true"></div>
+      <div class="hero-particles" aria-hidden="true"></div>
+    </div>
+
+    <div class="app-viewport-content" id="appViewportContent">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <span class="mark-glow"></span>
+          <img src="assets/logo-baccarat-slayer.webp" alt="">
+        </div>
+        <div class="brand-copy">
+          <p class="eyebrow">BANKER SLAYER · AI ANALYSIS</p>
+          <h1>莊家剋星AI百家程式</h1>
+          <p class="brand-subtitle">Soft Shoe 粒子濾波 ・ B/P/T ・ EV 不確定性</p>
+        </div>
+      </div>
+      <div class="status-area">
+        <span class="status-pill"><i></i><span id="modePill">準備中</span></span>
+      </div>
+    </header>
+
+    <section class="card prediction-card">
+      <div class="card-title"><span>下一局方向</span><small>LIVE ANALYSIS</small></div>
+      <div class="prediction-layout">
+        <div class="direction-orb idle" id="directionOrb"><span id="directionText">—</span><small id="directionCode">等待分析</small></div>
+        <div class="metrics">
+          <div class="metric"><span>估計 EV／信心（非保證）</span><strong id="confidence">—</strong></div>
+          <div class="metric"><span>EV 決策品質</span><strong id="regime">—</strong></div>
+          <div class="metric"><span>牌路輔助（研究用）</span><strong id="roadAuxStatus">—</strong></div>
+          <div class="metric"><span>下一局莊／閒／和（模擬）</span><strong id="strength">—</strong></div>
+        </div>
+      </div>
+      <div class="message" id="message" aria-live="polite">請點選莊、閒、和記錄本局結果；每局結果更新鞋狀態估計</div>
+      
+    </section>
+
+    <section class="card controls-card">
+      <div class="bbb-results-block" aria-label="每局結果輸入">
+        <div class="bbb-input-head"><strong>記錄本局結果</strong><small>每局結果累積分析下一局</small></div>
+        <div class="result-buttons">
+          <button class="result-btn banker" id="btnB" type="button"><strong>莊</strong><small>BANKER</small></button>
+          <button class="result-btn player" id="btnP" type="button"><strong>閒</strong><small>PLAYER</small></button>
+          <button class="result-btn tie" id="btnT" type="button"><strong>和</strong><small>TIE</small></button>
+        </div>
+      </div>
+      <section class="bpt-road-compact" aria-label="本靴局數與百家樂大路">
+        <div class="bpt-road-heading">
+          <strong>百家樂大路 <small>6 × 15</small></strong>
+          <span id="bptRoundCounter" aria-live="polite">已開 0 局 · 下局第 1 局</span>
+        </div>
+        <div id="bptBigRoad" class="bpt-road-grid" aria-label="百家樂大路"></div>
+        <div class="bpt-road-legend" aria-hidden="true"><span class="legend-b">● 莊</span><span class="legend-p">● 閒</span><span class="legend-t">╱ 和</span><small>超過 15 欄顯示最新區段</small></div>
+      </section>
+      <div class="bbb-point-entry" id="bbbPointEntry" hidden aria-label="當局最終點數輸入">
+        <div class="bbb-point-heading"><strong>輸入當局最終點數</strong><small>左閒、右莊 · 手動開始分析下一局</small></div>
+        <div class="bbb-point-grid">
+          <label for="pointPlayerFinal" class="bbb-player-label">閒 PLAYER
+            <input id="pointPlayerFinal" type="number" min="0" max="9" step="1"
+              inputmode="numeric" autocomplete="off" placeholder="輸入 0–9" aria-label="閒家最終點數">
+          </label>
+          <label for="pointBankerFinal" class="bbb-banker-label">莊 BANKER
+            <input id="pointBankerFinal" type="number" min="0" max="9" step="1"
+              inputmode="numeric" autocomplete="off" placeholder="輸入 0–9" aria-label="莊家最終點數">
+          </label>
+        </div>
+        <button class="action-btn primary bbb-point-analyze" id="btnPointAnalyze" type="button">開始分析</button>
+        <p id="pointInputStatus" role="status" aria-live="polite">輸入兩邊 0–9 點數後按開始分析；電腦可按 Enter</p>
+      </div>
+      <p id="experimentalNoSkipStatus" class="experiment-note" role="status" aria-live="polite" hidden>未驗證實驗版｜不保證勝率；測試方向不等於正式下注資格</p>
+      <p id="localCalibrationStatus" role="status" aria-live="polite">本機校準：等待模型就緒</p>
+      <label for="forecastGap">一般方向門檻（莊閒機率差）</label>
+      <select id="forecastGap" aria-label="一般方向機率差距門檻" disabled>
+        <option value="0.01" selected>1 個百分點（50.5%／49.5%）</option>
+      </select>
+      <div class="action-buttons">
+        <button class="action-btn primary" id="btnStart" type="button">開始分析</button>
+        <button class="action-btn" id="btnNoSkipTest" type="button" aria-pressed="false">全程不觀望實驗</button>
+        <button class="action-btn" id="btnBack" type="button">返回上一局</button>
+        <button class="action-btn danger" id="btnEnd" type="button">結束分析</button>
+      </div>
+      <details class="bbb-clear-details"><summary>結束分析與資料清除說明</summary><div class="clear-note">結束分析會清空此開通碼的牌路、分析快照與歷史觀測；會員裝置授權仍會保留。未連線裝置將在下次驗證時同步清空。</div></details>
+    </section>
+
+    <details class="bbb-clear-details bbb-export-details"><summary>匯出本機逐局資料（離線研究用）</summary><p class="clear-note">歷史僅供返回上一局與 Markov 旁路診斷，不會改變本次 PF 預測方向。</p><div class="export-buttons"><button class="action-btn" id="btnExportTraining" type="button">匯出分析紀錄</button><button class="action-btn" id="btnExportObservations" type="button">匯出開牌資料</button></div></details>
+
+    <footer>莊家剋星AI百家程式 · AI DECISION ASSISTANT</footer>
+    </div>
+  </main>
+
+  <script src="auth-config.js?v=20261011-prod-gateway"></script>
+  <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
+  <script src="auth-client.js?v=20261114-expiry-line-routing-v1"></script>
+</body>
+</html>
+<!-- deploy: Physics Primary V13 model bundle 226130f -->
