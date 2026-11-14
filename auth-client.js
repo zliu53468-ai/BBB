@@ -95,6 +95,14 @@ async function verify(code){
   await putValue(LICENSE,code);
   return result;
 }
+function routeToExpiredHelp(){
+  const target=new URL("/expired/",window.location.origin);
+  if(window.parent!==window){
+    window.parent.postMessage({type:"bbb-license-expired"},window.location.origin);
+  }else{
+    window.location.replace(target.href);
+  }
+}
 function errorText(e){
   const names={
     server_not_configured:"管理者尚未完成開通伺服器設定，請聯絡客服。",
@@ -205,6 +213,7 @@ async function activate(code,silent=false){
     activeCode=code;
     await unlock(verified);
   }catch(e){
+    if(silent&&e?.message==="invalid_or_inactive_code"){routeToExpiredHelp();return;}
     // Never display cached private content on verification failure.
     authorized=false;panel.hidden=true;gate.hidden=false;
     if(e.status===403||e.status===409)await eraseValue(LICENSE);
@@ -221,10 +230,10 @@ async function confirmSession(){
     if(verified.license_id!==activeLicenseId){window.location.reload();return;}
     if(Number.isInteger(verified.generation))
       await storage?.syncGeneration(verified.generation);
-  }catch(_){
-    // License may have been revoked/reset. Lock the UI on any failed recheck.
+  }catch(error){
     authorized=false;activeCode="";panel.hidden=true;gate.hidden=false;
-    show("裝置授權需要重新驗證，請輸入開通碼。","error");
+    if(error?.message==="invalid_or_inactive_code"){routeToExpiredHelp();return;}
+    show("裝置授權暫時無法重新確認，請檢查網路後重新驗證。","error");
     return;
   }
   if(storage?.status().pending_remote_end){
