@@ -213,7 +213,7 @@ async function activate(code,silent=false){
     activeCode=code;
     await unlock(verified);
   }catch(e){
-    if(silent&&e?.message==="invalid_or_inactive_code"){routeToExpiredHelp();return;}
+    if(silent&&e?.message==="invalid_or_inactive_code"){try{await eraseValue(LICENSE);}catch(_){}routeToExpiredHelp();return;}
     // Never display cached private content on verification failure.
     authorized=false;panel.hidden=true;gate.hidden=false;
     if(e.status===403||e.status===409)await eraseValue(LICENSE);
@@ -232,7 +232,7 @@ async function confirmSession(){
       await storage?.syncGeneration(verified.generation);
   }catch(error){
     authorized=false;activeCode="";panel.hidden=true;gate.hidden=false;
-    if(error?.message==="invalid_or_inactive_code"){routeToExpiredHelp();return;}
+    if(error?.message==="invalid_or_inactive_code"){try{await eraseValue(LICENSE);}catch(_){}routeToExpiredHelp();return;}
     show("裝置授權暫時無法重新確認，請檢查網路後重新驗證。","error");
     return;
   }
