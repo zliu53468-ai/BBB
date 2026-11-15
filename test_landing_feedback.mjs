@@ -16,7 +16,7 @@ assert(h.includes("協助"),"helps explain assistant-oriented model");
 assert(h.includes("提升預測勝率為設計目標"),"win rate is an objective rather than an established measured outcome");
 assert(!h.includes("不保證獲利"),"remove that phrase from homepage promo material");
 assert(h.includes('id="trialStartBtn"')&&h.includes('id="dgDirectTrialLink"'),"existing trial and DG links");
-assert(h.includes('id="licenseForm"')&&h.includes('id="licenseMemberPanel" hidden'),"licensed entry preserved and not first visible");
+assert(h.includes('id="licenseForm"')&&/id="licenseMemberPanel"[^>]*hidden/.test(h),"licensed entry preserved and not first visible");
 assert(h.includes('href="./?license=1"'),"explicit member entry link");
 assert(auth.includes('get("license")==="1"'),"only explicit member-login query permits silent restoration");
 assert(!auth.includes('if(code){input.value=code.match(/.{1,6}/g).join("-");await activate(code,true);}'),"do not auto-open after cached auth on homepage");
