@@ -22,7 +22,7 @@ assert(!page.includes("<iframe"),"do not embed possibly age-restricted video");
 assert(!page.includes('"@type":"VideoObject"'),"no false watch-page VideoObject markup");
 assert(index.includes('id="trialStartBtn"')&&index.includes('id="dgDirectTrialLink"'),"free trial and DG entry preserved");
 assert(index.includes('id="licenseForm"')&&index.includes('id="licenseMemberPanel"'),"member form preserved");
-assert(index.includes('<script src="trial-client.js?v=20261115-dg-auto-tab-v2"></script>'),"trial client tag repaired");
+assert(index.includes('<script src="trial-client.js?v=20261115-bankroll-v1"></script>'),"trial client tag repaired");
 assert(index.includes('<script src="visitor-flow.js?v=20261115-visitor-v3"></script>'),"visitor flow tag repaired");
 assert(!index.includes('v=20261115-dg-auto-tab-v2"\n  <script'),"no malformed nested scripts");
 assert(!index.includes("</script>></script>"),"no broken script ending");
