@@ -5,6 +5,7 @@
   "use strict";
   const options=window.BBB_SITE_LINKS||{};
   const lastKey="bbb-last-casino-link-v1";
+  let lastOpenedInPage="";
   function safeUrl(value){
     if(typeof value!=="string"||!value.trim())return null;
     try {
@@ -25,9 +26,10 @@
     return Math.floor(Math.random()*count);
   }
   function previous(){
-    try{return window.sessionStorage.getItem(lastKey)||"";}catch(_){return "";}
+    try{return lastOpenedInPage||window.sessionStorage.getItem(lastKey)||"";}catch(_){return lastOpenedInPage;}
   }
   function remember(url){
+    lastOpenedInPage=url;
     try{window.sessionStorage.setItem(lastKey,url);}catch(_){}
   }
   function pickCasino(){
@@ -43,6 +45,8 @@
     const pool=urls.length>1?urls.filter(url=>url!==previousUrl):urls;
     return pool[randomIndex(pool.length)];
   }
+  // The initial href is a safe fallback for native new-tab navigation.
+  // A fresh destination is selected synchronously on EACH user click.
   const assignedCasino=pickCasino();
   function openAccountPrompt(){
     const dialog=document.getElementById("casinoAccountDialog");
@@ -73,9 +77,13 @@
       el.classList.remove("outbound-disabled");
       if(key==="casinoRegisterUrl"){
         el.addEventListener("click",()=>{
-          remember(href);
-          // Do not preventDefault: native target=_blank handles browsers and
-          // popup blockers; this dialog is shown on our original BBB page.
+          // This was previously fixed at page-load, which repeated the same
+          // destination on every click in the same page. Reselect now.
+          const destination=pickCasino();
+          if(!destination)return;
+          el.href=destination;
+          remember(destination);
+          // Keep native navigation (target=_blank) and the BBB dialog.
           openAccountPrompt();
         });
       }

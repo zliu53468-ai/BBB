@@ -148,7 +148,23 @@ async function startOrResume(){
     showError("試用啟動失敗："+String(error.message||error)+"。請稍後再試。");
   }finally{pending=false;startBtn.disabled=false;}
 }
-startBtn.addEventListener("click",startOrResume);
+// A direct click is the only reliable time to open a new tab. Launch DG now,
+ // BEFORE awaiting the Cloudflare trial API; otherwise popup blockers can
+ // reject a later window.open after the async verification step. The BBB tab
+ // remains in place and continues loading the original analysis panel.
+function openDgOnUserClick(){
+  const link=document.getElementById("dgTrialLink");
+  if(!link||!link.hasAttribute("href"))return;
+  try {
+    const url=new URL(link.href);
+    if(url.protocol==="https:")window.open(url.href,"_blank","noopener,noreferrer");
+  }catch(_){}
+}
+startBtn.addEventListener("click",()=>{
+  if(pending||mounted||gate.hidden||!panel.hidden)return;
+  openDgOnUserClick();
+  startOrResume();
+});
 ready.then(()=>{
   if(gate.hidden||!panel.hidden)return;
   if(new URLSearchParams(window.location.search).get("trial")==="1"&&readSession())startOrResume();

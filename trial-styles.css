@@ -48,3 +48,6 @@
 .casino-dialog-line{display:block;text-align:center;padding:15px 12px;margin:20px 0 11px;background:linear-gradient(100deg,#0a9649,#22bc61);border-radius:12px;text-decoration:none;font-size:16px;font-weight:850;color:#fff}
 .casino-dialog-dismiss{display:block;width:100%;padding:12px 14px;border:1px solid rgba(201,161,255,.43);background:rgba(255,255,255,.035);color:#e8defb;border-radius:12px;cursor:pointer;font:inherit}
 .casino-account-dialog .casino-dialog-footnote{margin:16px 0 0;font-size:11px;color:#9f93b7}
+
+/* Independent DG trial fallback on the welcome/license screen. */
+.trial-gate-dg-link{margin-top:12px;background:rgba(91,49,161,.48);border:1px solid rgba(184,142,250,.5);font-size:13px}
