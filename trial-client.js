@@ -15,9 +15,17 @@ const timerEl=document.getElementById("bbbTrialCountdown");
 const statusEl=document.getElementById("bbbTrialStatus");
 if(!startBtn||!gate||!panel||!banner)return;
 let mounted=false,pending=false,deadline=0,ticker=null,checker=null,token="",verifying=false;
+// Observe the original paid-license gate instead of changing its protected code.
 const ready=new Promise(resolve=>{
-  if(window.__BBB_AUTH_READY__)resolve();
-  else window.addEventListener("bbb:auth-ready",resolve,{once:true});
+  const msg=document.getElementById("licenseMessage");
+  const isSettled=()=>gate.hidden||!(/正在載入|授權中|正在核對/.test(msg?.textContent||""));
+  if(isSettled()){resolve();return;}
+  let finished=false;
+  const observer=new MutationObserver(()=>{
+    if(isSettled()&&!finished){finished=true;observer.disconnect();clearTimeout(limit);resolve();}
+  });
+  observer.observe(gate,{attributes:true,childList:true,subtree:true,characterData:true});
+  const limit=setTimeout(()=>{if(!finished){finished=true;observer.disconnect();resolve();}},12000);
 });
 function showError(message){if(startMsg){startMsg.textContent=message;startMsg.setAttribute("role","status");}}
 function readSession(){
@@ -75,7 +83,7 @@ async function script(src){
   });
 }
 async function mount(response){
-  if(mounted||window.__BBB_AUTH_MODE__==="licensed")return;
+  if(mounted||gate.hidden||!panel.hidden)return;
   if(!updateDeadline(response))return;
   window.__BBB_AUTH_MODE__="trial";
   token=String(response.token||token);
@@ -88,8 +96,13 @@ async function mount(response){
   panel.hidden=false;
   banner.hidden=false;
   try {
-    const urls=window.__BBB_SOFT_SHOE_SCRIPT_URLS__;
-    if(!Array.isArray(urls)||!urls.length)throw Error("找不到原本的 Soft Shoe 面板模組");
+    // Mirror the public read-only script URLs from the untouched licensed loader.
+    const urls=[
+      "derived_road_aux.js?v=20261113-road-aux-adaptive-v1",
+      "soft_shoe_decision_runtime.js?v=20261113-road-aux-adaptive-v1",
+      "bpt_big_road.js?v=20261106-bigroad-v1",
+      "soft_shoe_panel.js?v=20261113-road-aux-adaptive-v1"
+    ];
     for(const src of urls)await script(src);
   }catch(error){
     gate.hidden=false;panel.hidden=true;banner.hidden=true;window.__BBB_AUTH_MODE__=null;
@@ -114,7 +127,7 @@ async function startOrResume(){
   showError("正在取得 30 分鐘試用授權…");
   try {
     await ready;
-    if(window.__BBB_AUTH_MODE__==="licensed")return;
+    if(gate.hidden||!panel.hidden)return;
     if(!window.crypto?.randomUUID)throw Error("瀏覽器不支援安全試用識別，請更新瀏覽器");
     const existing=readSession();
     if(existing){
@@ -137,7 +150,7 @@ async function startOrResume(){
 }
 startBtn.addEventListener("click",startOrResume);
 ready.then(()=>{
-  if(window.__BBB_AUTH_MODE__==="licensed")return;
+  if(gate.hidden||!panel.hidden)return;
   if(new URLSearchParams(window.location.search).get("trial")==="1"&&readSession())startOrResume();
 });
 })();

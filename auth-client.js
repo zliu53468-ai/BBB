@@ -16,7 +16,6 @@ const scripts=[
  "bpt_big_road.js?v=20261106-bigroad-v1",
  "soft_shoe_panel.js?v=20261113-road-aux-adaptive-v1"
 ];
-window.__BBB_SOFT_SHOE_SCRIPT_URLS__=Object.freeze(scripts.slice());
 let dbPromise,activeCode="",activeLicenseId="",authorized=false,busy=false,runtimeLoaded=false,endBusy=false;
 function show(text,type="info"){message.textContent=text;message.dataset.status=type;}
 function openDb(){
@@ -188,7 +187,6 @@ async function unlock(verified){
   const end=document.getElementById("btnEnd");
   if(end)end.addEventListener("click",onEndAnalysis);
   panel.hidden=false;gate.hidden=true;authorized=true;
-  window.__BBB_AUTH_MODE__="licensed";
   try{
     const warning=sessionStorage.getItem("bbb-analysis-sync-warning");
     if(warning){
@@ -208,7 +206,7 @@ async function activate(code,silent=false){
     await unlock(verified);
   }catch(e){
     // Never display cached private content on verification failure.
-    authorized=false;window.__BBB_AUTH_MODE__=null;panel.hidden=true;gate.hidden=false;
+    authorized=false;panel.hidden=true;gate.hidden=false;
     if(e.status===403||e.status===409)await eraseValue(LICENSE);
     const label=e.message==="verified_license_id_missing"?"授權服務尚未更新，無法安全隔離會員資料，請更新 Worker。":
       e.message==="license_storage_not_ready"?"會員獨立儲存空間尚未準備完成，請重新整理。":errorText(e);
@@ -225,7 +223,7 @@ async function confirmSession(){
       await storage?.syncGeneration(verified.generation);
   }catch(_){
     // License may have been revoked/reset. Lock the UI on any failed recheck.
-    authorized=false;activeCode="";window.__BBB_AUTH_MODE__=null;panel.hidden=true;gate.hidden=false;
+    authorized=false;activeCode="";panel.hidden=true;gate.hidden=false;
     show("裝置授權需要重新驗證，請輸入開通碼。","error");
     return;
   }
@@ -241,7 +239,6 @@ async function confirmSession(){
     }
   }
 }
-const notifyAuthReady=()=>{window.__BBB_AUTH_READY__=true;window.dispatchEvent(new Event("bbb:auth-ready"));};
 form.addEventListener("submit",event=>{
   event.preventDefault();
   activate(cleanCode(input.value));
@@ -249,15 +246,14 @@ form.addEventListener("submit",event=>{
 (async()=>{
   panel.hidden=true;
   if(!window.isSecureContext||!window.crypto?.subtle||!window.indexedDB){
-    show("此瀏覽器不支援安全金鑰保存，請使用 HTTPS 與新版瀏覽器。","error");submit.disabled=true;notifyAuthReady();return;
+    show("此瀏覽器不支援安全金鑰保存，請使用 HTTPS 與新版瀏覽器。","error");submit.disabled=true;return;
   }
-  if(!api||!api.startsWith("https://")){show("開通伺服器尚未設定，請聯絡管理者。","error");submit.disabled=true;notifyAuthReady();return;}
+  if(!api||!api.startsWith("https://")){show("開通伺服器尚未設定，請聯絡管理者。","error");submit.disabled=true;return;}
   try{
     const code=await getValue(LICENSE);
     if(code){input.value=code.match(/.{1,6}/g).join("-");await activate(code,true);}
     else show("首次使用請輸入開通碼；完成綁定後，此瀏覽器會自動登入。");
   }catch(_){show("無法讀取裝置認證儲存空間。","error");}
-  finally{notifyAuthReady();}
 })();
 window.setInterval(()=>{if(authorized)confirmSession();},5*60*1000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&authorized)confirmSession();});
