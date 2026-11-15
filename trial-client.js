@@ -109,6 +109,7 @@ async function mount(response){
     showError("無法啟動試用面板："+String(error.message||error));return;
   }
   mounted=true;
+  window.BBB_BANKROLL?.onTrialMounted();
   ticker=setInterval(updateTime,1000);
   checker=setInterval(confirm,30000);
   document.addEventListener("visibilitychange",()=>{if(!document.hidden)confirm();});
@@ -148,21 +149,16 @@ async function startOrResume(){
     showError("試用啟動失敗："+String(error.message||error)+"。請稍後再試。");
   }finally{pending=false;startBtn.disabled=false;}
 }
-// A direct click is the only reliable time to open a new tab. Launch DG now,
- // BEFORE awaiting the Cloudflare trial API; otherwise popup blockers can
- // reject a later window.open after the async verification step. The BBB tab
- // remains in place and continues loading the original analysis panel.
-function openDgOnUserClick(){
-  const link=document.getElementById("dgTrialLink");
-  if(!link||!link.hasAttribute("href"))return;
-  try {
-    const url=new URL(link.href);
-    if(url.protocol==="https:")window.open(url.href,"_blank","noopener,noreferrer");
-  }catch(_){}
-}
+// BBB trial and DG free play are intentionally independent actions.
+// Never open DG when the member clicks to start the BBB prediction panel.
 startBtn.addEventListener("click",()=>{
   if(pending||mounted||gate.hidden||!panel.hidden)return;
-  openDgOnUserClick();
+  const bankroll=window.BBB_BANKROLL;
+  if(!bankroll){showError("本金設定功能未載入，請重新整理首頁。");return;}
+  if(!bankroll.consumeConfirmation()){
+    bankroll.promptAndStart();
+    return;
+  }
   startOrResume();
 });
 // Never auto-mount a trial panel during a plain homepage navigation.

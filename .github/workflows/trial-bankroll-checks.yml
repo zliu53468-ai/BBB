@@ -1,0 +1,38 @@
+name: BBB Trial Bankroll and Kelly Dashboard Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - trial-client.js
+      - bankroll-trial.js
+      - trial-styles.css
+      - baccarat-road-guide.html
+      - sitemap.xml
+      - test_trial_bankroll.mjs
+      - .github/workflows/trial-bankroll-checks.yml
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - trial-client.js
+      - bankroll-trial.js
+      - trial-styles.css
+      - baccarat-road-guide.html
+      - sitemap.xml
+      - test_trial_bankroll.mjs
+      - .github/workflows/trial-bankroll-checks.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-trial-dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check JS syntax and 60%-of-capital target
+        run: node --check trial-client.js && node --check bankroll-trial.js && node --check test_trial_bankroll.mjs && node test_trial_bankroll.mjs

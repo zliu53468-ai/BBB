@@ -143,3 +143,33 @@
 @media(max-width:1100px){.member-feedback-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:720px){.member-feedback-showcase{padding:22px 12px}.member-feedback-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.member-feedback-card{padding:10px 4px}.member-feedback-image{max-width:190px;width:100%;background-size:190px 868px}.member-feedback-card figcaption{font-size:10px}}
 @media(max-width:360px){.member-feedback-grid{grid-template-columns:1fr}.member-feedback-image{width:190px}}
+
+
+/* Separate bankroll setup from standalone DG demo, unchanged BBB model internals. */
+.bbb-bankroll-dialog{width:min(500px,calc(100vw - 30px));max-height:calc(100dvh - 32px);overflow-y:auto;background:linear-gradient(145deg,#241044,#120c28);color:#fff;border:1px solid rgba(212,149,252,.75);border-radius:20px;padding:26px 22px;box-shadow:0 24px 70px rgba(0,0,0,.56)}
+.bbb-bankroll-dialog::backdrop{background:rgba(7,3,20,.77);backdrop-filter:blur(5px)}
+.bbb-bankroll-dialog h2{font-size:24px;line-height:1.4;margin:0 0 9px}
+.bbb-bankroll-dialog p{line-height:1.7;color:#d6c3ec;font-size:13px}
+.bbb-bankroll-eyebrow{font-weight:900;letter-spacing:.09em;color:#dfadff!important;font-size:11px!important}
+.bbb-bankroll-dialog label{font-weight:850;font-size:14px;display:block;margin:18px 0 8px}
+.bbb-bankroll-dialog input,.bbb-money-update-form input{width:100%;box-sizing:border-box;border:1px solid rgba(202,163,255,.53);border-radius:10px;background:#1c123a;padding:13px 12px;color:#fff;font:600 16px/1.3 inherit}
+.bbb-bankroll-dialog .bbb-bankroll-preview{margin:13px 0;color:#e0c7ff}
+.bbb-bankroll-preview strong{color:#fff;font-size:21px}
+.bbb-bankroll-dialog button,.bbb-money-update-form button{cursor:pointer;font-weight:850;border-radius:11px;padding:13px 10px;border:1px solid rgba(225,187,255,.4);font-size:14px}
+.bbb-bankroll-dialog .bbb-bankroll-confirm{display:block;width:100%;background:linear-gradient(100deg,#6832cb,#ae4ae3);color:#fff}
+.bbb-bankroll-dialog .bbb-bankroll-cancel{display:block;width:100%;margin-top:10px;background:transparent;color:#d9c8ef}
+.bbb-bankroll-error{color:#ffb3c2!important;min-height:1em}
+.bbb-trial-bankroll-panel{border:1px solid rgba(200,149,245,.52);border-radius:14px;background:rgba(21,12,48,.65);padding:14px;display:grid;gap:11px}
+.bbb-bankroll-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.bbb-bankroll-grid>div{background:rgba(137,78,220,.12);border:1px solid rgba(215,168,255,.16);padding:10px;border-radius:10px}
+.bbb-bankroll-grid span{display:block;font-size:11px;color:#d7c7ec;margin-bottom:6px}
+.bbb-bankroll-grid strong{display:block;font-size:16px;color:#fff;overflow-wrap:anywhere}
+.bbb-profit-progress{height:10px;overflow:hidden;background:rgba(10,5,30,.8);border-radius:20px}
+#bbbMoneyProgress{height:100%;width:0;background:linear-gradient(90deg,#a25df7,#f78cea);transition:width .25s}
+#bbbMoneyStatus{font-size:12px;line-height:1.7;color:#dacbea;margin:0}
+.bbb-money-update-form{display:grid;gap:8px}
+.bbb-money-update-form label{font-size:12px;font-weight:800;color:#ddd0ee}
+.bbb-money-update-form button{background:rgba(142,82,229,.31);color:#fff}
+.bbb-trial-bankroll-panel.target-hit{border-color:#70dbb1}
+.bbb-trial-bankroll-panel.target-hit #bbbMoneyStatus{color:#81efc0;font-weight:850}
+@media(max-width:450px){.bbb-bankroll-dialog{padding:19px 14px}.bbb-bankroll-grid strong{font-size:14px}}
