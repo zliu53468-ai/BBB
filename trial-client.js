@@ -165,8 +165,7 @@ startBtn.addEventListener("click",()=>{
   openDgOnUserClick();
   startOrResume();
 });
-ready.then(()=>{
-  if(gate.hidden||!panel.hidden)return;
-  if(new URLSearchParams(window.location.search).get("trial")==="1"&&readSession())startOrResume();
-});
+// Never auto-mount a trial panel during a plain homepage navigation.
+ // Even returning visitors must deliberately press the trial button.
+
 })();

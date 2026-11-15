@@ -251,7 +251,14 @@ form.addEventListener("submit",event=>{
   if(!api||!api.startsWith("https://")){show("開通伺服器尚未設定，請聯絡管理者。","error");submit.disabled=true;return;}
   try{
     const code=await getValue(LICENSE);
-    if(code){input.value=code.match(/.{1,6}/g).join("-");await activate(code,true);}
+    if(code){
+      input.value=code.match(/.{1,6}/g).join("-");
+      // Landing page stays visible until the visitor explicitly selects
+      // the member-login entry. A stored code alone never auto-opens the panel.
+      if(new URLSearchParams(window.location.search).get("license")==="1")
+        await activate(code,true);
+      else show("已偵測到會員開通碼；需要進入預測面板時，請點選首頁的會員登入。");
+    }
     else show("首次使用請輸入開通碼；完成綁定後，此瀏覽器會自動登入。");
   }catch(_){show("無法讀取裝置認證儲存空間。","error");}
 })();
