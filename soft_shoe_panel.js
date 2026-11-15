@@ -20,6 +20,10 @@
   if(!root.localStorage?.setItem)throw Error("license_storage_not_ready");
   root.localStorage.setItem(KEY,JSON.stringify({version:1,history}));
  }
+ function notifyTrial(event,detail){
+  if(root.__BBB_AUTH_MODE__!=="trial"||!root.dispatchEvent||!root.CustomEvent)return;
+  try{root.dispatchEvent(new root.CustomEvent(event,{detail}));}catch(_){}
+ }
  function uiIdle(message){
   set("directionText","—");set("directionCode","等待分析");
   set("confidence","—");set("regime","等待輸入");set("strength","—");
@@ -126,6 +130,10 @@
    history=before;set("message","紀錄未成功儲存，已拒絕預測："+String(e.message||e));return;
   }
   syncBigRoad();
+  const view=last?.research_view||{};
+  const prediction=last?.observations===before.length&&view.eligible===true&&
+    ["B","P"].includes(view.direction)?view.direction:null;
+  notifyTrial("bbb:trial-result",{before,after:history.slice(),outcome,prediction});
   recalculate();
  }
  function back(){
@@ -133,6 +141,7 @@
   const before=history.slice();history.pop();
   try{persist();}catch(e){history=before;set("message","無法保存返回操作，未修改紀錄。");return;}
   syncBigRoad();
+  notifyTrial("bbb:trial-back",{after:history.slice()});
   recalculate();
  }
  function exportHistory(){
@@ -148,6 +157,7 @@
  $("btnStart")?.addEventListener("click",()=>recalculate());
  $("btnBack")?.addEventListener("click",()=>back());
  $("btnEnd")?.addEventListener("click",()=>{
+  notifyTrial("bbb:trial-reset",{});
   request++;worker?.terminate();worker=null;busy=true;last=null;
   set("directionText","—");
  });
