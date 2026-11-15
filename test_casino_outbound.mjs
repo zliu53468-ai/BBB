@@ -70,6 +70,10 @@ for(let seed=0;seed<expected.length;seed++){
   result.clicks.close();
   assert.equal(result.dialog.open,false);
   result.links[0].click();
+  assert.notEqual(result.links[0].href,expected[seed],
+    "same page must reselect on every click, not stay at original casino");
+  assert.equal(result.storage.getItem("bbb-last-casino-link-v1"),result.links[0].href,
+    "session must track latest clicked destination");
   result.clicks.dismiss();
   assert.equal(result.dialog.open,false);
 }
@@ -78,4 +82,13 @@ assert.notEqual(next.links[0].href,expected[0],"immediate repeat should be avoid
 const invalid=run(0,"",{casinoRegisterUrls:["javascript:alert(1)","http://not-allowed.test"],lineContactUrl:"javascript:alert(1)",dgTrialUrl:"http://not-allowed.test"});
 assert.equal(invalid.links[0].attributes["aria-disabled"],"true");
 assert.equal(invalid.links[1].attributes["aria-disabled"],"true");
-console.log(JSON.stringify({ok:true,checks:["five_equal_weight_options","exact_affiliate_urls","line_transfer","new_tab","account_dialog","avoids_last_site","https_guard","dg_unchanged"]}));
+const indexHtml=fs.readFileSync(new URL("./index.html",import.meta.url),"utf8");
+const trialClient=fs.readFileSync(new URL("./trial-client.js",import.meta.url),"utf8");
+assert(indexHtml.includes('id="dgDirectTrialLink"'),"independent DG trial button must be visible before backend authorization");
+assert(indexHtml.includes("20261115-dg-auto-tab-v2"));
+assert(trialClient.includes('window.open(url.href,"_blank","noopener,noreferrer")'),"DG must open from the direct user click");
+const clickPos=trialClient.indexOf('startBtn.addEventListener("click",()=>{');
+const openPos=trialClient.indexOf("  openDgOnUserClick();",clickPos);
+const asyncPos=trialClient.indexOf("  startOrResume();",clickPos);
+assert(clickPos>=0&&openPos>clickPos&&asyncPos>openPos,"open DG synchronously before async trial verification");
+console.log(JSON.stringify({ok:true,checks:["five_equal_weight_options","exact_affiliate_urls","line_transfer","new_tab","account_dialog","per_click_reselection","avoids_last_site","https_guard","dg_auto_tab_on_click","dg_manual_fallback"]}));

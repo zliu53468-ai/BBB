@@ -17,7 +17,7 @@
   <meta property="og:image" content="https://bgsv1.xyz/assets/hero-baccarat-slayer.webp">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"莊家剋星 AI 百家樂分析程式","url":"https://bgsv1.xyz/","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"zh-Hant","description":"30分鐘試用的百家樂莊閒和記錄、百家大路與研究性機率分析工具。估計僅供參考，不保證預測命中或獲利。"}</script>
   <link rel="stylesheet" href="styles.css?v=20261106-bigroad-v1">
-  <link rel="stylesheet" href="trial-styles.css?v=20261115-trial-v1">
+  <link rel="stylesheet" href="trial-styles.css?v=20261115-trial-v2">
 
 </head>
 <body>
@@ -34,7 +34,8 @@
       </form>
       <div class="trial-start-separator">新玩家免費體驗</div>
       <button type="button" id="trialStartBtn">立即免費試用 30 分鐘</button>
-      <p id="trialStartMessage" role="status" aria-live="polite">不須開通碼，首次啟用開始計時；重新整理不會重置試用期限。</p>
+      <p id="trialStartMessage" role="status" aria-live="polite">點擊試用會另開 DG 免費試玩分頁，原本 BBB 預測頁保留。首次啟用開始計時；重新整理不會重置試用期限。</p>
+      <a id="dgDirectTrialLink" class="trial-dg-link trial-gate-dg-link" data-bbb-link="dgTrialUrl" target="_blank" rel="noopener noreferrer sponsored">單獨開啟 DG 官方試玩（新分頁）</a>
       <p id="licenseMessage" class="license-message" role="status" aria-live="polite">正在載入開通系統…</p>
       <p class="license-detail">首次開通會綁定本瀏覽器的裝置金鑰。換手機、重裝瀏覽器或清除網站資料，請聯絡管理者重置。</p>
     </div>
@@ -156,9 +157,9 @@
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="site-links.js?v=20261115-outbound-v1"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
-  <script src="outbound-links.js?v=20261115-outbound-v1"></script>
+  <script src="outbound-links.js?v=20261115-click-rotation-v2"></script>
   <script src="auth-client.js?v=20261113-road-aux-adaptive-v1"></script>
-  <script src="trial-client.js?v=20261115-trial-v1"></script>
+  <script src="trial-client.js?v=20261115-dg-auto-tab-v2"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->
