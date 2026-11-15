@@ -1,0 +1,38 @@
+name: BBB Trial Recovery and Profit-Target Redirect Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "trial-client.js"
+      - "bankroll-trial.js"
+      - "index.html"
+      - "trial-ended.html"
+      - "license-worker/src/index.js"
+      - "test_trial_recovery_profit.mjs"
+      - ".github/workflows/trial-recovery-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "trial-client.js"
+      - "bankroll-trial.js"
+      - "index.html"
+      - "trial-ended.html"
+      - "license-worker/src/index.js"
+      - "test_trial_recovery_profit.mjs"
+      - ".github/workflows/trial-recovery-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-trial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax and route tests
+        run: node --check trial-client.js && node --check bankroll-trial.js && node test_trial_recovery_profit.mjs
+      - name: Existing D1 contract tests
+        run: node license-worker/test-trial.mjs

@@ -16,7 +16,7 @@
   const updateForm=document.getElementById("bbbMoneyUpdateForm");
   const currentInput=document.getElementById("bbbMoneyUpdateAmount");
   if(!dialog||!form||!initialInput||!startBtn||!panel||!updateForm)return;
-  let confirmed=false,mounted=false,initial=0,current=0,hit=false,watch=null;
+  let confirmed=false,mounted=false,initial=0,current=0,hit=false,watch=null,stopWinTimer=null;
 
   function money(n){
     return Number.isFinite(n)?"NT$ "+n.toLocaleString("zh-TW",{maximumFractionDigits:2,minimumFractionDigits:0}):"—";
@@ -64,12 +64,22 @@
     const node=document.getElementById(id);
     if(node)node.textContent=text;
   }
+  function scheduleStopWinRedirect(){
+    if(!mounted||!hit||stopWinTimer!==null)return;
+    stopWinTimer=setTimeout(()=>{
+      if(!mounted||!hit)return;
+      if(watch!==null){clearInterval(watch);watch=null;}
+      // User-entered current balance, not a claimed prediction success rate.
+      // Reuse the existing referral and LINE trial-end landing page.
+      window.location.replace("./trial-ended.html?reason=profit60");
+    },1800);
+  }
   function updateKelly(){
     if(!mounted||!initial)return;
     const target=Math.round(initial*1.6*100)/100;
     const goalProfit=Math.round(initial*.6*100)/100;
     if(current>=target-0.005)hit=true;
-    if(hit)save();
+    if(hit){save();scheduleStopWinRedirect();}
     updateText("bbbMoneyStart",money(initial));
     updateText("bbbMoneyTarget",money(target));
     updateText("bbbMoneyCurrent",money(current));
@@ -82,7 +92,7 @@
     if(hit){
       updateText("bbbMoneyKelly","已止盈");
       updateText("bbbMoneyStake",money(0));
-      updateText("bbbMoneyStatus","已達起始本金盈利 60% 的止盈目標；本次試用不再提供參考下注金額。這不會控制外部娛樂城的下注。");
+      updateText("bbbMoneyStatus","已達起始本金盈利 60% 的止盈目標，正在前往試用結束／官方管理員及娛樂城頁面。本次試用不再提供參考下注金額。");
       return;
     }
     const report=window.__BBB_SOFT_SHOE_PANEL__?.latestReport;
@@ -122,6 +132,7 @@
       if(error)error.textContent="請輸入有效的正數本金（最高 NT$ 10 億）。";
       return;
     }
+    if(stopWinTimer!==null){clearTimeout(stopWinTimer);stopWinTimer=null;}
     initial=capital;current=capital;hit=false;confirmed=true;
     save();closeDialog();
     // The next click is a local synthetic click to the existing BBB trial
