@@ -6,6 +6,8 @@
 "use strict";
 const api=String(window.BBB_AUTH_API_BASE||"").replace(/\/+$/,"");
 const sessionKey="bbb-public-trial-session-v1",deviceKey="bbb-public-trial-device-v1";
+const localKey="bbb-public-trial-local-fallback-v1";
+const trialDurationMs=30*60*1000;
 const startBtn=document.getElementById("trialStartBtn");
 const startMsg=document.getElementById("trialStartMessage");
 const gate=document.getElementById("licenseGate");
@@ -15,6 +17,7 @@ const timerEl=document.getElementById("bbbTrialCountdown");
 const statusEl=document.getElementById("bbbTrialStatus");
 if(!startBtn||!gate||!panel||!banner)return;
 let mounted=false,pending=false,deadline=0,ticker=null,checker=null,token="",verifying=false;
+let localMode=false,localExpiresAt=0;
 // Observe the original paid-license gate instead of changing its protected code.
 const ready=new Promise(resolve=>{
   const msg=document.getElementById("licenseMessage");
@@ -32,6 +35,35 @@ function readSession(){
   try {const data=JSON.parse(localStorage.getItem(sessionKey)||"null");
     return data&&typeof data.token==="string"&&/^[A-Za-z0-9_-]{43}$/.test(data.token)?data:null;
   }catch(_){return null;}
+}
+function readLocal(){
+  let raw;
+  try{raw=localStorage.getItem(localKey);}catch(_){throw Error("本機試用資料無法讀取，請允許網站儲存空間");}
+  if(!raw)return null;
+  let row;
+  try{row=JSON.parse(raw);}catch(_){throw Error("試用紀錄損毀，請聯繫管理員");}
+  if(!Number.isSafeInteger(row?.started_at)||!Number.isSafeInteger(row?.expires_at)||
+    row.expires_at-row.started_at!==trialDurationMs)
+    throw Error("試用紀錄不完整，請聯繫管理員");
+  return row;
+}
+async function startLocalTrial(){
+  // Current production Worker can respond 404/not_found because it still runs
+  // the pre-trial version. The public demo can remain usable in this degraded
+  // client-side mode; unlike D1, clearing browser data can bypass the limit.
+  let row=readLocal();
+  const now=Date.now();
+  if(!row){
+    row={started_at:now,expires_at:now+trialDurationMs};
+    localStorage.setItem(localKey,JSON.stringify(row));
+  }
+  if(now>=row.expires_at){goEnded("expired");return;}
+  localMode=true;localExpiresAt=row.expires_at;
+  token="";
+  const reply={ok:true,active:true,expires_at:row.expires_at,server_now:now,new_session:now===row.started_at};
+  await mount(reply);
+  if(mounted&&statusEl)
+    statusEl.textContent="試用模式：因授權服務版本尚未更新，暫以本瀏覽器記錄 30 分鐘倒數；不會自動投注。";
 }
 function goEnded(reason="expired"){
   // Stop further user interaction with the analysis panel before navigation.
@@ -51,7 +83,11 @@ async function request(path,data){
 }
 function updateTime(){
   if(!mounted)return;
-  const ms=Math.max(0,deadline-performance.now());
+  // For local preview, also compare the wall clock on every tick/focus:
+  // background-tab throttling must not silently extend the 30 minutes.
+  const ms=Math.max(0,localMode
+    ?Math.min(deadline-performance.now(),localExpiresAt-Date.now())
+    :deadline-performance.now());
   const sec=Math.ceil(ms/1000);
   if(timerEl)timerEl.textContent=String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0");
   if(ms<=0)goEnded("expired");
@@ -66,7 +102,9 @@ function updateDeadline(response){
   return true;
 }
 async function confirm(){
-  if(!mounted||verifying||!token)return;
+  if(!mounted)return;
+  if(localMode){updateTime();return;}
+  if(verifying||!token)return;
   verifying=true;
   try {
     const data=await request("/api/trial/status",{token});
@@ -130,6 +168,11 @@ async function startOrResume(){
     await ready;
     if(gate.hidden||!panel.hidden)return;
     if(!window.crypto?.randomUUID)throw Error("瀏覽器不支援安全試用識別，請更新瀏覽器");
+    const local=readLocal();
+    if(local){
+      await startLocalTrial();
+      return;
+    }
     const existing=readSession();
     if(existing){
       token=existing.token;
@@ -146,7 +189,15 @@ async function startOrResume(){
     }
   }catch(error){
     if(error.status===409){goEnded("used");return;}
-    showError("試用啟動失敗："+String(error.message||error)+"。請稍後再試。");
+    // Old paid-license Worker recognizes /api/challenge but not the two new
+    // /api/trial routes. Its generic 404 JSON is {error:"not_found"}.
+    // Other failures do NOT silently downgrade security to a local trial.
+    if(error.status===404&&error.message==="not_found"){
+      try{await startLocalTrial();return;}
+      catch(localError){showError("本機試用啟動失敗："+String(localError?.message||localError));return;}
+    }
+    showError("試用啟動失敗："+String(error.message||error)+
+      "。請確認授權服務已完成部署，或聯繫管理員。");
   }finally{pending=false;startBtn.disabled=false;}
 }
 // BBB trial and DG free play are intentionally independent actions.

@@ -173,3 +173,6 @@
 .bbb-trial-bankroll-panel.target-hit{border-color:#70dbb1}
 .bbb-trial-bankroll-panel.target-hit #bbbMoneyStatus{color:#81efc0;font-weight:850}
 @media(max-width:450px){.bbb-bankroll-dialog{padding:19px 14px}.bbb-bankroll-grid strong{font-size:14px}}
+
+/* Completion state for manually updated +60% bankroll objective. */
+.trial-profit-complete{color:#f0e0ff;font-weight:750;font-size:14px;line-height:1.75;padding:13px;border-radius:12px;background:rgba(113,44,171,.24);border:1px solid rgba(217,159,255,.52)}

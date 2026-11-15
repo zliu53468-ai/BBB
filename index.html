@@ -33,7 +33,7 @@
       <div class="trial-visitor-entry" aria-label="新訪客體驗入口">
         <a id="dgDirectTrialLink" class="trial-dg-link trial-gate-dg-link" data-bbb-link="dgTrialUrl" target="_blank" rel="noopener noreferrer sponsored">開啟 DG 真人百家免費試玩（新分頁）</a>
         <button type="button" id="trialStartBtn">啟動 BBB 預測面板 · 免費試用 30 分鐘</button>
-        <p id="trialStartMessage" role="status" aria-live="polite">先輸入起始本金，再啟動 BBB 預測面板；DG 試玩為上方另一個獨立按鈕。30 分鐘體驗期限從首次取得試用授權開始計算。</p>
+        <p id="trialStartMessage" role="status" aria-live="polite">先輸入本金，再開啟 BBB 預測面板。DG 只有點選獨立「DG 免費試玩」按鈕才會另開分頁。試用期限為首次啟用起算 30 分鐘；授權後端未更新時會使用本瀏覽器計時。</p>
       </div>
       <section id="returnVisitorCard" class="return-visitor-card" hidden aria-labelledby="returnVisitorHeading">
         <p class="return-visitor-kicker">WELCOME BACK · 後續使用</p>
@@ -138,7 +138,7 @@
           <div><span>參考金額</span><strong id="bbbMoneyStake">—</strong></div>
         </div>
         <div class="bbb-profit-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="距離60%止盈目標進度"><div id="bbbMoneyProgress"></div></div>
-        <p id="bbbMoneyStatus" role="status" aria-live="polite">目標由本金計算；真實資金請自行輸入，程式不會同步娛樂城餘額。</p>
+        <p id="bbbMoneyStatus" role="status" aria-live="polite">請自行更新目前資金。達到本金 +60% 的止盈目標後，約 2 秒會自動轉至試用結束及 LINE 聯繫頁；不是預測勝率門檻。</p>
         <form id="bbbMoneyUpdateForm" class="bbb-money-update-form">
           <label for="bbbMoneyUpdateAmount">更新目前資金（NT$）</label>
           <input id="bbbMoneyUpdateAmount" type="number" inputmode="decimal" min="0" max="1000000000" step="0.01" required placeholder="輸入目前帳戶資金">
@@ -236,8 +236,8 @@
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
   <script src="outbound-links.js?v=20261115-return-rotation-v3"></script>
   <script src="auth-client.js?v=20261113-road-aux-adaptive-v1"></script>
-  <script src="bankroll-trial.js?v=20261115-bankroll-v1"></script>
-  <script src="trial-client.js?v=20261115-bankroll-v1"></script>
+  <script src="bankroll-trial.js?v=20261115-profit60-autoend-v2"></script>
+  <script src="trial-client.js?v=20261115-localfallback-v2"></script>
   <script src="visitor-flow.js?v=20261115-visitor-v3"></script>
 </body>
 </html>
