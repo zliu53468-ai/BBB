@@ -5,6 +5,9 @@
   "use strict";
   const options=window.BBB_SITE_LINKS||{};
   const lastKey="bbb-last-casino-link-v1";
+  const funnelKey="bbb-funnel-last-action-v1";
+  const nextHint=document.getElementById("casinoNextHint");
+  let casinoButton=null;
   let lastOpenedInPage="";
   function safeUrl(value){
     if(typeof value!=="string"||!value.trim())return null;
@@ -31,6 +34,21 @@
   function remember(url){
     lastOpenedInPage=url;
     try{window.sessionStorage.setItem(lastKey,url);}catch(_){}
+  }
+  function markFunnel(action){
+    if(action!=="casino"&&action!=="line")return;
+    const payload=JSON.stringify({action,at:Date.now()});
+    // A first-party client-side signal only: no user ID, cookies or API calls.
+    try{window.localStorage.setItem(funnelKey,payload);}catch(_){
+      try{window.sessionStorage.setItem(funnelKey,payload);}catch(_){}
+    }
+  }
+  function prepareNextCasino(){
+    if(!casinoButton)return;
+    const next=pickCasino();
+    if(!next)return;
+    casinoButton.href=next;
+    if(nextHint)nextHint.hidden=false;
   }
   function pickCasino(){
     const entries=Array.isArray(options.casinoRegisterUrls)
@@ -63,6 +81,7 @@
     if(!dialog)return;
     if(typeof dialog.close==="function")dialog.close();
     else{dialog.hidden=true;dialog.removeAttribute("open");}
+    prepareNextCasino();
   }
   document.getElementById("casinoAccountClose")?.addEventListener("click",closeAccountPrompt);
   document.getElementById("casinoAccountDismiss")?.addEventListener("click",closeAccountPrompt);
@@ -76,16 +95,22 @@
       el.removeAttribute("aria-disabled");
       el.classList.remove("outbound-disabled");
       if(key==="casinoRegisterUrl"){
+        casinoButton=el;
         el.addEventListener("click",()=>{
-          // This was previously fixed at page-load, which repeated the same
-          // destination on every click in the same page. Reselect now.
+          // Native target=_blank uses this destination from the current click.
           const destination=pickCasino();
           if(!destination)return;
           el.href=destination;
           remember(destination);
-          // Keep native navigation (target=_blank) and the BBB dialog.
+          markFunnel("casino");
           openAccountPrompt();
+          // A new tab may suspend this one. When the visitor returns, the
+          // NEXT destination is already prepared, without any page refresh.
+          // Never trigger another unsolicited popup or redirect loop.
+          if(typeof window.setTimeout==="function")window.setTimeout(prepareNextCasino,0);
         });
+      } else if(key==="lineContactUrl"){
+        el.addEventListener("click",()=>markFunnel("line"));
       }
     }else{
       el.removeAttribute("href");
@@ -94,5 +119,16 @@
       el.title="管理員尚未設定此連結";
       el.addEventListener("click",event=>event.preventDefault());
     }
+  }
+  // Restoring from the browser back-forward cache must also refresh the
+  // destination, since the entire document (including the old href) is reused.
+  if(casinoButton&&typeof window.addEventListener==="function"){
+    window.addEventListener("pageshow",event=>{
+      if(event?.persisted&&lastOpenedInPage)prepareNextCasino();
+    });
+    window.addEventListener("focus",()=>{
+      if(lastOpenedInPage&&typeof window.setTimeout==="function")
+        window.setTimeout(prepareNextCasino,0);
+    });
   }
 })();
