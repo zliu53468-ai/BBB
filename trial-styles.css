@@ -74,3 +74,32 @@
 .license-member-panel>p{font-size:12px;color:#b6a8cc;line-height:1.7}
 .license-member-panel .license-form{margin-top:12px}
 .casino-next-hint{font-size:12px!important;color:#d7c6ff!important;padding:10px 12px;border:1px solid rgba(180,137,241,.38);border-radius:10px;background:rgba(69,35,121,.25)}
+
+
+/* Crawlable YouTube thumbnail preview. No embedded iframe: a YouTube 18+ video
+   may refuse playback in a third-party frame. */
+.featured-youtube{margin-bottom:20px;padding:17px;border:1px solid rgba(177,126,248,.40);border-radius:16px;background:linear-gradient(145deg,rgba(41,22,86,.7),rgba(21,14,43,.92))}
+.featured-youtube .featured-video-kicker{margin:0 0 5px;color:#ccaaff;font-size:11px;letter-spacing:.08em;font-weight:800}
+.featured-youtube h2{font-size:21px;line-height:1.45;margin:0 0 9px;color:#fff}
+.featured-youtube>p{font-size:13px;line-height:1.7}
+.featured-video-thumbnail{position:relative;display:block;margin:14px auto 9px;width:min(560px,100%);aspect-ratio:16/9;overflow:hidden;border-radius:14px;border:1px solid rgba(224,197,255,.2);background:linear-gradient(125deg,#221345,#5f328e);box-shadow:0 8px 25px rgba(0,0,0,.3)}
+.featured-video-thumbnail img{display:block;width:100%;height:100%;object-fit:cover}
+.featured-video-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);padding:10px 20px;border-radius:16px;background:rgba(217,33,33,.93);color:#fff;font-size:24px;box-shadow:0 5px 22px rgba(0,0,0,.4)}
+.featured-video-thumbnail:hover .featured-video-play{background:#d71919;box-shadow:0 0 0 4px rgba(255,255,255,.16)}
+.featured-youtube .featured-video-links{margin:8px 0 4px;text-align:center;color:#c7b8ea}
+.featured-youtube .featured-video-links a{color:#e1ccff;text-decoration:underline;text-underline-offset:3px}
+.featured-youtube .featured-video-disclaimer{font-size:11px;color:#b5a5cf;margin:10px 0 0}
+.featured-video-thumbnail:focus-visible{outline:3px solid #deb2ff;outline-offset:3px}
+@media(max-width:500px){.featured-youtube{padding:12px}.featured-youtube h2{font-size:18px}.featured-video-play{font-size:20px}}
+
+/* YouTube video article entry is independently indexable and links back home. */
+.video-detail-body{padding:25px 15px}
+.video-detail-shell{width:min(780px,100%);text-align:left}
+.video-detail-shell>.trial-end-logo,.video-detail-shell>.trial-end-kicker,.video-detail-shell>h1{text-align:center}
+.video-detail-shell h1{font-size:clamp(25px,5.5vw,34px)}
+.video-detail-shell>.featured-video-thumbnail{max-width:670px;margin:20px auto 16px}
+.video-detail-watch{display:block;text-align:center;text-decoration:none;border-radius:12px;padding:16px 12px;background:linear-gradient(105deg,#711ee9,#9b51f3);color:#fff;font-weight:850}
+.video-detail-explainer{border-top:1px solid rgba(185,138,255,.24);margin-top:25px;padding-top:17px}
+.video-detail-explainer h2{color:#f2e7ff;font-size:18px;margin:18px 0 8px}
+.video-detail-explainer p{color:#c7b9e2;font-size:13px;line-height:1.8}
+.video-detail-explainer a{color:#e0c7ff;text-decoration:underline}

@@ -1,0 +1,33 @@
+// Public SEO and YouTube thumbnail contract, without network or production secrets.
+import fs from "node:fs";
+import assert from "node:assert/strict";
+const read=name=>fs.readFileSync(new URL("./"+name,import.meta.url),"utf8");
+const index=read("index.html");
+const page=read("youtube-video.html");
+const style=read("trial-styles.css");
+const sitemap=read("sitemap.xml");
+const robots=read("robots.txt");
+const video="https://www.youtube.com/watch?v=ns76j16hLTM";
+const thumb="https://i.ytimg.com/vi/ns76j16hLTM/hqdefault.jpg";
+
+assert(index.includes('class="featured-youtube"'),"homepage shows public YouTube section");
+assert(index.includes(video)&&index.includes(thumb),"homepage links to exact video and thumbnail");
+assert(index.includes('href="youtube-video.html"'),"homepage links to video info page");
+assert(page.includes(video)&&page.includes(thumb),"video page links to same video");
+assert(page.includes('rel="canonical" href="https://bgsv1.xyz/youtube-video.html"'),"unique canonical");
+assert(page.includes('meta name="robots" content="index,follow'),"video info page is indexable");
+assert(page.includes('alt="莊家剋星 YouTube 影片縮圖"'),"thumbnail has useful alt");
+assert(page.includes('target="_blank" rel="noopener noreferrer"'),"external link uses safe new tab");
+assert(!page.includes("<iframe"),"do not embed possibly age-restricted video");
+assert(!page.includes('"@type":"VideoObject"'),"no false watch-page VideoObject markup");
+assert(index.includes('id="trialStartBtn"')&&index.includes('id="dgDirectTrialLink"'),"free trial and DG entry preserved");
+assert(index.includes('id="licenseForm"')&&index.includes('id="licenseMemberPanel"'),"member form preserved");
+assert(index.includes('<script src="trial-client.js?v=20261115-dg-auto-tab-v2"></script>'),"trial client tag repaired");
+assert(index.includes('<script src="visitor-flow.js?v=20261115-visitor-v3"></script>'),"visitor flow tag repaired");
+assert(!index.includes('v=20261115-dg-auto-tab-v2"\n  <script'),"no malformed nested scripts");
+assert(!index.includes("</script>></script>"),"no broken script ending");
+assert(style.includes(".featured-video-thumbnail"),"responsive thumbnail style");
+assert(sitemap.includes("https://bgsv1.xyz/")&&sitemap.includes("https://bgsv1.xyz/youtube-video.html"),"both pages in sitemap");
+assert(!sitemap.includes("trial-ended.html"),"marketing exit page excluded");
+assert(robots.includes("Sitemap: https://bgsv1.xyz/sitemap.xml"),"robots sitemap reference");
+console.log(JSON.stringify({ok:true,checks:["youtube_link","thumbnail","home_section","seo_article","canonical","sitemap","no_fake_video_schema","existing_auth","script_repair"]}));

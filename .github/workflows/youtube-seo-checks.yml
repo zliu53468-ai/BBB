@@ -1,0 +1,36 @@
+name: BBB YouTube Thumbnail and SEO Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - youtube-video.html
+      - trial-styles.css
+      - sitemap.xml
+      - robots.txt
+      - test_youtube_video_seo.mjs
+      - .github/workflows/youtube-seo-checks.yml
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - youtube-video.html
+      - trial-styles.css
+      - sitemap.xml
+      - robots.txt
+      - test_youtube_video_seo.mjs
+      - .github/workflows/youtube-seo-checks.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-video-seo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check thumbnail links, indexability and existing scripts
+        run: node test_youtube_video_seo.mjs
