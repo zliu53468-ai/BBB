@@ -1,0 +1,36 @@
+name: BBB Casino Rotation and Transfer Prompt Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "site-links.js"
+      - "outbound-links.js"
+      - "trial-ended.html"
+      - "trial-styles.css"
+      - "test_casino_outbound.mjs"
+      - ".github/workflows/casino-outbound-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "site-links.js"
+      - "outbound-links.js"
+      - "trial-ended.html"
+      - "trial-styles.css"
+      - "test_casino_outbound.mjs"
+      - ".github/workflows/casino-outbound-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  casino-outbound:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: JavaScript syntax checks
+        run: node --check site-links.js && node --check outbound-links.js && node --check test_casino_outbound.mjs
+      - name: Random destination and LINE transfer interface contract
+        run: node test_casino_outbound.mjs
