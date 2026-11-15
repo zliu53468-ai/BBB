@@ -103,3 +103,20 @@
 .video-detail-explainer h2{color:#f2e7ff;font-size:18px;margin:18px 0 8px}
 .video-detail-explainer p{color:#c7b9e2;font-size:13px;line-height:1.8}
 .video-detail-explainer a{color:#e0c7ff;text-decoration:underline}
+
+
+/* Vibrant purple entrance: presentation-only; original B/P/T panel untouched. */
+#licenseGate{background:radial-gradient(ellipse at 5% 18%,rgba(166,64,252,.31),transparent 58%),radial-gradient(ellipse at 95% 12%,rgba(250,69,238,.19),transparent 52%),linear-gradient(145deg,#0b0520,#21104d 58%,#090519)}
+#licenseGate .license-shell{width:min(580px,100%);border:1px solid rgba(202,125,255,.63);border-radius:28px;background:linear-gradient(140deg,rgba(36,17,82,.98),rgba(20,12,47,.98));box-shadow:0 22px 90px rgba(0,0,0,.45),0 0 54px rgba(178,69,255,.22);padding:37px 28px 29px}
+.homepage-crown{font-size:11px;font-weight:850;letter-spacing:.12em;color:#f1a4ff;margin-bottom:8px;text-shadow:0 0 18px rgba(238,114,255,.6)}
+#licenseGate .license-shell h1{font-size:clamp(27px,5.8vw,39px);line-height:1.3;margin:10px 0;text-shadow:0 2px 18px rgba(163,82,243,.24)}
+.homepage-gradient-title{background:linear-gradient(95deg,#faf3ff,#e6b8ff,#ec71ff);color:transparent;background-clip:text;-webkit-background-clip:text}
+.homepage-status,.homepage-feature-row{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin:9px 0 15px}
+.homepage-status span{border-radius:20px;font-size:10px;font-weight:850;color:#ead5ff;border:1px solid rgba(220,166,255,.35);padding:5px 9px;background:rgba(166,80,252,.15)}
+.homepage-feature-row{margin:15px 0}
+.homepage-feature-row span{font-size:12px;color:#e3c5fa;border-radius:10px;padding:7px 9px;background:rgba(133,70,212,.20)}
+#licenseGate .trial-gate-dg-link{background:linear-gradient(105deg,#7e2cef,#d14afa);border:1px solid rgba(255,205,255,.55);box-shadow:0 12px 28px rgba(159,52,238,.36);font-size:15px}
+#licenseGate #trialStartBtn{background:linear-gradient(110deg,#4e2eab,#8147d4);border-color:rgba(199,169,250,.58)}
+.homepage-member-entry{display:inline-block;margin-top:14px;color:#cbb5e9;font-size:12px;text-decoration:underline;text-underline-offset:3px}
+#licenseGate .seo-discovery{border:1px solid rgba(197,127,255,.44);background:linear-gradient(160deg,rgba(40,24,82,.97),rgba(17,12,37,.99));box-shadow:0 16px 44px rgba(18,8,42,.22)}
+@media(max-width:540px){#licenseGate .license-shell{padding:28px 18px 22px;border-radius:22px}.homepage-feature-row span{font-size:11px}}
