@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /trial-ended.html
+Sitemap: https://bgsv1.xyz/sitemap.xml
