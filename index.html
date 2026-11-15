@@ -17,27 +17,40 @@
   <meta property="og:image" content="https://bgsv1.xyz/assets/hero-baccarat-slayer.webp">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"莊家剋星 AI 百家樂分析程式","url":"https://bgsv1.xyz/","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"zh-Hant","description":"30分鐘試用的百家樂莊閒和記錄、百家大路與研究性機率分析工具。估計僅供參考，不保證預測命中或獲利。"}</script>
   <link rel="stylesheet" href="styles.css?v=20261106-bigroad-v1">
-  <link rel="stylesheet" href="trial-styles.css?v=20261115-trial-v2">
+  <link rel="stylesheet" href="trial-styles.css?v=20261115-visitor-v3">
 
 </head>
 <body>
   <section id="licenseGate" class="license-gate" aria-label="程式授權登入">
     <div class="license-shell">
       <div class="license-logo"><img src="assets/logo-baccarat-slayer.webp" alt="莊家剋星"></div>
-      <div class="license-kicker">BANKER SLAYER · LICENSE ACCESS</div>
-      <h1>莊家剋星 AI 百家程式</h1>
-      <p class="license-desc">請輸入程式開通碼，通過裝置驗證後才會進入分析面板。</p>
-      <form id="licenseForm" class="license-form">
-        <label for="licenseCode">程式開通碼</label>
-        <input id="licenseCode" type="text" autocomplete="off" autocapitalize="characters" maxlength="32" placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX" required>
-        <button type="submit" id="licenseSubmit">驗證開通碼並進入</button>
-      </form>
-      <div class="trial-start-separator">新玩家免費體驗</div>
-      <button type="button" id="trialStartBtn">立即免費試用 30 分鐘</button>
-      <p id="trialStartMessage" role="status" aria-live="polite">點擊試用會另開 DG 免費試玩分頁，原本 BBB 預測頁保留。首次啟用開始計時；重新整理不會重置試用期限。</p>
-      <a id="dgDirectTrialLink" class="trial-dg-link trial-gate-dg-link" data-bbb-link="dgTrialUrl" target="_blank" rel="noopener noreferrer sponsored">單獨開啟 DG 官方試玩（新分頁）</a>
-      <p id="licenseMessage" class="license-message" role="status" aria-live="polite">正在載入開通系統…</p>
-      <p class="license-detail">首次開通會綁定本瀏覽器的裝置金鑰。換手機、重裝瀏覽器或清除網站資料，請聯絡管理者重置。</p>
+      <div class="license-kicker">BANKER SLAYER · AI BACCARAT PREVIEW</div>
+      <h1>莊家剋星 AI 百家樂預測體驗</h1>
+      <p class="license-desc">先開啟 DG 官方免費試玩，再搭配 BBB 預測面板手動記錄莊、閒、和結果。新訪客可以體驗 30 分鐘，不需要先填開通碼。</p>
+      <div class="trial-visitor-entry" aria-label="新訪客體驗入口">
+        <a id="dgDirectTrialLink" class="trial-dg-link trial-gate-dg-link" data-bbb-link="dgTrialUrl" target="_blank" rel="noopener noreferrer sponsored">開啟 DG 真人百家免費試玩（新分頁）</a>
+        <button type="button" id="trialStartBtn">啟動 BBB 預測面板 · 免費試用 30 分鐘</button>
+        <p id="trialStartMessage" role="status" aria-live="polite">按下預測面板試用時會同時嘗試開啟 DG 新分頁，原本的 BBB 網頁保留。試用期限從首次啟用起算；試玩不保證結果。</p>
+      </div>
+      <section id="returnVisitorCard" class="return-visitor-card" hidden aria-labelledby="returnVisitorHeading">
+        <p class="return-visitor-kicker">WELCOME BACK · 後續使用</p>
+        <h2 id="returnVisitorHeading">想領取程式開通碼，繼續使用 BBB 嗎？</h2>
+        <p id="returnVisitorReason">你已查看過外部平台或聯絡入口。若需要領取程式開通碼，請與官方管理員聯繫。</p>
+        <a class="return-visitor-line" data-bbb-link="lineContactUrl" target="_blank" rel="noopener noreferrer">聯繫官方管理員領取開通碼</a>
+        <button type="button" id="memberAccessToggle" class="return-visitor-member">我已有開通碼 · 登入會員</button>
+        <p class="return-visitor-privacy">本網站僅於你的瀏覽器記錄是否點過外部連結，用來顯示後續入口；不會因此得知你是否完成註冊。可清除網站資料重設。</p>
+      </section>
+      <div id="licenseMemberPanel" class="license-member-panel" hidden>
+        <h2>會員開通碼登入</h2>
+        <p>此為已持有開通碼的會員登入入口；未領取者請先聯繫官方管理員。</p>
+        <form id="licenseForm" class="license-form">
+          <label for="licenseCode">程式開通碼</label>
+          <input id="licenseCode" type="text" autocomplete="off" autocapitalize="characters" maxlength="32" placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX" required>
+          <button type="submit" id="licenseSubmit">驗證開通碼並進入</button>
+        </form>
+        <p id="licenseMessage" class="license-message" role="status" aria-live="polite">正在載入開通系統…</p>
+        <p class="license-detail">首次開通會綁定這台瀏覽器的裝置金鑰。已領取開通碼者，可使用官方提供的會員登入連結返回此區。</p>
+      </div>
     </div>
     <section class="seo-discovery" aria-label="百家樂與 AI 分析程式介紹">
       <h2>百家樂 AI 預測程式與百家打法研究</h2>
@@ -157,9 +170,10 @@
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="site-links.js?v=20261115-outbound-v1"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
-  <script src="outbound-links.js?v=20261115-click-rotation-v2"></script>
+  <script src="outbound-links.js?v=20261115-return-rotation-v3"></script>
   <script src="auth-client.js?v=20261113-road-aux-adaptive-v1"></script>
-  <script src="trial-client.js?v=20261115-dg-auto-tab-v2"></script>
+  <script src="trial-client.js?v=20261115-dg-auto-tab-v2"
+  <script src="visitor-flow.js?v=20261115-visitor-v3"></script>></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

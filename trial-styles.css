@@ -51,3 +51,26 @@
 
 /* Independent DG trial fallback on the welcome/license screen. */
 .trial-gate-dg-link{margin-top:12px;background:rgba(91,49,161,.48);border:1px solid rgba(184,142,250,.5);font-size:13px}
+
+
+/* Visitor-first free trial entry; do not expose paid code field on first visit. */
+.trial-visitor-entry{display:grid;gap:10px;max-width:100%;margin:14px 0 4px}
+.trial-visitor-entry #trialStartBtn{margin:0}
+.trial-visitor-entry .trial-gate-dg-link{
+  margin:0;padding:16px 11px;border:1px solid rgba(203,168,255,.55);border-radius:13px;
+  background:linear-gradient(110deg,#5f2ec8,#8b4df1);color:#fff;
+  font-weight:850;font-size:14px;line-height:1.5;box-shadow:0 8px 22px rgba(100,48,178,.26);
+}
+.trial-visitor-entry #trialStartBtn{background:rgba(81,48,157,.42);border:1px solid rgba(200,170,255,.44);font-size:15px}
+.return-visitor-card{margin:18px 0 0;text-align:left;padding:18px 16px;border-radius:16px;border:1px solid rgba(148,108,236,.42);background:rgba(66,32,133,.19)}
+.return-visitor-card .return-visitor-kicker{font-size:10px;letter-spacing:.08em;font-weight:850;color:#bf9af4;margin:0 0 7px}
+.return-visitor-card h2{font-size:19px;line-height:1.45;margin:0 0 6px}
+.return-visitor-card p{font-size:12px;line-height:1.75;color:#c7b8e0}
+.return-visitor-line{display:block;text-align:center;text-decoration:none;font-size:15px;font-weight:850;color:#fff;background:linear-gradient(100deg,#099348,#27b85d);padding:15px 12px;border-radius:12px;margin:13px 0 9px}
+.return-visitor-member{border:1px solid rgba(198,168,250,.45);background:rgba(255,255,255,.05);color:#efe4ff;padding:11px;border-radius:10px;font:inherit;font-weight:750;width:100%;cursor:pointer}
+.return-visitor-card .return-visitor-privacy{margin:12px 0 0;color:#a99bc5;font-size:10px}
+.license-member-panel{margin-top:15px;padding:18px 13px;border:1px solid rgba(173,135,240,.28);border-radius:13px;background:rgba(10,6,28,.45);text-align:left}
+.license-member-panel h2{font-size:18px;margin:0 0 6px}
+.license-member-panel>p{font-size:12px;color:#b6a8cc;line-height:1.7}
+.license-member-panel .license-form{margin-top:12px}
+.casino-next-hint{font-size:12px!important;color:#d7c6ff!important;padding:10px 12px;border:1px solid rgba(180,137,241,.38);border-radius:10px;background:rgba(69,35,121,.25)}
