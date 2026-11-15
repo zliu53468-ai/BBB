@@ -1,0 +1,26 @@
+// Visitor-first homepage regression, supplied screenshot gallery and safe objective language.
+import assert from "node:assert/strict";
+import fs from "node:fs";
+const read=p=>fs.readFileSync(new URL("./"+p,import.meta.url),"utf8");
+const h=read("index.html"),css=read("trial-styles.css");
+const auth=read("auth-client.js"),trial=read("trial-client.js");
+const image=fs.readFileSync(new URL("./assets/member-feedback-sprite.webp",import.meta.url));
+assert.equal(image.length,4872,"compressed 5-screenshot gallery asset should exist");
+assert.equal(image.subarray(0,4).toString("utf8"),"RIFF","valid WebP RIFF header");
+assert(h.includes('class="member-feedback-showcase"'),"feedback gallery visible on public homepage");
+assert.equal((h.match(/class="member-feedback-card"/g)||[]).length,5,"all five screenshots shown");
+assert(css.includes("assets/member-feedback-sprite.webp"),"gallery uses versioned local image");
+for(let i=1;i<=5;i++)assert(css.includes(".feedback-shot-"+i+"{"),"gallery shot "+i);
+assert(h.includes("homepage-gradient-title"),"new vibrant intro");
+assert(h.includes("協助"),"helps explain assistant-oriented model");
+assert(h.includes("提升預測勝率為設計目標"),"win rate is an objective rather than an established measured outcome");
+assert(!h.includes("不保證獲利"),"remove that phrase from homepage promo material");
+assert(h.includes('id="trialStartBtn"')&&h.includes('id="dgDirectTrialLink"'),"existing trial and DG links");
+assert(h.includes('id="licenseForm"')&&h.includes('id="licenseMemberPanel" hidden'),"licensed entry preserved and not first visible");
+assert(h.includes('href="./?license=1"'),"explicit member entry link");
+assert(auth.includes('get("license")==="1"'),"only explicit member-login query permits silent restoration");
+assert(!auth.includes('if(code){input.value=code.match(/.{1,6}/g).join("-");await activate(code,true);}'),"do not auto-open after cached auth on homepage");
+assert(!trial.includes('if(new URLSearchParams(window.location.search).get("trial")==="1"&&readSession())startOrResume();'),"do not auto-open trial after page load");
+assert(trial.includes('startBtn.addEventListener("click"'),"trial requires explicit click");
+assert(!h.includes('src="trial-client.js?v=20261115-dg-auto-tab-v2"\n  <script'),"valid script tags");
+console.log(JSON.stringify({ok:true,checks:["manual_member_entry","manual_trial_entry","purple_hero","five_feedback_screenshots","unchanged_DG_and_license_inputs","qualified_improvement_objective"]}));

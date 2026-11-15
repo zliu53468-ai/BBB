@@ -1,0 +1,36 @@
+name: BBB Visitor Landing and Feedback Gallery Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - auth-client.js
+      - trial-client.js
+      - trial-styles.css
+      - assets/member-feedback-sprite.webp
+      - test_landing_feedback.mjs
+      - .github/workflows/landing-feedback-checks.yml
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - auth-client.js
+      - trial-client.js
+      - trial-styles.css
+      - assets/member-feedback-sprite.webp
+      - test_landing_feedback.mjs
+      - .github/workflows/landing-feedback-checks.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-landing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check scripts and gallery behavior
+        run: node --check auth-client.js && node --check trial-client.js && node --check test_landing_feedback.mjs && node test_landing_feedback.mjs
