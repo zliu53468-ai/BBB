@@ -53,6 +53,34 @@ async function handle(req,env,path){
    }
    return reply({error:"not_found"},404);
  }
+
+ // Anonymous 30-minute trial is separate from the existing paid license records.
+ // Tokens and device identifiers are never saved in plaintext in D1.
+ if(path==="/api/trial/start"&&req.method==="POST"){
+   await rateLimit(req,env,now);
+   const body=await readBody(req),deviceId=String(body.device_id||"");
+   if(!/^[a-f0-9-]{36}$/i.test(deviceId))return reply({error:"invalid_trial_device"},400);
+   const deviceHash=await codeHash("trial-device:"+deviceId,env);
+   const previous=await env.DB.prepare("SELECT expires_at FROM trial_sessions WHERE device_hash=?").bind(deviceHash).first();
+   if(previous)return reply({error:"trial_already_started",expires_at:previous.expires_at,server_now:now},409);
+   const token=b64url(crypto.getRandomValues(new Uint8Array(32)));
+   const tokenHash=await codeHash("trial-token:"+token,env),id=crypto.randomUUID();
+   const expires=now+30*60*1000;
+   const inserted=await env.DB.prepare("INSERT OR IGNORE INTO trial_sessions (id,device_hash,token_hash,started_at,expires_at) VALUES (?,?,?,?,?)")
+     .bind(id,deviceHash,tokenHash,now,expires).run();
+   if(!inserted.meta?.changes)return reply({error:"trial_already_started"},409);
+   return reply({ok:true,token,expires_at:expires,server_now:now,duration_seconds:1800},201);
+ }
+ if(path==="/api/trial/status"&&req.method==="POST"){
+   await rateLimit(req,env,now);
+   const body=await readBody(req),token=String(body.token||"");
+   if(!/^[A-Za-z0-9_-]{43}$/.test(token))return reply({error:"invalid_trial_token"},400);
+   const tokenHash=await codeHash("trial-token:"+token,env);
+   const row=await env.DB.prepare("SELECT started_at,expires_at FROM trial_sessions WHERE token_hash=?").bind(tokenHash).first();
+   if(!row)return reply({error:"trial_not_found"},404);
+   return reply({ok:true,active:row.expires_at>now,expired:row.expires_at<=now,
+     started_at:row.started_at,expires_at:row.expires_at,server_now:now});
+ }
  if(path==="/api/challenge"&&req.method==="POST"){
    await rateLimit(req,env,now);
    const body=await readBody(req),code=normalizeCode(body.code);
@@ -120,6 +148,7 @@ export default {
    const now=Date.now();
    await env.DB.prepare("DELETE FROM challenges WHERE expires_at<?").bind(now).run();
    await env.DB.prepare("DELETE FROM rate_limits WHERE window_start<?").bind(Math.floor(now/60000)-1440).run();
+   await env.DB.prepare("DELETE FROM trial_sessions WHERE expires_at<?").bind(now-90*24*60*60*1000).run();
  },
  async fetch(req,env){
    const origin=req.headers.get("Origin");

@@ -4,9 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#090716">
-  <title>莊家剋星AI百家程式</title>
-  <meta name="description" content="莊家剋星AI百家程式｜PF–EOR–EV–Deplete V4 獨立總點數分析">
+  <title>AI 百家樂預測程式免費試用 30 分鐘｜百家打法與莊閒分析 - 莊家剋星</title>
+  <meta name="description" content="莊家剋星 AI 百家樂分析面板提供 30 分鐘免費試用。手動輸入莊閒和、查看百家樂大路與模型研究方向，了解百家打法、電子、老虎機與賽特等遊戲的差異。">
+  <meta name="keywords" content="百家樂,AI百家樂,百家打法,預測程式,莊閒分析,百家樂大路,電子,老虎機,賽特,娛樂城">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <link rel="canonical" href="https://bgsv1.xyz/">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="zh_TW">
+  <meta property="og:title" content="莊家剋星｜AI 百家樂預測程式 30 分鐘免費試用">
+  <meta property="og:description" content="百家樂莊閒和手動輸入、牌路分析與模型研究方向。新訪客可免費試用 30 分鐘。">
+  <meta property="og:url" content="https://bgsv1.xyz/">
+  <meta property="og:image" content="https://bgsv1.xyz/assets/hero-baccarat-slayer.webp">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"莊家剋星 AI 百家樂分析程式","url":"https://bgsv1.xyz/","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"zh-Hant","description":"30分鐘試用的百家樂莊閒和記錄、百家大路與研究性機率分析工具。估計僅供參考，不保證預測命中或獲利。"}</script>
   <link rel="stylesheet" href="styles.css?v=20261106-bigroad-v1">
+  <link rel="stylesheet" href="trial-styles.css?v=20261115-trial-v1">
 
 </head>
 <body>
@@ -21,9 +32,23 @@
         <input id="licenseCode" type="text" autocomplete="off" autocapitalize="characters" maxlength="32" placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX" required>
         <button type="submit" id="licenseSubmit">驗證開通碼並進入</button>
       </form>
+      <div class="trial-start-separator">新玩家免費體驗</div>
+      <button type="button" id="trialStartBtn">立即免費試用 30 分鐘</button>
+      <p id="trialStartMessage" role="status" aria-live="polite">不須開通碼，首次啟用開始計時；重新整理不會重置試用期限。</p>
       <p id="licenseMessage" class="license-message" role="status" aria-live="polite">正在載入開通系統…</p>
       <p class="license-detail">首次開通會綁定本瀏覽器的裝置金鑰。換手機、重裝瀏覽器或清除網站資料，請聯絡管理者重置。</p>
     </div>
+    <section class="seo-discovery" aria-label="百家樂與 AI 分析程式介紹">
+      <h2>百家樂 AI 預測程式與百家打法研究</h2>
+      <p>莊家剋星是一款網頁版百家樂分析工具。使用者可手動記錄莊、閒、和結果，觀察百家樂大路，並查看模型對下一局的研究方向、估計機率與不確定性。提供 30 分鐘免費試用，不需與 DG 娛樂城 API 串接。</p>
+      <h3>百家樂玩法、百家打法與路單怎麼看？</h3>
+      <p>百家樂的結果包含莊、閒、和。大路圖用來整理歷史開牌趨勢；任何路單和打法都無法保證下一局結果。面板會在資料不足或訊號不明確時顯示觀望。</p>
+      <h3>AI 百家樂預測程式能保證命中嗎？</h3>
+      <p>不能。程式輸出是統計模型的估計，並非實際已知的剩餘牌面，也沒有經驗證的穩定獲利優勢。請勿將分析當作投注保證，也不要以追回損失為目的提高下注金額。</p>
+      <h3>電子遊戲、老虎機、賽特與百家樂有何不同？</h3>
+      <p>娛樂城常見的電子遊戲包含老虎機、賽特等不同主題。這些遊戲的規則及隨機機制與真人百家樂不同；本網站的 BBB 面板僅用於百家樂 B/P/T 資料分析，<strong>並不提供老虎機或賽特的結果預測</strong>。</p>
+      <p class="seo-warning">本頁提供遊戲規則與資料分析資訊。外部遊戲平台是否可使用，請依所在司法管轄區法規、年齡資格及各平台規則確認。</p>
+    </section>
   </section>
   <main class="app-shell" id="predictionApp" hidden>
     <div class="brand-hero" aria-hidden="true">
@@ -34,6 +59,15 @@
     </div>
 
     <div class="app-viewport-content" id="appViewportContent">
+    <section id="bbbTrialBanner" hidden aria-label="免費試用狀態">
+      <div class="trial-banner-row">
+        <span class="trial-banner-title">30 分鐘免費試用 · BBB 預測面板</span>
+        <strong id="bbbTrialCountdown" aria-live="off">30:00</strong>
+      </div>
+      <a id="dgTrialLink" class="trial-dg-link" data-bbb-link="dgTrialUrl" target="_blank" rel="noopener noreferrer sponsored">前往 DG 官方試玩（開啟新分頁）</a>
+      <p class="trial-help">DG 會另外開啟分頁，原本的 BBB 預測程式保留在本分頁。兩站不會同步資料，請自行輸入每局莊／閒／和結果。</p>
+      <p id="bbbTrialStatus" role="status" aria-live="polite">免費試用期限由伺服器確認。</p>
+    </section>
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">
@@ -120,8 +154,11 @@
   </main>
 
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
+  <script src="site-links.js?v=20261115-outbound-v1"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
+  <script src="outbound-links.js?v=20261115-outbound-v1"></script>
   <script src="auth-client.js?v=20261113-road-aux-adaptive-v1"></script>
+  <script src="trial-client.js?v=20261115-trial-v1"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

@@ -1,0 +1,50 @@
+/* Visitor trial + SEO information; scoped to avoid changes to the original panel. */
+[hidden]{display:none!important}
+.trial-start-separator{display:flex;align-items:center;gap:12px;margin:22px 0 14px;color:#b7a7d5;font-weight:700;font-size:12px}
+.trial-start-separator::before,.trial-start-separator::after{content:"";height:1px;flex:1;background:rgba(170,129,249,.35)}
+#trialStartBtn{display:block;width:100%;border:1px solid rgba(203,168,255,.48);border-radius:12px;padding:15px 16px;background:linear-gradient(100deg,#5424b7,#8839ef);color:#fff;font-size:16px;font-weight:800;line-height:1.3;cursor:pointer;box-shadow:0 8px 28px rgba(109,40,217,.22)}
+#trialStartBtn:disabled{cursor:wait;opacity:.55}
+#trialStartMessage{margin:10px 0 0;color:#c4b2e4;font-size:12px;line-height:1.65}
+.seo-discovery{width:min(750px,100%);margin:20px auto 8px;padding:20px 24px;border:1px solid rgba(178,140,255,.26);border-radius:20px;background:rgba(15,10,33,.94);line-height:1.8;color:#c8bee0}
+.seo-discovery h2{color:#f3eafa;font-size:22px;line-height:1.5;margin:0 0 9px}
+.seo-discovery h3{color:#eaddff;font-size:16px;line-height:1.55;margin:17px 0 4px}
+.seo-discovery p{font-size:13px;margin:0 0 10px}
+.seo-discovery a{color:#ceb2ff;text-decoration:underline}
+.seo-discovery .seo-warning{font-size:12px;color:#bdb2d3}
+#bbbTrialBanner{display:grid;gap:11px;margin:0 0 15px;padding:15px;border:1px solid rgba(186,127,255,.46);border-radius:18px;background:linear-gradient(130deg,rgba(77,37,142,.88),rgba(17,12,34,.94));box-shadow:0 12px 30px rgba(33,11,83,.24)}
+.trial-banner-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.trial-banner-title{font-size:14px;font-weight:850;letter-spacing:.02em}
+#bbbTrialCountdown{font-size:27px;color:#fff;font-weight:900;font-variant-numeric:tabular-nums}
+.trial-dg-link{display:block;text-align:center;text-decoration:none;cursor:pointer;padding:12px;border-radius:12px;color:#fff;font-size:15px;font-weight:900;background:linear-gradient(100deg,#6827ce,#9b38ed)}
+.outbound-disabled{opacity:.48!important;cursor:not-allowed!important;pointer-events:none}
+.trial-help,#bbbTrialStatus{margin:0;font-size:11px;line-height:1.6;color:#c8badc}
+.trial-ended-body{min-height:100dvh;display:grid;place-items:center;padding:20px}
+.trial-end-shell{width:min(540px,100%);text-align:center;padding:36px 25px;background:linear-gradient(145deg,rgba(32,20,69,.98),rgba(13,9,29,.98));border:1px solid rgba(181,126,255,.48);border-radius:24px;box-shadow:0 20px 65px rgba(0,0,0,.4)}
+.trial-end-logo{display:block;width:180px;max-height:115px;object-fit:contain;margin:0 auto 10px}
+.trial-end-kicker{font-size:12px;color:#be96ff;font-weight:800;letter-spacing:.09em}
+.trial-end-shell h1{font-size:clamp(26px,6vw,36px);line-height:1.35;margin:10px 0}
+.trial-end-shell p{line-height:1.75;font-size:14px;color:#d0c5e7}
+.trial-end-actions{display:grid;gap:14px;margin:28px 0}
+.trial-cta{display:block;padding:17px 12px;border-radius:14px;text-decoration:none;font-size:17px;font-weight:900;color:#fff}
+.trial-cta.casino{background:linear-gradient(110deg,#e66b0a,#ef9b26)}
+.trial-cta.line{background:linear-gradient(110deg,#0b974a,#22be60)}
+.trial-end-shell .trial-end-note{font-size:12px;color:#b6accb}
+.trial-return{display:inline-block;margin-top:8px;color:#cbb1ff;font-size:13px}
+@media(max-width:500px){.seo-discovery{padding:17px}.trial-end-shell{padding:30px 18px}.trial-banner-row{align-items:flex-start}}
+
+/* One-visit random partner destination and returning-account transfer prompt. */
+.trial-end-shell .casino-rotation-explain{font-size:12px;color:#d6c9ee;margin:-5px 0 14px}
+.casino-account-dialog{
+  width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 36px);overflow-y:auto;
+  border:1px solid rgba(201,146,255,.62);border-radius:22px;
+  padding:29px 24px 22px;background:linear-gradient(140deg,#251644,#100b20);
+  color:#fff;box-shadow:0 18px 72px rgba(0,0,0,.55);
+}
+.casino-account-dialog::backdrop{background:rgba(6,3,16,.76);backdrop-filter:blur(4px)}
+.casino-dialog-close{position:absolute;top:9px;right:12px;border:0;background:transparent;color:#d0bafa;font-size:30px;line-height:1;cursor:pointer}
+.casino-dialog-eyebrow{color:#c9a8ff;font-size:12px;font-weight:800;letter-spacing:.03em;margin:0 0 9px}
+.casino-account-dialog h2{font-size:clamp(20px,5vw,24px);line-height:1.4;margin:0 0 11px;color:#fff}
+.casino-account-dialog p{font-size:13px;line-height:1.8;color:#d0c5e5}
+.casino-dialog-line{display:block;text-align:center;padding:15px 12px;margin:20px 0 11px;background:linear-gradient(100deg,#0a9649,#22bc61);border-radius:12px;text-decoration:none;font-size:16px;font-weight:850;color:#fff}
+.casino-dialog-dismiss{display:block;width:100%;padding:12px 14px;border:1px solid rgba(201,161,255,.43);background:rgba(255,255,255,.035);color:#e8defb;border-radius:12px;cursor:pointer;font:inherit}
+.casino-account-dialog .casino-dialog-footnote{margin:16px 0 0;font-size:11px;color:#9f93b7}
