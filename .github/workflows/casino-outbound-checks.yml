@@ -6,6 +6,9 @@ on:
       - "site-links.js"
       - "outbound-links.js"
       - "trial-ended.html"
+      - "index.html"
+      - "visitor-flow.js"
+      - "test_visitor_flow.mjs"
       - "trial-styles.css"
       - "test_casino_outbound.mjs"
       - ".github/workflows/casino-outbound-checks.yml"
@@ -15,6 +18,9 @@ on:
       - "site-links.js"
       - "outbound-links.js"
       - "trial-ended.html"
+      - "index.html"
+      - "visitor-flow.js"
+      - "test_visitor_flow.mjs"
       - "trial-styles.css"
       - "test_casino_outbound.mjs"
       - ".github/workflows/casino-outbound-checks.yml"
@@ -31,6 +37,6 @@ jobs:
         with:
           node-version: "22"
       - name: JavaScript syntax checks
-        run: node --check site-links.js && node --check outbound-links.js && node --check test_casino_outbound.mjs
+        run: node --check site-links.js && node --check outbound-links.js && node --check visitor-flow.js && node --check test_casino_outbound.mjs && node --check test_visitor_flow.mjs
       - name: Random destination and LINE transfer interface contract
-        run: node test_casino_outbound.mjs
+        run: node test_casino_outbound.mjs && node test_visitor_flow.mjs
