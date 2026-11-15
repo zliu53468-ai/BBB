@@ -9,11 +9,22 @@ Edit root \`site-links.js\`, replacing each empty string with the **verified**
 HTTPS URL:
 - \`dgTrialUrl\`: DG's actual playable/demo page; click opens \`target="_blank"\`
   and leaves the BBB analysis page in the current tab.
-- \`casinoRegisterUrl\`: the approved casino signup or promotion information page.
-- \`lineContactUrl\`: official administrator LINE contact, e.g. a verified https link.
 
-Until configured, the corresponding buttons are visible but **disabled** rather than
-sending users to fabricated destinations. Never promise a bonus without published terms.
+- casinoRegisterUrls: five operator-provided HTTPS registration links, configured in
+  site-links.js. Each trial-ended.html visit chooses one at random. The first
+  assignment has 20% probability for each of the five destinations. When the same
+  visitor reopens the page in the same browser session, the previous destination
+  is excluded if alternatives exist.
+- lineContactUrl: https://lin.ee/6vkiP3b, used by both the standard contact
+  action and the existing-account transfer prompt.
+
+When a visitor clicks "進入娛樂城馬上領取", the assigned destination opens
+in a NEW TAB through the native link. BBB's original trial-ended page retains
+a small dialog asking "已有這間娛樂城帳號嗎？" with a link to the
+official LINE administrator. We cannot inject this UI into third-party casino
+pages, so users can return to the original BBB tab to view the prompt.
+
+Do not promise a reward unless the relevant platform's current terms support it.
 
 ## Deploy order (important)
 
