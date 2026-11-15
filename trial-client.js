@@ -148,6 +148,7 @@ async function mount(response){
   }
   mounted=true;
   window.BBB_BANKROLL?.onTrialMounted();
+  window.BBB_TRIAL_ACCURACY?.onTrialMounted({new_session:response.new_session===true});
   ticker=setInterval(updateTime,1000);
   checker=setInterval(confirm,30000);
   document.addEventListener("visibilitychange",()=>{if(!document.hidden)confirm();});

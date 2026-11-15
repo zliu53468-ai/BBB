@@ -1,0 +1,38 @@
+name: BBB Truthful Trial Accuracy and 60 Percent Cutoff Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "soft_shoe_panel.js"
+      - "trial-hit-rate.js"
+      - "trial-client.js"
+      - "bankroll-trial.js"
+      - "index.html"
+      - "trial-ended.html"
+      - "test_trial_hit_rate.mjs"
+      - ".github/workflows/trial-hit-rate-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "soft_shoe_panel.js"
+      - "trial-hit-rate.js"
+      - "trial-client.js"
+      - "bankroll-trial.js"
+      - "index.html"
+      - "trial-ended.html"
+      - "test_trial_hit_rate.mjs"
+      - ".github/workflows/trial-hit-rate-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-accuracy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate accuracy tracking and redirect policy
+        run: node --check trial-hit-rate.js && node --check soft_shoe_panel.js && node test_trial_hit_rate.mjs

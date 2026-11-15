@@ -16,6 +16,7 @@
     <p class="trial-end-kicker">BANKER SLAYER · FREE TRIAL</p>
     <h1 id="trialEndedHeading">30 分鐘試用已結束</h1>
     <p id="trialProfitComplete" class="trial-profit-complete" hidden role="status">本次手動記錄的資金已達到起始本金 +60% 的止盈目標。可在下方聯繫官方管理員或查看合作平台資訊。</p>
+    <p id="trialAccuracyComplete" class="trial-profit-complete" hidden role="status">本次試用已達預設的有效預測命中率結束條件。可在下方查看後續使用及聯繫方式。</p>
     <p>感謝體驗莊家剋星百家樂分析面板。以下提供註冊資訊及官方管理員聯繫窗口。</p>
     <div class="trial-end-actions">
       <a class="trial-cta casino" data-bbb-link="casinoRegisterUrl" target="_blank" rel="noopener noreferrer sponsored">♛ 進入娛樂城馬上領取</a>
@@ -39,9 +40,27 @@
   <script src="outbound-links.js?v=20261115-return-rotation-v3"></script>
   <script>
   (function(){
-    if(new URLSearchParams(location.search).get("reason")==="profit60"){
+    const reason=new URLSearchParams(location.search).get("reason");
+    if(reason==="profit60"){
       document.getElementById("trialEndedHeading").textContent="本次試用已達 60% 止盈目標";
       document.getElementById("trialProfitComplete").hidden=false;
+    }
+    if(reason==="accuracy60"){
+      let valid=0,hits=0;
+      try{
+        const record=JSON.parse(sessionStorage.getItem("bbb-trial-prediction-hit-v1")||"null");
+        if(record?.version===1&&Array.isArray(record.ledger)){
+          for(const item of record.ledger){
+            if(["B","P"].includes(item.prediction)&&["B","P"].includes(item.outcome)){
+              valid++;if(item.prediction===item.outcome)hits++;
+            }
+          }
+        }
+      }catch(_){}
+      if(valid>=10&&hits/valid>=.6){
+        document.getElementById("trialEndedHeading").textContent="本次預測體驗已達命中率門檻";
+        document.getElementById("trialAccuracyComplete").hidden=false;
+      }
     }
   })();
   </script>

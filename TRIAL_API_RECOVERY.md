@@ -24,3 +24,25 @@ accounts. After the entered current balance reaches 1.6 x initial bankroll,
 the client shows target-hit status, hides the reference stake and redirects
 to trial-ended.html?reason=profit60 after 1.8 seconds, with the existing
 LINE and casino registration links. Losses do not invoke an automatic stop.
+
+
+## 2026-11-15: trial hit-rate cutoff
+The temporary marketing trial now shows a truthful, live count of validated
+next-round predictions. On each B/P/T observation the system compares the
+*previous* eligible direction against the newly entered real-world result.
+Abstentions and ties do not enter the denominator. Rolling back a round
+undoes its scored result; refresh restores the browser-session ledger only
+when it matches the current recorded B/P/T history.
+
+At least 10 resolved predictions and hit-rate >= 60% triggers an early
+trial end at trial-ended.html?reason=accuracy60. This is **prediction hit
+rate for user-entered outcomes**, NOT a verified casino betting win rate or
+realized monetary profit. The 30-minute expiry remains unchanged.
+The legacy bankroll +60% capital dashboard remains informational and does
+not trigger trial expiry or conversion redirects. Nothing alters the model
+inference core, hard-coded Kelly gate, or active paid licenses.
+
+The trial score is stored only in browser sessionStorage. A future true
+backend ledger would require the authorization provider to support an API,
+preferably with independently verifiable round events. Browser-entered
+results are not anti-fraud proof.
