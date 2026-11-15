@@ -3,7 +3,7 @@
  * Link clicks open a separate tab. The browser decides tab vs. separate window.
  */
 window.BBB_SITE_LINKS = Object.freeze({
-  dgTrialUrl: "",
+  dgTrialUrl: "https://dg66.net/Opengame/freegame/",
   casinoRegisterUrl: "",
   lineContactUrl: ""
 });
