@@ -188,3 +188,122 @@
 .bbb-accuracy-head>span{font-weight:900;color:#f7d4ff;font-size:23px}
 .bbb-accuracy-stats{display:flex;gap:8px 16px;flex-wrap:wrap;margin:11px 0;color:#dcc2f3;font-size:12px}
 .bbb-trial-accuracy-panel p{font-size:12px;color:#e1c9f7;line-height:1.6;margin:10px 0 0}
+
+
+/* 2026-11-16 front-end polish: dynamic branded avatar and succinct SEO.
+ * CSS-only motion: no changes to scripts, trial/auth logic or prediction engine.
+ */
+#trialStartMessage:empty{display:none!important}
+#trialStartMessage:not(:empty){display:block;padding:10px 12px;border-radius:10px;background:rgba(84,41,146,.20);border:1px solid rgba(191,138,244,.3)}
+#licenseGate .dynamic-brand-mark{
+  position:relative;width:128px;height:128px;margin:3px auto 15px;
+  isolation:isolate;display:grid;place-items:center;
+  border-radius:50%;background:radial-gradient(circle,rgba(160,70,249,.24),rgba(44,17,89,.08) 62%,transparent 68%);
+}
+#licenseGate .dynamic-brand-mark::before,
+#licenseGate .dynamic-brand-mark::after{
+  content:"";position:absolute;pointer-events:none;border-radius:50%;z-index:-1;
+}
+#licenseGate .dynamic-brand-mark::before{
+  inset:0;border:2px solid transparent;
+  background:linear-gradient(#200d43,#200d43) padding-box,
+    conic-gradient(from 0deg,#ff84ec,#ad69ff,transparent 44%,#66c7ff,#ff84ec) border-box;
+  box-shadow:0 0 22px rgba(176,81,255,.36),inset 0 0 21px rgba(171,95,255,.19);
+  animation:bbb-avatar-halo 12s linear infinite;
+}
+#licenseGate .dynamic-brand-mark::after{
+  inset:9px;border:1px dashed rgba(223,172,255,.43);
+  box-shadow:0 0 30px rgba(221,97,255,.30);animation:bbb-avatar-halo 18s linear infinite reverse;
+}
+#licenseGate .dynamic-brand-mark img{
+  display:block;position:relative;z-index:1;width:112px;max-height:112px;height:auto;object-fit:contain;
+  filter:drop-shadow(0 0 12px rgba(226,121,255,.70)) drop-shadow(0 0 28px rgba(139,72,234,.35));
+  animation:bbb-avatar-float 4.8s ease-in-out infinite;
+}
+#licenseGate .homepage-crown{animation:bbb-crown-glow 4.5s ease-in-out infinite}
+#licenseGate .homepage-gradient-title{
+  display:inline-block;
+  background:linear-gradient(110deg,#fff 0%,#eabaff 19%,#f66fff 40%,#b49cff 60%,#fff 77%,#eabaff 100%);
+  background-size:240% auto;
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:bbb-title-shine 7s linear infinite;
+  filter:drop-shadow(0 0 14px rgba(215,102,255,.27));
+}
+#licenseGate .homepage-impact-line{
+  display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;
+  margin:0 auto 12px!important;color:#f2c6ff!important;
+  font-size:clamp(12px,2.8vw,14px)!important;font-weight:850;letter-spacing:.07em;
+  text-shadow:0 0 13px rgba(219,113,255,.35);
+}
+#licenseGate .homepage-impact-line span{color:#fdacff;animation:bbb-crown-glow 2.4s ease-in-out infinite}
+#licenseGate #trialStartBtn,#licenseGate .trial-gate-dg-link{
+  transition:transform .22s ease,box-shadow .22s ease,filter .22s ease;
+}
+#licenseGate #trialStartBtn:hover,#licenseGate .trial-gate-dg-link:hover{
+  transform:translateY(-3px);filter:brightness(1.1);
+  box-shadow:0 12px 32px rgba(200,73,255,.35);
+}
+#licenseGate .seo-spotlight{position:relative;max-width:760px;margin:4px auto 10px}
+#licenseGate .seo-spotlight-heading{text-align:center;max-width:650px;margin:0 auto 17px}
+#licenseGate .seo-kicker{display:block;color:#e3aaff;font-size:11px;font-weight:900;letter-spacing:.15em;margin-bottom:7px}
+#licenseGate .seo-spotlight-heading h2{font-size:clamp(21px,4vw,26px);margin:0 0 8px;line-height:1.42}
+#licenseGate .seo-spotlight-heading p{font-size:13px;color:#d8c8e9;line-height:1.7;margin:0}
+#licenseGate .seo-feature-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 16px}
+#licenseGate .seo-feature-card{
+  display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;text-align:center;
+  padding:15px 8px;border:1px solid rgba(204,145,255,.34);border-radius:14px;
+  background:linear-gradient(145deg,rgba(135,58,213,.19),rgba(36,19,79,.6));
+  box-shadow:inset 0 1px rgba(237,199,255,.10);
+}
+#licenseGate .seo-feature-card>span{color:#edacff;font-size:23px;line-height:1}
+#licenseGate .seo-feature-card strong{font-size:13px;color:#f7edff}
+#licenseGate .seo-feature-card small{color:#bca4db;font-size:10px;line-height:1.35}
+#licenseGate .seo-compact-details{
+  overflow:hidden;margin:0 0 14px;border:1px solid rgba(198,134,255,.32);
+  border-radius:12px;background:rgba(33,18,70,.45);
+}
+#licenseGate .seo-compact-details summary{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:13px 15px;list-style:none;cursor:pointer;font-size:13px;
+  font-weight:800;color:#f2dafa;
+}
+#licenseGate .seo-compact-details summary::-webkit-details-marker{display:none}
+#licenseGate .seo-compact-details summary span{color:#f4abff;font-size:19px;transition:transform .22s}
+#licenseGate .seo-compact-details[open] summary span{transform:rotate(45deg)}
+#licenseGate .seo-compact-copy{padding:0 15px 13px;border-top:1px solid rgba(198,134,255,.19)}
+#licenseGate .seo-compact-copy h3{font-size:13px;margin:13px 0 4px;color:#eed2ff}
+#licenseGate .seo-compact-copy p{font-size:12px;line-height:1.68;color:#ccb9df;margin:0}
+#licenseGate .seo-guide-link{
+  display:flex;justify-content:center;align-items:center;gap:8px;
+  width:fit-content;margin:0 auto 10px;padding:10px 13px;
+  background:rgba(136,75,211,.2);border:1px solid rgba(211,151,249,.34);
+  border-radius:10px;text-decoration:none;color:#f5d6ff;font-weight:800;font-size:12px;
+}
+#licenseGate .seo-guide-link:hover{background:rgba(160,80,236,.3)}
+/* The old diagnostics are kept hidden so legacy UI hooks can safely target #message. */
+#predictionApp #message{display:none!important}
+/* Keep the app usable on short/mobile screens while hiding only the visible
+   scrollbar track. touch, wheel and keyboard scrolling remain enabled. */
+#appViewportContent{
+  scrollbar-width:none;-ms-overflow-style:none;
+  overflow-y:auto!important;overflow-x:hidden!important;
+}
+#appViewportContent::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
+@keyframes bbb-avatar-halo{to{transform:rotate(360deg)}}
+@keyframes bbb-avatar-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes bbb-title-shine{to{background-position:240% center}}
+@keyframes bbb-crown-glow{0%,100%{opacity:.75;text-shadow:0 0 8px rgba(245,150,255,.25)}50%{opacity:1;text-shadow:0 0 22px rgba(245,150,255,.65)}}
+@media(max-width:520px){
+  #licenseGate .dynamic-brand-mark{width:110px;height:110px}
+  #licenseGate .dynamic-brand-mark img{width:99px;max-height:99px}
+  #licenseGate .seo-feature-grid{gap:6px}
+  #licenseGate .seo-feature-card{padding:12px 4px}
+  #licenseGate .seo-feature-card strong{font-size:11px}
+  #licenseGate .seo-feature-card small{font-size:9px}
+}
+@media(prefers-reduced-motion:reduce){
+  #licenseGate .dynamic-brand-mark::before,#licenseGate .dynamic-brand-mark::after,
+  #licenseGate .dynamic-brand-mark img,#licenseGate .homepage-crown,
+  #licenseGate .homepage-impact-line span,#licenseGate .homepage-gradient-title{animation:none!important}
+  #licenseGate #trialStartBtn,#licenseGate .trial-gate-dg-link{transition:none}
+}

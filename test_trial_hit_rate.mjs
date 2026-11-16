@@ -10,7 +10,7 @@ const end=read("trial-ended.html");
 const money=read("bankroll-trial.js");
 const trial=read("trial-client.js");
 assert(html.includes('id="bbbTrialAccuracyPanel"'),"metric shown in trial");
-assert(html.includes("至少 10 次有效預測結算且命中率達 60%"),"upfront cutoff condition clear");
+assert(html.includes("提前結束條件：至少 10 次、命中率 ≥ 60%"),"cutoff condition remains visible on the actual trial panel");
 assert(html.includes('src="trial-hit-rate.js?v=20261115-accuracy-trigger-v1"'),"tracker loaded before trial");
 assert(html.indexOf('src="trial-hit-rate.js')<html.indexOf('src="trial-client.js'),"tracker installed before dynamic panel");
 assert(trial.includes("window.BBB_TRIAL_ACCURACY?.onTrialMounted"),"tracker initialized after the panel");

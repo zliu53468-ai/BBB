@@ -1,0 +1,32 @@
+name: BBB Dynamic Hero and Clean Layout Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - trial-styles.css
+      - test_ui_polish.mjs
+      - test_landing_feedback.mjs
+      - .github/workflows/ui-polish-checks.yml
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - trial-styles.css
+      - test_ui_polish.mjs
+      - test_landing_feedback.mjs
+      - .github/workflows/ui-polish-checks.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frontend-polish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify four screenshot-based refinements and existing UI contracts
+        run: node --check test_ui_polish.mjs && node test_ui_polish.mjs && node test_landing_feedback.mjs
