@@ -35,5 +35,5 @@ for(const key of ["trialStartBtn","dgDirectTrialLink","licenseForm","bbbTrialAcc
 assert(panel.includes('function recalculate()')||panel.includes("async function recalculate()"),"original prediction panel algorithm retained");
 assert(engine.includes("BBB_SOFT_SHOE_BPT_EV_V5_1"),"original prediction engine version retained");
 assert(auth.includes("license"),"existing member auth retained");
-assert(/trial-styles\.css\?v=20261116-(ui-polish-v7|brandmotion-v8)/.test(html),"cache version bumped");
+assert(/trial-styles\.css\?v=20261116-(ui-polish-v7|brandmotion-v8|fullbleed-v9)/.test(html),"cache version bumped");
 console.log(JSON.stringify({ok:true,checks:["animated_original_avatar","impactful_neon_heading","reduced_motion","remove_default_instruction","seo_cards","expandable_FAQ","diagnostics_hidden","scrollbar_invisible_but_scrollable","unchanged_ui_hooks"]}));

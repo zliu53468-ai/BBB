@@ -25,7 +25,7 @@ assert(css.includes("@keyframes bbb-brand-kenburns"),"slow dynamic zoom");
 assert(css.includes("@keyframes bbb-brand-light-sweep"),"purple sweeping light");
 assert(css.includes("@keyframes bbb-brand-frame-pulse"),"neon frame motion");
 assert(css.includes("prefers-reduced-motion:reduce"),"accessible reduced-motion fallback");
-assert(main.includes('trial-styles.css?v=20261116-brandmotion-v8')&&
-  ended.includes('trial-styles.css?v=20261116-brandmotion-v8'),"both pages cache-busted");
+assert(main.includes('trial-styles.css?v=20261116-fullbleed-v9')&&
+  ended.includes('trial-styles.css?v=20261116-fullbleed-v9'),"both pages cache-busted");
 assert(main.includes('id="bbbTrialAccuracyPanel"'),"60 percent accuracy gate visible in trial");
 console.log(JSON.stringify({ok:true,checks:["brand_image_binary","homepage_brand_motion","trial_end_brand_motion","cta_home","cta_bankroll","casino_and_line_intact","trial_untouched","reduced_motion"]}));

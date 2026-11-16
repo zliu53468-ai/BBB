@@ -397,3 +397,104 @@
   }
   .trial-end-actions .trial-cta{transition:none!important}
 }
+
+
+/* Full viewport animated backdrop - SAME existing uploaded brand artwork.
+   Place outside content panels so it fills the browser, not a 430px card.
+   The brand image is decorative and never intercepts trial/referral controls. */
+#licenseGate{
+  position:relative;
+  isolation:isolate;
+  background:transparent!important;
+  overflow:clip;
+}
+#licenseGate>.bbb-fullbleed-scene,
+.trial-ended-body>.bbb-fullbleed-scene{
+  position:fixed;inset:0;width:100%;width:100vw;height:100%;height:100dvh;
+  z-index:0;pointer-events:none;overflow:hidden;
+  border:0;border-radius:0;margin:0;padding:0;background:#100425;
+}
+.bbb-fullbleed-scene>.bbb-animated-brand-image{
+  display:block;width:100%;height:100%;object-fit:cover;
+  object-position:center 42%;
+  max-width:none;max-height:none;
+  transform:scale(1.08);transform-origin:center;
+  filter:brightness(.81) saturate(1.25);
+  animation:bbb-fullbleed-drift 22s ease-in-out infinite alternate;
+}
+.bbb-fullbleed-scene::before{
+  content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 25%,rgba(141,46,234,.05),transparent 55%),
+    linear-gradient(90deg,rgba(6,2,19,.53),rgba(7,2,24,.12) 48%,rgba(6,2,19,.53)),
+    linear-gradient(0deg,rgba(10,3,28,.73),rgba(10,3,28,.15) 52%,rgba(12,3,29,.25));
+}
+.bbb-fullbleed-scene::after{
+  content:"";position:absolute;z-index:2;pointer-events:none;
+  inset:-50% auto -50% -40%;width:23%;
+  transform:skewX(-22deg);
+  background:linear-gradient(90deg,transparent,rgba(233,169,255,.15),rgba(255,255,255,.06),transparent);
+  mix-blend-mode:screen;
+  animation:bbb-fullbleed-sweep 13s ease-in-out infinite;
+}
+#licenseGate>.license-shell,
+#licenseGate>.member-feedback-showcase,
+#licenseGate>.seo-discovery{
+  position:relative;z-index:1;
+}
+#licenseGate .license-shell{
+  background:linear-gradient(150deg,rgba(28,10,65,.64),rgba(9,5,29,.63))!important;
+  backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);
+  border-color:rgba(232,176,255,.50)!important;
+  box-shadow:0 20px 75px rgba(0,0,0,.43),0 0 65px rgba(165,65,254,.19)!important;
+}
+#licenseGate .member-feedback-showcase{
+  background:linear-gradient(145deg,rgba(37,12,79,.71),rgba(16,8,42,.76))!important;
+  backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+}
+#licenseGate .seo-discovery{
+  background:rgba(16,8,43,.74)!important;
+  backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);
+}
+#licenseGate .dynamic-brand-mark{
+  margin:10px auto 14px!important;width:112px;height:112px;
+}
+#licenseGate .dynamic-brand-mark img{
+  width:100px!important;max-height:100px!important;
+}
+.trial-ended-body{
+  position:relative;isolation:isolate;
+  background:#090515!important;
+}
+.trial-ended-body>.trial-end-shell{
+  position:relative;z-index:1;
+  background:linear-gradient(145deg,rgba(23,9,56,.67),rgba(8,5,29,.76))!important;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid rgba(228,166,255,.46);
+}
+.trial-ended-body>.trial-end-shell>.trial-end-logo{
+  width:110px;max-height:92px;margin:0 auto 12px;
+  filter:drop-shadow(0 0 14px rgba(199,86,255,.5));
+}
+@keyframes bbb-fullbleed-drift{
+  0%{transform:scale(1.06) translate3d(0,0,0)}
+  100%{transform:scale(1.14) translate3d(0,-1.5%,0)}
+}
+@keyframes bbb-fullbleed-sweep{
+  0%,31%{left:-40%;opacity:0}
+  40%{opacity:.50}
+  60%,100%{left:120%;opacity:0}
+}
+@media(max-width:600px){
+  .bbb-fullbleed-scene>.bbb-animated-brand-image{
+    object-position:center 32%;
+    filter:brightness(.73) saturate(1.22);
+  }
+  #licenseGate .license-shell{
+    background:linear-gradient(145deg,rgba(24,9,54,.72),rgba(10,5,30,.75))!important;
+  }
+  .trial-ended-body>.trial-end-shell{background:rgba(14,6,37,.78)!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .bbb-fullbleed-scene>.bbb-animated-brand-image,
+  .bbb-fullbleed-scene::after{animation:none!important;transform:none!important}
+}
