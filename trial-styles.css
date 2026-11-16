@@ -307,3 +307,93 @@
   #licenseGate .homepage-impact-line span,#licenseGate .homepage-gradient-title{animation:none!important}
   #licenseGate #trialStartBtn,#licenseGate .trial-gate-dg-link{transition:none}
 }
+
+
+/* 2026-11-16: Uploaded brand artwork, used only on entry and conversion pages.
+   Content, trial scripts, prediction and outbound links remain unchanged. */
+.bbb-animated-brand-art{
+  position:relative;isolation:isolate;overflow:hidden;
+  width:min(430px,100%);aspect-ratio:1;margin:14px auto 2px;
+  border:1px solid rgba(230,145,255,.58);border-radius:23px;
+  background:radial-gradient(circle at 50% 50%,rgba(141,55,230,.34),#130625 80%);
+  box-shadow:0 0 0 1px rgba(182,74,248,.12),0 20px 62px rgba(13,2,32,.65),0 0 46px rgba(137,38,248,.25);
+}
+.bbb-animated-brand-art::before{
+  content:"";position:absolute;inset:0;z-index:2;pointer-events:none;
+  border-radius:inherit;border:2px solid transparent;
+  background:linear-gradient(140deg,transparent 22%,rgba(238,143,255,.66),transparent 70%) border-box;
+  box-shadow:inset 0 0 35px rgba(167,48,255,.10);
+  animation:bbb-brand-frame-pulse 5.3s ease-in-out infinite;
+}
+.bbb-animated-brand-image{
+  display:block;width:100%;height:100%;object-fit:cover;
+  transform:scale(1.035);transform-origin:center;
+  filter:brightness(1.08) saturate(1.14);
+  animation:bbb-brand-kenburns 16s ease-in-out infinite alternate;
+}
+.bbb-brand-art-shimmer{
+  position:absolute;z-index:3;pointer-events:none;
+  top:-35%;left:-120%;width:55%;height:170%;
+  transform:rotate(27deg);opacity:.52;
+  background:linear-gradient(90deg,transparent,rgba(220,136,255,.08),rgba(255,255,255,.26),rgba(227,142,255,.08),transparent);
+  animation:bbb-brand-light-sweep 9s ease-in-out infinite;
+}
+.bbb-brand-art-corner{
+  position:absolute;z-index:3;pointer-events:none;
+  bottom:0;left:0;right:0;height:16%;
+  background:linear-gradient(0deg,rgba(45,4,85,.43),transparent);
+}
+#licenseGate .bbb-animated-brand-art+.dynamic-brand-mark{
+  width:72px;height:72px;z-index:4;position:relative;
+  margin:-33px auto 8px!important;
+  box-shadow:0 0 20px rgba(191,80,255,.45);
+}
+#licenseGate .bbb-animated-brand-art+.dynamic-brand-mark img{
+  width:64px!important;max-height:64px!important;
+}
+.trial-end-shell>.bbb-end-brand-art{
+  width:min(310px,80%);margin:0 auto 7px;border-radius:18px;
+}
+.trial-end-shell>.bbb-end-brand-art+.trial-end-logo{
+  position:relative;z-index:4;display:block;
+  width:66px;height:66px;object-fit:contain;margin:-37px auto 16px;
+  filter:drop-shadow(0 0 10px rgba(206,105,255,.55));
+}
+.trial-ended-body{
+  background:radial-gradient(ellipse at 50% 12%,rgba(111,30,192,.34),transparent 58%),#090515;
+}
+.trial-end-shell{
+  position:relative;overflow:visible;
+  box-shadow:0 25px 78px rgba(5,2,21,.56),0 0 65px rgba(132,50,238,.15);
+}
+.trial-end-actions .trial-cta{
+  transition:transform .23s ease,filter .23s ease,box-shadow .23s ease;
+}
+.trial-end-actions .trial-cta:hover{
+  transform:translateY(-3px);filter:brightness(1.09);
+  box-shadow:0 11px 30px rgba(175,70,232,.22);
+}
+@keyframes bbb-brand-kenburns{
+  0%{transform:scale(1.02) translateY(0)}
+  100%{transform:scale(1.10) translateY(-1.2%)}
+}
+@keyframes bbb-brand-light-sweep{
+  0%,27%{left:-120%;opacity:0}
+  39%{opacity:.58}
+  50%{left:170%;opacity:0}
+  100%{left:170%;opacity:0}
+}
+@keyframes bbb-brand-frame-pulse{
+  0%,100%{opacity:.65;box-shadow:inset 0 0 17px rgba(167,48,255,.07)}
+  50%{opacity:1;box-shadow:inset 0 0 38px rgba(215,88,255,.18)}
+}
+@media(max-width:520px){
+  #licenseGate .bbb-animated-brand-art{width:min(360px,100%);border-radius:17px}
+  .trial-end-shell>.bbb-end-brand-art{width:min(275px,78vw)}
+}
+@media(prefers-reduced-motion:reduce){
+  .bbb-animated-brand-image,.bbb-brand-art-shimmer,.bbb-animated-brand-art::before{
+    animation:none!important;transform:none!important;
+  }
+  .trial-end-actions .trial-cta{transition:none!important}
+}

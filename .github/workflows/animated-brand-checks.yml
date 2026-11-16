@@ -1,0 +1,34 @@
+name: BBB Animated Brand Pages Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - trial-ended.html
+      - trial-styles.css
+      - assets/brand-ai-baccarat-hero.webp
+      - test_animated_brand_pages.mjs
+      - .github/workflows/animated-brand-checks.yml
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - trial-ended.html
+      - trial-styles.css
+      - assets/brand-ai-baccarat-hero.webp
+      - test_animated_brand_pages.mjs
+      - .github/workflows/animated-brand-checks.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  brand-pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate uploaded artwork, animations and unchanged conversion actions
+        run: node test_animated_brand_pages.mjs
