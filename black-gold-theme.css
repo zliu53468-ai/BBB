@@ -37,7 +37,8 @@ body.bbb-black-gold.trial-ended-body>.bbb-gold-landscape{
  repeating-linear-gradient(90deg,transparent 0 123px,rgba(210,161,70,.048) 124px 125px,transparent 126px 150px),
  linear-gradient(122deg,#060805,#15130d 45%,#090a07 100%)!important;
 }
-body.bbb-black-gold .bbb-gold-landscape::before{
+body.bbb-black-gold #licenseGate>.bbb-gold-landscape::before,
+body.bbb-black-gold.trial-ended-body>.bbb-gold-landscape::before{
  content:"";position:absolute;inset:-15%;z-index:1;pointer-events:none;
  background:
  radial-gradient(circle at 50% 45%,transparent 0 13%,rgba(224,172,73,.19) 13.1% 13.3%,transparent 13.6% 20%,rgba(224,172,73,.085) 20.1% 20.3%,transparent 20.5%),
@@ -45,7 +46,8 @@ body.bbb-black-gold .bbb-gold-landscape::before{
  repeating-linear-gradient(0deg,transparent 0 57px,rgba(216,158,61,.034) 58px,transparent 59px);
  opacity:.74;transform-origin:center;animation:bbb-gold-orbit 37s linear infinite;
 }
-body.bbb-black-gold .bbb-gold-landscape::after{
+body.bbb-black-gold #licenseGate>.bbb-gold-landscape::after,
+body.bbb-black-gold.trial-ended-body>.bbb-gold-landscape::after{
  content:"";position:absolute;inset:-20% auto -20% -46%;width:25%;z-index:2;pointer-events:none;
  background:linear-gradient(90deg,transparent,rgba(238,190,88,.10),rgba(255,232,160,.17),transparent);
  transform:skew(-19deg);filter:blur(7px);mix-blend-mode:screen;
@@ -367,8 +369,10 @@ body.bbb-black-gold .seo-article-layout th{
  body.bbb-black-gold #predictionApp .bbb-gold-prediction-emblem{letter-spacing:.02em}
 }
 @media(prefers-reduced-motion:reduce){
- body.bbb-black-gold .bbb-gold-landscape::before,
- body.bbb-black-gold .bbb-gold-landscape::after,
+ body.bbb-black-gold #licenseGate>.bbb-gold-landscape::before,
+ body.bbb-black-gold #licenseGate>.bbb-gold-landscape::after,
+ body.bbb-black-gold.trial-ended-body>.bbb-gold-landscape::before,
+ body.bbb-black-gold.trial-ended-body>.bbb-gold-landscape::after,
  body.bbb-black-gold #predictionApp .bbb-gold-prediction-emblem,
  body.bbb-black-gold #licenseGate .homepage-gradient-title{
    animation:none!important;transform:none!important;
