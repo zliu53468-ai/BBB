@@ -200,3 +200,62 @@
 @media(prefers-reduced-motion:reduce){
  body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn a{transition:none!important}
 }
+
+/* Gallery source files are 647–1280px native originals (not fabricated 4K).
+   Public preview is a cropped-fit thumb; modal loads the real 5 originals. */
+body.bbb-black-gold #licenseGate .member-feedback-grid{
+ grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+}
+body.bbb-black-gold #licenseGate .member-feedback-card img.member-feedback-image{
+ display:block;max-width:100%!important;width:min(100%,265px)!important;
+ height:auto!important;max-height:min(260px,40dvh)!important;
+ aspect-ratio:auto!important;object-fit:contain!important;
+ background-image:none!important;background-color:#fff;
+ border-radius:8px;box-shadow:0 5px 16px rgba(0,0,0,.35);
+}
+body.bbb-black-gold .bbb-feedback-lightbox[open]{
+ display:flex!important;flex-direction:column;align-items:stretch;justify-content:stretch;
+ width:min(98vw,1250px)!important;max-width:1250px!important;
+ height:min(98dvh,1200px)!important;max-height:98dvh!important;
+ min-height:0;overflow:hidden!important;
+ padding:12px!important;margin:auto;
+}
+body.bbb-black-gold .bbb-feedback-lightbox-head{flex:0 0 auto;margin:0 0 7px!important}
+body.bbb-black-gold .bbb-feedback-zoom-viewport{
+ display:flex!important;align-items:center;justify-content:center;
+ width:100%!important;height:auto!important;max-height:none!important;
+ flex:1 1 auto;min-height:0;overflow:auto!important;
+ aspect-ratio:auto!important;background:#101010!important;
+}
+body.bbb-black-gold .bbb-feedback-zoom-viewport img{
+ display:block!important;position:static!important;
+ width:auto!important;height:auto!important;
+ max-width:100%!important;max-height:100%!important;
+ object-fit:contain!important;transform:none!important;
+ image-rendering:auto!important;
+}
+body.bbb-black-gold .bbb-feedback-zoom-controls{
+ flex:0 0 auto;display:grid!important;grid-template-columns:1fr 1fr auto;gap:6px;
+ margin:8px 0 0!important;
+}
+body.bbb-black-gold #bbbFeedbackZoomOriginal{
+ display:flex;align-items:center;justify-content:center;
+ min-height:42px;padding:6px 11px;border:1px solid rgba(230,182,93,.5);
+ border-radius:10px;background:rgba(96,68,29,.6);font-size:12px;
+ text-decoration:none;color:#ffe4ab;
+}
+body.bbb-black-gold .bbb-feedback-lightbox-footnote{
+ flex:0 0 auto;line-height:1.3;margin:6px 0 0!important;
+ max-height:34px;overflow:hidden;
+}
+@media(max-width:760px){
+ body.bbb-black-gold #licenseGate #bbbFeedbackCarousel .member-feedback-card img.member-feedback-image{
+   width:auto!important;max-width:100%!important;
+   max-height:min(31dvh,250px)!important;height:auto!important;
+   object-fit:contain!important;flex:1 1 auto;min-height:0;
+ }
+ body.bbb-black-gold .bbb-feedback-lightbox[open]{padding:9px!important}
+ body.bbb-black-gold .bbb-feedback-zoom-controls{grid-template-columns:1fr 1fr;gap:7px}
+ body.bbb-black-gold #bbbFeedbackZoomOriginal{grid-column:1/-1;min-height:37px}
+ body.bbb-black-gold .bbb-feedback-lightbox-footnote{display:none}
+}
