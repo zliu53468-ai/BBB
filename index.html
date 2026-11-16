@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="seo-content.css?v=20261116-cluster-v1">
   <link rel="stylesheet" href="ui-three-tabs.css?v=20261116-tabs-v1">
   <link rel="stylesheet" href="black-gold-theme.css?v=20261116-blackgold-v1">
+  <link rel="stylesheet" href="mobile-one-screen.css?v=20261116-fit-v1">
 
 </head>
 <body class="bbb-black-gold">
@@ -68,6 +69,7 @@
       </section>
       <a class="homepage-member-entry" href="./?license=1">已持有開通碼？會員登入</a>
       <div id="licenseMemberPanel" class="license-member-panel" hidden>
+        <button type="button" id="bbbMobileMemberClose" aria-label="關閉會員登入視窗">×</button>
         <h2>會員開通碼登入</h2>
         <p>此為已持有開通碼的會員登入入口；未領取者請先聯繫官方管理員。</p>
         <form id="licenseForm" class="license-form">
@@ -87,17 +89,30 @@
         <h2 id="memberFeedbackHeading">會員回饋與遊戲報表截圖</h2>
         <p>精選會員分享的對話與遊戲報表，點擊圖片即可放大查看。</p>
       </div>
-      <div class="member-feedback-grid">
-        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="1" aria-label="放大會員回饋截圖 1"><div class="member-feedback-image feedback-shot-1" role="img" aria-label="會員對話及百家樂遊戲報表，截圖一"></div><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 01</figcaption></figure>
-        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="2" aria-label="放大會員回饋截圖 2"><div class="member-feedback-image feedback-shot-2" role="img" aria-label="會員使用回饋及遊戲報表，截圖二"></div><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 02</figcaption></figure>
-        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="3" aria-label="放大會員回饋截圖 3"><div class="member-feedback-image feedback-shot-3" role="img" aria-label="會員對話及下注詳情，截圖三"></div><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 03</figcaption></figure>
-        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="4" aria-label="放大會員回饋截圖 4"><div class="member-feedback-image feedback-shot-4" role="img" aria-label="會員對話及遊戲紀錄，截圖四"></div><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 04</figcaption></figure>
-        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="5" aria-label="放大會員回饋截圖 5"><div class="member-feedback-image feedback-shot-5" role="img" aria-label="會員回饋及投注報表，截圖五"></div><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 05</figcaption></figure>
+      <div class="member-feedback-grid" id="bbbFeedbackCarousel" aria-live="polite">
+        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="1" aria-label="放大會員回饋截圖 1"><img class="member-feedback-image feedback-shot-1" src="assets/member-feedback-01.webp" alt="會員對話及百家樂遊戲報表，截圖一" width="1280" height="1066" loading="lazy" decoding="async"><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 01</figcaption></figure>
+        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="2" aria-label="放大會員回饋截圖 2"><img class="member-feedback-image feedback-shot-2" src="assets/member-feedback-02.webp" alt="會員使用回饋及遊戲報表，截圖二" width="647" height="627" loading="lazy" decoding="async"><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 02</figcaption></figure>
+        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="3" aria-label="放大會員回饋截圖 3"><img class="member-feedback-image feedback-shot-3" src="assets/member-feedback-03.webp" alt="會員對話及下注詳情，截圖三" width="1257" height="1079" loading="lazy" decoding="async"><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 03</figcaption></figure>
+        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="4" aria-label="放大會員回饋截圖 4"><img class="member-feedback-image feedback-shot-4" src="assets/member-feedback-04.webp" alt="會員對話及遊戲紀錄，截圖四" width="1017" height="939" loading="lazy" decoding="async"><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 04</figcaption></figure>
+        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="5" aria-label="放大會員回饋截圖 5"><img class="member-feedback-image feedback-shot-5" src="assets/member-feedback-05.webp" alt="會員回饋及投注報表，截圖五" width="762" height="755" loading="lazy" decoding="async"><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 05</figcaption></figure>
+      </div>
+      <div class="bbb-feedback-carousel-nav" aria-label="切換會員回饋圖片">
+        <button type="button" id="bbbFeedbackCardPrev" aria-label="上一張回饋">‹</button>
+        <span id="bbbFeedbackCardCounter" aria-live="polite">1 / 5</span>
+        <button type="button" id="bbbFeedbackCardNext" aria-label="下一張回饋">›</button>
       </div>
       <div class="member-feedback-bottom"><a href="https://lin.ee/6vkiP3b" target="_blank" rel="noopener noreferrer">詢問官方管理員了解 BBB 預測程式</a></div>
     </section>
     </div>
     <div id="bbbTabLearn" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnLearn" tabindex="0" hidden>
+    <nav class="bbb-mobile-quick-learn" aria-label="手機版快速操作教學">
+      <h2>一分鐘看懂 AI 百家樂</h2>
+      <p>選擇想了解的功能，不用在首頁往下翻找。</p>
+      <a href="baccarat-ai-prediction.html"><span>01</span><strong>AI 預測程式怎麼用</strong><small>操作與免費試用</small></a>
+      <a href="baccarat-road-guide.html"><span>02</span><strong>百家樂大路怎麼看</strong><small>牌路、莊閒和紀錄</small></a>
+      <a href="baccarat-ai-winrate.html"><span>03</span><strong>命中率怎麼統計</strong><small>有效結算與觀望</small></a>
+      <a href="youtube-video.html"><span>04</span><strong>觀看完整示範影片</strong><small>YouTube 操作教學</small></a>
+    </nav>
     <section class="seo-discovery" aria-label="百家樂與 AI 分析程式介紹">
       <section class="featured-youtube" aria-labelledby="featuredVideoHeading">
         <p class="featured-video-kicker">莊家剋星 · YOUTUBE 影片專區</p>
@@ -150,12 +165,13 @@
       <strong id="bbbFeedbackLightboxTitle">會員回饋 · 截圖 <span id="bbbFeedbackZoomIndex">1 / 5</span></strong>
       <button id="bbbFeedbackZoomClose" type="button" aria-label="關閉放大圖片">×</button>
     </div>
-    <div id="bbbFeedbackZoomViewport" class="bbb-feedback-zoom-viewport feedback-zoom-1" role="img" aria-label="會員回饋對話及遊戲報表截圖">
-      <img src="assets/member-feedback-sprite.webp" width="190" height="868" alt="" aria-hidden="true" decoding="async">
+    <div id="bbbFeedbackZoomViewport" class="bbb-feedback-zoom-viewport feedback-zoom-1" aria-label="會員回饋對話及遊戲報表截圖">
+      <img id="bbbFeedbackZoomImg" src="assets/member-feedback-01.webp" width="1280" height="1066" alt="會員回饋原始截圖 1" decoding="async">
     </div>
     <div class="bbb-feedback-zoom-controls">
       <button id="bbbFeedbackZoomPrev" type="button" aria-label="上一張會員回饋">← 上一張</button>
       <button id="bbbFeedbackZoomNext" type="button" aria-label="下一張會員回饋">下一張 →</button>
+      <a id="bbbFeedbackZoomOriginal" href="assets/member-feedback-01.webp" target="_blank" rel="noopener noreferrer" aria-label="開啟當前會員回饋原圖">檢視原始尺寸 ↗</a>
     </div>
     <p class="bbb-feedback-lightbox-footnote">此為會員提供的對話與報表截圖；顯示內容並非經過獨立核實的績效統計。</p>
   </dialog>
@@ -309,6 +325,8 @@
   <script src="visitor-flow.js?v=20261115-visitor-v3"></script>
   <script src="homepage-tabs.js?v=20261116-tabs-v1"></script>
   <script src="feedback-lightbox.js?v=20261116-tabs-v1"></script>
+  <script src="feedback-carousel.js?v=20261116-fit-v1"></script>
+  <script src="mobile-member-modal.js?v=20261116-fit-v1"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

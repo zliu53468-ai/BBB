@@ -29,7 +29,7 @@ assert((home.match(/class="member-feedback-card"/g)||[]).length===5,"five screen
 assert((home.match(/class="bbb-feedback-expand"/g)||[]).length===5,"five clickable zoom surfaces");
 for(let i=1;i<=5;i++)assert(home.includes('data-feedback-index="'+i+'"'),"feedback index "+i);
 assert(home.includes('id="bbbFeedbackLightbox"')&&home.includes('id="bbbFeedbackZoomViewport"'),"accessible screenshot zoom dialog");
-assert(home.includes('src="assets/member-feedback-sprite.webp"'),"existing bundled screenshots reused");
+for(let i=1;i<=5;i++)assert(home.includes('src="assets/member-feedback-0'+i+'.webp"'),"original full-resolution photo "+i);
 assert(css.includes("@media(max-width:640px)"),"responsive phone styles");
 assert(css.includes("@media(min-width:1024px)"),"responsive desktop styles");
 
@@ -67,19 +67,23 @@ const modal=fake("bbbFeedbackLightbox");modal.open=false;
 modal.showModal=function(){this.open=true};
 modal.close=function(){this.open=false;this.fire("close");};
 const view=fake("bbbFeedbackZoomViewport");view.className="";
+const image=fake("bbbFeedbackZoomImg");image.src="";
+const original=fake("bbbFeedbackZoomOriginal");original.href="";
 const count=fake("bbbFeedbackZoomIndex");count.textContent="";
 const close=fake("bbbFeedbackZoomClose");
 const prev=fake("bbbFeedbackZoomPrev");
 const next=fake("bbbFeedbackZoomNext");
 const doc={getElementById(id){return ({
- bbbFeedbackLightbox:modal,bbbFeedbackZoomViewport:view,bbbFeedbackZoomIndex:count,
+ bbbFeedbackLightbox:modal,bbbFeedbackZoomViewport:view,bbbFeedbackZoomImg:image,bbbFeedbackZoomOriginal:original,bbbFeedbackZoomIndex:count,
  bbbFeedbackZoomClose:close,bbbFeedbackZoomPrev:prev,bbbFeedbackZoomNext:next
 })[id]||null;},querySelectorAll(selector){assert.equal(selector,"[data-feedback-index]");return screens;}};
 vm.runInNewContext(zoom,{document:doc});
 screens[0].fire("click");
 assert.equal(modal.open,true);
 assert.equal(count.textContent,"1 / 5","first click opens correct image");
-next.fire("click");assert.equal(count.textContent,"2 / 5");
+assert.equal(image.src,"assets/member-feedback-01.webp","zoom loads first native-resolution image");
+assert.equal(original.href,"assets/member-feedback-01.webp","original-size link points to native asset");
+next.fire("click");assert.equal(count.textContent,"2 / 5");assert.equal(image.src,"assets/member-feedback-02.webp");
 prev.fire("click");assert.equal(count.textContent,"1 / 5");
 prev.fire("click");assert.equal(count.textContent,"5 / 5","prev wraps at beginning");
 next.fire("click");assert.equal(count.textContent,"1 / 5","next wraps at end");

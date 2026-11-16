@@ -5,11 +5,19 @@ const read=p=>fs.readFileSync(new URL("./"+p,import.meta.url),"utf8");
 const h=read("index.html"),css=read("trial-styles.css");
 const auth=read("auth-client.js"),trial=read("trial-client.js");
 const image=fs.readFileSync(new URL("./assets/member-feedback-sprite.webp",import.meta.url));
-assert.equal(image.length,4872,"compressed 5-screenshot gallery asset should exist");
+const originals=[1,2,3,4,5].map(i=>fs.readFileSync(new URL("./assets/member-feedback-0"+i+".webp",import.meta.url)));
+assert.equal(image.length,4872,"archived compressed sprite remains available");
+assert.equal(originals.length,5);
+for(const [i,bytes] of originals.entries()){
+ assert(bytes.length>16000,"full-resolution WebP #"+(i+1)+" must exceed the old 4.8KB combined sprite");
+ assert.equal(bytes.subarray(0,4).toString("ascii"),"RIFF","native WebP image header");
+ assert.equal(bytes.subarray(8,12).toString("ascii"),"WEBP","native WebP format");
+ assert(h.includes('src="assets/member-feedback-0'+(i+1)+'.webp"'),"new native-resolution gallery image "+(i+1));
+}
 assert.equal(image.subarray(0,4).toString("utf8"),"RIFF","valid WebP RIFF header");
 assert(h.includes('class="member-feedback-showcase"'),"feedback gallery visible on public homepage");
 assert.equal((h.match(/class="member-feedback-card"/g)||[]).length,5,"all five screenshots shown");
-assert(css.includes("assets/member-feedback-sprite.webp"),"gallery uses versioned local image");
+assert(css.includes("assets/member-feedback-sprite.webp"),"archived sprite fallback stylesheet retained");
 for(let i=1;i<=5;i++)assert(css.includes(".feedback-shot-"+i+"{"),"gallery shot "+i);
 assert(h.includes("homepage-gradient-title"),"new vibrant intro");
 assert(h.includes("協助"),"helps explain assistant-oriented model");

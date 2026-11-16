@@ -1,0 +1,44 @@
+name: BBB Mobile One-Screen and HD Feedback Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "mobile-one-screen.css"
+      - "feedback-carousel.js"
+      - "feedback-lightbox.js"
+      - "mobile-member-modal.js"
+      - "assets/member-feedback-*.webp"
+      - "test_mobile_one_screen.mjs"
+      - ".github/workflows/mobile-one-screen-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "mobile-one-screen.css"
+      - "feedback-carousel.js"
+      - "feedback-lightbox.js"
+      - "mobile-member-modal.js"
+      - "assets/member-feedback-*.webp"
+      - "test_mobile_one_screen.mjs"
+      - ".github/workflows/mobile-one-screen-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mobile-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify phone no-scroll tabs, native screenshots and original login controls
+        run: |
+          node --check feedback-carousel.js
+          node --check feedback-lightbox.js
+          node --check mobile-member-modal.js
+          node test_mobile_one_screen.mjs
+          node test_three_tab_ui.mjs
+          node test_landing_feedback.mjs
