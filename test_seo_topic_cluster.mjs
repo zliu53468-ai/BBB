@@ -13,7 +13,7 @@ const pages=[
 const titles=new Set(),descriptions=new Set(),sitemap=read("sitemap.xml"),robots=read("robots.txt");
 const intro=read("index.html");
 assert(intro.includes('property="og:site_name" content="莊家剋星"'),"social brand");
-assert(intro.includes('property="og:image" content="https://bgsv1.xyz/assets/brand-ai-baccarat-hero.webp"'),"social share uses new image");
+assert(intro.includes('property="og:image" content="https://bgsv1.xyz/assets/logo-baccarat-slayer.webp"'),"social share uses non-person brand mark");
 assert(intro.includes('"@type":"WebSite"'),"Website brand schema");
 assert(intro.includes('"name":"莊家剋星"'),"structured name");
 assert(!intro.includes('<meta name="keywords"'),"no ignored meta keywords");
