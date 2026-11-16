@@ -1,37 +1,28 @@
-import fs from "node:fs";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 const read=p=>fs.readFileSync(new URL("./"+p,import.meta.url),"utf8");
-const home=read("index.html");
-const end=read("trial-ended.html");
-const css=read("trial-styles.css");
-const image="assets/brand-ai-baccarat-hero.webp";
-
-assert(home.includes('id="licenseGate"'),"original licensed landing remains");
-assert(end.includes('class="trial-ended-body"'),"trial end landing remains");
-assert(home.includes('<section id="licenseGate" class="license-gate"'),"original landing ID unchanged");
-assert(home.includes('<div class="bbb-fullbleed-scene" aria-hidden="true">'),"home has full screen scene");
-assert(end.includes('<div class="bbb-fullbleed-scene" aria-hidden="true">'),"exit has full screen scene");
-assert(home.indexOf('class="bbb-fullbleed-scene"')<home.indexOf('class="license-shell"'),
-  "scene sits outside overlay content card, not inside a small image box");
-assert(end.indexOf('class="bbb-fullbleed-scene"')<end.indexOf('class="trial-end-shell"'),
-  "exit background covers page, not conversion card");
-assert(home.includes('src="'+image+'"')&&end.includes('src="'+image+'"'),
-  "original supplied brand artwork reused on both pages");
-assert(!home.includes('class="bbb-animated-brand-art"'),"old square homepage image card removed");
-assert(!end.includes('class="bbb-animated-brand-art bbb-end-brand-art"'),"old square trial end card removed");
-assert(css.includes("#licenseGate>.bbb-fullbleed-scene"),"homepage fixed image background selectors");
-assert(css.includes(".trial-ended-body>.bbb-fullbleed-scene"),"trial end fixed image background selectors");
-assert(css.includes("position:fixed;inset:0;width:100%"),"scene covers viewport rather than 430px");
-assert(css.includes("object-fit:cover"),"uploaded image covers whole viewport");
-assert(css.includes("@keyframes bbb-fullbleed-drift"),"slow parallax effect");
-assert(css.includes("@keyframes bbb-fullbleed-sweep"),"purple light sweep");
-assert(css.includes("pointer-events:none"),"full-screen artwork cannot block buttons");
-assert(css.includes("prefers-reduced-motion:reduce"),"motion respects accessibility");
-assert(home.includes('id="trialStartBtn"'),"BBB trial CTA preserved");
-assert(home.includes('id="dgDirectTrialLink"'),"DG independent CTA preserved");
-assert(home.includes('id="bbbBankrollDialog"'),"capital modal preserved");
-assert(home.includes('id="bbbTrialAccuracyPanel"'),"60% hit-rate trial display preserved");
-assert(end.includes('data-bbb-link="casinoRegisterUrl"'),"casino redirect preserved");
-assert(end.includes('data-bbb-link="lineContactUrl"'),"LINE redirect preserved");
-assert(end.includes('id="casinoAccountDialog"'),"existing account prompt preserved");
-console.log(JSON.stringify({ok:true,checks:["full_bleed_home","full_bleed_exit","same_original_artwork","no_square_card","interactive_controls_preserved","scroll_and_motion_accessible"]}));
+const home=read("index.html"),exit=read("trial-ended.html"),css=read("black-gold-theme.css"),old=read("trial-styles.css");
+assert(home.includes('id="licenseGate"'),"original licensed entry remains");
+assert(exit.includes('class="trial-ended-body bbb-black-gold"'),"full-bleed exit remains");
+assert(home.includes('class="bbb-fullbleed-scene bbb-gold-landscape"'),"homepage uses abstract black-gold full page scene");
+assert(exit.includes('class="bbb-fullbleed-scene bbb-gold-landscape"'),"exit page uses same abstract scene");
+assert(home.indexOf('class="bbb-fullbleed-scene bbb-gold-landscape"')<
+ home.indexOf('class="license-shell"'),"full-bleed home scene outside form card");
+assert(exit.indexOf('class="bbb-fullbleed-scene bbb-gold-landscape"')<
+ exit.indexOf('class="trial-end-shell"'),"full-bleed exit scene outside CTA card");
+assert(!home.includes('class="bbb-animated-brand-art"')&&!exit.includes('class="bbb-animated-brand-art"'),
+ "no small boxed hero image remains");
+assert(!home.includes('src="assets/brand-ai-baccarat-hero.webp"')&&
+ !exit.includes('src="assets/brand-ai-baccarat-hero.webp"'),"no illustrated hooded person is visible");
+assert(css.includes("position:fixed;inset:0;width:100vw;height:100dvh"),"viewport fixed cover");
+assert(css.includes("#licenseGate>.bbb-gold-landscape::before"),"gold particles override previous violet");
+assert(css.includes("bbb-gold-light-sweep"),"gold sweep is animated");
+assert(css.includes("pointer-events:none"),"background does not capture taps");
+assert(css.includes("prefers-reduced-motion:reduce"),"motion accessibility");
+assert(old.includes(".bbb-fullbleed-scene::before"),"base effects retained only as visually overridden CSS");
+for(const id of ["trialStartBtn","dgDirectTrialLink","bbbBankrollDialog","bbbTrialAccuracyPanel"])
+ assert(home.includes('id="'+id+'"'),"old trial control "+id);
+for(const action of ["casinoRegisterUrl","lineContactUrl"])
+ assert(exit.includes('data-bbb-link="'+action+'"'),"old external link "+action);
+assert(exit.includes('id="casinoAccountDialog"'),"account prompt remains");
+console.log(JSON.stringify({ok:true,checks:["full_viewport_gold_scene","no_portrait","responsive","keeps_controls","accessible_motion"]}));
