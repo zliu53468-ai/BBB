@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="styles.css?v=20261106-bigroad-v1">
   <link rel="stylesheet" href="trial-styles.css?v=20261116-fullbleed-v9">
   <link rel="stylesheet" href="seo-content.css?v=20261116-cluster-v1">
+  <link rel="stylesheet" href="ui-three-tabs.css?v=20261116-tabs-v1">
 
 </head>
 <body>
@@ -32,6 +33,12 @@
     <div class="bbb-fullbleed-scene" aria-hidden="true">
       <img class="bbb-animated-brand-image" src="assets/brand-ai-baccarat-hero.webp" alt="" width="480" height="480" fetchpriority="high" decoding="async">
     </div>
+    <nav class="bbb-site-tabs" role="tablist" aria-label="莊家剋星首頁內容">
+      <button type="button" id="bbbTabBtnExperience" class="bbb-site-tab" role="tab" aria-selected="true" aria-controls="bbbTabExperience" tabindex="0">立即體驗</button>
+      <button type="button" id="bbbTabBtnFeedback" class="bbb-site-tab" role="tab" aria-selected="false" aria-controls="bbbTabFeedback" tabindex="-1">會員回饋</button>
+      <button type="button" id="bbbTabBtnLearn" class="bbb-site-tab" role="tab" aria-selected="false" aria-controls="bbbTabLearn" tabindex="-1">操作教學</button>
+    </nav>
+    <div id="bbbTabExperience" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnExperience" tabindex="0">
     <div class="license-shell">
       <div class="homepage-crown" aria-hidden="true">✦ B A N K E R &nbsp; S L A Y E R ✦</div>
       <div class="license-logo dynamic-brand-mark"><img src="assets/logo-baccarat-slayer.webp" alt="莊家剋星"></div>
@@ -67,21 +74,25 @@
         <p class="license-detail">首次開通會綁定這台瀏覽器的裝置金鑰。已領取開通碼者，可使用官方提供的會員登入連結返回此區。</p>
       </div>
     </div>
+    </div>
+    <div id="bbbTabFeedback" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnFeedback" tabindex="0" hidden>
     <section class="member-feedback-showcase" data-nosnippet aria-labelledby="memberFeedbackHeading">
       <div class="member-feedback-heading">
         <span class="member-feedback-eyebrow">COMMUNITY FEEDBACK · 真實對話畫面分享</span>
         <h2 id="memberFeedbackHeading">會員回饋與遊戲報表截圖</h2>
-        <p>查看會員提供的對話紀錄與遊戲報表畫面，了解不同玩家分享的分析與使用經驗。下方展示原始提供內容的縮圖。</p>
+        <p>精選會員分享的對話與遊戲報表，點擊圖片即可放大查看。</p>
       </div>
       <div class="member-feedback-grid">
-        <figure class="member-feedback-card"><div class="member-feedback-image feedback-shot-1" role="img" aria-label="會員對話及百家樂遊戲報表，截圖一"></div><figcaption>會員分享・對話與報表 01</figcaption></figure>
-        <figure class="member-feedback-card"><div class="member-feedback-image feedback-shot-2" role="img" aria-label="會員使用回饋及遊戲報表，截圖二"></div><figcaption>會員分享・對話與報表 02</figcaption></figure>
-        <figure class="member-feedback-card"><div class="member-feedback-image feedback-shot-3" role="img" aria-label="會員對話及下注詳情，截圖三"></div><figcaption>會員分享・對話與報表 03</figcaption></figure>
-        <figure class="member-feedback-card"><div class="member-feedback-image feedback-shot-4" role="img" aria-label="會員對話及遊戲紀錄，截圖四"></div><figcaption>會員分享・對話與報表 04</figcaption></figure>
-        <figure class="member-feedback-card"><div class="member-feedback-image feedback-shot-5" role="img" aria-label="會員回饋及投注報表，截圖五"></div><figcaption>會員分享・對話與報表 05</figcaption></figure>
+        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="1" aria-label="放大會員回饋截圖 1"><div class="member-feedback-image feedback-shot-1" role="img" aria-label="會員對話及百家樂遊戲報表，截圖一"></div><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 01</figcaption></figure>
+        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="2" aria-label="放大會員回饋截圖 2"><div class="member-feedback-image feedback-shot-2" role="img" aria-label="會員使用回饋及遊戲報表，截圖二"></div><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 02</figcaption></figure>
+        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="3" aria-label="放大會員回饋截圖 3"><div class="member-feedback-image feedback-shot-3" role="img" aria-label="會員對話及下注詳情，截圖三"></div><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 03</figcaption></figure>
+        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="4" aria-label="放大會員回饋截圖 4"><div class="member-feedback-image feedback-shot-4" role="img" aria-label="會員對話及遊戲紀錄，截圖四"></div><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 04</figcaption></figure>
+        <figure class="member-feedback-card"><button type="button" class="bbb-feedback-expand" data-feedback-index="5" aria-label="放大會員回饋截圖 5"><div class="member-feedback-image feedback-shot-5" role="img" aria-label="會員回饋及投注報表，截圖五"></div><span class="bbb-feedback-zoom-hint">點擊放大 <span aria-hidden="true">⌕</span></span></button><figcaption>會員分享・對話與報表 05</figcaption></figure>
       </div>
       <div class="member-feedback-bottom"><a href="https://lin.ee/6vkiP3b" target="_blank" rel="noopener noreferrer">詢問官方管理員了解 BBB 預測程式</a></div>
     </section>
+    </div>
+    <div id="bbbTabLearn" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnLearn" tabindex="0" hidden>
     <section class="seo-discovery" aria-label="百家樂與 AI 分析程式介紹">
       <section class="featured-youtube" aria-labelledby="featuredVideoHeading">
         <p class="featured-video-kicker">莊家剋星 · YOUTUBE 影片專區</p>
@@ -127,7 +138,22 @@
       </div>
       <p class="seo-warning">本頁提供遊戲規則與資料分析資訊。外部遊戲平台是否可使用，請依所在司法管轄區法規、年齡資格及各平台規則確認。</p>
     </section>
+    </div>
   </section>
+  <dialog id="bbbFeedbackLightbox" class="bbb-feedback-lightbox" aria-labelledby="bbbFeedbackLightboxTitle">
+    <div class="bbb-feedback-lightbox-head">
+      <strong id="bbbFeedbackLightboxTitle">會員回饋 · 截圖 <span id="bbbFeedbackZoomIndex">1 / 5</span></strong>
+      <button id="bbbFeedbackZoomClose" type="button" aria-label="關閉放大圖片">×</button>
+    </div>
+    <div id="bbbFeedbackZoomViewport" class="bbb-feedback-zoom-viewport feedback-zoom-1" role="img" aria-label="會員回饋對話及遊戲報表截圖">
+      <img src="assets/member-feedback-sprite.webp" width="190" height="868" alt="" aria-hidden="true" decoding="async">
+    </div>
+    <div class="bbb-feedback-zoom-controls">
+      <button id="bbbFeedbackZoomPrev" type="button" aria-label="上一張會員回饋">← 上一張</button>
+      <button id="bbbFeedbackZoomNext" type="button" aria-label="下一張會員回饋">下一張 →</button>
+    </div>
+    <p class="bbb-feedback-lightbox-footnote">此為會員提供的對話與報表截圖；顯示內容並非經過獨立核實的績效統計。</p>
+  </dialog>
   <dialog id="bbbBankrollDialog" class="bbb-bankroll-dialog" aria-labelledby="bbbBankrollTitle" aria-describedby="bbbBankrollDescription">
     <form id="bbbBankrollForm">
       <p class="bbb-bankroll-eyebrow">BANKROLL SETUP · 試用前設定</p>
@@ -158,7 +184,7 @@
       <a id="dgTrialLink" class="trial-dg-link" data-bbb-link="dgTrialUrl" target="_blank" rel="noopener noreferrer sponsored">前往 DG 官方試玩（開啟新分頁）</a>
       <p class="trial-help">DG 會另外開啟分頁，原本的 BBB 預測程式保留在本分頁。兩站不會同步資料，請自行輸入每局莊／閒／和結果。</p>
       <p id="bbbTrialStatus" role="status" aria-live="polite">免費試用期限由伺服器確認。</p>
-      <section id="bbbTrialBankrollPanel" class="bbb-trial-bankroll-panel" hidden aria-label="試用本金、凱莉比例與止盈目標">
+      <section id="bbbTrialBankrollPanel" class="bbb-trial-bankroll-panel bbb-money-behind-scenes" hidden aria-label="試用本金、凱莉比例與止盈目標">
         <div class="bbb-bankroll-grid">
           <div><span>起始本金</span><strong id="bbbMoneyStart">—</strong></div>
           <div><span>60% 止盈目標資金</span><strong id="bbbMoneyTarget">—</strong></div>
@@ -175,10 +201,12 @@
         </form>
       </section>
     </section>
-    <section id="bbbTrialAccuracyPanel" class="bbb-trial-accuracy-panel" hidden aria-label="免費試用有效預測命中率">
-      <div class="bbb-accuracy-head"><strong>本次試用 · 預測命中率</strong><span id="bbbTrialAccuracyRate">—</span></div>
-      <div class="bbb-accuracy-stats"><span>命中 <strong id="bbbTrialAccuracyHits">0</strong> 次</span><span>有效結算 <strong id="bbbTrialAccuracyValid">0</strong> 次</span><span>提前結束條件：至少 10 次、命中率 ≥ 60%</span></div>
-      <p id="bbbTrialAccuracyStatus" role="status" aria-live="polite">觀望與和局不計入有效預測結算；僅依本面板記錄的下一局結果計算。</p>
+    <section id="bbbTrialAccuracyPanel" class="bbb-trial-accuracy-panel bbb-accuracy-compact" hidden aria-label="免費試用有效預測命中率">
+      <strong class="bbb-accuracy-compact-label">本次命中統計</strong>
+      <span>命中 <strong id="bbbTrialAccuracyHits">0</strong> / 有效 <strong id="bbbTrialAccuracyValid">0</strong></span>
+      <strong id="bbbTrialAccuracyRate">—</strong>
+      <small class="bbb-accuracy-compact-threshold">10 次／60% 提前結束</small>
+      <p id="bbbTrialAccuracyStatus" class="bbb-visually-hidden" role="status" aria-live="polite">提前結束條件：至少 10 次、命中率 ≥ 60%</p>
     </section>
     <header class="topbar">
       <div class="brand">
@@ -189,7 +217,7 @@
         <div class="brand-copy">
           <p class="eyebrow">BANKER SLAYER · AI ANALYSIS</p>
           <h1>莊家剋星AI百家程式</h1>
-          <p class="brand-subtitle">Soft Shoe 粒子濾波 ・ B/P/T ・ EV 不確定性</p>
+          <p class="brand-subtitle">莊閒方向 · 路單整理 · 即時研究</p>
         </div>
       </div>
       <div class="status-area">
@@ -201,7 +229,7 @@
       <div class="card-title"><span>下一局方向</span><small>LIVE ANALYSIS</small></div>
       <div class="prediction-layout">
         <div class="direction-orb idle" id="directionOrb"><span id="directionText">—</span><small id="directionCode">等待分析</small></div>
-        <div class="metrics">
+        <div class="metrics bbb-hide-diagnostics">
           <div class="metric"><span>估計 EV／信心（非保證）</span><strong id="confidence">—</strong></div>
           <div class="metric"><span>EV 決策品質</span><strong id="regime">—</strong></div>
           <div class="metric"><span>牌路輔助（研究用）</span><strong id="roadAuxStatus">—</strong></div>
@@ -274,6 +302,8 @@
   <script src="trial-hit-rate.js?v=20261115-accuracy-trigger-v1"></script>
   <script src="trial-client.js?v=20261115-accuracy-trigger-v3"></script>
   <script src="visitor-flow.js?v=20261115-visitor-v3"></script>
+  <script src="homepage-tabs.js?v=20261116-tabs-v1"></script>
+  <script src="feedback-lightbox.js?v=20261116-tabs-v1"></script>
 </body>
 </html>
 <!-- deploy: Physics Primary V13 model bundle 226130f -->

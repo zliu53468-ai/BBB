@@ -1,0 +1,39 @@
+name: BBB Three Tabs and Feedback Lightbox Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - trial-ended.html
+      - ui-three-tabs.css
+      - homepage-tabs.js
+      - feedback-lightbox.js
+      - test_three_tab_ui.mjs
+      - .github/workflows/three-tabs-checks.yml
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - trial-ended.html
+      - ui-three-tabs.css
+      - homepage-tabs.js
+      - feedback-lightbox.js
+      - test_three_tab_ui.mjs
+      - .github/workflows/three-tabs-checks.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test tab behavior, screenshot zoom, and preserved trial functionality
+        run: |
+          node --check homepage-tabs.js
+          node --check feedback-lightbox.js
+          node test_three_tab_ui.mjs
