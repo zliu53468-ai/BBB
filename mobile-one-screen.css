@@ -1,0 +1,202 @@
+/* Mobile one-screen homepage. Only landing is non-scroll; BBB prediction app
+   retains independent scroll for essential controls and short-screen access. */
+.bbb-mobile-quick-learn,.bbb-feedback-carousel-nav,#bbbMobileMemberClose{display:none}
+@media(max-width:760px){
+ html:has(body.bbb-black-gold #licenseGate:not([hidden])){height:100%;overflow:hidden!important}
+ body.bbb-black-gold:has(#licenseGate:not([hidden])){height:100dvh;max-height:100dvh;overflow:hidden!important}
+ body.bbb-black-gold #licenseGate:not([hidden]){
+   height:100dvh;min-height:0;max-height:100dvh;overflow:hidden!important;
+   display:flex!important;flex-direction:column;align-items:center;justify-content:flex-start;
+   padding:max(6px,env(safe-area-inset-top)) 6px max(7px,env(safe-area-inset-bottom))!important;
+   gap:5px!important;
+ }
+ body.bbb-black-gold #licenseGate>.bbb-site-tabs{
+   flex:0 0 auto;position:relative;top:auto;min-height:0;
+   width:min(100%,470px)!important;gap:3px!important;margin:0!important;
+   padding:3px!important;border-radius:13px!important;
+ }
+ body.bbb-black-gold #licenseGate .bbb-site-tab{min-height:39px!important;font-size:12px!important;padding:4px 3px!important}
+ body.bbb-black-gold #licenseGate>.bbb-landing-tab-panel{
+   flex:1 1 0;min-height:0;max-height:100%;width:100%;
+   display:flex!important;align-items:center;justify-content:center;overflow:hidden!important;
+ }
+ body.bbb-black-gold #licenseGate>.bbb-landing-tab-panel[hidden]{display:none!important}
+ body.bbb-black-gold #licenseGate #bbbTabExperience>.license-shell{
+   width:100%!important;max-width:min(470px,100%)!important;
+   max-height:100%;overflow:hidden!important;box-sizing:border-box;
+   margin:0 auto!important;padding:clamp(10px,2.5dvh,17px) 13px 12px!important;
+   border-radius:17px!important;display:flex;flex-direction:column;align-items:center;
+   gap:0!important;
+ }
+ body.bbb-black-gold #licenseGate .homepage-crown,
+ body.bbb-black-gold #licenseGate .homepage-status,
+ body.bbb-black-gold #licenseGate .license-kicker,
+ body.bbb-black-gold #licenseGate .homepage-impact-line,
+ body.bbb-black-gold #licenseGate .homepage-feature-row{display:none!important}
+ body.bbb-black-gold #licenseGate .dynamic-brand-mark{
+   width:57px!important;height:57px!important;margin:0 auto 6px!important;min-height:57px;
+ }
+ body.bbb-black-gold #licenseGate .dynamic-brand-mark img{width:49px!important;max-height:49px!important}
+ body.bbb-black-gold #licenseGate .license-shell h1{
+   font-size:clamp(19px,5.6vw,26px)!important;line-height:1.24!important;
+   margin:2px 0 5px!important;
+ }
+ body.bbb-black-gold #licenseGate .license-desc{
+   font-size:clamp(10px,2.8vw,12px)!important;line-height:1.5!important;
+   margin:2px 0 7px!important;
+   max-height:3em;overflow:hidden;
+   display:-webkit-box!important;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+ }
+ body.bbb-black-gold #licenseGate .trial-visitor-entry.bbb-neon-entry{
+   width:100%;display:grid!important;grid-template-columns:1fr!important;
+   gap:7px!important;margin:4px 0!important;
+ }
+ body.bbb-black-gold #licenseGate #trialStartBtn.bbb-neon-cta,
+ body.bbb-black-gold #licenseGate #dgDirectTrialLink.bbb-neon-cta{
+   min-height:63px!important;max-height:72px!important;padding:9px 14px!important;
+   border-radius:13px!important;gap:9px!important;
+ }
+ body.bbb-black-gold #licenseGate .bbb-cta-symbol{
+   width:31px;height:31px;flex:0 0 31px;font-size:22px;
+ }
+ body.bbb-black-gold #licenseGate .bbb-cta-copy strong{font-size:16px!important;line-height:1.22}
+ body.bbb-black-gold #licenseGate .bbb-cta-copy small{font-size:10px!important;line-height:1.3}
+ body.bbb-black-gold #licenseGate .bbb-cta-arrow{font-size:22px!important}
+ body.bbb-black-gold #licenseGate .homepage-member-entry{
+   font-size:11px;margin:6px 0 0!important;line-height:1.3;
+ }
+ body.bbb-black-gold #licenseGate #trialStartMessage:not(:empty){
+   max-height:58px;overflow:auto;scrollbar-width:none;margin-top:3px!important;
+ }
+ /* Returning visitors get a short, actionable panel without the large paragraph */
+ body.bbb-black-gold #licenseGate #returnVisitorCard:not([hidden]){
+   width:100%;margin:7px 0 0!important;padding:7px 10px!important;
+   display:grid;grid-template-columns:1fr 1fr;gap:5px 7px;
+   text-align:center;
+ }
+ body.bbb-black-gold #licenseGate #returnVisitorCard .return-visitor-kicker,
+ body.bbb-black-gold #licenseGate #returnVisitorReason,
+ body.bbb-black-gold #licenseGate .return-visitor-privacy{display:none!important}
+ body.bbb-black-gold #licenseGate #returnVisitorHeading{
+   grid-column:1/-1;font-size:12px!important;line-height:1.35!important;margin:0!important;
+ }
+ body.bbb-black-gold #licenseGate #returnVisitorCard .return-visitor-line{
+   font-size:10px!important;min-height:36px;display:grid;place-items:center;
+   margin:0!important;padding:5px!important;border-radius:8px;
+ }
+ body.bbb-black-gold #licenseGate #returnVisitorCard .return-visitor-member{
+   min-height:36px;padding:5px!important;border-radius:8px;font-size:10px!important;
+ }
+ body.bbb-black-gold #licenseGate .license-shell:has(#returnVisitorCard:not([hidden]))>.homepage-member-entry{display:none!important}
+ /* Login becomes a modal so opening it does not move the page off-screen */
+ body.bbb-black-gold #licenseGate #licenseMemberPanel:not([hidden]){
+   position:fixed!important;z-index:120!important;
+   inset:auto!important;left:50%!important;top:50%!important;transform:translate(-50%,-50%)!important;
+   width:min(440px,calc(100vw - 28px))!important;max-height:calc(100dvh - 44px)!important;
+   overflow:auto!important;padding:20px 15px!important;border-radius:17px!important;
+   box-shadow:0 0 0 120vmax rgba(0,0,0,.85),0 25px 65px rgba(0,0,0,.7)!important;
+ }
+ body.bbb-black-gold #licenseGate #bbbMobileMemberClose{
+   display:block;position:absolute;right:7px;top:5px;background:transparent;color:#ffe0a0;
+   border:0;font-size:25px;padding:5px 10px;cursor:pointer;
+ }
+ /* Feedback: one slide, no vertical page scroll. */
+ body.bbb-black-gold #licenseGate #bbbTabFeedback .member-feedback-showcase{
+   max-width:min(470px,100%)!important;width:100%!important;max-height:100%;
+   margin:0!important;padding:12px 10px!important;
+   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+   overflow:hidden!important;
+ }
+ body.bbb-black-gold #licenseGate #bbbTabFeedback .member-feedback-heading{margin:0!important}
+ body.bbb-black-gold #licenseGate #bbbTabFeedback .member-feedback-eyebrow{display:none!important}
+ body.bbb-black-gold #licenseGate #bbbTabFeedback .member-feedback-heading h2{
+   font-size:17px!important;margin:0 0 4px!important;
+ }
+ body.bbb-black-gold #licenseGate #bbbTabFeedback .member-feedback-heading p{
+   font-size:10px!important;line-height:1.4!important;margin:0!important;
+ }
+ body.bbb-black-gold #licenseGate #bbbFeedbackCarousel{
+   display:flex!important;justify-content:center;align-items:center;flex:1 1 0;
+   width:100%;max-height:calc(100dvh - 235px);min-height:0;overflow:hidden!important;
+ }
+ body.bbb-black-gold #licenseGate #bbbFeedbackCarousel .member-feedback-card{
+   width:min(100%,325px)!important;height:100%;max-height:100%;
+   overflow:hidden!important;min-width:0;margin:0!important;
+   padding:7px!important;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ }
+ body.bbb-black-gold #licenseGate #bbbFeedbackCarousel .member-feedback-card[hidden]{display:none!important}
+ body.bbb-black-gold #licenseGate #bbbFeedbackCarousel .bbb-feedback-expand{
+   width:100%;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+   align-items:center;justify-content:center;
+ }
+ body.bbb-black-gold #licenseGate #bbbFeedbackCarousel .member-feedback-image{
+   width:min(100%,250px)!important;
+   height:min(28dvh,210px)!important;max-height:100%!important;
+   background-position:center top;background-repeat:no-repeat;
+   background-size:contain;flex:1 1 auto;
+ }
+ body.bbb-black-gold #licenseGate #bbbFeedbackCarousel figcaption{
+   margin:3px 0 0!important;font-size:10px!important;line-height:1.2!important;
+ }
+ body.bbb-black-gold #licenseGate #bbbFeedbackCarousel .bbb-feedback-zoom-hint{margin:3px 0!important;font-size:10px}
+ body.bbb-black-gold #licenseGate .bbb-feedback-carousel-nav{
+   display:flex;align-items:center;justify-content:center;gap:13px;width:100%;
+   flex:0 0 40px;margin:0!important;
+ }
+ body.bbb-black-gold #licenseGate .bbb-feedback-carousel-nav button{
+   min-width:68px;height:38px;border:1px solid rgba(234,182,87,.55);
+   background:rgba(75,56,23,.76);color:#fbe5ad;border-radius:10px;
+   font-size:24px;cursor:pointer;
+ }
+ body.bbb-black-gold #licenseGate #bbbFeedbackCardCounter{
+   min-width:65px;text-align:center;font-size:13px;color:#fbe1a0;font-weight:800;
+ }
+ body.bbb-black-gold #licenseGate #bbbTabFeedback .member-feedback-bottom{margin:0!important}
+ body.bbb-black-gold #licenseGate #bbbTabFeedback .member-feedback-bottom a{
+   font-size:11px!important;padding:7px 12px!important;border-radius:8px;
+ }
+ /* Learning: four actionable links instead of long scrollable SEO prose. */
+ body.bbb-black-gold #licenseGate #bbbTabLearn .seo-discovery{display:none!important}
+ body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn{
+   display:flex;flex-direction:column;gap:9px;justify-content:center;
+   width:min(470px,100%);height:100%;max-height:100%;padding:14px 13px;
+   border:1px solid rgba(228,184,93,.48);border-radius:17px;
+   background:linear-gradient(145deg,rgba(23,24,17,.94),rgba(12,13,10,.91));
+ }
+ body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn h2{
+   font-size:20px;line-height:1.25;margin:0;color:#fce6ba;
+ }
+ body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn p{
+   font-size:11px;line-height:1.4;margin:0 0 4px;color:#c8b58a;
+ }
+ body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn a{
+   text-decoration:none;display:grid;grid-template-columns:34px 1fr;
+   align-items:center;min-height:clamp(58px,11dvh,74px);gap:0 10px;
+   border-radius:11px;border:1px solid rgba(219,173,78,.38);
+   background:rgba(93,67,29,.19);padding:9px 11px;
+ }
+ body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn a span{
+   grid-row:span 2;color:#f4c96c;font-size:18px;font-weight:850;
+ }
+ body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn a strong{
+   color:#fce4ab;font-size:13px;line-height:1.4;
+ }
+ body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn a small{
+   color:#b7a78b;font-size:10px;line-height:1.3;
+ }
+}
+/* Smaller-than-usual phone screens still retain every primary action. */
+@media(max-width:760px) and (max-height:625px){
+ body.bbb-black-gold #licenseGate .dynamic-brand-mark{width:38px!important;height:38px!important;min-height:38px!important;margin-bottom:2px!important}
+ body.bbb-black-gold #licenseGate .dynamic-brand-mark img{width:34px!important;max-height:34px!important}
+ body.bbb-black-gold #licenseGate .license-shell h1{font-size:19px!important;margin:0 0 3px!important}
+ body.bbb-black-gold #licenseGate .license-desc{font-size:10px!important;-webkit-line-clamp:1;max-height:1.7em}
+ body.bbb-black-gold #licenseGate #trialStartBtn.bbb-neon-cta,
+ body.bbb-black-gold #licenseGate #dgDirectTrialLink.bbb-neon-cta{min-height:55px!important;max-height:59px!important}
+ body.bbb-black-gold #licenseGate #returnVisitorCard{margin-top:2px!important}
+ body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn a{min-height:48px;padding:5px 9px}
+ body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn{gap:6px;padding:10px}
+}
+@media(prefers-reduced-motion:reduce){
+ body.bbb-black-gold #licenseGate .bbb-mobile-quick-learn a{transition:none!important}
+}
