@@ -1,0 +1,32 @@
+name: BBB Black-Gold Responsive Theme Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "black-gold-theme.css"
+      - "index.html"
+      - "trial-ended.html"
+      - "test_black_gold_theme.mjs"
+      - ".github/workflows/black-gold-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "black-gold-theme.css"
+      - "index.html"
+      - "trial-ended.html"
+      - "test_black_gold_theme.mjs"
+      - ".github/workflows/black-gold-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-theme:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify black-gold palette, all page skins and saved trial hooks
+        run: node --check test_black_gold_theme.mjs && node test_black_gold_theme.mjs
