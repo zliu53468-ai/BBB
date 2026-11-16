@@ -1,0 +1,126 @@
+/* BBB lightweight original three-tab experience; preserves the existing violet identity.
+   Decorative/marketing-only CSS: no prediction algorithm changes. */
+#licenseGate{align-content:start;row-gap:12px}
+#licenseGate>.bbb-site-tabs{
+ position:sticky;top:max(8px,env(safe-area-inset-top));z-index:22;display:grid;
+ grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;
+ width:min(700px,calc(100% - 20px));margin:4px auto 6px;padding:5px;
+ border:1px solid rgba(224,169,255,.36);border-radius:17px;
+ background:rgba(18,7,46,.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+ box-shadow:0 6px 30px rgba(9,2,33,.35);
+}
+#licenseGate .bbb-site-tab{
+ cursor:pointer;touch-action:manipulation;min-height:50px;border:0;border-radius:12px;
+ font-size:14px;font-weight:850;color:#dbc4ef;background:transparent;
+ transition:background .16s,box-shadow .16s,color .16s;
+}
+#licenseGate .bbb-site-tab[aria-selected="true"]{
+ color:#fff;background:linear-gradient(115deg,#7637d8,#b54adf);
+ box-shadow:0 6px 19px rgba(144,55,222,.34);
+}
+#licenseGate .bbb-site-tab:focus-visible,.bbb-feedback-expand:focus-visible,
+.bbb-feedback-lightbox button:focus-visible{outline:3px solid #f7ccff;outline-offset:3px}
+#licenseGate>.bbb-landing-tab-panel{
+ display:block;position:relative;z-index:1;width:100%;min-width:0;
+}
+#licenseGate>.bbb-landing-tab-panel[hidden]{display:none!important}
+#licenseGate #bbbTabExperience>.license-shell{
+ position:relative;z-index:1;margin-inline:auto;
+ max-width:min(580px,calc(100% - 20px));
+}
+#licenseGate #bbbTabFeedback .member-feedback-showcase,
+#licenseGate #bbbTabLearn .seo-discovery{margin:5px auto 15px;position:relative;z-index:1}
+#licenseGate #bbbTabLearn .seo-discovery{max-width:min(790px,calc(100% - 20px))}
+#licenseGate #bbbTabFeedback .member-feedback-showcase{max-width:min(940px,calc(100% - 20px))}
+#licenseGate .bbb-feedback-expand{
+ display:block;position:relative;cursor:zoom-in;width:100%;padding:0;border:0;background:transparent;color:#efe5ff;
+ border-radius:10px;
+}
+#licenseGate .bbb-feedback-expand .member-feedback-image{
+ width:190px;max-width:100%;margin:auto;
+ transition:transform .2s ease,box-shadow .2s ease;
+}
+#licenseGate .bbb-feedback-expand:hover .member-feedback-image{transform:scale(1.035);box-shadow:0 0 16px rgba(217,140,255,.39)}
+#licenseGate .bbb-feedback-zoom-hint{
+ display:block;margin-top:7px;text-align:center;font-size:11px;font-weight:750;color:#efd5ff;
+}
+.bbb-feedback-lightbox{
+ box-sizing:border-box;width:min(540px,calc(100vw - 22px));max-width:540px;
+ max-height:min(92dvh,1000px);overflow:auto;border-radius:18px;padding:15px 14px 19px;
+ color:#f5eaff;background:linear-gradient(130deg,#271044,#0e0925);
+ border:1px solid rgba(218,155,251,.71);box-shadow:0 22px 70px rgba(0,0,0,.58);
+}
+.bbb-feedback-lightbox::backdrop{background:rgba(6,3,18,.88);backdrop-filter:blur(5px)}
+.bbb-feedback-lightbox-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.bbb-feedback-lightbox-head strong{font-size:16px}
+.bbb-feedback-lightbox-head button{border:1px solid rgba(208,153,255,.34);border-radius:10px;cursor:pointer;color:#fff;background:#3b185f;font-size:25px;width:40px;height:40px}
+.bbb-feedback-zoom-viewport{
+ --feedback-ratio:190 / 158;
+ box-sizing:border-box;position:relative;width:min(425px,100%);
+ aspect-ratio:var(--feedback-ratio);height:auto;overflow:hidden;border-radius:11px;
+ margin:0 auto;background:white;box-shadow:0 7px 22px rgba(0,0,0,.32);
+}
+.bbb-feedback-zoom-viewport img{
+ position:absolute;left:0;top:0;width:100%;max-width:none;height:auto;display:block;
+ transform:translateY(var(--feedback-shift,0%));transform-origin:top;
+}
+.bbb-feedback-zoom-viewport.feedback-zoom-1{--feedback-ratio:190 / 158;--feedback-shift:0%}
+.bbb-feedback-zoom-viewport.feedback-zoom-2{--feedback-ratio:190 / 184;--feedback-shift:-18.2028%}
+.bbb-feedback-zoom-viewport.feedback-zoom-3{--feedback-ratio:190 / 163;--feedback-shift:-39.4009%}
+.bbb-feedback-zoom-viewport.feedback-zoom-4{--feedback-ratio:190 / 175;--feedback-shift:-58.1797%}
+.bbb-feedback-zoom-viewport.feedback-zoom-5{--feedback-ratio:190 / 188;--feedback-shift:-78.3410%}
+.bbb-feedback-zoom-controls{display:flex;gap:9px;margin:14px 0 0}
+.bbb-feedback-zoom-controls button{
+ flex:1;min-height:44px;cursor:pointer;border:1px solid rgba(215,162,255,.42);
+ border-radius:11px;color:#fff;background:linear-gradient(110deg,#602ab3,#9343d7);
+ font-weight:800;
+}
+.bbb-feedback-lightbox-footnote{margin:11px 0 0;font-size:11px;line-height:1.6;color:#cbb8de;text-align:center}
+/* Screenshot 1: retain all input/accuracy IDs and trackers but collapse tall money UI.
+   Prediction hit-rate is shown as a one-line status, not a second dashboard. */
+#predictionApp #bbbTrialBankrollPanel{display:none!important}
+#predictionApp #bbbTrialAccuracyPanel.bbb-accuracy-compact{
+ display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+ padding:8px 12px;margin:0 0 9px;gap:4px 12px;
+ background:rgba(35,17,76,.72);border:1px solid rgba(182,116,255,.34);
+ border-radius:11px;box-shadow:none;font-size:12px;
+}
+#predictionApp #bbbTrialAccuracyPanel[hidden]{display:none!important}
+#predictionApp .bbb-accuracy-compact-label{color:#e9caff;font-size:12px}
+#predictionApp .bbb-accuracy-compact strong#bbbTrialAccuracyRate{font-size:16px;color:#f5ddff}
+.bbb-visually-hidden{
+ position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;
+ overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important;
+}
+/* Screenshot 2: keep the data-binding IDs mounted, hide 4 technical metric cards only. */
+#predictionApp .prediction-card .metrics.bbb-hide-diagnostics{display:none!important}
+#predictionApp .prediction-layout{grid-template-columns:minmax(0,1fr)}
+#predictionApp .prediction-card .direction-orb{margin:0 auto}
+#predictionApp #localCalibrationStatus{display:none!important}
+/* Reduce banner information density while retaining timer, CTA and status for scripts. */
+#predictionApp #bbbTrialBanner{
+ display:flex;flex-wrap:wrap;align-items:center;gap:8px 13px;
+ margin:0 0 8px;padding:9px 12px;border-radius:12px;
+}
+#predictionApp #bbbTrialBanner[hidden]{display:none!important}
+#predictionApp #bbbTrialBanner .trial-banner-row{flex:1 1 220px;min-width:0}
+#predictionApp #bbbTrialBanner .trial-dg-link{font-size:12px;margin:0;padding:8px 11px;width:auto;flex:0 0 auto}
+#predictionApp #bbbTrialBanner .trial-help{display:none!important}
+#predictionApp #bbbTrialBanner #bbbTrialStatus{width:100%;margin:1px 0 0;font-size:11px;line-height:1.45}
+@media(min-width:1024px){
+ #licenseGate>.bbb-site-tabs{width:min(720px,calc(100% - 30px))}
+ #licenseGate #bbbTabExperience>.license-shell{max-width:610px}
+ #predictionApp{width:min(780px,calc(100% - 28px))}
+}
+@media(max-width:640px){
+ #licenseGate>.bbb-site-tabs{width:calc(100% - 12px);gap:3px;padding:4px;top:max(4px,env(safe-area-inset-top))}
+ #licenseGate .bbb-site-tab{font-size:12px;min-height:46px;padding:7px 4px}
+ #licenseGate #bbbTabExperience>.license-shell{max-width:calc(100% - 12px)}
+ #licenseGate #bbbTabFeedback .member-feedback-showcase,
+ #licenseGate #bbbTabLearn .seo-discovery{max-width:calc(100% - 12px)}
+ #predictionApp #bbbTrialBanner .trial-dg-link{font-size:11px}
+}
+@media(prefers-reduced-motion:reduce){
+ #licenseGate .bbb-site-tab,
+ #licenseGate .bbb-feedback-expand .member-feedback-image{transition:none}
+}
