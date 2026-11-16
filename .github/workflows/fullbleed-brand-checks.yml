@@ -1,0 +1,32 @@
+name: BBB Full-Viewport Animated Background Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "trial-ended.html"
+      - "trial-styles.css"
+      - "test_fullbleed_brand_layout.mjs"
+      - ".github/workflows/fullbleed-brand-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "trial-ended.html"
+      - "trial-styles.css"
+      - "test_fullbleed_brand_layout.mjs"
+      - ".github/workflows/fullbleed-brand-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fullbleed-pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify full-page brand backgrounds and existing CTR links
+        run: node test_fullbleed_brand_layout.mjs && node test_animated_brand_pages.mjs && node test_ui_polish.mjs
