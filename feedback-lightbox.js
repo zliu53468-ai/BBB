@@ -10,7 +10,7 @@ const next=document.getElementById("bbbFeedbackZoomNext");
 if(!dialog||!viewport||!count||!close||!prev||!next)return;
 let current=1,opener=null,touchX=null;
 function render(i){
- current=(i+4)%5+1;
+ current=((i%5)+5)%5+1;
  viewport.className="bbb-feedback-zoom-viewport feedback-zoom-"+current;
  viewport.setAttribute("aria-label","會員回饋對話及遊戲報表截圖，第 "+current+" 張，共 5 張");
  count.textContent=current+" / 5";
