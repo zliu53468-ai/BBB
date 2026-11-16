@@ -1,0 +1,27 @@
+/* SEO-only content navigation; intentionally scoped outside prediction app. */
+#licenseGate .seo-topic-cluster{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px auto 18px}
+#licenseGate .seo-topic-cluster a{display:flex;flex-direction:column;gap:6px;padding:14px 11px;border-radius:13px;text-align:left;border:1px solid rgba(219,165,255,.36);background:rgba(84,32,145,.27);text-decoration:none;color:#fff;transition:transform .2s,background .2s}
+#licenseGate .seo-topic-cluster a:hover{transform:translateY(-2px);background:rgba(111,45,182,.46)}
+#licenseGate .seo-topic-cluster span{font-size:10px;font-weight:850;color:#e4aaff;letter-spacing:.03em}
+#licenseGate .seo-topic-cluster strong{font-size:13px;line-height:1.5;color:#fff}
+#licenseGate .seo-topic-cluster small{font-size:11px;line-height:1.6;color:#ddc7ef}
+.seo-article-related{display:flex;flex-wrap:wrap;gap:10px;margin:17px 0;padding:12px 0;border-top:1px solid rgba(181,123,255,.32)}
+.seo-article-related a{display:inline-flex;padding:9px 11px;border-radius:8px;border:1px solid rgba(201,150,250,.35);background:rgba(117,53,194,.15);color:#f1d9ff!important;text-decoration:none;font-size:12px}
+.seo-article-related a:hover{background:rgba(117,53,194,.36)}
+.seo-article-layout{width:min(900px,100%);max-width:900px}
+.seo-article-layout .seo-article-lead{font-size:16px!important;color:#eadcff!important;font-weight:550}
+.seo-article-layout .seo-inline-note{border-left:3px solid #ad73e3;padding:12px 14px;background:rgba(132,65,210,.13);border-radius:0 12px 12px 0}
+.seo-article-layout table{width:100%;border-collapse:collapse;font-size:13px;margin:16px 0}
+.seo-article-layout th,.seo-article-layout td{border-bottom:1px solid rgba(167,126,225,.32);padding:11px 8px;text-align:left;line-height:1.6;vertical-align:top}
+.seo-article-layout th{color:#f0dbff;background:rgba(145,77,229,.16)}
+.seo-article-layout td{color:#d5c6e7}
+.seo-article-layout h2{font-size:21px;color:#f4e6ff;line-height:1.5;margin:22px 0 10px}
+.seo-article-layout h3{font-size:16px;color:#e5c5ff}
+.seo-article-layout p,.seo-article-layout li{font-size:14px;color:#cfc0e4;line-height:1.9}
+.seo-article-layout details{border:1px solid rgba(186,134,240,.33);border-radius:11px;margin:10px 0;padding:11px 15px;background:rgba(93,44,156,.13)}
+.seo-article-layout summary{cursor:pointer;color:#e6cfff;font-weight:750}
+.seo-article-layout a{color:#e4c5ff}
+.seo-article-breadcrumb{font-size:12px;color:#bdadd1;margin:6px 0 15px}
+.seo-article-cta{display:block;text-align:center;padding:14px 16px;margin:24px 0;border-radius:12px;background:linear-gradient(100deg,#7134cb,#9c4bea);color:#fff!important;text-decoration:none;font-weight:850}
+@media(max-width:700px){#licenseGate .seo-topic-cluster{grid-template-columns:1fr}.seo-article-layout table{font-size:11px}.seo-article-layout th,.seo-article-layout td{padding:7px 5px}.seo-article-layout h2{font-size:19px}}
+@media(prefers-reduced-motion:reduce){#licenseGate .seo-topic-cluster a{transition:none!important}}

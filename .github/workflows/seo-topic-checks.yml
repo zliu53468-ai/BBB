@@ -1,0 +1,42 @@
+name: BBB SEO GEO Topic Cluster Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "baccarat-ai-prediction.html"
+      - "baccarat-ai-winrate.html"
+      - "baccarat-kelly-guide.html"
+      - "baccarat-road-guide.html"
+      - "youtube-video.html"
+      - "sitemap.xml"
+      - "seo-content.css"
+      - "test_seo_topic_cluster.mjs"
+      - ".github/workflows/seo-topic-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "baccarat-ai-prediction.html"
+      - "baccarat-ai-winrate.html"
+      - "baccarat-kelly-guide.html"
+      - "baccarat-road-guide.html"
+      - "youtube-video.html"
+      - "sitemap.xml"
+      - "seo-content.css"
+      - "test_seo_topic_cluster.mjs"
+      - ".github/workflows/seo-topic-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  seo-structure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check SEO pages, snippets, sitemap, and structured data
+        run: node --check test_seo_topic_cluster.mjs && node test_seo_topic_cluster.mjs

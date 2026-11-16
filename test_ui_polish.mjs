@@ -19,11 +19,11 @@ assert(css.includes("#trialStartMessage:empty{display:none!important}"),"blank i
 assert(trial.includes('function showError(message)'),"trial errors still surfaced through existing status element");
 assert(html.includes('class="seo-spotlight"'),"screenshot 2 concise spotlight");
 assert((html.match(/class="seo-feature-card"/g)||[]).length===3,"three visual SEO summary cards");
-assert(html.includes('<details class="seo-compact-details">'),"long form FAQ is collapsed but crawlable");
+assert(/<details class="seo-compact-details"[^>]*>/.test(html),"long form FAQ is collapsed but crawlable");
 assert(html.includes('href="baccarat-road-guide.html"'),"original SEO internal link preserved");
 assert(html.includes("百家樂大路")&&html.includes("百家樂路單"),"important real-content search phrases preserved");
 assert(!html.includes('<h2>百家樂AI分析器：莊閒和、百家路單與百家打法研究</h2>'),"old verbose screenshot 2 block replaced");
-assert(html.includes('<div id="message" aria-live="off" hidden></div>'),"screenshot 3 diagnostic UI visually removed");
+assert(/<div id="message" aria-live="off" hidden(?: data-nosnippet)?><\/div>/.test(html),"screenshot 3 diagnostic UI visually removed");
 assert(css.includes("#predictionApp #message{display:none!important}"),"hidden diagnostic never reappears visually");
 assert(css.includes("#appViewportContent::-webkit-scrollbar{display:none!important"),"screenshot 4 WebKit scrollbar hidden");
 assert(css.includes("scrollbar-width:none"),"Firefox scrollbar hidden");
