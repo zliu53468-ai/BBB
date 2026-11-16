@@ -88,7 +88,12 @@
    min-height:36px;padding:5px!important;border-radius:8px;font-size:10px!important;
  }
  body.bbb-black-gold #licenseGate .license-shell:has(#returnVisitorCard:not([hidden]))>.homepage-member-entry{display:none!important}
- /* Login becomes a modal so opening it does not move the page off-screen */
+ /* Login becomes a modal so opening it does not move the page off-screen.
+    The glass-background parent establishes a containing block for fixed children;
+    remove its clipping and raise it above the tabs while the member form is open. */
+ body.bbb-black-gold #licenseGate #bbbTabExperience>.license-shell:has(#licenseMemberPanel:not([hidden])){
+   overflow:visible!important;z-index:80!important;
+ }
  body.bbb-black-gold #licenseGate #licenseMemberPanel:not([hidden]){
    position:fixed!important;z-index:120!important;
    inset:auto!important;left:50%!important;top:50%!important;transform:translate(-50%,-50%)!important;
