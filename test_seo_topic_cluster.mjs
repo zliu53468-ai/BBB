@@ -21,7 +21,7 @@ assert(intro.includes('class="member-feedback-showcase" data-nosnippet'),"screen
 assert(intro.includes('class="seo-compact-copy" data-nosnippet'),"technical text excluded");
 assert(intro.includes('id="message" aria-live="off" hidden data-nosnippet'),"diagnostic excluded");
 assert(!intro.includes('id="predictionApp" hidden data-nosnippet'),"valid nosnippet tags only");
-assert(intro.includes('id="trialStartBtn"')&&intro.includes('id="dgDirectTrialLink"'),"trial and DG links untouched");
+assert(intro.includes('id="trialStartBtn"')&&intro.includes('href="partner-entry.html"')&&!intro.includes('id="dgDirectTrialLink"'),"trial remains, external demo removed");
 assert(intro.includes('id="bbbTrialAccuracyPanel"'),"accuracy gate untouched");
 for(const [path,url] of pages){
  const html=read(path);
