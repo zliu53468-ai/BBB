@@ -6,10 +6,16 @@
   const drawer=document.querySelector(".quant-site-mobile-drawer");
   const pathname=location.pathname.split("/").pop()||"index.html";
   const here=pathname==="index.html"?"./":pathname;
+  const activeToolHash=["#quantTabProbability","#quantTabKelly","#quantTabSimulation"].includes(location.hash)
+    ?location.hash:"#quantTabProbability";
   document.querySelectorAll(".quant-site-links a, .quant-site-mobile-links a").forEach(a=>{
     const relative=a.getAttribute("href")||"";
     const target=relative.split("#")[0];
-    if(target==="./"&&here==="./" || target===here && target!=="./"){
+    const active=(here==="./"&&relative==="./")
+      ||(here==="quant-tools.html"&&relative===here+activeToolHash)
+      ||(here!=="./"&&here!=="quant-tools.html"&&target===here)
+      ||(here.startsWith("research-")&&target==="research-hub.html");
+    if(active){
       a.setAttribute("aria-current","page");
     }
     if(drawer&&drawer.contains(a)){
