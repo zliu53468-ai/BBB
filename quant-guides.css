@@ -1,0 +1,75 @@
+/* BBB Quant research and guides: static, locally compiled Tailwind-style utilities.
+   Source HTML is present on first response; no CDN or runtime CSS dependency. */
+.quant-guides{scroll-margin-top:18px}
+.quant-guides .quant-guides-intro{max-width:840px;color:#CBD5E1;font-size:14px}
+.quant-guides .quant-guides-eyebrow{margin:0 0 7px;color:#67E8F9;font:750 11px/1.5 ui-monospace,Consolas,monospace;letter-spacing:.13em}
+.quant-guides-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:24px 0 12px;align-items:stretch}
+.quant-guides .bg-slate-900\/70,.quant-guide-page .bg-slate-900\/70{background-color:rgba(15,23,42,.7)}
+.quant-guides .backdrop-blur-md,.quant-guide-page .backdrop-blur-md{-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.quant-guide-card{display:flex;flex-direction:column;min-width:0;min-height:490px;padding:20px 18px 17px;border:1px solid transparent;border-radius:16px;overflow:hidden;
+ background:linear-gradient(155deg,rgba(19,33,56,.84),rgba(15,23,42,.7)) padding-box,
+ linear-gradient(125deg,rgba(148,163,184,.35),rgba(59,130,246,.23),rgba(16,185,129,.2)) border-box;
+ box-shadow:0 16px 40px rgba(2,6,23,.18);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+ transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.quant-guide-card:hover,.quant-guide-card:focus-within{border-color:#3B82F6;transform:translateY(-2px);box-shadow:0 18px 40px rgba(37,99,235,.22),0 0 0 1px rgba(59,130,246,.12)}
+.quant-guide-meta{display:flex;flex-wrap:wrap;gap:7px 8px;align-items:center;margin:0 0 17px}
+.quant-guide-badge{display:inline-flex;align-items:center;justify-content:center;padding:4px 9px;border-radius:999px;font:750 10px/1.4 system-ui,"Noto Sans TC",sans-serif}
+.quant-guide-badge.category{color:#A5F3FC;background:rgba(8,47,73,.73);border:1px solid rgba(34,211,238,.26)}
+.quant-guide-badge.verified{color:#A7F3D0;background:rgba(6,78,59,.42);border:1px solid rgba(16,185,129,.25)}
+.quant-guide-reading{font-size:11px;color:#94A3B8}
+.quant-guide-card h3{font-size:clamp(17px,1.55vw,21px);line-height:1.52;letter-spacing:-.018em;margin:0 0 12px;color:#F1F5F9!important;text-shadow:none!important;font-weight:800;overflow-wrap:anywhere}
+.quant-guide-excerpt{font-size:12px;color:#94A3B8;margin:0 0 13px;line-height:1.7}
+.quant-guide-takeaways{padding:13px 13px 10px;background:rgba(148,163,184,.11);border:1px solid rgba(148,163,184,.23);border-radius:11px;margin:0 0 18px;flex:1}
+.quant-guide-takeaways h4{font-size:12px;color:#DBEAFE;font-weight:800;margin:0 0 8px;letter-spacing:.01em}
+.quant-guide-takeaways ul{margin:0;padding-left:18px;display:grid;gap:10px}
+.quant-guide-takeaways li{font-size:12px;line-height:1.65;color:#CBD5E1;overflow-wrap:anywhere}
+.quant-guide-takeaways strong{color:#67E8F9;font-weight:800}
+.quant-guide-bottom{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:11px;border-top:1px solid rgba(100,116,139,.33);padding-top:14px;margin-top:auto}
+.quant-guide-author{font-size:11px;color:#94A3B8}
+.quant-guide-link{color:#93C5FD!important;font-size:12px;font-weight:800;text-decoration:none!important;display:inline-flex;align-items:center;gap:8px}
+.quant-guide-link .quant-guide-arrow{display:inline-block;transition:transform .2s ease}
+.quant-guide-link:hover{color:#67E8F9!important;text-decoration:none!important}
+.quant-guide-link:hover .quant-guide-arrow,.quant-guide-link:focus-visible .quant-guide-arrow{transform:translateX(5px)}
+.quant-guide-disclaimer{font-size:12px;color:#94A3B8;margin:13px 0 0}
+@media(max-width:1000px){.quant-guides-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.quant-guides-grid{grid-template-columns:1fr;gap:12px}.quant-guide-card{min-height:0;padding:18px}.quant-guide-card h3{font-size:19px}}
+@media(prefers-reduced-motion:reduce){.quant-guide-card,.quant-guide-link .quant-guide-arrow{transition:none!important}.quant-guide-card:hover{transform:none}}
+
+/* Independent research articles. */
+html{scroll-behavior:smooth}
+body.quant-guide-page{margin:0;background:#0F172A;color:#CBD5E1;font-family:Inter,system-ui,-apple-system,"Noto Sans TC",sans-serif;line-height:1.85}
+.quant-guide-page *{box-sizing:border-box}
+.quant-guide-page a{color:#93C5FD;text-decoration:none}
+.quant-guide-page a:hover{text-decoration:underline}
+.quant-guide-page a:focus-visible{outline:3px solid #60A5FA;outline-offset:3px}
+.quant-guide-page .guide-wrapper{width:min(900px,calc(100% - 32px));margin:0 auto}
+.quant-guide-page .guide-header{padding:19px 0;border-bottom:1px solid #334155;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:15px}
+.quant-guide-page .guide-brand{color:#F8FAFC;font-weight:850;font-size:15px;letter-spacing:.03em}
+.quant-guide-page .guide-brand span{color:#22D3EE}
+.quant-guide-page .guide-header a{font-size:13px}
+.quant-guide-page .guide-article{padding:32px 0 48px}
+.quant-guide-page .guide-breadcrumb{font-size:12px;color:#94A3B8;margin:0 0 19px}
+.quant-guide-page .guide-kicker{font:750 12px/1.65 ui-monospace,Consolas,monospace;color:#67E8F9;letter-spacing:.08em}
+.quant-guide-page h1{font-weight:850;line-height:1.35;letter-spacing:-.04em;color:#F8FAFC;font-size:clamp(27px,4vw,42px);margin:12px 0 18px}
+.quant-guide-page .guide-byline{color:#94A3B8;font-size:12px;border-bottom:1px solid #334155;padding:0 0 19px;margin:0 0 26px}
+.quant-guide-page .guide-intro{font-size:17px;color:#E2E8F0}
+.quant-guide-page .guide-article h2{color:#F8FAFC;font-size:clamp(19px,2.6vw,26px);line-height:1.45;margin:32px 0 12px}
+.quant-guide-page .guide-article h3{color:#DBEAFE;font-size:17px;margin:21px 0 9px}
+.quant-guide-page .guide-article p,.quant-guide-page .guide-article li{font-size:15px;line-height:1.88}
+.quant-guide-page .guide-article ul,.quant-guide-page .guide-article ol{padding-left:25px}
+.quant-guide-page .guide-leadbox{background:rgba(30,41,59,.7);border:1px solid rgba(59,130,246,.38);border-radius:14px;padding:18px 20px;margin:22px 0}
+.quant-guide-page .guide-leadbox h2{font-size:19px;margin:0 0 10px}
+.quant-guide-page .guide-number{font:850 clamp(21px,2.6vw,30px)/1.3 ui-monospace,Consolas,monospace;color:#67E8F9}
+.quant-guide-page .guide-tablewrap{overflow-x:auto;border:1px solid #334155;border-radius:12px;margin:19px 0}
+.quant-guide-page table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
+.quant-guide-page th,.quant-guide-page td{text-align:left;padding:13px 15px;border-bottom:1px solid #334155;vertical-align:top}
+.quant-guide-page th{background:#1E293B;color:#E2E8F0}
+.quant-guide-page .guide-code{padding:12px 14px;color:#A7F3D0;background:#020617;border:1px solid #334155;border-radius:10px;font:600 12px/1.6 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.quant-guide-page .guide-sources{border-top:1px solid #334155;padding-top:20px;margin-top:40px}
+.quant-guide-page .guide-sources a{overflow-wrap:anywhere}
+.quant-guide-page .guide-footer{border-top:1px solid #334155;padding:22px 0 35px;font-size:12px;color:#94A3B8}
+.quant-guide-page .guide-related{display:flex;flex-wrap:wrap;gap:13px;margin-top:25px}
+.quant-guide-page .guide-related a{display:inline-flex;align-items:center;justify-content:center;min-height:43px;border-radius:9px;padding:9px 13px;background:#1E3A5F;border:1px solid #3B82F6;color:#DBEAFE;font-weight:700}
+.quant-guide-page .guide-related a:hover{background:#1E40AF;text-decoration:none}
+@media(max-width:760px){.quant-guide-page .guide-article{padding:24px 0 35px}.quant-guide-page .guide-article p,.quant-guide-page .guide-article li{font-size:14px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}

@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b0b09">
   <title>百家樂路單分析工具｜BaccaratQuant 牌靴數據實驗室</title>
-  <meta name="description" content="BaccaratQuant 百家樂路單分析工具，提供免費 B/P/T 歷史頻率、理論機率偏離值、EV 與 Kelly 風險教育試算；附回測資料透明度與統計免責說明。">
+  <meta name="description" content="BaccaratQuant 百家樂路單量化工具：B/P/T 歷史頻率、標準差、EV 與 Kelly 風險試算，另有 10 萬局馬丁格爾模擬、賭徒謬誤解析及 2026 防詐指南；公開方法與數據限制。">
   <meta name="robots" content="index,follow,max-image-preview:large">
   <link rel="canonical" href="https://bgsv1.xyz/">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="zh_TW">
   <meta property="og:title" content="BaccaratQuant｜百家樂路單量化分析工具">
-  <meta property="og:description" content="B/P/T 歷史統計、理論 EV、Kelly 風控參考與可驗證的研究方法。">
+  <meta property="og:description" content="B/P/T 歷史統計、理論 EV、Kelly 風控、10 萬局馬丁格爾模擬與防詐研究文章，公開計算方法。">
   <meta property="og:url" content="https://bgsv1.xyz/">
   <meta property="og:image" content="https://bgsv1.xyz/assets/logo-baccarat-slayer.webp">
   <meta property="og:site_name" content="莊家剋星">
@@ -21,6 +21,7 @@
   <meta name="twitter:image" content="https://bgsv1.xyz/assets/logo-baccarat-slayer.webp">
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://bgsv1.xyz/#website","url":"https://bgsv1.xyz/","name":"莊家剋星","alternateName":"莊家剋星百家樂AI分析器","inLanguage":"zh-Hant"},{"@type":"SoftwareApplication","@id":"https://bgsv1.xyz/#app","name":"莊家剋星 BaccaratQuant 牌靴數據實驗室","url":"https://bgsv1.xyz/","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"zh-Hant","description":"免費 B/P/T 歷史統計分析、標準規則的理論 EV 與 Kelly 資金風險教學；不提供可驗證的即時下注預測。","softwareVersion":"5.1","offers":{"@type":"Offer","price":"0","priceCurrency":"TWD","availability":"https://schema.org/InStock"}}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"歷史百家樂路單能直接預測下一局結果嗎？","acceptedAnswer":{"@type":"Answer","text":"不能。歷史頻率與偏離值可以描述已觀察到的樣本，但不足以證明下一局存在可利用的預測優勢。"}},{"@type":"Question","name":"期望值 EV 為負時，Kelly 公式會建議多少比例？","acceptedAnswer":{"@type":"Answer","text":"在沒有可驗證的正優勢時，非負的 Kelly 下注比例為 0；更改下注金額不能消除遊戲本身的負期望值。"}}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"ItemList","name":"深度數據研究與實戰策略精選","itemListElement":[{"@type":"ListItem","position":1,"name":"10 萬局蒙地卡羅模擬實測：傳統「馬丁格爾倍投法」的真實破產率是多少？","url":"https://bgsv1.xyz/research-martingale-100k.html"},{"@type":"ListItem","position":2,"name":"如何用標準差與機率偏離值看懂牌靴趨勢？避免陷入「賭徒謬誤」的 3 個指標","url":"https://bgsv1.xyz/research-shoe-deviation.html"},{"@type":"ListItem","position":3,"name":"2026 數據分析工具防詐指南：如何分辨「真機率計算器」與「假代操詐騙群組」？","url":"https://bgsv1.xyz/research-scam-safety-2026.html"}]}</script>
   <link rel="stylesheet" href="styles.css?v=20261106-bigroad-v1">
   <link rel="stylesheet" href="trial-styles.css?v=20261116-fullbleed-v9">
   <link rel="stylesheet" href="seo-content.css?v=20261116-cluster-v1">
@@ -28,6 +29,7 @@
   <link rel="stylesheet" href="black-gold-theme.css?v=20261116-blackgold-v1">
   <link rel="stylesheet" href="mobile-one-screen.css?v=20261116-fit-v1">
   <link rel="stylesheet" href="quant-research.css?v=20261122-tabs-v2">
+  <link rel="stylesheet" href="quant-guides.css?v=20261122-a">
 
 </head>
 <body class="bbb-black-gold">
@@ -166,6 +168,55 @@
           <p class="quant-tip" id="quantSimStatus" role="status" aria-live="polite">本機模擬使用固定初始資金 10,000 元，模擬波動不代表任何可實現的投資或遊戲績效。</p>
         </div>
       </div>
+    </section>
+
+
+    <section class="quant-section quant-guides" id="quantGuides" aria-labelledby="quantGuidesHeading">
+      <p class="quant-guides-eyebrow">QUANTITATIVE RESEARCH &amp; GUIDES · DATA FIRST</p>
+      <h2 id="quantGuidesHeading">深度數據研究與實戰策略精選（Quantitative Research &amp; Guides）</h2>
+      <p class="quant-guides-intro">從百家樂馬丁格爾倍投法的資金回撤、標準差與牌靴機率偏離，到 2026 年數據工具防詐判讀：提供可重現的計算、清楚的假設和可核對來源。資料供風險教育，不宣稱能預測下局或保證獲利。</p>
+      <div class="quant-guides-grid" aria-label="量化研究與教學文章精選">
+        <article class="quant-guide-card bg-slate-900/70 backdrop-blur-md" aria-labelledby="quantGuideTitleMartingale">
+          <div class="quant-guide-meta"><span class="quant-guide-badge category">數據回測報告</span><span class="quant-guide-badge verified">2026年11月模擬核對</span><span class="quant-guide-reading">閱讀時間：約 4 分鐘</span></div>
+          <h3 id="quantGuideTitleMartingale">10 萬局蒙地卡羅模擬實測：傳統「馬丁格爾倍投法」的真實破產率是多少？</h3>
+          <p class="quant-guide-excerpt">固定亂數種子、公開本金與桌限，釐清策略中止率不等於資金破產率。</p>
+          <div class="quant-guide-takeaways">
+            <h4>核心重點摘要（Key Takeaways）</h4>
+            <ul>
+              <li><strong>86%（172／200）</strong> 路徑在 500 局測試範圍內因限額或資金不足而無法繼續倍投；僅 <strong>1%（2／200）</strong> 期末資金低於基本下注額。</li>
+              <li>各路徑最大回撤<strong>中位數 57.22%</strong>、90 百分位數 <strong>82.93%</strong>；教育示例可預設 10% 損失預算並停止追損，並非策略勝率保證。</li>
+            </ul>
+          </div>
+          <div class="quant-guide-bottom"><span class="quant-guide-author">研究員：Data Lab 量化團隊</span><a class="quant-guide-link" href="research-martingale-100k.html" aria-label="閱讀馬丁格爾十萬局模擬完整研究">閱讀完整回測數據 <span class="quant-guide-arrow" aria-hidden="true">→</span></a></div>
+        </article>
+        <article class="quant-guide-card bg-slate-900/70 backdrop-blur-md" aria-labelledby="quantGuideTitleDeviation">
+          <div class="quant-guide-meta"><span class="quant-guide-badge category">演算法科普</span><span class="quant-guide-badge verified">2026年11月公式核對</span><span class="quant-guide-reading">閱讀時間：約 4 分鐘</span></div>
+          <h3 id="quantGuideTitleDeviation">如何用標準差與機率偏離值看懂牌靴趨勢？避免陷入「賭徒謬誤」的 3 個指標</h3>
+          <p class="quant-guide-excerpt">用理論基準、樣本波動和大數法則解讀百家樂路單，不把連莊連閒當成必然的反轉訊號。</p>
+          <div class="quant-guide-takeaways">
+            <h4>核心重點摘要（Key Takeaways）</h4>
+            <ul>
+              <li>標準八副牌莊勝機率約 <strong>45.8597%</strong>；獨立抽樣近似下，1,000 局樣本頻率標準誤約 <strong>1.58 個百分點</strong>。</li>
+              <li>樣本從 100 局擴增至 1,000 局，標準誤約縮至 <strong>31.6%</strong>；大數法則不表示下一局有「補償性反轉」。</li>
+            </ul>
+          </div>
+          <div class="quant-guide-bottom"><span class="quant-guide-author">研究員：Data Lab 量化團隊</span><a class="quant-guide-link" href="research-shoe-deviation.html" aria-label="閱讀標準差與牌靴偏離值完整技術教學">閱讀完整技術解析 <span class="quant-guide-arrow" aria-hidden="true">→</span></a></div>
+        </article>
+        <article class="quant-guide-card bg-slate-900/70 backdrop-blur-md" aria-labelledby="quantGuideTitleSafety">
+          <div class="quant-guide-meta"><span class="quant-guide-badge category">安全與防詐</span><span class="quant-guide-badge verified">2026年11月資訊核對</span><span class="quant-guide-reading">閱讀時間：約 4 分鐘</span></div>
+          <h3 id="quantGuideTitleSafety">2026 數據分析工具防詐指南：如何分辨「真機率計算器」與「假代操詐騙群組」？</h3>
+          <p class="quant-guide-excerpt">核對工具透明度、報表可重現性及金流安全，辨別自稱有必勝演算法的高風險話術。</p>
+          <div class="quant-guide-takeaways">
+            <h4>核心重點摘要（Key Takeaways）</h4>
+            <ul>
+              <li><strong>3 項透明度標準：</strong>公開理論機率與賠率、提供可重算方法與樣本、說明負 EV 與模型限制。</li>
+              <li><strong>165 防詐查證：</strong>遇到保證獲利、代操、先匯款或索取 OTP 驗證碼，應停止提供金流與帳號資料並向官方查證。</li>
+            </ul>
+          </div>
+          <div class="quant-guide-bottom"><span class="quant-guide-author">研究員：Data Lab 量化團隊</span><a class="quant-guide-link" href="research-scam-safety-2026.html" aria-label="閱讀2026數據工具防詐指南全文">閱讀完整防詐指南 <span class="quant-guide-arrow" aria-hidden="true">→</span></a></div>
+        </article>
+      </div>
+      <p class="quant-guide-disclaimer">研究方法與公開資料以各篇內文為準。蒙地卡羅數據是固定條件下的隨機模擬，不是實盤績效或保證準確率。</p>
     </section>
 
     <section class="quant-section" id="quantBacktest" aria-labelledby="quantBacktestHeading">
