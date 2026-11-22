@@ -230,13 +230,29 @@
 
 
 <section class="quant-section" id="quantToolsSupport">
-  <h2>三項計算功能怎麼選擇？</h2>
-  <div class="quant-page-grid">
-    <article class="quant-page-card"><h3>01 · B/P/T 路單統計</h3><p>適合查看自己輸入的歷史莊／閒／和比例與對理論機率的偏離。這些數字只描述樣本，不是未來局數的保證。</p><a href="#quantTabProbability">切換歷史統計 →</a></article>
-    <article class="quant-page-card"><h3>02 · Kelly 風險試算</h3><p>適合理解假設勝率、賠率與曝險限制的數學關係；標準規則 EV 為負時，不應把自行輸入的勝率當作已被證實。</p><a href="#quantTabKelly" data-quant-target="quantTabKelly">切換 Kelly 試算 →</a></article>
-    <article class="quant-page-card"><h3>03 · 10,000 局隨機模擬</h3><p>適合觀察固定種子下的資金路徑、波動與回撤；本工具採獨立抽樣示例，不是牌桌實際勝率或正式 BBB 模型回測。</p><a href="#quantTabSimulation" data-quant-target="quantTabSimulation">切換模擬曲線 →</a></article>
+  <h2>BBB 面板有哪些功能？</h2>
+  <p>先使用手動紀錄認識介面，再開啟 30 分鐘試用；其他風控研究可直接切換上方頁籤。</p>
+  <div class="quant-page-grid bq-feature-summary">
+    <article class="quant-page-card">
+      <span class="bq-feature-status is-ready">已開放</span>
+      <h3>01 · 手動路單</h3>
+      <p>輸入莊、閒、和，即時整理已記錄的 B/P/T 序列與歷史比例。</p>
+      <a href="#quantTabProbability" data-quant-target="quantTabProbability">開始記錄 →</a>
+    </article>
+    <article class="quant-page-card">
+      <span class="bq-feature-status is-ready">可試用</span>
+      <h3>02 · BBB 研究面板</h3>
+      <p>既有 30 分鐘體驗由首頁啟動，使用原有程式和試用驗證流程。</p>
+      <a href="./#quantAnalyzer">前往試用 →</a>
+    </article>
+    <article class="quant-page-card">
+      <span class="bq-feature-status is-pending">尚未接入</span>
+      <h3>03 · 多桌自動讀牌</h3>
+      <p>目前此網站未連接遊戲商即時資料，不會顯示偽造的全桌訊號。</p>
+      <a href="model-methodology.html">了解資料限制 →</a>
+    </article>
   </div>
-  <p class="quant-page-note">如需研究模擬假設、原始腳本或長篇資料說明，請前往 <a href="research-hub.html">研究文章中心</a>；會員研究面板仍位於 <a href="./#bbbTabExperience">網站首頁體驗入口</a>，彼此不共享訊號。</p>
+  <p class="quant-page-note">Kelly 資金控管與 10,000 局模擬是可獨立操作的教學工具，並非已驗證的 BBB 模型回測績效。</p>
 </section>
 
   <footer class="quant-page-bottom"><span>© BaccaratQuant · 研究與機率教育用途，不保證任何遊戲結果。</span><a href="./">返回網站首頁 →</a></footer>
