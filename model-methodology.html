@@ -14,41 +14,56 @@
 <meta property="og:url" content="https://bgsv1.xyz/model-methodology.html">
 <link rel="stylesheet" href="quant-research.css?v=20261122-tabs-v2">
 <link rel="stylesheet" href="quant-guides.css?v=20261122-a">
-<link rel="stylesheet" href="quant-site.css?v=20261122-multipage-v1">
+<link rel="stylesheet" href="quant-site.css?v=20261122-corporate-v2">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"模型原理與量化研究方法","url":"https://bgsv1.xyz/model-methodology.html","description":"BaccaratQuant 百家樂數據研究方法：標準八副牌機率、路單特徵、粒子濾波、期望值、樣本驗證與 Soft Shoe 模型邊界。","inLanguage":"zh-Hant","isAccessibleForFree":true}</script>
 </head>
 <body class="bbb-black-gold quant-detail-page">
-  <header class="quant-site-header" aria-label="BaccaratQuant 全站導覽">
-    <div class="quant-site-shell">
-      <a class="quant-site-brand" href="./" aria-label="BaccaratQuant 回首頁"><span class="quant-site-brand-mark" aria-hidden="true">BQ</span><span class="quant-site-brand-copy">BaccaratQuant<small>QUANTITATIVE RESEARCH LAB</small></span></a>
-      <nav class="quant-site-links" aria-label="主要頁面與主題分類">
-        <a href="./">首頁</a>
-        <a href="quant-tools.html#quantTabProbability">機率分析</a>
-        <a href="quant-tools.html#quantTabKelly">Kelly 試算</a>
-        <a href="quant-tools.html#quantTabSimulation">萬局模擬</a>
-        <a href="research-hub.html">研究文章</a>
-        <a href="model-methodology.html">模型原理</a>
-        <a href="risk-center.html">安全風控</a>
-        <a class="quant-site-member" href="./#bbbTabExperience">會員試用</a>
-      </nav>
-      <details class="quant-site-mobile-drawer">
-        <summary aria-label="開啟網站分類選單"><span class="quant-site-mobile-icon" aria-hidden="true"></span>分類選單</summary>
-        <nav class="quant-site-mobile-links" aria-label="手機版網站分類">
-          <a href="./">首頁總覽</a>
-          <p class="quant-site-mobile-group">TOOLS / 分析工具</p>
-          <a href="quant-tools.html#quantTabProbability">即時機率與路單</a>
-          <a href="quant-tools.html#quantTabKelly">Kelly 資金控管</a>
-          <a href="quant-tools.html#quantTabSimulation">10,000 局模擬</a>
-          <p class="quant-site-mobile-group">RESEARCH / 研究主題</p>
-          <a href="research-hub.html">研究文章總覽</a>
-          <a href="model-methodology.html">模型原理與資料透明度</a>
-          <p class="quant-site-mobile-group">SAFETY / 風險與服務</p>
-          <a href="risk-center.html">資金風控與防詐</a>
-          <a class="quant-site-member" href="./#bbbTabExperience">會員試用入口</a>
-        </nav>
-      </details>
-    </div>
-  </header>
+  <header class="quant-site-header quant-corporate-header" data-bq-category="research" data-bq-active="research" aria-label="BaccaratQuant 企業型網站四大頁籤導覽">
+  <div class="quant-corporate-top">
+    <a class="quant-site-brand" href="./" aria-label="BaccaratQuant 回首頁"><span class="quant-site-brand-mark" aria-hidden="true">BQ</span><span class="quant-site-brand-copy">BaccaratQuant<small>QUANTITATIVE RESEARCH LAB</small></span></a>
+    <nav class="quant-corporate-tabs" aria-label="網站四大主頁籤">
+      <a href="./" class="quant-corporate-tab" data-bq-tab="home"><span>網站首頁</span><small>HOME</small></a>
+      <a href="quant-tools.html" class="quant-corporate-tab" data-bq-tab="tools"><span>分析工具</span><small>TOOLS</small></a>
+      <a href="research-hub.html" class="quant-corporate-tab is-current" data-bq-tab="research" aria-current="page"><span>研究專欄</span><small>RESEARCH</small></a>
+      <a href="risk-center.html" class="quant-corporate-tab" data-bq-tab="risk"><span>風控服務</span><small>SAFETY</small></a>
+    </nav>
+    <a class="quant-corporate-member" href="./#bbbTabExperience">會員體驗 <span aria-hidden="true">↗</span></a>
+  </div>
+  <div class="quant-corporate-subbar">
+    <nav class="quant-corporate-subnav" data-bq-menu="home" aria-label="首頁快速導覽">
+      <span class="quant-corporate-subtitle">首頁快速導覽</span>
+      <a href="./">首頁總覽</a>
+      <a href="./#quantTopics">主題分類</a>
+      <a href="./#quantAnalyzer">機率計算器</a>
+      <a href="./#quantGuides">精選文章</a>
+      <a href="./#bbbTabExperience">會員體驗</a>
+    </nav>
+    <nav class="quant-corporate-subnav" data-bq-menu="tools" aria-label="分析工具專屬選單">
+      <span class="quant-corporate-subtitle">分析工具專屬選單</span>
+      <a href="quant-tools.html">工具總覽</a>
+      <a href="quant-tools.html#quantTabProbability">機率與路單</a>
+      <a href="quant-tools.html#quantTabKelly">Kelly 試算</a>
+      <a href="quant-tools.html#quantTabSimulation">萬局模擬</a>
+      <a href="model-methodology.html">計算原理</a>
+    </nav>
+    <nav class="quant-corporate-subnav" data-bq-menu="research" aria-label="研究專欄專屬選單">
+      <span class="quant-corporate-subtitle">研究專欄專屬選單</span>
+      <a href="research-hub.html">研究總覽</a>
+      <a href="research-martingale-100k.html">10 萬局模擬</a>
+      <a href="research-shoe-deviation.html">牌靴機率教學</a>
+      <a href="model-methodology.html">模型方法</a>
+      <a href="research-hub.html#quantBacktest">回測透明度</a>
+    </nav>
+    <nav class="quant-corporate-subnav" data-bq-menu="risk" aria-label="風控服務專屬選單">
+      <span class="quant-corporate-subtitle">風控服務專屬選單</span>
+      <a href="risk-center.html">風控總覽</a>
+      <a href="risk-center.html#riskEV">期望值與風險</a>
+      <a href="risk-center.html#riskStop">止損與紀律</a>
+      <a href="research-scam-safety-2026.html">防詐指南</a>
+      <a href="quant-tools.html#quantTabKelly">Kelly 試算</a>
+    </nav>
+  </div>
+</header>
 <main class="quant-lab quant-content-page">
 <nav class="quant-site-breadcrumb" aria-label="麵包屑"><a href="./">首頁</a><span aria-hidden="true">/</span>模型原理與量化研究方法</nav>
 <div class="quant-inner-banner"><div><span class="quant-inner-eyebrow">METHODOLOGY / TRANSPARENCY</span><h1>模型原理與量化研究方法</h1><p>把資料來源、理論機率、研究估計與正式決策分開，避免把漂亮的儀表板或模擬數字誤認成經驗證的勝率。</p></div><div class="quant-inner-badge" aria-hidden="true"><div>∑<small>BACCARATQUANT LAB</small></div></div></div>
@@ -83,5 +98,5 @@
 </section>
 <footer class="quant-page-bottom"><span>研究用途，不保證模型命中率、收益或下一局結果。</span><a href="./">返回首頁 →</a></footer>
 </main>
-<script src="quant-site.js?v=20261122-multipage-v1" defer></script>
+<script src="quant-site.js?v=20261122-corporate-v2" defer></script>
 </body></html>

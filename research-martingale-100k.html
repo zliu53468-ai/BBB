@@ -15,41 +15,56 @@
   <meta property="og:url" content="https://bgsv1.xyz/research-martingale-100k.html">
   <meta property="article:published_time" content="2026-11-22T15:00:00+08:00">
   <link rel="stylesheet" href="quant-guides.css?v=20261122-a">
-  <link rel="stylesheet" href="quant-site.css?v=20261122-multipage-v1">
+  <link rel="stylesheet" href="quant-site.css?v=20261122-corporate-v2">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"10 萬局蒙地卡羅模擬實測：傳統「馬丁格爾倍投法」的真實破產率是多少？","description":"公開 100,000 局獨立抽樣、200 條測試路徑的本金限制、倍投失效與回撤資料。提供可重現程式與風險解讀，並區分破產與策略中止。","mainEntityOfPage":{"@type":"WebPage","@id":"https://bgsv1.xyz/research-martingale-100k.html"},"author":{"@type":"Organization","name":"Data Lab 量化團隊"},"publisher":{"@type":"Organization","name":"BaccaratQuant 牌靴數據實驗室"},"inLanguage":"zh-Hant","datePublished":"2026-11-22T15:00:00+08:00","dateModified":"2026-11-22T15:00:00+08:00","isAccessibleForFree":true}</script>
 </head>
 <body class="quant-guide-page">
-  <header class="quant-site-header" aria-label="BaccaratQuant 全站導覽">
-    <div class="quant-site-shell">
-      <a class="quant-site-brand" href="./" aria-label="BaccaratQuant 回首頁"><span class="quant-site-brand-mark" aria-hidden="true">BQ</span><span class="quant-site-brand-copy">BaccaratQuant<small>QUANTITATIVE RESEARCH LAB</small></span></a>
-      <nav class="quant-site-links" aria-label="主要頁面與主題分類">
-        <a href="./">首頁</a>
-        <a href="quant-tools.html#quantTabProbability">機率分析</a>
-        <a href="quant-tools.html#quantTabKelly">Kelly 試算</a>
-        <a href="quant-tools.html#quantTabSimulation">萬局模擬</a>
-        <a href="research-hub.html">研究文章</a>
-        <a href="model-methodology.html">模型原理</a>
-        <a href="risk-center.html">安全風控</a>
-        <a class="quant-site-member" href="./#bbbTabExperience">會員試用</a>
-      </nav>
-      <details class="quant-site-mobile-drawer">
-        <summary aria-label="開啟網站分類選單"><span class="quant-site-mobile-icon" aria-hidden="true"></span>分類選單</summary>
-        <nav class="quant-site-mobile-links" aria-label="手機版網站分類">
-          <a href="./">首頁總覽</a>
-          <p class="quant-site-mobile-group">TOOLS / 分析工具</p>
-          <a href="quant-tools.html#quantTabProbability">即時機率與路單</a>
-          <a href="quant-tools.html#quantTabKelly">Kelly 資金控管</a>
-          <a href="quant-tools.html#quantTabSimulation">10,000 局模擬</a>
-          <p class="quant-site-mobile-group">RESEARCH / 研究主題</p>
-          <a href="research-hub.html">研究文章總覽</a>
-          <a href="model-methodology.html">模型原理與資料透明度</a>
-          <p class="quant-site-mobile-group">SAFETY / 風險與服務</p>
-          <a href="risk-center.html">資金風控與防詐</a>
-          <a class="quant-site-member" href="./#bbbTabExperience">會員試用入口</a>
-        </nav>
-      </details>
-    </div>
-  </header>
+  <header class="quant-site-header quant-corporate-header" data-bq-category="research" data-bq-active="research" aria-label="BaccaratQuant 企業型網站四大頁籤導覽">
+  <div class="quant-corporate-top">
+    <a class="quant-site-brand" href="./" aria-label="BaccaratQuant 回首頁"><span class="quant-site-brand-mark" aria-hidden="true">BQ</span><span class="quant-site-brand-copy">BaccaratQuant<small>QUANTITATIVE RESEARCH LAB</small></span></a>
+    <nav class="quant-corporate-tabs" aria-label="網站四大主頁籤">
+      <a href="./" class="quant-corporate-tab" data-bq-tab="home"><span>網站首頁</span><small>HOME</small></a>
+      <a href="quant-tools.html" class="quant-corporate-tab" data-bq-tab="tools"><span>分析工具</span><small>TOOLS</small></a>
+      <a href="research-hub.html" class="quant-corporate-tab is-current" data-bq-tab="research" aria-current="page"><span>研究專欄</span><small>RESEARCH</small></a>
+      <a href="risk-center.html" class="quant-corporate-tab" data-bq-tab="risk"><span>風控服務</span><small>SAFETY</small></a>
+    </nav>
+    <a class="quant-corporate-member" href="./#bbbTabExperience">會員體驗 <span aria-hidden="true">↗</span></a>
+  </div>
+  <div class="quant-corporate-subbar">
+    <nav class="quant-corporate-subnav" data-bq-menu="home" aria-label="首頁快速導覽">
+      <span class="quant-corporate-subtitle">首頁快速導覽</span>
+      <a href="./">首頁總覽</a>
+      <a href="./#quantTopics">主題分類</a>
+      <a href="./#quantAnalyzer">機率計算器</a>
+      <a href="./#quantGuides">精選文章</a>
+      <a href="./#bbbTabExperience">會員體驗</a>
+    </nav>
+    <nav class="quant-corporate-subnav" data-bq-menu="tools" aria-label="分析工具專屬選單">
+      <span class="quant-corporate-subtitle">分析工具專屬選單</span>
+      <a href="quant-tools.html">工具總覽</a>
+      <a href="quant-tools.html#quantTabProbability">機率與路單</a>
+      <a href="quant-tools.html#quantTabKelly">Kelly 試算</a>
+      <a href="quant-tools.html#quantTabSimulation">萬局模擬</a>
+      <a href="model-methodology.html">計算原理</a>
+    </nav>
+    <nav class="quant-corporate-subnav" data-bq-menu="research" aria-label="研究專欄專屬選單">
+      <span class="quant-corporate-subtitle">研究專欄專屬選單</span>
+      <a href="research-hub.html">研究總覽</a>
+      <a href="research-martingale-100k.html">10 萬局模擬</a>
+      <a href="research-shoe-deviation.html">牌靴機率教學</a>
+      <a href="model-methodology.html">模型方法</a>
+      <a href="research-hub.html#quantBacktest">回測透明度</a>
+    </nav>
+    <nav class="quant-corporate-subnav" data-bq-menu="risk" aria-label="風控服務專屬選單">
+      <span class="quant-corporate-subtitle">風控服務專屬選單</span>
+      <a href="risk-center.html">風控總覽</a>
+      <a href="risk-center.html#riskEV">期望值與風險</a>
+      <a href="risk-center.html#riskStop">止損與紀律</a>
+      <a href="research-scam-safety-2026.html">防詐指南</a>
+      <a href="quant-tools.html#quantTabKelly">Kelly 試算</a>
+    </nav>
+  </div>
+</header>
   <div class="guide-wrapper">
     <nav class="quant-site-breadcrumb" aria-label="文章導覽"><a href="./">首頁</a><span aria-hidden="true">/</span><a href="research-hub.html">研究文章中心</a></nav>
     <main>
@@ -86,6 +101,6 @@
     </main>
     <footer class="guide-footer">BaccaratQuant — 教學與研究內容，不提供保證獲利或即時下注建議。文章的模擬結果僅在明示的規則與假設下成立。</footer>
   </div>
-  <script src="quant-site.js?v=20261122-multipage-v1" defer></script>
+  <script src="quant-site.js?v=20261122-corporate-v2" defer></script>
 </body>
 </html>
