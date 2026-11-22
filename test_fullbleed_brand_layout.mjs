@@ -20,7 +20,7 @@ assert(css.includes("bbb-gold-light-sweep"),"gold sweep is animated");
 assert(css.includes("pointer-events:none"),"background does not capture taps");
 assert(css.includes("prefers-reduced-motion:reduce"),"motion accessibility");
 assert(old.includes(".bbb-fullbleed-scene::before"),"base effects retained only as visually overridden CSS");
-for(const id of ["trialStartBtn","dgDirectTrialLink","bbbBankrollDialog","bbbTrialAccuracyPanel"])
+for(const id of ["trialStartBtn","dgTrialLink","bbbBankrollDialog","bbbTrialAccuracyPanel"])
  assert(home.includes('id="'+id+'"'),"old trial control "+id);
 for(const action of ["casinoRegisterUrl","lineContactUrl"])
  assert(exit.includes('data-bbb-link="'+action+'"'),"old external link "+action);
