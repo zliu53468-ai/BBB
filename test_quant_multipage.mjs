@@ -22,16 +22,22 @@ for(const id of ["licenseGate","quantAnalyzer","quantTabProbability","quantTabKe
 assert(siteCss.includes("position:sticky;top:0;z-index:65"),"header stays on top");
 assert(siteCss.includes("grid-template-columns:repeat(4,minmax(0,1fr))"),"desktop four topic categories");
 assert(siteCss.includes("@media(max-width:760px)"),"mobile responsiveness present");
-assert(siteCss.includes(".quant-site-mobile-drawer"),"mobile native details menu styled");
+assert(siteCss.includes(".quant-corporate-tabs")&&siteCss.includes(".quant-corporate-subnav"),"corporate navigation and nested menus styled");
+assert(siteCss.includes("grid-template-columns:repeat(4,minmax(0,1fr))"),"all four tabs visible across mobile widths");
+assert(siteCss.includes('[data-bq-active="home"]')&&siteCss.includes('[data-bq-active="risk"]'),"per-category submenus use CSS display");
 assert(siteCss.includes(".quant-inner-banner"),"subpage banner reused across topics");
 assert(siteCss.includes("prefers-reduced-motion:reduce"),"reduced motion support");
-assert(siteJs.includes("aria-current"),"active navigation marks are accessible");
+assert(home.includes('aria-current="page"'),"active main page marked in source HTML");
+assert(siteJs.includes("pointerenter")&&siteJs.includes("focusout"),"hover and keyboard menu preview available");
 assert(!siteJs.includes("innerHTML")&&!siteJs.includes("fetch("),"navigation JS is lightweight and local");
 
 for(const path of shared){
  const html=read(path);
  assert(html.includes('class="quant-site-header"'),"top navigation shared across "+path);
- assert(html.includes('class="quant-site-mobile-drawer"'),"mobile category nav shared across "+path);
+ assert((html.match(/class="quant-corporate-tab/g)||[]).length===4,"exactly four prominent corporate main tabs on "+path);
+ assert((html.match(/data-bq-menu="/g)||[]).length===4,"four source-rendered, per-page submenus on "+path);
+ assert(!html.includes('class="quant-site-mobile-drawer"'),"obsolete overlay menu absent from "+path);
+ assert((html.match(/aria-current="page"/g)||[]).length===1,"exactly one current page on "+path);
  assert(html.includes('href="quant-site.css?v=20261122-multipage-v1"'),"style loaded on "+path);
  assert(html.includes('src="quant-site.js?v=20261122-multipage-v1"'),"nav script loaded on "+path);
  for(const p of routes){
@@ -47,6 +53,31 @@ for(const path of routes){
  assert(html.includes('class="quant-inner-banner"'),"editorial banner on "+path);
  assert(html.includes('aria-label="麵包屑"'),"breadcrumb present on "+path);
 }
+
+const pageCategory={
+  "index.html":"home",
+  "quant-tools.html":"tools",
+  "research-hub.html":"research",
+  "model-methodology.html":"research",
+  "risk-center.html":"risk",
+  "research-martingale-100k.html":"research",
+  "research-shoe-deviation.html":"research",
+  "research-scam-safety-2026.html":"risk"
+};
+for(const [path,group] of Object.entries(pageCategory)){
+  const html=read(path);
+  assert(html.includes('data-bq-category="'+group+'"'),"correct main tab for "+path);
+  assert(html.includes('data-bq-active="'+group+'"'),"correct initial submenu for "+path);
+  const tabs=[...html.matchAll(/data-bq-tab="(home|tools|research|risk)"/g)].map(m=>m[1]);
+  assert.deepEqual(tabs,["home","tools","research","risk"],"corporate top-level nav order in "+path);
+  for(const required of ["quant-tools.html#quantTabKelly","research-martingale-100k.html","risk-center.html#riskEV","./#quantTopics"]){
+    assert(html.includes('href="'+required+'"'),"cross-category submenu link "+required+" in "+path);
+  }
+}
+const riskPage=read("risk-center.html");
+assert(riskPage.includes('id="riskEV"')&&riskPage.includes('id="riskStop"'),"safety submenu anchors resolve");
+assert(read("quant-research.js").includes('"hashchange"'),"tool submenu deep links activate correct calculator tab");
+
 const tools=read("quant-tools.html");
 assert((tools.match(/class="quant-tab-panel/g)||[]).length===3,"all 3 interactive tools have static HTML");
 for(const id of ["quantHistory","quantAddB","quantAddP","quantAddT","quantHypWin","quantBankroll","quantSimChart","quantRunSim","quantTabBtnProbability","quantTabBtnKelly","quantTabBtnSimulation"]){
@@ -67,4 +98,4 @@ for(const path of articles){
  assert(html.includes('href="research-hub.html"'),"article links to research hub");
  assert(html.includes('class="guide-article"'),"original article content unchanged");
 }
-console.log(JSON.stringify({ok:true,checks:["homepage_visual_banner","featured_research_banner","4_topic_categories","4_independent_pages","3_full_calculator_panels","mobile_and_desktop_navigation","article_navigation","seo_canonical_sitemap","prediction_core_preserved"]}));
+console.log(JSON.stringify({ok:true,checks:["homepage_visual_banner","featured_research_banner","4_topic_categories","4_independent_pages","3_full_calculator_panels","corporate_four_tab_navigation","four_contextual_submenus","mobile_and_desktop_navigation","article_navigation","seo_canonical_sitemap","prediction_core_preserved"]}));
