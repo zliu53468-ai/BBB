@@ -28,7 +28,8 @@
   <link rel="stylesheet" href="ui-three-tabs.css?v=20261116-tabs-v1">
   <link rel="stylesheet" href="black-gold-theme.css?v=20261116-blackgold-v1">
   <link rel="stylesheet" href="mobile-one-screen.css?v=20261116-fit-v1">
-  <link rel="stylesheet" href="quant-research.css?v=20261122-trial-portal-v3">
+  <link rel="stylesheet" href="quant-research.css?v=20261122-trial-portal-v3"><!-- BQ Studio -->
+  <link rel="stylesheet" href="bq-studio.css?v=20261122-studio-v1">
   <link rel="stylesheet" href="quant-guides.css?v=20261122-a">
   <link rel="stylesheet" href="quant-site.css?v=20261122-corporate-v2">
 
@@ -90,7 +91,7 @@
           <h1 id="quantTitle">百家樂路單量化分析：<span style="color:#67E8F9">你的專業數據研究終端</span></h1>
           <p class="quant-lead">從歷史莊／閒／和頻率，到 Kelly 資金試算、可重現的萬局隨機波動，透過清楚的數學假設理解機率與風險。歷史路單不等於未來結果，不能把計算結果當成必勝訊號。</p>
           <div class="quant-banner-tags"><span>八副牌理論基準</span><span>全頁繁體中文</span><span>公開可核對方法</span></div>
-          <div class="quant-actions"><a class="quant-btn primary active:scale-95" href="quant-tools.html#quantTabProbability">開啟分析工具中心 ↗</a><a class="quant-btn secondary" href="research-hub.html">探索研究專題 →</a></div>
+          <div class="quant-actions"><a class="quant-btn primary active:scale-95" href="#quantAnalyzer">立即試用 BBB ↗</a><a class="quant-btn secondary" href="research-hub.html">探索研究專題 →</a></div>
         </div>
         <div class="quant-banner-visual" aria-hidden="true">
           <div class="quant-visual-topline"><strong>BQ / RESEARCH TERMINAL</strong><span>SIMULATION MODE</span></div>
@@ -134,8 +135,8 @@
     </div>
 
     <section class="quant-section" id="quantAnalyzer" aria-labelledby="quantAnalyzerHeading">
-      <h2 id="quantAnalyzerHeading">路單紀錄、試用面板與簡易計算工具</h2>
-      <p>記錄 B/P/T、使用程式試用，或切換 Kelly 與萬局模擬。</p>
+      <h2 id="quantAnalyzerHeading">BBB AI 分析面板與免費試用</h2>
+      <p>手動記錄 B/P/T，或直接啟動 30 分鐘體驗。Kelly 與模擬研究可由上方頁籤切換。</p>
 
       <nav class="quant-tab-strip" role="tablist" aria-label="量化工具分析頁籤">
         <button id="quantTabBtnProbability" class="quant-tab is-active" type="button" role="tab" aria-controls="quantTabProbability" aria-selected="true" tabindex="0" data-quant-tab="quantTabProbability"><span class="quant-tab-index">01</span><span>即時機率與路單分析</span></button>
@@ -145,11 +146,21 @@
 
       <!-- SEO: 三個 tabpanel 的完整語意 HTML 均由伺服器原始頁面提供；僅 CSS 切換顯示狀態。 -->
       <div class="quant-tab-panel is-active" id="quantTabProbability" role="tabpanel" aria-labelledby="quantTabBtnProbability" aria-hidden="false" tabindex="0">
-        <div class="quant-tab-intro quant-compact-intro"><h3>路單紀錄與程式試用</h3><p>簡單記錄莊、閒、和；右側可直接開始試用。</p></div>
+        <div class="bq-studio-head">
+          <div class="bq-studio-brand">
+            <span class="bq-studio-sigil" aria-hidden="true">BQ</span>
+            <div><span class="bq-studio-kicker">BBB SOFT SHOE / INTERACTIVE LAB</span><h3>莊家剋星 AI 分析面板</h3><p>輸入路單、開啟試用，快速體驗現有系統。</p></div>
+          </div>
+          <div class="bq-studio-badges"><span><i aria-hidden="true"></i> 手動資料</span><span>30 分鐘體驗</span></div>
+        </div>
+        <div class="bq-studio-switch" aria-label="面板快速切換">
+          <button type="button" class="bq-studio-switch-item is-current" data-bq-studio-target="quantManualCard" aria-pressed="true"><span>01</span> 手動路單</button>
+          <button type="button" class="bq-studio-switch-item" data-bq-studio-target="quantPreviewCard" aria-pressed="false"><span>02</span> 程式試用</button>
+        </div>
         <div class="quant-entry-layout">
-          <section class="quant-entry-card quant-record-card" aria-labelledby="quantQuickHeading">
+          <section class="quant-entry-card quant-record-card" id="quantManualCard" aria-labelledby="quantQuickHeading">
             <div class="quant-entry-head">
-              <div><span class="quant-entry-eyebrow">01 / ROAD INPUT</span><h4 id="quantQuickHeading">路單輸入</h4></div>
+              <div><span class="quant-entry-eyebrow">LIVE INPUT / ROAD TRACKER</span><h4 id="quantQuickHeading">手動輸入 · B/P/T</h4></div>
               <div class="quant-round-chip"><strong id="quantTotal">0</strong><span>局</span></div>
             </div>
             <div class="quant-result-controls quant-fast-input" aria-label="輸入歷史結果">
@@ -186,19 +197,19 @@
               </div>
             </details>
           </section>
-          <aside class="quant-entry-card quant-preview-card" aria-labelledby="quantPreviewHeading">
+          <aside class="quant-entry-card quant-preview-card" id="quantPreviewCard" aria-labelledby="quantPreviewHeading">
             <div class="quant-entry-head">
-              <div><span class="quant-entry-eyebrow">02 / LIVE TRIAL</span><h4 id="quantPreviewHeading">BBB 程式試用</h4></div>
+              <div><span class="quant-entry-eyebrow">BBB MODEL / TRIAL ENTRY</span><h4 id="quantPreviewHeading">BBB 進階試用</h4></div>
               <span class="quant-trial-time">30 MIN</span>
             </div>
             <div class="quant-trial-preview" aria-label="BBB 分析畫面示意，不是真實預測">
-              <div class="quant-preview-top"><span class="quant-preview-led"></span> BACCARAT / ROAD PANEL <span>PREVIEW</span></div>
-              <div class="quant-preview-road" aria-hidden="true">
-                <i class="banker"></i><i class="player"></i><i class="banker"></i><i class="banker"></i><i class="player"></i><i class="banker"></i><i class="player"></i><i class="tie"></i><i class="banker"></i><i class="player"></i><i class="banker"></i><i class="player"></i><i class="banker"></i><i class="player"></i><i class="tie"></i><i class="banker"></i><i class="player"></i><i class="banker"></i>
+              <div class="quant-preview-top"><span class="quant-preview-led"></span> BBB / ROAD TRACKER <span>LOCAL INPUT</span></div>
+              <div class="quant-preview-road bq-studio-road" id="bqStudioRoad" role="img" aria-label="尚無輸入路單">
+                <span class="bq-road-empty">輸入莊／閒／和後顯示實際紀錄</span>
               </div>
-              <div class="quant-preview-bottom"><span>牌路紀錄 / 分析面板</span><span>畫面示意</span></div>
+              <div class="quant-preview-bottom"><span>記錄同步顯示</span><span>畫面示意 · 非即時讀牌</span></div>
             </div>
-            <p class="quant-trial-lead">免開通碼體驗。啟動後使用現有 BBB 分析面板。</p>
+            <p class="quant-trial-lead">試用功能使用現有 BBB 核心，啟動後進入分析面板。</p>
       <div class="trial-visitor-entry bbb-neon-entry" aria-label="新訪客體驗入口">
         <button type="button" id="trialStartBtn" class="bbb-neon-cta bbb-neon-cta-start" aria-label="立即試用莊家剋星預測程式｜免費試用 30 分鐘">
           <span class="bbb-cta-symbol" aria-hidden="true">↯</span>
@@ -216,6 +227,12 @@
             <p class="quant-trial-disclaimer">試用僅供功能體驗，不保證結果；外部平台請確認法定年齡與所在地規範。</p>
           </aside>
         </div>
+        <div class="bq-studio-steps" aria-label="BBB 分析工具使用步驟">
+          <div><span>01</span><strong>記錄結果</strong><small>輸入莊、閒、和</small></div>
+          <div><span>02</span><strong>啟動試用</strong><small>開啟現有 30 分鐘面板</small></div>
+          <div><span>03</span><strong>查看分析</strong><small>核對資料與風控提示</small></div>
+        </div>
+        <p class="bq-studio-honesty">本頁不會自動讀取外部牌桌。示範區只顯示你手動輸入的資料，並非即時 AI 訊號。</p>
       </div>
 
       <div class="quant-tab-panel" id="quantTabKelly" role="tabpanel" aria-labelledby="quantTabBtnKelly" aria-hidden="true" tabindex="0">
@@ -636,6 +653,7 @@
 
   <script src="quant-site.js?v=20261122-corporate-v2" defer></script>
   <script src="quant-research.js?v=20261122-tabs-v2" defer></script>
+  <script src="bq-studio.js?v=20261122-studio-v1" defer></script>
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="site-links.js?v=20261115-outbound-v1"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>
