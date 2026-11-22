@@ -16,7 +16,7 @@ for(const page of pages){
  }
 }
 const home=read("index.html"),exit=read("trial-ended.html");
-assert(home.includes("開啟DG試玩立即測試"),"DG label exact");
+assert(home.includes("開啟外部免費試玩"),"brand-neutral trial label");
 assert(home.includes("想領取程式開通碼，請聯繫下方管理員"),"returning user exact heading");
 assert(!home.includes("想領取程式開通碼，繼續使用 BBB 嗎？"),"outdated heading gone");
 assert(home.includes('id="dgDirectTrialLink"')&&home.includes('data-bbb-link="dgTrialUrl"'),"DG independent route intact");
