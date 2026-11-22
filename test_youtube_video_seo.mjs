@@ -20,7 +20,7 @@ assert(page.includes('alt="莊家剋星 YouTube 影片縮圖"'),"thumbnail has u
 assert(page.includes('target="_blank" rel="noopener noreferrer"'),"external link uses safe new tab");
 assert(!page.includes("<iframe"),"do not embed possibly age-restricted video");
 assert(!page.includes('"@type":"VideoObject"'),"no false watch-page VideoObject markup");
-assert(index.includes('id="trialStartBtn"')&&index.includes('id="dgDirectTrialLink"'),"free trial and DG entry preserved");
+assert(index.includes('id="trialStartBtn"')&&index.includes('href="partner-entry.html"')&&!index.includes('id="dgDirectTrialLink"'),"free BBB trial kept and external demo removed");
 assert(index.includes('id="licenseForm"')&&index.includes('id="licenseMemberPanel"'),"member form preserved");
 assert(/<script src="trial-client\.js\?v=[^"]+"><\/script>/.test(index),"trial client tag is valid across cache-bust revisions");
 assert(index.includes('<script src="visitor-flow.js?v=20261115-visitor-v3"></script>'),"visitor flow tag repaired");
