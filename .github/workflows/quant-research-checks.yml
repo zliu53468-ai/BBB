@@ -6,6 +6,11 @@ on:
       - "index.html"
       - "quant-research.css"
       - "quant-research.js"
+      - "quant-guides.css"
+      - "research/*.mjs"
+      - "research-*.html"
+      - "sitemap.xml"
+      - "test_quant_guides.mjs"
       - "test_quant_research.mjs"
       - ".github/workflows/quant-research-checks.yml"
   push:
@@ -28,9 +33,9 @@ jobs:
         with:
           node-version: "22"
       - name: Validate native JavaScript
-        run: node --check quant-research.js && node --check test_quant_research.mjs
+        run: node --check quant-research.js && node --check test_quant_research.mjs && node --check test_quant_guides.mjs && node --check research/martingale-100k.mjs
       - name: Run quantitative and SEO regression checks
-        run: node test_quant_research.mjs
+        run: node test_quant_research.mjs && node test_quant_guides.mjs
       - name: Preserve core application and existing SEO
         run: |
           node test_three_tab_ui.mjs
