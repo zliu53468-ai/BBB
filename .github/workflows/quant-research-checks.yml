@@ -1,0 +1,38 @@
+name: BBB Quantitative Research Landing Checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "quant-research.css"
+      - "quant-research.js"
+      - "test_quant_research.mjs"
+      - ".github/workflows/quant-research-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "quant-research.css"
+      - "quant-research.js"
+      - "test_quant_research.mjs"
+      - ".github/workflows/quant-research-checks.yml"
+permissions:
+  contents: read
+jobs:
+  quant-landing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate native JavaScript
+        run: node --check quant-research.js && node --check test_quant_research.mjs
+      - name: Run quantitative and SEO regression checks
+        run: node test_quant_research.mjs
+      - name: Preserve core application and existing SEO
+        run: |
+          node test_three_tab_ui.mjs
+          node test_visitor_flow.mjs
+          node test_seo_topic_cluster.mjs
