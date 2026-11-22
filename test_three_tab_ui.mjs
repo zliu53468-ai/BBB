@@ -13,7 +13,7 @@ assert((home.match(/<button[^>]*id="quantTabBtn(?:Probability|Kelly|Simulation)"
 assert((home.match(/<div[^>]*id="quantTab(?:Probability|Kelly|Simulation)"[^>]*role="tabpanel"/g)||[]).length===3,"three new quant panels are source-rendered");
 assert(home.includes('id="bbbTabFeedback" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnFeedback" tabindex="0" hidden'),"feedback collapsed initially");
 assert(home.includes('id="bbbTabLearn" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnLearn" tabindex="0" hidden'),"guides collapsed initially");
-assert(home.includes('id="trialStartBtn"')&&home.includes('id="dgDirectTrialLink"'),"old trial/DG actions preserved");
+assert(home.includes('id="trialStartBtn"')&&home.includes('href="partner-entry.html"')&&!home.includes('id="dgDirectTrialLink"'),"trial and partner entry preserved without external free demo");
 assert(home.includes('id="licenseForm"')&&home.includes('id="bbbBankrollDialog"'),"license and capital input preserved");
 assert(home.includes('id="bbbTrialBankrollPanel"'),"money tracking DOM retained without exposing huge UI");
 assert(css.includes("#predictionApp #bbbTrialBankrollPanel{display:none!important}"),"huge money panel hidden");

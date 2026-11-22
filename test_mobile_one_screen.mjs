@@ -17,7 +17,7 @@ assert(mobile.includes(".bbb-mobile-quick-learn"),"phone learning shortcuts in a
 assert(mobile.includes("@media(max-width:760px) and (max-height:625px)"),"short phones get extra compact rules");
 assert(!mobile.includes("#appViewportContent{overflow:hidden"),"prediction app scrolling is deliberately retained");
 assert(html.includes('id="bbbTabBtnExperience"')&&html.includes('id="bbbTabBtnFeedback"')&&html.includes('id="bbbTabBtnLearn"'),"three tabs kept");
-assert(html.includes('id="trialStartBtn"')&&html.includes('id="dgDirectTrialLink"'),"trial DG buttons preserved");
+assert(html.includes('id="trialStartBtn"')&&html.includes('href="partner-entry.html"')&&!html.includes('id="dgDirectTrialLink"'),"trial and partner actions preserved, external demo removed");
 assert(html.includes('id="bbbFeedbackCarousel"'),"feedback carousel remains accessible");
 assert(html.includes('id="bbbFeedbackCardCounter"'),"feedback page includes position counter");
 assert(html.includes('id="bbbFeedbackZoomOriginal"'),"native-size open link on zoom dialog");

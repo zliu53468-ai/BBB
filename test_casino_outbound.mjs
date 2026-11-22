@@ -84,7 +84,7 @@ assert.equal(invalid.links[0].attributes["aria-disabled"],"true");
 assert.equal(invalid.links[1].attributes["aria-disabled"],"true");
 const indexHtml=fs.readFileSync(new URL("./index.html",import.meta.url),"utf8");
 const trialClient=fs.readFileSync(new URL("./trial-client.js",import.meta.url),"utf8");
-assert(indexHtml.includes('id="dgDirectTrialLink"'),"independent DG trial button must be visible before backend authorization");
+assert(!indexHtml.includes('id="dgDirectTrialLink"')&&indexHtml.includes('href="partner-entry.html"'),"external free demo removed while partner gateway remains");
 assert(indexHtml.includes('src="bankroll-trial.js?v=20261115-accuracy-trigger-v3"'));
 assert(indexHtml.includes('src="trial-client.js?v=20261115-accuracy-trigger-v3"'));
 assert(indexHtml.includes('src="trial-hit-rate.js?v=20261115-accuracy-trigger-v1"'));

@@ -29,7 +29,7 @@ assert(css.includes("#appViewportContent::-webkit-scrollbar{display:none!importa
 assert(css.includes("scrollbar-width:none"),"Firefox scrollbar hidden");
 assert(css.includes("overflow-y:auto!important"),"mobile wheel and touch scrolling preserved");
 assert(!css.includes("#appViewportContent{display:none"),"app is never hidden");
-for(const key of ["trialStartBtn","dgDirectTrialLink","licenseForm","bbbTrialAccuracyPanel","predictionApp"]){
+for(const key of ["trialStartBtn","licenseForm","bbbTrialAccuracyPanel","predictionApp"]){
   assert(html.includes('id="'+key+'"'),"existing interactive element preserved: "+key);
 }
 assert(panel.includes('function recalculate()')||panel.includes("async function recalculate()"),"original prediction panel algorithm retained");
