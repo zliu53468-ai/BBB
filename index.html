@@ -4,32 +4,203 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b0b09">
-  <title>百家樂AI預測程式與莊閒路單分析｜莊家剋星 AI 分析器</title>
-  <meta name="description" content="莊家剋星百家樂AI分析器：線上體驗百家樂莊閒分析、路單整理與資金管理。了解預測程式如何使用，立即試用30分鐘。">
+  <title>百家樂路單分析工具｜BaccaratQuant 牌靴數據實驗室</title>
+  <meta name="description" content="BaccaratQuant 百家樂路單分析工具，提供免費 B/P/T 歷史頻率、理論機率偏離值、EV 與 Kelly 風險教育試算；附回測資料透明度與統計免責說明。">
   <meta name="robots" content="index,follow,max-image-preview:large">
   <link rel="canonical" href="https://bgsv1.xyz/">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="zh_TW">
-  <meta property="og:title" content="莊家剋星｜百家樂AI分析器・30分鐘免費試用">
-  <meta property="og:description" content="百家樂 AI 預測程式與莊閒路單分析。查看功能介紹、影片和教學，直接開始30分鐘免費體驗。">
+  <meta property="og:title" content="BaccaratQuant｜百家樂路單量化分析工具">
+  <meta property="og:description" content="B/P/T 歷史統計、理論 EV、Kelly 風控參考與可驗證的研究方法。">
   <meta property="og:url" content="https://bgsv1.xyz/">
   <meta property="og:image" content="https://bgsv1.xyz/assets/logo-baccarat-slayer.webp">
   <meta property="og:site_name" content="莊家剋星">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="莊家剋星｜百家樂 AI 分析器">
-  <meta name="twitter:description" content="百家樂路單分析、試用與教學，立即了解莊家剋星。">
+  <meta name="twitter:title" content="BaccaratQuant｜百家樂路單分析">
+  <meta name="twitter:description" content="公開 B/P/T 統計工具、EV 與資金風險教育。">
   <meta name="twitter:image" content="https://bgsv1.xyz/assets/logo-baccarat-slayer.webp">
-  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://bgsv1.xyz/#website","url":"https://bgsv1.xyz/","name":"莊家剋星","alternateName":"莊家剋星百家樂AI分析器","inLanguage":"zh-Hant"},{"@type":"SoftwareApplication","@id":"https://bgsv1.xyz/#app","name":"莊家剋星百家樂AI分析器","url":"https://bgsv1.xyz/","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"zh-Hant","description":"提供莊閒和記錄、百家樂路單整理、研究性方向分析與30分鐘網頁試用。"}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://bgsv1.xyz/#website","url":"https://bgsv1.xyz/","name":"莊家剋星","alternateName":"莊家剋星百家樂AI分析器","inLanguage":"zh-Hant"},{"@type":"SoftwareApplication","@id":"https://bgsv1.xyz/#app","name":"莊家剋星 BaccaratQuant 牌靴數據實驗室","url":"https://bgsv1.xyz/","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"zh-Hant","description":"免費 B/P/T 歷史統計分析、標準規則的理論 EV 與 Kelly 資金風險教學；不提供可驗證的即時下注預測。","softwareVersion":"5.1","offers":{"@type":"Offer","price":"0","priceCurrency":"TWD","availability":"https://schema.org/InStock"}}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"歷史百家樂路單能直接預測下一局結果嗎？","acceptedAnswer":{"@type":"Answer","text":"不能。歷史頻率與偏離值可以描述已觀察到的樣本，但不足以證明下一局存在可利用的預測優勢。"}},{"@type":"Question","name":"期望值 EV 為負時，Kelly 公式會建議多少比例？","acceptedAnswer":{"@type":"Answer","text":"在沒有可驗證的正優勢時，非負的 Kelly 下注比例為 0；更改下注金額不能消除遊戲本身的負期望值。"}}]}</script>
   <link rel="stylesheet" href="styles.css?v=20261106-bigroad-v1">
   <link rel="stylesheet" href="trial-styles.css?v=20261116-fullbleed-v9">
   <link rel="stylesheet" href="seo-content.css?v=20261116-cluster-v1">
   <link rel="stylesheet" href="ui-three-tabs.css?v=20261116-tabs-v1">
   <link rel="stylesheet" href="black-gold-theme.css?v=20261116-blackgold-v1">
   <link rel="stylesheet" href="mobile-one-screen.css?v=20261116-fit-v1">
+  <link rel="stylesheet" href="quant-research.css?v=20261122-tabs-v2">
 
 </head>
 <body class="bbb-black-gold">
-  <section id="licenseGate" class="license-gate" aria-label="程式授權登入">
+  <section id="licenseGate" class="license-gate" aria-label="百家樂路單量化研究與分析入口">
+  <main id="quantResearch" class="quant-lab" aria-labelledby="quantTitle">
+    <header class="quant-topnav">
+      <span class="quant-wordmark">BaccaratQuant <span style="color:#10B981">／</span> 牌靴數據實驗室</span>
+      <span class="quant-version">BBB / RESEARCH v5.1</span>
+    </header>
+
+    <div class="quant-hero">
+      <p class="quant-eyebrow">PROBABILITY ANALYTICS · DATA FIRST · WEB APPLICATION</p>
+      <h1 id="quantTitle">百家樂路單分析工具：BaccaratQuant 牌靴數據實驗室</h1>
+      <p class="quant-lead">以莊（B）、閒（P）、和（T）的歷史紀錄探索樣本頻率、理論期望值（EV）、波動與資金風險。所有統計均可核對計算假設；歷史路單不等於未來結果。</p>
+      <div class="quant-kpis" aria-label="研究工具的可核對指標">
+        <article class="quant-kpi bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">規則基準 · 公開</span><small>標準百家樂使用牌組數</small><strong class="quant-counter" data-count-up="8" data-suffix=" 副">8 副</strong><p>採八副牌標準理論機率；不代表當前牌靴牌況。</p></article>
+        <article class="quant-kpi bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">分類資料 · 可核對</span><small>可分析的開牌結果種類</small><strong class="quant-counter" data-count-up="3" data-suffix=" 種">3 種</strong><p>莊 B、閒 P、和 T；歷史頻率不等於預測勝率。</p></article>
+        <article class="quant-kpi bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">模擬 · 非實盤</span><small>每次隨機情境的局數</small><strong class="quant-counter" data-count-up="10000" data-suffix=" 局">10,000 局</strong><p>固定隨機種子可重現，非 BBB 模型績效。</p></article>
+      </div>
+      <div class="quant-actions">
+        <a class="quant-btn primary active:scale-95" href="#quantAnalyzer" data-quant-target="quantTabProbability">開始計算機率 <span aria-hidden="true">↗</span></a>
+        <a class="quant-btn primary active:scale-95" href="#bbbTabExperience">探索進階雲端研究工具 <span aria-hidden="true">↗</span></a>
+      </div>
+      <p class="quant-subtle" style="margin-top:12px">公開計算器採用標準規則理論機率，與現有 BBB Soft Shoe v5.1 研究核心分離。模型訓練／驗證樣本待發布可稽核資料；本頁不產生即時下注訊號。</p>
+    </div>
+
+
+    <section class="quant-section" id="quantAnalyzer" aria-labelledby="quantAnalyzerHeading">
+      <h2 id="quantAnalyzerHeading">量化研究工具如何分析機率、Kelly 資金配置與萬局波動？</h2>
+      <p>可切換三個獨立工具：歷史莊閒和路單統計、凱利公式風險試算，以及 10,000 局可重現的隨機資金曲線。所有模組的 HTML 與文字內容均在初始原始碼中呈現，頁籤僅以 CSS 顯示或隱藏。</p>
+
+      <nav class="quant-tab-strip" role="tablist" aria-label="量化工具分析頁籤">
+        <button id="quantTabBtnProbability" class="quant-tab is-active" type="button" role="tab" aria-controls="quantTabProbability" aria-selected="true" tabindex="0" data-quant-tab="quantTabProbability"><span class="quant-tab-index">01</span><span>即時機率與路單分析</span></button>
+        <button id="quantTabBtnKelly" class="quant-tab" type="button" role="tab" aria-controls="quantTabKelly" aria-selected="false" tabindex="-1" data-quant-tab="quantTabKelly"><span class="quant-tab-index">02</span><span>凱利公式注碼控管試算</span></button>
+        <button id="quantTabBtnSimulation" class="quant-tab" type="button" role="tab" aria-controls="quantTabSimulation" aria-selected="false" tabindex="-1" data-quant-tab="quantTabSimulation"><span class="quant-tab-index">03</span><span>10,000 局模擬波動曲線</span></button>
+      </nav>
+
+      <!-- SEO: 三個 tabpanel 的完整語意 HTML 均由伺服器原始頁面提供；僅 CSS 切換顯示狀態。 -->
+      <div class="quant-tab-panel is-active" id="quantTabProbability" role="tabpanel" aria-labelledby="quantTabBtnProbability" aria-hidden="false" tabindex="0">
+        <div class="quant-tab-intro"><h3>即時機率與路單分析：怎麼核對 B／P／T 的歷史頻率？</h3><p>透過手動輸入歷史莊 B、閒 P、和 T 結果計算每項出現次數、樣本百分比與相對理論值的偏差。更新的是歷史描述統計，不會改變下一局的標準理論機率。</p></div>
+        <div class="quant-panel">
+          <div class="quant-tool-grid">
+            <div>
+              <strong class="quant-tool-label">手動建立歷史紀錄</strong>
+              <div class="quant-result-controls" aria-label="輸入歷史結果">
+                <button class="quant-btn secondary active:scale-95" id="quantAddB" type="button">莊 B</button>
+                <button class="quant-btn secondary active:scale-95" id="quantAddP" type="button">閒 P</button>
+                <button class="quant-btn secondary active:scale-95" id="quantAddT" type="button">和 T</button>
+              </div>
+              <label class="quant-history-label" for="quantHistory">已輸入序列（最多 2,000 局，可直接編輯）</label>
+              <textarea class="quant-history" id="quantHistory" placeholder="例如：B P T B P B" spellcheck="false" autocapitalize="characters"></textarea>
+              <div class="quant-actions">
+                <button class="quant-btn primary active:scale-95" type="button" id="quantApply">開始計算機率</button>
+                <button class="quant-btn secondary active:scale-95" type="button" id="quantUndo">撤銷最後一局</button>
+                <button class="quant-btn secondary active:scale-95" type="button" id="quantClear">清空</button>
+              </div>
+              <p class="quant-tip" id="quantInputStatus" role="status" aria-live="polite">公開計算器僅在此裝置執行。</p>
+              <p class="quant-tip">最新紀錄：<span id="quantRecent">尚無紀錄</span></p>
+            </div>
+            <div>
+              <div class="quant-metrics">
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">本機樣本</span><small>觀察局數</small><strong id="quantTotal">0</strong></div>
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">固定基準</span><small>理論機率假設</small><strong>8 副牌</strong></div>
+              </div>
+              <div class="quant-bars">
+                <div class="quant-bar"><span>莊 B</span><div class="quant-track"><div class="quant-fill" id="quantBarB"></div></div><strong id="quantFreqB">—</strong></div>
+                <div class="quant-bar"><span>閒 P</span><div class="quant-track"><div class="quant-fill" id="quantBarP"></div></div><strong id="quantFreqP">—</strong></div>
+                <div class="quant-bar"><span>和 T</span><div class="quant-track"><div class="quant-fill" id="quantBarT"></div></div><strong id="quantFreqT">—</strong></div>
+              </div>
+              <div class="quant-metrics">
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>莊次數／偏離值</small><strong id="quantCountB">0</strong><span class="quant-subtle" id="quantDeviationB">—</span></div>
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>閒次數／偏離值</small><strong id="quantCountP">0</strong><span class="quant-subtle" id="quantDeviationP">—</span></div>
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>和次數／偏離值</small><strong id="quantCountT">0</strong><span class="quant-subtle" id="quantDeviationT">—</span></div>
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">標準規則</span><small>理論機率 B / P / T</small><strong class="quant-theory">45.86 / 44.62 / 9.52%</strong></div>
+              </div>
+            </div>
+          </div>
+          <div class="quant-note">理論基準：莊 45.8597%、閒 44.6247%、和 9.5156%。歷史結果本身不等於當前牌靴的真實剩餘牌分布，亦不構成下局方向或勝率保證。</div>
+        </div>
+      </div>
+
+      <div class="quant-tab-panel" id="quantTabKelly" role="tabpanel" aria-labelledby="quantTabBtnKelly" aria-hidden="true" tabindex="0">
+        <div class="quant-tab-intro"><h3>凱利公式注碼控管試算：負期望值時應如何限制曝險？</h3><p>左側顯示標準八副牌百家樂在固定賠率下的理論期望值；下方提供完全獨立的「假設勝率」教學情境。自行輸入的假設勝率並非 BBB 模型估計值，也不能用來推斷下一局結果。</p></div>
+        <div class="quant-panel">
+          <div class="quant-metrics quant-ev-grid">
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">理論基準</span><small>莊 EV · 5% 佣金／和局退回</small><strong id="quantEvB" class="neg">—</strong></div>
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">理論基準</span><small>閒 EV · 和局退回</small><strong id="quantEvP" class="neg">—</strong></div>
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">理論基準</span><small>和 EV · 8：1 賠率</small><strong id="quantEvT" class="neg">—</strong></div>
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">無已驗證優勢</span><small>完整 Kelly 比例 · 莊 / 閒 / 和</small><strong class="quant-theory"><span id="quantKelly">—</span> / <span id="quantKellyP">—</span> / <span id="quantKellyT">—</span></strong></div>
+          </div>
+          <div class="quant-note warning">當沒有經獨立驗證的正期望值時，非負 Kelly 比例為零。標準規則資金曝險參考：<strong id="quantRiskSignal">0.00%</strong>。請勿將模擬計算當作實際下注建議。</div>
+          <div class="quant-kelly-layout">
+            <div class="quant-kelly-form">
+              <h4>假設情境試算（不是模型預測）</h4>
+              <div class="quant-form-grid">
+                <label for="quantBankroll">假設資金（元）<input id="quantBankroll" type="number" min="1" max="100000000" value="10000" inputmode="numeric"></label>
+                <label for="quantHypWin">假設單局勝率（%）<input id="quantHypWin" type="number" min="0" max="100" value="50" step="0.1" inputmode="decimal"></label>
+                <label for="quantHypPayout">假設淨賠率（倍）<input id="quantHypPayout" type="number" min="0.01" max="100" value="1" step="0.05" inputmode="decimal"></label>
+                <label for="quantKellyScale">Kelly 採用比例（%）<input id="quantKellyScale" type="number" min="0" max="100" value="25" step="5" inputmode="numeric"></label>
+                <label for="quantRiskCap">單次最高曝險上限（%）<input id="quantRiskCap" type="number" min="0" max="100" value="2" step="0.5" inputmode="decimal"></label>
+              </div>
+            </div>
+            <div class="quant-kelly-output">
+              <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">手動假設 · 非建議</span><small>此假設情境的 EV</small><strong id="quantHypEV">0.00%</strong></div>
+              <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">計算結果</span><small>完整 Kelly 理論比例</small><strong id="quantHypFullKelly">0.00%</strong></div>
+              <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">曝險上限已套用</span><small>假設比例／金額</small><strong id="quantHypStake">0.00% / 0 元</strong></div>
+            </div>
+          </div>
+          <p class="quant-tip" id="quantKellyStatus" role="status" aria-live="polite">假設勝率預設 50%，1：1 賠率時 Kelly 為 0；這不是即時下注訊號。</p>
+          <div class="quant-actions"><a class="quant-btn primary active:scale-95" href="#bbbTabExperience">探索 BBB 進階研究工具</a></div>
+        </div>
+      </div>
+
+      <div class="quant-tab-panel" id="quantTabSimulation" role="tabpanel" aria-labelledby="quantTabBtnSimulation" aria-hidden="true" tabindex="0">
+        <div class="quant-tab-intro"><h3>10,000 局模擬波動曲線：為何單次結果不等於長期報酬？</h3><p>採用八副牌理論機率進行 10,000 次獨立隨機抽樣，並示範「固定小額押莊、和局退回、莊勝收取 5% 佣金」下的假設資金曲線。這不是歷史資料、已完成模型回測或策略推薦；可透過隨機種子重現。</p></div>
+        <div class="quant-panel">
+          <div class="quant-sim-form">
+            <label for="quantSimSeed">隨機種子（可重現）<input id="quantSimSeed" type="number" min="0" max="4294967295" value="20261122" step="1" inputmode="numeric"></label>
+            <label for="quantSimStake">每局固定模擬金額（元）<input id="quantSimStake" type="number" min="1" max="10000" value="10" step="1" inputmode="numeric"></label>
+            <button class="quant-btn primary active:scale-95" type="button" id="quantRunSim">重新產生 10,000 局曲線</button>
+          </div>
+          <div class="quant-sim-legend"><span><i class="quant-legend-blue"></i>固定金額 · 押莊的隨機路徑</span><span><i class="quant-legend-gray"></i>起始資金參考線 · 10,000 元</span></div>
+          <div class="quant-chart-frame">
+            <svg id="quantSimChart" viewBox="0 0 980 300" role="img" aria-labelledby="quantSimChartTitle quantSimChartDescription" preserveAspectRatio="none">
+              <title id="quantSimChartTitle">10,000 局標準百家樂獨立隨機模擬的資金波動曲線</title>
+              <desc id="quantSimChartDescription">每條線是指定隨機種子下的教學範例，不是正式 BBB 模型回測績效。</desc>
+              <line x1="22" y1="146" x2="960" y2="146" class="quant-chart-baseline" id="quantSimBaseline"></line>
+              <polyline points="22,146 960,146" id="quantSimLine" class="quant-chart-curve"></polyline>
+            </svg>
+          </div>
+          <div class="quant-metrics quant-sim-metrics">
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">模擬輸出</span><small>本次 10,000 局期末資金</small><strong id="quantSimEnd">待產生</strong></div>
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">模擬輸出</span><small>本次路徑最大回撤</small><strong id="quantSimMDD">待產生</strong></div>
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">可核對參數</span><small>實際投入模擬局數</small><strong id="quantSimBets">待產生</strong></div>
+          </div>
+          <p class="quant-tip" id="quantSimStatus" role="status" aria-live="polite">本機模擬使用固定初始資金 10,000 元，模擬波動不代表任何可實現的投資或遊戲績效。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="quant-section" id="quantBacktest" aria-labelledby="quantBacktestHeading">
+      <h2 id="quantBacktestHeading">傳統倍投與動態 EV 風控策略，如何進行可重現的 10,000 局回測比較？</h2>
+      <p>上方第三頁籤是<strong>獨立隨機情境的教學模擬</strong>，不是 BBB 正式預測模型的歷史回測。下表僅列出未來公平比較所需的實驗欄位；在提供可稽核原始資料前，所有績效數字均標為「待實測」。</p>
+      <div class="quant-table-wrap">
+        <table class="quant-table">
+          <caption style="padding:11px;text-align:left;color:#94A3B8">模型策略比較：10,000 局回測實驗設計（待驗證）</caption>
+          <thead><tr><th scope="col">策略方法</th><th scope="col">風險控制方式</th><th scope="col">最大回撤 Max Drawdown</th><th scope="col">資金存活率</th><th scope="col">可驗證資料</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">傳統倍投（Martingale）</th><td>損失後提高下一次風險部位</td><td>待實測</td><td>待實測</td><td>尚未提供</td></tr>
+            <tr><th scope="row">動態 EV 風險控管</th><td>優先檢查 EV、信心與資金上限；無正優勢時不出手</td><td>待實測</td><td>待實測</td><td>尚未提供</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- TODO: 待收集對照測試腳本 SHA、原始 CSV、最大回撤及資金存活率等經實測資料。 -->
+      <div class="quant-panel"><strong>獨立回測資料是否已公布？</strong><p class="quant-subtle">尚未。請勿將第三頁籤的隨機曲線視為已驗證策略績效；真正的策略回測需要固定規則、隨機種子、下注限制及可複現樣本。</p><!-- TODO: 在此填入真實回測圖表與資料產製方法 --></div>
+    </section>
+
+    <section class="quant-section" id="quantFAQ" aria-labelledby="quantFAQHeading">
+      <h2 id="quantFAQHeading">常見機率問題應該如何正確解讀？</h2>
+      <div class="quant-grid-2">
+        <article class="quant-faq"><h2>歷史百家樂路單能直接預測下一局結果嗎？</h2><p>不能。歷史頻率與偏離值可以描述已觀察到的樣本，但不足以證明下一局存在可利用的預測優勢。</p></article>
+        <article class="quant-faq"><h2>期望值 EV 為負時，Kelly 公式會建議多少比例？</h2><p>在沒有可驗證的正優勢時，非負的 Kelly 下注比例為 0；更改下注金額不能消除遊戲本身的負期望值。</p></article>
+      </div>
+    </section>
+
+    <footer class="quant-footer" id="quantChangelog">
+      <div class="quant-grid-2">
+        <div><strong>統計學免責聲明</strong><p>本工具僅供歷史機率模擬、路單統計與資金控管教學。賭場優勢依然存在；沒有任何歷史模式或計算器能保證預測正確。請遵守所在地法規與年齡限制。</p></div>
+        <div><strong>數據團隊更新日誌 · Changelog</strong><p>2026-11-22：更新量化分析三頁籤、Kelly 情境試算與可重現萬局隨機曲線；原 BBB Soft Shoe 研究模型不變。</p><!-- TODO: 在此填入團隊成員、研究方法、驗證日誌及日期 --><p><a href="https://github.com/zliu53468-ai/BBB" target="_blank" rel="noopener noreferrer">在 GitHub 驗證程式碼與版本</a></p></div>
+      </div>
+    </footer>
+  </main>
+
     <div class="bbb-fullbleed-scene bbb-gold-landscape" aria-hidden="true"></div>
     <nav class="bbb-site-tabs" role="tablist" aria-label="莊家剋星首頁內容">
       <button type="button" id="bbbTabBtnExperience" class="bbb-site-tab" role="tab" aria-selected="true" aria-controls="bbbTabExperience" tabindex="0">立即體驗</button>
@@ -39,12 +210,12 @@
     <div id="bbbTabExperience" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnExperience" tabindex="0">
     <div class="license-shell">
       <div class="homepage-crown" aria-hidden="true">✦ B A N K E R &nbsp; S L A Y E R ✦</div>
-      <div class="license-logo dynamic-brand-mark"><img src="assets/logo-baccarat-slayer.webp" alt="莊家剋星"></div>
+      <div class="license-logo dynamic-brand-mark" hidden><img src="assets/logo-baccarat-slayer.webp" alt=""></div>
       <div class="homepage-status"><span>AI 輔助分析</span><span>真人百家</span><span>30 MIN 體驗</span></div>
       <div class="license-kicker">BANKER SLAYER · AI BACCARAT PREVIEW</div>
-      <h1>莊家剋星 <span class="homepage-gradient-title">百家樂AI分析器</span></h1>
+      <h2>如何使用現有 BBB 研究面板？ <span class="homepage-gradient-title" hidden>百家樂AI分析器</span></h2>
       <p class="homepage-impact-line"><span aria-hidden="true">✦</span> 智慧洞察牌路 · 掌握分析節奏 <span aria-hidden="true">✦</span></p>
-      <p class="license-desc">結合 BBB 智慧分析與 DG 官方百家樂免費試玩，透過數據輔助判斷、改善策略紀律，朝提升預測準確度與勝率的目標前進。新訪客可先體驗 30 分鐘，無須先領開通碼。</p>
+      <p class="license-desc">BBB 的進階研究面板提供牌路與模型診斷；新訪客可進行 30 分鐘功能測試，不需輸入開通碼。此面板的模型輸出仍需獨立回測驗證，並不保證準確度。</p>
       <div class="homepage-feature-row" aria-label="服務特色"><span>✦ 即時牌路研究</span><span>✦ 方向輔助判斷</span><span>✦ 風控與觀望提醒</span></div>
       <div class="trial-visitor-entry bbb-neon-entry" aria-label="新訪客體驗入口">
         <button type="button" id="trialStartBtn" class="bbb-neon-cta bbb-neon-cta-start" aria-label="立即試用莊家剋星預測程式｜免費試用 30 分鐘">
@@ -54,14 +225,14 @@
         </button>
         <a id="dgDirectTrialLink" class="trial-dg-link trial-gate-dg-link bbb-neon-cta bbb-neon-cta-dg" data-bbb-link="dgTrialUrl" target="_blank" rel="noopener noreferrer sponsored">
           <span class="bbb-cta-symbol" aria-hidden="true">◇</span>
-          <span class="bbb-cta-copy"><strong>開啟DG試玩立即測試</strong><small>真人百家免費試玩 · 新分頁</small></span>
+          <span class="bbb-cta-copy"><strong>開啟外部免費試玩</strong><small>外部模擬體驗 · 新分頁</small></span>
           <span class="bbb-cta-arrow" aria-hidden="true">›</span>
         </a>
         <p id="trialStartMessage" role="status" aria-live="polite"></p>
       </div>
       <section id="returnVisitorCard" class="return-visitor-card" hidden aria-labelledby="returnVisitorHeading">
         <p class="return-visitor-kicker">WELCOME BACK · 後續使用</p>
-        <h2 id="returnVisitorHeading">想領取程式開通碼，請聯繫下方管理員</h2>
+        <h2 id="returnVisitorHeading">如何申請現有程式的會員權限？</h2>
         <p id="returnVisitorReason">你已查看過外部平台或聯絡入口。若需要領取程式開通碼，請與官方管理員聯繫。</p>
         <a class="return-visitor-line" data-bbb-link="lineContactUrl" target="_blank" rel="noopener noreferrer">聯繫官方管理員領取開通碼</a>
         <button type="button" id="memberAccessToggle" class="return-visitor-member">我已有開通碼 · 登入會員</button>
@@ -70,7 +241,7 @@
       <a class="homepage-member-entry" href="./?license=1">已持有開通碼？會員登入</a>
       <div id="licenseMemberPanel" class="license-member-panel" hidden>
         <button type="button" id="bbbMobileMemberClose" aria-label="關閉會員登入視窗">×</button>
-        <h2>會員開通碼登入</h2>
+        <h2>如何使用會員開通碼登入？</h2>
         <p>此為已持有開通碼的會員登入入口；未領取者請先聯繫官方管理員。</p>
         <form id="licenseForm" class="license-form">
           <label for="licenseCode">程式開通碼</label>
@@ -86,7 +257,7 @@
     <section class="member-feedback-showcase" data-nosnippet aria-labelledby="memberFeedbackHeading">
       <div class="member-feedback-heading">
         <span class="member-feedback-eyebrow">COMMUNITY FEEDBACK · 真實對話畫面分享</span>
-        <h2 id="memberFeedbackHeading">會員回饋與遊戲報表截圖</h2>
+        <h2 id="memberFeedbackHeading">會員回饋截圖呈現哪些使用情境？</h2>
         <p>精選會員分享的對話與遊戲報表，點擊圖片即可放大查看。</p>
       </div>
       <div class="member-feedback-grid" id="bbbFeedbackCarousel" aria-live="polite">
@@ -106,7 +277,7 @@
     </div>
     <div id="bbbTabLearn" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnLearn" tabindex="0" hidden>
     <nav class="bbb-mobile-quick-learn" aria-label="手機版快速操作教學">
-      <h2>一分鐘看懂 AI 百家樂</h2>
+      <h2>如何在一分鐘內了解路單分析？</h2>
       <p>選擇想了解的功能，不用在首頁往下翻找。</p>
       <a href="baccarat-ai-prediction.html"><span>01</span><strong>AI 預測程式怎麼用</strong><small>操作與免費試用</small></a>
       <a href="baccarat-road-guide.html"><span>02</span><strong>百家樂大路怎麼看</strong><small>牌路、莊閒和紀錄</small></a>
@@ -116,7 +287,7 @@
     <section class="seo-discovery" aria-label="百家樂與 AI 分析程式介紹">
       <section class="featured-youtube" aria-labelledby="featuredVideoHeading">
         <p class="featured-video-kicker">莊家剋星 · YOUTUBE 影片專區</p>
-        <h2 id="featuredVideoHeading">觀看莊家剋星的 YouTube 影片</h2>
+        <h2 id="featuredVideoHeading">如何觀看完整的分析工具操作示範？</h2>
         <p>想了解更多百家樂分析影片？這裡提供官方影片的縮圖與觀看入口。若 YouTube 有年齡限制，請於 YouTube 登入符合資格的帳號觀看。</p>
         <a class="featured-video-thumbnail" href="https://www.youtube.com/watch?v=ns76j16hLTM" target="_blank" rel="noopener noreferrer" aria-label="開新分頁觀看莊家剋星 YouTube 影片">
           <img src="https://i.ytimg.com/vi/ns76j16hLTM/hqdefault.jpg" alt="莊家剋星 YouTube 影片縮圖，點擊前往影片" loading="lazy" width="480" height="360" referrerpolicy="no-referrer">
@@ -128,7 +299,7 @@
       <div class="seo-spotlight">
         <div class="seo-spotlight-heading">
           <span class="seo-kicker">INSIGHTS · BACCARAT AI</span>
-          <h2>百家樂 AI 分析，一眼掌握牌局資訊</h2>
+          <h2>百家樂路單與 AI 分析有哪些應用限制？</h2>
           <p>整合莊閒和紀錄、百家樂大路及下一局研究方向，讓資料更清楚，分析更有效率。</p>
         </div>
         <div class="seo-feature-grid">
@@ -178,8 +349,8 @@
   <dialog id="bbbBankrollDialog" class="bbb-bankroll-dialog" aria-labelledby="bbbBankrollTitle" aria-describedby="bbbBankrollDescription">
     <form id="bbbBankrollForm">
       <p class="bbb-bankroll-eyebrow">BANKROLL SETUP · 試用前設定</p>
-      <h2 id="bbbBankrollTitle">請先輸入你的起始本金</h2>
-      <p id="bbbBankrollDescription">系統會以此計算盈利 60% 的止盈目標與分數凱莉參考資金。這是資金追蹤工具，不會自動投注或讀取 DG 帳戶。</p>
+      <h2 id="bbbBankrollTitle">如何設定用於追蹤的起始本金？</h2>
+      <p id="bbbBankrollDescription">系統會以此計算盈利 60% 的止盈目標與分數凱莉參考資金。這是資金追蹤工具，不會自動投注或讀取外部平台帳戶。</p>
       <label for="bbbInitialBankroll">起始本金（NT$）</label>
       <input id="bbbInitialBankroll" type="number" inputmode="decimal" min="1" max="1000000000" step="0.01" required placeholder="例如 10000" autocomplete="off">
       <p class="bbb-bankroll-preview">本金 + 60% 目標：<strong id="bbbBankrollTargetPreview">—</strong></p>
@@ -202,8 +373,8 @@
         <span class="trial-banner-title">30 分鐘免費試用 · BBB 預測面板</span>
         <strong id="bbbTrialCountdown" aria-live="off">30:00</strong>
       </div>
-      <a id="dgTrialLink" class="trial-dg-link" data-bbb-link="dgTrialUrl" target="_blank" rel="noopener noreferrer sponsored">前往 DG 官方試玩（開啟新分頁）</a>
-      <p class="trial-help">DG 會另外開啟分頁，原本的 BBB 預測程式保留在本分頁。兩站不會同步資料，請自行輸入每局莊／閒／和結果。</p>
+      <a id="dgTrialLink" class="trial-dg-link" data-bbb-link="dgTrialUrl" target="_blank" rel="noopener noreferrer sponsored">開啟外部試玩頁（新分頁）</a>
+      <p class="trial-help">外部試玩會在新分頁開啟；本站不會取得外部網站的交易紀錄。需要由使用者手動輸入每局莊／閒／和結果。</p>
       <p id="bbbTrialStatus" role="status" aria-live="polite">免費試用期限由伺服器確認。</p>
       <section id="bbbTrialBankrollPanel" class="bbb-trial-bankroll-panel bbb-money-behind-scenes" hidden aria-label="試用本金、凱莉比例與止盈目標">
         <div class="bbb-bankroll-grid">
@@ -237,7 +408,7 @@
         </div>
         <div class="brand-copy">
           <p class="eyebrow">BANKER SLAYER · AI ANALYSIS</p>
-          <h1>莊家剋星AI百家程式</h1>
+          <h2>如何閱讀現有 BBB 研究面板？</h2>
           <p class="brand-subtitle">莊閒方向 · 路單整理 · 即時研究</p>
         </div>
       </div>
@@ -314,6 +485,7 @@
     </div>
   </main>
 
+  <script src="quant-research.js?v=20261122-tabs-v2" defer></script>
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="site-links.js?v=20261115-outbound-v1"></script>
   <script src="viewport-fit.js?v=20261102-mobile-stable-v2"></script>

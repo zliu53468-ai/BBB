@@ -16,7 +16,7 @@ assert(ended.includes('class="bbb-fullbleed-scene bbb-gold-landscape"'),"gold ab
 assert(home.includes('class="brand-hero bbb-gold-prediction-hero"'),"prediction panel has gold graphic");
 assert(home.includes('class="bbb-neon-cta bbb-neon-cta-start"')||home.includes('class="bbb-neon-cta bbb-neon-cta-start"'),"new black neon start card");
 assert(home.includes('bbb-neon-cta-dg'),"new black neon DG card");
-assert(home.includes("開啟DG試玩立即測試"),"DG label matches user request");
+assert(home.includes("開啟外部免費試玩"),"brand-neutral external trial label");
 assert(home.includes('id="trialStartBtn"'),"old BBB start hook kept");
 assert(home.includes('class="bbb-bankroll-confirm">立即試用測試</button>'),"capital confirmation unchanged");
 assert(home.includes('id="bbbBankrollDialog"'),"capital modal unchanged");

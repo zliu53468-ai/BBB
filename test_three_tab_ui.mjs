@@ -7,8 +7,10 @@ const tabs=read("homepage-tabs.js"),zoom=read("feedback-lightbox.js");
 const trial=read("trial-client.js"),tracking=read("trial-hit-rate.js");
 for(const id of ["bbbTabBtnExperience","bbbTabBtnFeedback","bbbTabBtnLearn",
  "bbbTabExperience","bbbTabFeedback","bbbTabLearn"])assert(home.includes('id="'+id+'"'),"tab id "+id);
-assert((home.match(/role="tab"/g)||[]).length===3,"three accessible tabs only");
-assert((home.match(/role="tabpanel"/g)||[]).length===3,"three content panels only");
+assert((home.match(/<button[^>]*id="bbbTabBtn(?:Experience|Feedback|Learn)"[^>]*role="tab"/g)||[]).length===3,"three legacy landing tabs preserved");
+assert((home.match(/<div[^>]*id="bbbTab(?:Experience|Feedback|Learn)"[^>]*role="tabpanel"/g)||[]).length===3,"three legacy landing panels preserved");
+assert((home.match(/<button[^>]*id="quantTabBtn(?:Probability|Kelly|Simulation)"[^>]*role="tab"/g)||[]).length===3,"three new quant tabs coexist without replacing legacy tabs");
+assert((home.match(/<div[^>]*id="quantTab(?:Probability|Kelly|Simulation)"[^>]*role="tabpanel"/g)||[]).length===3,"three new quant panels are source-rendered");
 assert(home.includes('id="bbbTabFeedback" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnFeedback" tabindex="0" hidden'),"feedback collapsed initially");
 assert(home.includes('id="bbbTabLearn" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnLearn" tabindex="0" hidden'),"guides collapsed initially");
 assert(home.includes('id="trialStartBtn"')&&home.includes('id="dgDirectTrialLink"'),"old trial/DG actions preserved");

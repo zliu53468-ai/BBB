@@ -21,7 +21,7 @@ assert(css.includes("assets/member-feedback-sprite.webp"),"archived sprite fallb
 for(let i=1;i<=5;i++)assert(css.includes(".feedback-shot-"+i+"{"),"gallery shot "+i);
 assert(h.includes("homepage-gradient-title"),"new vibrant intro");
 assert(h.includes("協助"),"helps explain assistant-oriented model");
-assert(h.includes("提升預測準確度與勝率的目標"),"improvement expressed as a goal, not verified outcome");
+assert(h.includes("歷史路單不等於未來結果")&&h.includes("不保證準確度"),"no unsupported win-rate claim in research landing");
 assert(!h.includes("不保證獲利"),"remove that phrase from homepage promo material");
 assert(h.includes('id="trialStartBtn"')&&h.includes('id="dgDirectTrialLink"'),"existing trial and DG links");
 assert(h.includes('id="licenseForm"')&&/id="licenseMemberPanel"[^>]*hidden/.test(h),"licensed entry preserved and not first visible");
