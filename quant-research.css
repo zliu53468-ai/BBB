@@ -117,3 +117,5 @@ body.bbb-black-gold #predictionApp .brand-copy h2{font-size:20px;color:#E2E8F0}
  .quant-section{padding:20px 0}.quant-table{min-width:570px}
 }
 @media(prefers-reduced-motion:reduce){.quant-fill{transition:none}}
+
+body.bbb-black-gold #licenseGate .homepage-gradient-title[hidden]{display:none!important}
