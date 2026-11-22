@@ -30,20 +30,65 @@
   <link rel="stylesheet" href="mobile-one-screen.css?v=20261116-fit-v1">
   <link rel="stylesheet" href="quant-research.css?v=20261122-tabs-v2">
   <link rel="stylesheet" href="quant-guides.css?v=20261122-a">
+  <link rel="stylesheet" href="quant-site.css?v=20261122-multipage-v1">
 
 </head>
 <body class="bbb-black-gold">
   <section id="licenseGate" class="license-gate" aria-label="百家樂路單量化研究與分析入口">
+  <header class="quant-site-header" aria-label="BaccaratQuant 全站導覽">
+    <div class="quant-site-shell">
+      <a class="quant-site-brand" href="./" aria-label="BaccaratQuant 回首頁"><span class="quant-site-brand-mark" aria-hidden="true">BQ</span><span class="quant-site-brand-copy">BaccaratQuant<small>QUANTITATIVE RESEARCH LAB</small></span></a>
+      <nav class="quant-site-links" aria-label="主要頁面與主題分類">
+        <a href="./">首頁</a>
+        <a href="quant-tools.html#quantTabProbability">機率分析</a>
+        <a href="quant-tools.html#quantTabKelly">Kelly 試算</a>
+        <a href="quant-tools.html#quantTabSimulation">萬局模擬</a>
+        <a href="research-hub.html">研究文章</a>
+        <a href="model-methodology.html">模型原理</a>
+        <a href="risk-center.html">安全風控</a>
+        <a class="quant-site-member" href="./#bbbTabExperience">會員試用</a>
+      </nav>
+      <details class="quant-site-mobile-drawer">
+        <summary aria-label="開啟網站分類選單"><span class="quant-site-mobile-icon" aria-hidden="true"></span>分類選單</summary>
+        <nav class="quant-site-mobile-links" aria-label="手機版網站分類">
+          <a href="./">首頁總覽</a>
+          <p class="quant-site-mobile-group">TOOLS / 分析工具</p>
+          <a href="quant-tools.html#quantTabProbability">即時機率與路單</a>
+          <a href="quant-tools.html#quantTabKelly">Kelly 資金控管</a>
+          <a href="quant-tools.html#quantTabSimulation">10,000 局模擬</a>
+          <p class="quant-site-mobile-group">RESEARCH / 研究主題</p>
+          <a href="research-hub.html">研究文章總覽</a>
+          <a href="model-methodology.html">模型原理與資料透明度</a>
+          <p class="quant-site-mobile-group">SAFETY / 風險與服務</p>
+          <a href="risk-center.html">資金風控與防詐</a>
+          <a class="quant-site-member" href="./#bbbTabExperience">會員試用入口</a>
+        </nav>
+      </details>
+    </div>
+  </header>
   <main id="quantResearch" class="quant-lab" aria-labelledby="quantTitle">
-    <header class="quant-topnav">
-      <span class="quant-wordmark">BaccaratQuant <span style="color:#10B981">／</span> 牌靴數據實驗室</span>
-      <span class="quant-version">BBB / RESEARCH v5.1</span>
-    </header>
-
     <div class="quant-hero">
-      <p class="quant-eyebrow">PROBABILITY ANALYTICS · DATA FIRST · WEB APPLICATION</p>
-      <h1 id="quantTitle">百家樂路單分析工具：BaccaratQuant 牌靴數據實驗室</h1>
-      <p class="quant-lead">以莊（B）、閒（P）、和（T）的歷史紀錄探索樣本頻率、理論期望值（EV）、波動與資金風險。所有統計均可核對計算假設；歷史路單不等於未來結果。</p>
+      <div class="quant-banner-top">
+        <div class="quant-banner-copy">
+          <p class="quant-eyebrow">BACCARATQUANT TERMINAL / PROBABILITY · RISK · RESEARCH</p>
+          <h1 id="quantTitle">百家樂路單量化分析：<span style="color:#67E8F9">你的專業數據研究終端</span></h1>
+          <p class="quant-lead">從歷史莊／閒／和頻率，到 Kelly 資金試算、可重現的萬局隨機波動，透過清楚的數學假設理解機率與風險。歷史路單不等於未來結果，不能把計算結果當成必勝訊號。</p>
+          <div class="quant-banner-tags"><span>八副牌理論基準</span><span>全頁繁體中文</span><span>公開可核對方法</span></div>
+          <div class="quant-actions"><a class="quant-btn primary active:scale-95" href="quant-tools.html#quantTabProbability">開啟分析工具中心 ↗</a><a class="quant-btn secondary" href="research-hub.html">探索研究專題 →</a></div>
+        </div>
+        <div class="quant-banner-visual" aria-hidden="true">
+          <div class="quant-visual-topline"><strong>BQ / RESEARCH TERMINAL</strong><span>SIMULATION MODE</span></div>
+          <div class="quant-visual-data"><div><span>BANKER / 基準</span><strong>45.86%</strong></div><div><span>PLAYER / 基準</span><strong>44.62%</strong></div><div><span>TIE / 基準</span><strong>9.52%</strong></div></div>
+          <svg class="quant-visual-svg" viewBox="0 0 440 118" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="quantHeroFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#22D3EE" stop-opacity=".3"/><stop offset="100%" stop-color="#22D3EE" stop-opacity="0"/></linearGradient></defs>
+            <g stroke="#334155" opacity=".6" stroke-width=".6"><path d="M0 25H440 M0 59H440 M0 91H440 M55 0V118 M110 0V118 M165 0V118 M220 0V118 M275 0V118 M330 0V118 M385 0V118"/></g>
+            <path d="M0 69 L30 56 L53 76 L78 62 L107 69 L137 40 L164 50 L187 39 L211 72 L242 59 L275 76 L304 46 L336 62 L360 39 L388 53 L417 27 L440 37 L440 118 L0 118Z" fill="url(#quantHeroFill)"/>
+            <polyline points="0,69 30,56 53,76 78,62 107,69 137,40 164,50 187,39 211,72 242,59 275,76 304,46 336,62 360,39 388,53 417,27 440,37" fill="none" stroke="#22D3EE" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            <circle cx="417" cy="27" r="4" fill="#10B981" stroke="#6EE7B7" stroke-width="2"/>
+          </svg>
+          <p class="quant-visual-caveat">SYNTHETIC DISPLAY · 圖表為視覺示意，非即時牌桌或實盤績效</p>
+        </div>
+      </div>
       <div class="quant-kpis" aria-label="研究工具的可核對指標">
         <article class="quant-kpi bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">規則基準 · 公開</span><small>標準百家樂使用牌組數</small><strong class="quant-counter" data-count-up="8" data-suffix=" 副">8 副</strong><p>採八副牌標準理論機率；不代表當前牌靴牌況。</p></article>
         <article class="quant-kpi bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">分類資料 · 可核對</span><small>可分析的開牌結果種類</small><strong class="quant-counter" data-count-up="3" data-suffix=" 種">3 種</strong><p>莊 B、閒 P、和 T；歷史頻率不等於預測勝率。</p></article>
@@ -56,6 +101,21 @@
       <p class="quant-subtle" style="margin-top:12px">公開計算器採用標準規則理論機率，與現有 BBB Soft Shoe v5.1 研究核心分離。模型訓練／驗證樣本待發布可稽核資料；本頁不產生即時下注訊號。</p>
     </div>
 
+
+
+    <section class="quant-section quant-topics" id="quantTopics" aria-labelledby="quantTopicsHeading">
+      <div class="quant-topics-title"><div><p class="quant-topics-eyebrow">DISCOVER BY CATEGORY / 主題分類導覽</p><h2 id="quantTopicsHeading">你想先研究哪個量化主題？</h2></div><p class="quant-subtle">每個分類都有獨立頁面，不必只在首頁往下找。</p></div>
+      <div class="quant-topic-grid">
+        <a class="quant-topic" href="quant-tools.html#quantTabProbability"><span class="quant-topic-number">01 / PROBABILITY</span><span class="quant-topic-icon" aria-hidden="true">◎</span><strong>機率與路單</strong><span class="quant-topic-desc">B/P/T 比例、理論機率與樣本偏離值，手動輸入直接計算。</span><span class="quant-topic-tail">前往機率分析 <span aria-hidden="true">→</span></span></a>
+        <a class="quant-topic" href="quant-tools.html#quantTabKelly"><span class="quant-topic-number">02 / RISK MODEL</span><span class="quant-topic-icon" aria-hidden="true">◈</span><strong>Kelly 資金控管</strong><span class="quant-topic-desc">理解負期望值、注碼比例與假設情境的曝險上限。</span><span class="quant-topic-tail">前往 Kelly 試算 <span aria-hidden="true">→</span></span></a>
+        <a class="quant-topic" href="research-hub.html"><span class="quant-topic-number">03 / RESEARCH</span><span class="quant-topic-icon" aria-hidden="true">▥</span><strong>回測與研究文章</strong><span class="quant-topic-desc">10 萬局示範、蒙地卡羅研究與標準差教學。</span><span class="quant-topic-tail">進入研究中心 <span aria-hidden="true">→</span></span></a>
+        <a class="quant-topic" href="risk-center.html"><span class="quant-topic-number">04 / SAFETY</span><span class="quant-topic-icon" aria-hidden="true">◇</span><strong>安全風控與防詐</strong><span class="quant-topic-desc">辨識可疑代操話術、資金損失預算與驗證步驟。</span><span class="quant-topic-tail">前往風控專區 <span aria-hidden="true">→</span></span></a>
+      </div>
+    </section>
+    <div class="quant-feature-strip" role="region" aria-label="精選研究專題">
+      <div><p class="quant-feature-label">FEATURED RESEARCH / 本月精選</p><strong>100,000 局蒙地卡羅研究：你以為的「倍投勝率」，真的代表可承受的風險嗎？</strong><p>公開固定種子、桌面下注限制與最大回撤；區分策略中止與真正的資金不足。</p></div>
+      <a href="research-martingale-100k.html">閱讀模擬研究 →</a>
+    </div>
 
     <section class="quant-section" id="quantAnalyzer" aria-labelledby="quantAnalyzerHeading">
       <h2 id="quantAnalyzerHeading">量化研究工具如何分析機率、Kelly 資金配置與萬局波動？</h2>
@@ -536,6 +596,7 @@
     </div>
   </main>
 
+  <script src="quant-site.js?v=20261122-multipage-v1" defer></script>
   <script src="quant-research.js?v=20261122-tabs-v2" defer></script>
   <script src="auth-config.js?v=20261011-prod-gateway"></script>
   <script src="site-links.js?v=20261115-outbound-v1"></script>

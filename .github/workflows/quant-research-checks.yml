@@ -6,6 +6,13 @@ on:
       - "index.html"
       - "quant-research.css"
       - "quant-research.js"
+      - "quant-site.css"
+      - "quant-site.js"
+      - "quant-tools.html"
+      - "research-hub.html"
+      - "model-methodology.html"
+      - "risk-center.html"
+      - "test_quant_multipage.mjs"
       - "quant-guides.css"
       - "research/*.mjs"
       - "research-*.html"
@@ -19,6 +26,13 @@ on:
       - "index.html"
       - "quant-research.css"
       - "quant-research.js"
+      - "quant-site.css"
+      - "quant-site.js"
+      - "quant-tools.html"
+      - "research-hub.html"
+      - "model-methodology.html"
+      - "risk-center.html"
+      - "test_quant_multipage.mjs"
       - "test_quant_research.mjs"
       - ".github/workflows/quant-research-checks.yml"
 permissions:
@@ -33,9 +47,9 @@ jobs:
         with:
           node-version: "22"
       - name: Validate native JavaScript
-        run: node --check quant-research.js && node --check test_quant_research.mjs && node --check test_quant_guides.mjs && node --check research/martingale-100k.mjs
+        run: node --check quant-research.js && node --check test_quant_research.mjs && node --check test_quant_guides.mjs && node --check research/martingale-100k.mjs && node --check quant-site.js && node --check test_quant_multipage.mjs
       - name: Run quantitative and SEO regression checks
-        run: node test_quant_research.mjs && node test_quant_guides.mjs
+        run: node test_quant_research.mjs && node test_quant_guides.mjs && node test_quant_multipage.mjs
       - name: Preserve core application and existing SEO
         run: |
           node test_three_tab_ui.mjs

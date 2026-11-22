@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0F172A">
+<title>模型原理與量化研究方法｜BaccaratQuant</title>
+<meta name="description" content="BaccaratQuant 百家樂數據研究方法：標準八副牌機率、路單特徵、粒子濾波、期望值、樣本驗證與 Soft Shoe 模型邊界。">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://bgsv1.xyz/model-methodology.html">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="zh_TW">
+<meta property="og:title" content="模型原理與量化研究方法">
+<meta property="og:description" content="BaccaratQuant 百家樂數據研究方法：標準八副牌機率、路單特徵、粒子濾波、期望值、樣本驗證與 Soft Shoe 模型邊界。">
+<meta property="og:url" content="https://bgsv1.xyz/model-methodology.html">
+<link rel="stylesheet" href="quant-research.css?v=20261122-tabs-v2">
+<link rel="stylesheet" href="quant-guides.css?v=20261122-a">
+<link rel="stylesheet" href="quant-site.css?v=20261122-multipage-v1">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"模型原理與量化研究方法","url":"https://bgsv1.xyz/model-methodology.html","description":"BaccaratQuant 百家樂數據研究方法：標準八副牌機率、路單特徵、粒子濾波、期望值、樣本驗證與 Soft Shoe 模型邊界。","inLanguage":"zh-Hant","isAccessibleForFree":true}</script>
+</head>
+<body class="bbb-black-gold quant-detail-page">
+  <header class="quant-site-header" aria-label="BaccaratQuant 全站導覽">
+    <div class="quant-site-shell">
+      <a class="quant-site-brand" href="./" aria-label="BaccaratQuant 回首頁"><span class="quant-site-brand-mark" aria-hidden="true">BQ</span><span class="quant-site-brand-copy">BaccaratQuant<small>QUANTITATIVE RESEARCH LAB</small></span></a>
+      <nav class="quant-site-links" aria-label="主要頁面與主題分類">
+        <a href="./">首頁</a>
+        <a href="quant-tools.html#quantTabProbability">機率分析</a>
+        <a href="quant-tools.html#quantTabKelly">Kelly 試算</a>
+        <a href="quant-tools.html#quantTabSimulation">萬局模擬</a>
+        <a href="research-hub.html">研究文章</a>
+        <a href="model-methodology.html">模型原理</a>
+        <a href="risk-center.html">安全風控</a>
+        <a class="quant-site-member" href="./#bbbTabExperience">會員試用</a>
+      </nav>
+      <details class="quant-site-mobile-drawer">
+        <summary aria-label="開啟網站分類選單"><span class="quant-site-mobile-icon" aria-hidden="true"></span>分類選單</summary>
+        <nav class="quant-site-mobile-links" aria-label="手機版網站分類">
+          <a href="./">首頁總覽</a>
+          <p class="quant-site-mobile-group">TOOLS / 分析工具</p>
+          <a href="quant-tools.html#quantTabProbability">即時機率與路單</a>
+          <a href="quant-tools.html#quantTabKelly">Kelly 資金控管</a>
+          <a href="quant-tools.html#quantTabSimulation">10,000 局模擬</a>
+          <p class="quant-site-mobile-group">RESEARCH / 研究主題</p>
+          <a href="research-hub.html">研究文章總覽</a>
+          <a href="model-methodology.html">模型原理與資料透明度</a>
+          <p class="quant-site-mobile-group">SAFETY / 風險與服務</p>
+          <a href="risk-center.html">資金風控與防詐</a>
+          <a class="quant-site-member" href="./#bbbTabExperience">會員試用入口</a>
+        </nav>
+      </details>
+    </div>
+  </header>
+<main class="quant-lab quant-content-page">
+<nav class="quant-site-breadcrumb" aria-label="麵包屑"><a href="./">首頁</a><span aria-hidden="true">/</span>模型原理與量化研究方法</nav>
+<div class="quant-inner-banner"><div><span class="quant-inner-eyebrow">METHODOLOGY / TRANSPARENCY</span><h1>模型原理與量化研究方法</h1><p>把資料來源、理論機率、研究估計與正式決策分開，避免把漂亮的儀表板或模擬數字誤認成經驗證的勝率。</p></div><div class="quant-inner-badge" aria-hidden="true"><div>∑<small>BACCARATQUANT LAB</small></div></div></div>
+
+<section class="quant-section">
+  <h2>模型方法與公開計算器有什麼不同？</h2>
+  <p>本站提供兩類用途不同的研究工具。<strong>公開機率計算器</strong>依標準八副牌賠率與理論機率計算歷史頻率、EV 和 Kelly 教學值；<strong>BBB Soft Shoe 研究核心</strong>是另外一套處理牌靴資訊與路單輔助特徵的實驗性架構。它們不應被包裝成同樣的預測證據，也沒有經本站公開證明必然優於隨機基準。</p>
+  <div class="quant-page-grid">
+    <article class="quant-page-card"><span class="metric">B / P / T</span><h3>輸入資料</h3><p>公開模式接受莊、閒、和歷史序列；當輸入只有結果類別時，無法還原真實完整牌張組成或當前剩餘牌。</p><a href="quant-tools.html#quantTabProbability">試算路單頻率 →</a></article>
+    <article class="quant-page-card"><span class="metric">EV</span><h3>估計與決策分離</h3><p>理論期望值取決於規則和賠率。研究性方向顯示不等於已達正式下注安全門檻；任何策略仍應有不確定性與觀望處理。</p><a href="quant-tools.html#quantTabKelly">查看風險數學 →</a></article>
+    <article class="quant-page-card"><span class="metric">AUDIT</span><h3>可重現的驗證</h3><p>每項績效宣稱都應伴隨原始樣本、資料清洗、版本 SHA、固定切分、跨樣本測試與完整成本設定。</p><a href="research-hub.html">查看公開研究 →</a></article>
+  </div>
+</section>
+<section class="quant-section">
+  <h2>研究方法應檢查的五個環節</h2>
+  <div class="quant-page-grid">
+    <article class="quant-page-card"><h3>01 資料來源</h3><p>確認路單與牌張資料是否完整、獲得合法授權，辨識是否僅從介面讀取 B/P/T。缺少發牌細節時，應降低對當前牌靴條件機率的主張。</p></article>
+    <article class="quant-page-card"><h3>02 理論基準</h3><p>標準八副牌的莊、閒、和理論機率約為 45.8597%、44.6247%、9.5156%。不同佣金及和局賠率會改變 EV。</p></article>
+    <article class="quant-page-card"><h3>03 模型不確定性</h3><p>粒子濾波等方法可以表示多個可能狀態，但模型複雜度和抽樣數量不會直接證明具有正的實盤期望值。</p></article>
+    <article class="quant-page-card"><h3>04 回測流程</h3><p>歷史回測應將訓練資料與測試資料隔離，保留時序，避免用測試結果反覆調參造成過度擬合。</p></article>
+    <article class="quant-page-card"><h3>05 發布與風控</h3><p>記錄正式門檻、研究版本與變更日誌；沒有驗證過的正優勢時，不應把教育性 Kelly 試算當成下注指示。</p></article>
+  </div>
+  <p class="quant-page-note">原本 BBB 模型與正式決策核心仍由現有程式負責。本次新增的是網站分類導覽與公開教學內容，不修改任何預測規則、粒子數、下注閘門或會員流程。</p>
+</section>
+<section class="quant-section">
+  <h2>如何核對程式碼、版本和研究邊界？</h2>
+  <ul class="quant-page-article-list">
+    <li><a href="https://github.com/zliu53468-ai/BBB" target="_blank" rel="noopener noreferrer">GitHub 原始碼與變更紀錄</a><p>確認公開計算器、Soft Shoe 引擎與各版本修改範圍；請以倉庫 main 的實際內容為準。</p></li>
+    <li><a href="research-shoe-deviation.html">標準差、機率偏離與賭徒謬誤</a><p>解析常見路單誤解，說明獨立抽樣近似與有限牌靴的差異。</p></li>
+    <li><a href="research-martingale-100k.html">馬丁格爾蒙地卡羅研究</a><p>查看如何公開固定種子與資金限制，並區分資金不足、策略中止和總回撤。</p></li>
+  </ul>
+</section>
+<footer class="quant-page-bottom"><span>研究用途，不保證模型命中率、收益或下一局結果。</span><a href="./">返回首頁 →</a></footer>
+</main>
+<script src="quant-site.js?v=20261122-multipage-v1" defer></script>
+</body></html>
