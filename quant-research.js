@@ -24,7 +24,6 @@
       set("quantCount"+k,String(result.count));
       set("quantFreq"+k,data.total?pct(result.frequency):"—");
       set("quantDeviation"+k,data.total?pp(result.deviation):"—");
-      set("quantBar"+k,data.total?pct(result.frequency):"0%");
       const bar=$("quantBar"+k);if(bar)bar.style.width=data.total?pct(result.frequency):"0%";
     });
     set("quantEvB",pct(data.ev.B));
