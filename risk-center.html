@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0F172A">
+<title>安全風控與資金風險教育中心｜BaccaratQuant</title>
+<meta name="description" content="百家樂風險教育與安全指南：標準理論 EV、Kelly 非負比例、資金上限與停損觀念，以及 AI 代操詐騙查證和安全防護。">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://bgsv1.xyz/risk-center.html">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="zh_TW">
+<meta property="og:title" content="安全風控與資金風險教育中心">
+<meta property="og:description" content="百家樂風險教育與安全指南：標準理論 EV、Kelly 非負比例、資金上限與停損觀念，以及 AI 代操詐騙查證和安全防護。">
+<meta property="og:url" content="https://bgsv1.xyz/risk-center.html">
+<link rel="stylesheet" href="quant-research.css?v=20261122-tabs-v2">
+<link rel="stylesheet" href="quant-guides.css?v=20261122-a">
+<link rel="stylesheet" href="quant-site.css?v=20261122-multipage-v1">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"安全風控與資金風險教育中心","url":"https://bgsv1.xyz/risk-center.html","description":"百家樂風險教育與安全指南：標準理論 EV、Kelly 非負比例、資金上限與停損觀念，以及 AI 代操詐騙查證和安全防護。","inLanguage":"zh-Hant","isAccessibleForFree":true}</script>
+</head>
+<body class="bbb-black-gold quant-detail-page">
+  <header class="quant-site-header" aria-label="BaccaratQuant 全站導覽">
+    <div class="quant-site-shell">
+      <a class="quant-site-brand" href="./" aria-label="BaccaratQuant 回首頁"><span class="quant-site-brand-mark" aria-hidden="true">BQ</span><span class="quant-site-brand-copy">BaccaratQuant<small>QUANTITATIVE RESEARCH LAB</small></span></a>
+      <nav class="quant-site-links" aria-label="主要頁面與主題分類">
+        <a href="./">首頁</a>
+        <a href="quant-tools.html#quantTabProbability">機率分析</a>
+        <a href="quant-tools.html#quantTabKelly">Kelly 試算</a>
+        <a href="quant-tools.html#quantTabSimulation">萬局模擬</a>
+        <a href="research-hub.html">研究文章</a>
+        <a href="model-methodology.html">模型原理</a>
+        <a href="risk-center.html">安全風控</a>
+        <a class="quant-site-member" href="./#bbbTabExperience">會員試用</a>
+      </nav>
+      <details class="quant-site-mobile-drawer">
+        <summary aria-label="開啟網站分類選單"><span class="quant-site-mobile-icon" aria-hidden="true"></span>分類選單</summary>
+        <nav class="quant-site-mobile-links" aria-label="手機版網站分類">
+          <a href="./">首頁總覽</a>
+          <p class="quant-site-mobile-group">TOOLS / 分析工具</p>
+          <a href="quant-tools.html#quantTabProbability">即時機率與路單</a>
+          <a href="quant-tools.html#quantTabKelly">Kelly 資金控管</a>
+          <a href="quant-tools.html#quantTabSimulation">10,000 局模擬</a>
+          <p class="quant-site-mobile-group">RESEARCH / 研究主題</p>
+          <a href="research-hub.html">研究文章總覽</a>
+          <a href="model-methodology.html">模型原理與資料透明度</a>
+          <p class="quant-site-mobile-group">SAFETY / 風險與服務</p>
+          <a href="risk-center.html">資金風控與防詐</a>
+          <a class="quant-site-member" href="./#bbbTabExperience">會員試用入口</a>
+        </nav>
+      </details>
+    </div>
+  </header>
+<main class="quant-lab quant-content-page">
+<nav class="quant-site-breadcrumb" aria-label="麵包屑"><a href="./">首頁</a><span aria-hidden="true">/</span>安全風控與資金風險教育中心</nav>
+<div class="quant-inner-banner"><div><span class="quant-inner-eyebrow">RISK & SAFETY / EDUCATION</span><h1>安全風控與資金風險教育中心</h1><p>了解負期望值、資金曝險與防詐檢核方法。此頁提供透明風險教育，不提供保證獲利、代操或即時投注建議。</p></div><div class="quant-inner-badge" aria-hidden="true"><div>0%<small>BACCARATQUANT LAB</small></div></div></div>
+
+<section class="quant-section">
+  <h2>標準規則負期望值與 Kelly 風控</h2>
+  <p>百家樂的理論賠率具有莊家優勢。僅依標準八副牌的固定理論機率估算，扣除莊家 5% 佣金且和局退回時，莊注 EV 約為 <strong>−1.06%</strong>、閒注約 <strong>−1.24%</strong>，和局 8：1 賠率的 EV 約為 <strong>−14.36%</strong>。這是理論成本，不是任何特定玩家的實際勝率。</p>
+  <div class="quant-page-grid">
+    <article class="quant-page-card"><span class="metric">−1.06%</span><h3>莊注理論 EV</h3><p>假設固定 5% 佣金與和局退回；短期結果可能正負起伏，但不能因此認為獲利有保證。</p></article>
+    <article class="quant-page-card"><span class="metric">−1.24%</span><h3>閒注理論 EV</h3><p>固定一比一賠率，和局退回。連輸或連贏都不能證明此理論成本已被消除。</p></article>
+    <article class="quant-page-card"><span class="metric">0%</span><h3>負 EV 時非負 Kelly 比例</h3><p>在缺乏經驗證的正期望值時，理論上應為零曝險；更改倍數或金額無法使負 EV 變正。</p></article>
+  </div>
+  <p class="quant-page-note">此處的精確值依標準八副牌理論基準推算，供風險教育。不同桌面規則、佣金或下注方式會改變計算，請先核對條件。</p>
+  <p><a href="quant-tools.html#quantTabKelly" class="quant-btn primary">開啟 Kelly 假設情境試算 →</a></p>
+</section>
+<section class="quant-section">
+  <h2>面對長期虧損，如何設定停損與資金界線？</h2>
+  <div class="quant-page-grid">
+    <article class="quant-page-card"><h3>01 不追損</h3><p>連輸後提高投注金額可能加速耗盡本金。不要因「差一局就回本」而破壞自己事先制定的損失預算。</p></article>
+    <article class="quant-page-card"><h3>02 分開生活資金</h3><p>不可將房租、帳單、緊急預備金或借貸資金視為可承擔損失的預算；當出現控制不了的追損衝動，應停止。</p></article>
+    <article class="quant-page-card"><h3>03 實驗與績效分離</h3><p>模擬或回測若沒有可重現程式和完整原始數據，不能當成未來收益、穩賺訊號或正式風控成效。</p></article>
+  </div>
+</section>
+<section class="quant-section">
+  <h2>如何辨認可疑的 AI 代操與遊戲群組？</h2>
+  <p>常見詐騙會以社群對話截圖、群組推薦獲利、保證勝率或「先付費才能提款」吸引使用者。可信的資料工具應公開數學方法、資料限制和風險，而不是要求交出 Telegram、LINE 驗證碼、OTP、帳戶密碼、遠端控制權限或私人錢包金鑰。</p>
+  <ul class="quant-page-article-list">
+    <li><a href="research-scam-safety-2026.html">2026 數據分析工具防詐指南</a><p>檢查演算法透明度、金流安全和可疑代操話術。台灣可向 165 反詐騙專線查證。</p></li>
+    <li><a href="research-martingale-100k.html">10 萬局馬丁格爾回撤研究</a><p>為什麼大量模擬的「策略中止率」不能混同於資金完全歸零的「破產率」。</p></li>
+    <li><a href="model-methodology.html">研究方法與模型透明度</a><p>瞭解為什麼樣本數、固定種子、模型版本和獨立測試至關重要。</p></li>
+  </ul>
+</section>
+<footer class="quant-page-bottom"><span>研究用途，不保證模型命中率、收益或下一局結果。</span><a href="./">返回首頁 →</a></footer>
+</main>
+<script src="quant-site.js?v=20261122-multipage-v1" defer></script>
+</body></html>
