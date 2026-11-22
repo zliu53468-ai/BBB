@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0F172A">
+  <title>如何用標準差與機率偏離值看懂牌靴趨勢？避免陷入「賭徒謬誤」的 3 個指標｜BaccaratQuant 數據研究</title>
+  <meta name="description" content="解釋百家樂八副牌的理論基準、標準誤、樣本偏離與大數法則，釐清連莊、連閒不構成保證反轉的證據。">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <link rel="canonical" href="https://bgsv1.xyz/research-shoe-deviation.html">
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="zh_TW">
+  <meta property="og:title" content="如何用標準差與機率偏離值看懂牌靴趨勢？避免陷入「賭徒謬誤」的 3 個指標">
+  <meta property="og:description" content="解釋百家樂八副牌的理論基準、標準誤、樣本偏離與大數法則，釐清連莊、連閒不構成保證反轉的證據。">
+  <meta property="og:url" content="https://bgsv1.xyz/research-shoe-deviation.html">
+  <meta property="article:published_time" content="2026-11-22T15:00:00+08:00">
+  <link rel="stylesheet" href="quant-guides.css?v=20261122-a">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"如何用標準差與機率偏離值看懂牌靴趨勢？避免陷入「賭徒謬誤」的 3 個指標","description":"解釋百家樂八副牌的理論基準、標準誤、樣本偏離與大數法則，釐清連莊、連閒不構成保證反轉的證據。","mainEntityOfPage":{"@type":"WebPage","@id":"https://bgsv1.xyz/research-shoe-deviation.html"},"author":{"@type":"Organization","name":"Data Lab 量化團隊"},"publisher":{"@type":"Organization","name":"BaccaratQuant 牌靴數據實驗室"},"inLanguage":"zh-Hant","datePublished":"2026-11-22T15:00:00+08:00","dateModified":"2026-11-22T15:00:00+08:00","isAccessibleForFree":true}</script>
+</head>
+<body class="quant-guide-page">
+  <div class="guide-wrapper">
+    <header class="guide-header"><a class="guide-brand" href="./">BaccaratQuant <span>／</span> 牌靴數據實驗室</a><a href="./#quantGuides">返回研究與文章精選</a></header>
+    <main>
+      <article class="guide-article" aria-labelledby="guideTitle">
+        <nav aria-label="Breadcrumb" class="guide-breadcrumb"><a href="./">首頁</a> / <a href="./#quantGuides">深度數據研究與文章精選</a> / 演算法科普</nav>
+        <p class="guide-kicker">演算法科普 · 2026年11月方法核對 · 閱讀時間：約4分鐘</p>
+        <h1 id="guideTitle">如何用標準差與機率偏離值看懂牌靴趨勢？避免陷入「賭徒謬誤」的 3 個指標</h1>
+        <p class="guide-byline">研究員：Data Lab 量化團隊 ｜ 發布：<time datetime="2026-11-22">2026 年 11 月 22 日</time> ｜ 性質：公開統計／風險教育</p>
+        
+<p class="guide-intro">路單上連莊、連閒與和局容易讓人以為「下一手一定要反過來」。量化分析真正應核對的是：<strong>樣本有多大、偏離理論值多少、偏離是否超過隨機波動的合理幅度</strong>。下列三個指標可用於讀懂紀錄，但不能憑路單保證下一局結果。</p>
+<div class="guide-leadbox"><h2>核心重點摘要（Key Takeaways）</h2><ul><li>標準八副牌莊勝理論機率約 <span class="guide-number">45.8597%</span>。若把 1,000 局視為獨立抽樣近似，莊勝頻率標準誤約 <strong>1.58 個百分點</strong>，兩個標準誤約 <strong>±3.15 個百分點</strong>。</li><li>樣本從 100 局增加至 1,000 局，獨立抽樣下的標準誤約降至原來的 <strong>31.6%</strong>。大數法則表示長期比例趨近基準，<strong>不表示短期偏差會在下一局「補回來」</strong>。</li></ul></div>
+<h2>指標一：理論勝率與觀察頻率的偏離值</h2>
+<p>使用標準八副牌、標準抽牌規則時，初始牌靴的莊 B、閒 P、和 T 理論機率分別約 45.8597%、44.6247%、9.5156%。假設輸入了 100 局，觀察到莊勝 51 次，莊勝樣本頻率就是 51%；相對莊家理論值的偏離為 <strong>+5.1403 個百分點</strong>。偏離描述過去樣本，不是莊家下局勝率已提高到 51%。</p>
+<h2>指標二：標準差與標準誤如何幫你理解波動？</h2>
+<p>若把每局「莊家是否獲勝」當作伯努利事件，理論機率 p = 0.458597，觀察 n 局時，樣本比例的標準誤近似為 <code>√(p × (1 − p) / n)</code>。這是獨立且同分布情境的教學近似，不是已使用真實剩餘牌資訊的牌靴條件估計。</p>
+<div class="guide-tablewrap"><table><thead><tr><th scope="col">樣本局數</th><th scope="col">莊勝頻率標準誤（近似）</th><th scope="col">兩個標準誤（近似）</th></tr></thead><tbody>
+<tr><th scope="row">100</th><td>4.98 個百分點</td><td>±9.96 個百分點</td></tr>
+<tr><th scope="row">1,000</th><td>1.58 個百分點</td><td>±3.15 個百分點</td></tr>
+<tr><th scope="row">10,000</th><td>0.50 個百分點</td><td>±1.00 個百分點</td></tr></tbody></table></div>
+<p>注意：真正同一牌靴的結果由有限張牌逐張抽取，會產生條件相依，並非完全獨立的相同試驗。上述公式適合作為初步波動基準，不能替代剩餘牌分布或完整的有限牌靴模擬。</p>
+<h2>指標三：連續結果與賭徒謬誤如何分辨？</h2>
+<p>「前面連續出現莊，所以接下來必定出閒」就是賭徒謬誤的一種。若在獨立事件模型下，過去結果不會強迫下一次抽樣反轉。大數法則說的是大量重複試驗的長期平均，而不是宇宙會在下一局替過去虧欠的結果還債。若考慮單一牌靴，牌張耗用確實會改變條件機率；但必須有具體可觀察牌資訊和可驗證模型，不能僅靠紅藍路單推定。</p>
+<h2>怎麼用 BBB 公開計算器作自我核對？</h2>
+<p>回到首頁第一頁籤，將歷史 B／P／T 序列貼入，檢視每類次數與偏離值。畫面的「標準規則理論 EV」仍是固定基準；若計算值為負，Kelly 非負下注比例為 0。資料量較大，並不保證每一局更容易猜中，更不代表存在必勝的路單公式。</p>
+<section class="guide-sources"><h2>理論機率與方法來源</h2><p><a href="https://wizardofodds.com/games/baccarat/one-to-twelve-decks/" target="_blank" rel="noopener noreferrer">Wizard of Odds — Baccarat Odds for 1 to 12 Decks：依牌組數的實際機率表</a>。標準誤與平方根縮放為基礎統計公式，表中數值依公開八副牌機率自行重算。</p></section>
+        <nav aria-label="相關研究" class="guide-related"><a href="./#quantAnalyzer">開啟公開機率計算器</a><a href="./#quantGuides">瀏覽其他研究文章</a></nav>
+      </article>
+    </main>
+    <footer class="guide-footer">BaccaratQuant — 教學與研究內容，不提供保證獲利或即時下注建議。文章的模擬結果僅在明示的規則與假設下成立。</footer>
+  </div>
+</body>
+</html>
