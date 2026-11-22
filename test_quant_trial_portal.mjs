@@ -16,11 +16,11 @@ for(const id of ["quantHistory","quantAddB","quantAddP","quantAddT","quantApply"
   assert(probability.includes('id="'+id+'"'),"existing calculator binding "+id+" preserved in panel");
 }
 assert(probability.includes('id="trialStartBtn"'),"actual BBB trial control is within calculator field");
-assert(probability.includes('id="dgDirectTrialLink"'),"actual DG external demo link is within same field");
+assert(!probability.includes('id="dgDirectTrialLink"'),"external free-demo link removed as requested");
 assert(probability.includes('id="trialStartMessage"'),"trial status is presented in the same panel");
 assert(probability.includes('href="partner-entry.html"'),"partner portal is adjacent to trial");
 assert.equal((h.match(/id="trialStartBtn"/g)||[]).length,1,"never duplicate trial start button");
-assert.equal((h.match(/id="dgDirectTrialLink"/g)||[]).length,1,"never duplicate DG destination element");
+assert.equal((h.match(/id="dgDirectTrialLink"/g)||[]).length,0,"external free-demo button absent");
 assert.equal((h.match(/id="trialStartMessage"/g)||[]).length,1,"never duplicate trial status");
 assert(probability.includes('class="quant-trial-preview"'),"readable trial preview exists");
 assert(probability.includes("畫面示意")&&probability.includes("不保證結果"),"preview makes no predictive claim");
