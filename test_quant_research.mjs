@@ -27,7 +27,7 @@ assert(ev.B<0&&ev.P<0&&ev.T<0);
 assert.equal(s.kelly.B,0);
 assert.equal(s.kelly.P,0);
 assert.equal(s.kelly.T,0);
-close(math.kellyFraction(0.6,0.4,1),1/3);
+close(math.kellyFraction(0.6,0.4,1),0.2);
 const empty=math.summarize([]);
 assert.equal(empty.total,0);
 assert.equal(empty.items.T.count,0);
