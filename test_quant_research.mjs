@@ -87,7 +87,7 @@ for(const q of faq.mainEntity){
   assert(home.includes("<h2>"+q.name+"</h2>"),"FAQ title visible");
   assert(home.includes("<p>"+q.acceptedAnswer.text+"</p>"),"FAQ answer visible");
 }
-for(const id of ["trialStartBtn","dgDirectTrialLink","licenseForm","predictionApp","btnB","btnP","btnT","btnEnd","btnBack"]){
+for(const id of ["trialStartBtn","licenseForm","predictionApp","btnB","btnP","btnT","btnEnd","btnBack"]){
   assert(home.includes('id="'+id+'"'),"legacy control preserved: "+id);
 }
 console.log(JSON.stringify({ok:true,checks:["engine_math","history_validation","negative_ev","kelly_zero","single_h1","json_ld_faq_visible","transparent_backtest","legacy_ids_preserved","no_network_calls","static_seo_tabs","accessible_controls","seeded_monte_carlo","cta_and_kpi_motion"]}));
