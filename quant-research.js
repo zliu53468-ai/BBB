@@ -101,6 +101,10 @@
   });
   if(location.hash==="#quantTabKelly")selectTab("quantTabKelly");
   if(location.hash==="#quantTabSimulation")selectTab("quantTabSimulation");
+  window.addEventListener("hashchange",()=>{
+    const chosen=location.hash.slice(1);
+    if(tabIds.has(chosen))selectTab(chosen);
+  });
 
   // Static KPI metrics are real, visible HTML values before JS starts.
   // Count-up is optional animation; reduced-motion users retain static figures.
