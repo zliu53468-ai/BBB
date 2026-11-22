@@ -71,7 +71,7 @@ for(const id of ["quantBankroll","quantHypWin","quantHypPayout","quantKellyScale
 for(const term of ["即時機率與路單分析","凱利公式注碼控管試算","10,000 局模擬波動曲線","獨立隨機抽樣","不是歷史資料"]){
   assert(home.includes(term),"SEO-visible wording "+term);
 }
-assert(css.includes(".quant-tab-panel{display:none!important}")&&css.includes(".quant-tab-panel.is-active{display:block!important"),"CSS-only toggling");
+assert(css.includes(".quant-tab-panel{display:none!important;")&&css.includes(".quant-tab-panel.is-active{display:block!important;"),"CSS-only toggling");
 assert(css.includes("inset 0 1px 0 rgba(255,255,255,.25)")&&css.includes("translateY(-1px)")&&css.includes("scale(.95)"),"CTA microinteractions");
 assert(css.includes("backdrop-filter:blur(12px)")&&css.includes("border-color:#3B82F6"),"glass KPI hover");
 assert(js.includes("requestAnimationFrame")&&js.includes("prefers-reduced-motion"),"motion-sensitive counters");
