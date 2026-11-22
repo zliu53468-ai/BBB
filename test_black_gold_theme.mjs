@@ -16,10 +16,10 @@ for(const page of pages){
  }
 }
 const home=read("index.html"),exit=read("trial-ended.html");
-assert(home.includes("開啟外部免費試玩"),"brand-neutral trial label");
+assert(!home.includes("開啟外部免費試玩"),"removed external free-demo CTA text");
 assert(home.includes("如何申請現有程式的會員權限？"),"returning user copy remains descriptive");
 assert(!home.includes("想領取程式開通碼，繼續使用 BBB 嗎？"),"outdated heading gone");
-assert(home.includes('id="dgDirectTrialLink"')&&home.includes('data-bbb-link="dgTrialUrl"'),"DG independent route intact");
+assert(!home.includes('id="dgDirectTrialLink"')&&home.includes('href="partner-entry.html"'),"external demo removed; partner portal remains");
 assert(home.includes('id="trialStartBtn"')&&home.includes('aria-label="立即試用莊家剋星預測程式｜免費試用 30 分鐘"'),"BBB trial button readable to assistive technology");
 assert(home.includes("bbb-neon-cta-start")&&home.includes("bbb-neon-cta-dg"),"two independent neon cards");
 assert(css.includes("grid-template-columns:repeat(2,minmax(0,1fr))"),"desktop two-card layout");
