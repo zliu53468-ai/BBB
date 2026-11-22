@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0F172A">
+  <meta name="theme-color" content="#0b0b09">
   <title>百家樂路單分析工具｜BaccaratQuant 牌靴數據實驗室</title>
   <meta name="description" content="BaccaratQuant 百家樂路單分析工具，提供免費 B/P/T 歷史頻率、理論機率偏離值、EV 與 Kelly 風險教育試算；附回測資料透明度與統計免責說明。">
   <meta name="robots" content="index,follow,max-image-preview:large">
@@ -19,7 +19,7 @@
   <meta name="twitter:title" content="BaccaratQuant｜百家樂路單分析">
   <meta name="twitter:description" content="公開 B/P/T 統計工具、EV 與資金風險教育。">
   <meta name="twitter:image" content="https://bgsv1.xyz/assets/logo-baccarat-slayer.webp">
-  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://bgsv1.xyz/#website","url":"https://bgsv1.xyz/","name":"莊家剋星","alternateName":"莊家剋星百家樂AI分析器","inLanguage":"zh-Hant"},{"@type":"SoftwareApplication","@id":"https://bgsv1.xyz/#app","name":"莊家剋星 BaccaratQuant 牌靴數據實驗室","url":"https://bgsv1.xyz/","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"zh-Hant","description":"免費 B/P/T 歷史統計分析、標準規則的理論 EV 與 Kelly 資金風險教學；不提供可驗證的即時下注預測。","softwareVersion":"BBB_SOFT_SHOE_BPT_EV_V5_1","offers":{"@type":"Offer","price":"0","priceCurrency":"TWD","availability":"https://schema.org/InStock"}}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://bgsv1.xyz/#website","url":"https://bgsv1.xyz/","name":"莊家剋星","alternateName":"莊家剋星百家樂AI分析器","inLanguage":"zh-Hant"},{"@type":"SoftwareApplication","@id":"https://bgsv1.xyz/#app","name":"莊家剋星 BaccaratQuant 牌靴數據實驗室","url":"https://bgsv1.xyz/","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"zh-Hant","description":"免費 B/P/T 歷史統計分析、標準規則的理論 EV 與 Kelly 資金風險教學；不提供可驗證的即時下注預測。","softwareVersion":"5.1","offers":{"@type":"Offer","price":"0","priceCurrency":"TWD","availability":"https://schema.org/InStock"}}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"歷史百家樂路單能直接預測下一局結果嗎？","acceptedAnswer":{"@type":"Answer","text":"不能。歷史頻率與偏離值可以描述已觀察到的樣本，但不足以證明下一局存在可利用的預測優勢。"}},{"@type":"Question","name":"期望值 EV 為負時，Kelly 公式會建議多少比例？","acceptedAnswer":{"@type":"Answer","text":"在沒有可驗證的正優勢時，非負的 Kelly 下注比例為 0；更改下注金額不能消除遊戲本身的負期望值。"}}]}</script>
   <link rel="stylesheet" href="styles.css?v=20261106-bigroad-v1">
   <link rel="stylesheet" href="trial-styles.css?v=20261116-fullbleed-v9">
@@ -35,7 +35,7 @@
   <div id="quantResearch" class="quant-lab" aria-label="百家樂路單量化數據研究首頁">
     <header class="quant-topnav">
       <span class="quant-wordmark">BaccaratQuant <span style="color:#10B981">／</span> 牌靴數據實驗室</span>
-      <span class="quant-version">BBB / BPT EV / v5.1 · RESEARCH</span>
+      <span class="quant-version">BBB / RESEARCH v5.1</span>
     </header>
 
     <div class="quant-hero">
@@ -43,7 +43,7 @@
       <h1 id="quantTitle">百家樂路單分析工具：BaccaratQuant 牌靴數據實驗室</h1>
       <p class="quant-lead">以莊（B）、閒（P）、和（T）的歷史紀錄探索樣本頻率、理論期望值（EV）、波動與資金風險。所有統計均可核對計算假設；歷史路單不等於未來結果。</p>
       <div class="quant-kpis" aria-label="模型與資料透明度">
-        <div class="quant-kpi"><small>現有 BBB Soft Shoe 核心版本</small><strong>BBB_SOFT_SHOE_BPT_EV_V5_1</strong></div>
+        <div class="quant-kpi"><small>現有 BBB Soft Shoe 核心版本</small><strong>BBB Research v5.1</strong></div>
         <div class="quant-kpi"><small>實際模型訓練／驗證樣本</small><strong>待發布可稽核資料</strong><!-- TODO: 在此填入已核實的訓練樣本與資料來源 --></div>
         <div class="quant-kpi"><small>計算器資料來源</small><strong>訪客本機輸入，不上傳</strong></div>
       </div>
@@ -153,10 +153,10 @@
     <div id="bbbTabExperience" class="bbb-landing-tab-panel" role="tabpanel" aria-labelledby="bbbTabBtnExperience" tabindex="0">
     <div class="license-shell">
       <div class="homepage-crown" aria-hidden="true">✦ B A N K E R &nbsp; S L A Y E R ✦</div>
-      
+      <div class="license-logo dynamic-brand-mark" hidden><img src="assets/logo-baccarat-slayer.webp" alt=""></div>
       <div class="homepage-status"><span>AI 輔助分析</span><span>真人百家</span><span>30 MIN 體驗</span></div>
       <div class="license-kicker">BANKER SLAYER · AI BACCARAT PREVIEW</div>
-      <h2>原有 BBB 研究面板與免費試用入口</h2>
+      <h2>原有 BBB 研究面板與免費試用入口 <span class="homepage-gradient-title" hidden>百家樂AI分析器</span></h2>
       <p class="homepage-impact-line"><span aria-hidden="true">✦</span> 智慧洞察牌路 · 掌握分析節奏 <span aria-hidden="true">✦</span></p>
       <p class="license-desc">BBB 的進階研究面板提供牌路與模型診斷；新訪客可進行 30 分鐘功能測試，不需輸入開通碼。此面板的模型輸出仍需獨立回測驗證，並不保證準確度。</p>
       <div class="homepage-feature-row" aria-label="服務特色"><span>✦ 即時牌路研究</span><span>✦ 方向輔助判斷</span><span>✦ 風控與觀望提醒</span></div>
