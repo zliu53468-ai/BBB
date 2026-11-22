@@ -28,6 +28,19 @@ assert.equal(s.kelly.B,0);
 assert.equal(s.kelly.P,0);
 assert.equal(s.kelly.T,0);
 close(math.kellyFraction(0.6,0.4,1),0.2);
+
+// Reproducible, purely educational Monte Carlo path: no certified win-rate claim.
+const sim=math.simulateFlatBanker(20261122,10000,10,10000);
+assert.equal(sim.rounds,10000);
+assert.equal(sim.samples.at(-1).round,10000);
+assert.equal(sim.samples.length,201);
+assert.deepEqual(sim,math.simulateFlatBanker(20261122,10000,10,10000));
+assert.notEqual(sim.endBalance,math.simulateFlatBanker(20261123,10000,10,10000).endBalance);
+assert(sim.maxDrawdownPct>=0&&sim.maxDrawdownPct<=1);
+assert(sim.betsPlaced>=0&&sim.betsPlaced<=10000);
+assert.throws(()=>math.simulateFlatBanker(-1),/seed/);
+assert.throws(()=>math.simulateFlatBanker(1,10000,10,10001),/10,000/);
+
 const empty=math.summarize([]);
 assert.equal(empty.total,0);
 assert.equal(empty.items.T.count,0);
@@ -46,6 +59,25 @@ assert(css.includes("#0F172A")&&css.includes("#3B82F6")&&css.includes("#10B981")
 assert(!js.includes("fetch("),"public calculator performs no remote requests");
 assert(home.includes("待實測")&&!home.includes("10,000 局勝率"),"no fabricated backtest claims");
 assert(home.includes("<!-- TODO: 在此填入真實回測圖表"));
+
+assert.equal((home.match(/class="quant-tab-panel/g)||[]).length,3,"all 3 HTML panels present at load");
+for(const pair of [["quantTabBtnProbability","quantTabProbability"],["quantTabBtnKelly","quantTabKelly"],["quantTabBtnSimulation","quantTabSimulation"]]){
+  assert(home.includes('id="'+pair[0]+'"')&&home.includes('aria-controls="'+pair[1]+'"'),"tab linked "+pair[1]);
+  assert(home.includes('id="'+pair[1]+'"')&&home.includes('aria-labelledby="'+pair[0]+'"'),"tabpanel linked "+pair[0]);
+}
+for(const id of ["quantBankroll","quantHypWin","quantHypPayout","quantKellyScale","quantRiskCap","quantHypEV","quantHypFullKelly","quantHypStake","quantSimChart","quantSimLine","quantSimSeed","quantSimStake","quantRunSim","quantSimEnd","quantSimMDD","quantSimBets"]){
+  assert(home.includes('id="'+id+'"'),"static HTML contains tool "+id);
+}
+for(const term of ["即時機率與路單分析","凱利公式注碼控管試算","10,000 局模擬波動曲線","獨立隨機抽樣","不是歷史資料"]){
+  assert(home.includes(term),"SEO-visible wording "+term);
+}
+assert(css.includes(".quant-tab-panel{display:none!important}")&&css.includes(".quant-tab-panel.is-active{display:block!important"),"CSS-only toggling");
+assert(css.includes("inset 0 1px 0 rgba(255,255,255,.25)")&&css.includes("translateY(-1px)")&&css.includes("scale(.95)"),"CTA microinteractions");
+assert(css.includes("backdrop-filter:blur(12px)")&&css.includes("border-color:#3B82F6"),"glass KPI hover");
+assert(js.includes("requestAnimationFrame")&&js.includes("prefers-reduced-motion"),"motion-sensitive counters");
+assert(js.includes('setAttribute("aria-selected"')&&js.includes('setAttribute("aria-hidden"'),"accessible tab state");
+assert(!js.includes("innerHTML"),"SEO content never injected by script");
+
 const schemas=[...home.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(m=>JSON.parse(m[1]));
 const app=schemas.flatMap(v=>v["@graph"]||[v]).find(v=>v["@type"]==="SoftwareApplication");
 const faq=schemas.find(v=>v["@type"]==="FAQPage");
@@ -58,4 +90,4 @@ for(const q of faq.mainEntity){
 for(const id of ["trialStartBtn","dgDirectTrialLink","licenseForm","predictionApp","btnB","btnP","btnT","btnEnd","btnBack"]){
   assert(home.includes('id="'+id+'"'),"legacy control preserved: "+id);
 }
-console.log(JSON.stringify({ok:true,checks:["engine_math","history_validation","negative_ev","kelly_zero","single_h1","json_ld_faq_visible","transparent_backtest","legacy_ids_preserved","no_network_calls"]}));
+console.log(JSON.stringify({ok:true,checks:["engine_math","history_validation","negative_ev","kelly_zero","single_h1","json_ld_faq_visible","transparent_backtest","legacy_ids_preserved","no_network_calls","static_seo_tabs","accessible_controls","seeded_monte_carlo","cta_and_kpi_motion"]}));
