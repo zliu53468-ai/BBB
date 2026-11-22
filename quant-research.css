@@ -265,3 +265,7 @@ body.bbb-black-gold #licenseGate .return-visitor-line:active{
   .quant-lab .quant-tab-panel.is-active{animation:none}
   .quant-lab .quant-tab,.quant-lab .quant-btn,.quant-lab .quant-kpi,.quant-lab .quant-metric{transition:none!important}
 }
+
+/* Preserve the existing membership/authentication transition when it hides
+ * the landing. An important display:block rule above must not override hidden. */
+body.bbb-black-gold #licenseGate[hidden]{display:none!important}
