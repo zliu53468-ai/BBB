@@ -34,7 +34,7 @@ assert(!siteJs.includes("innerHTML")&&!siteJs.includes("fetch("),"navigation JS 
 for(const path of shared){
  const html=read(path);
  assert(html.includes('class="quant-site-header quant-corporate-header"'),"top navigation shared across "+path);
- assert((html.match(/class="quant-corporate-tab/g)||[]).length===4,"exactly four prominent corporate main tabs on "+path);
+ assert((html.match(/class="quant-corporate-tab(?: is-current)?"/g)||[]).length===4,"exactly four prominent corporate main tabs on "+path);
  assert((html.match(/data-bq-menu="/g)||[]).length===4,"four source-rendered, per-page submenus on "+path);
  assert(!html.includes('class="quant-site-mobile-drawer"'),"obsolete overlay menu absent from "+path);
  assert((html.match(/aria-current="page"/g)||[]).length===1,"exactly one current page on "+path);
@@ -94,7 +94,7 @@ const risk=read("risk-center.html");
 assert(risk.includes("−1.06%")&&risk.includes("165 反詐騙專線"),"risk page covers EV and safety");
 for(const path of articles){
  const html=read(path);
- assert(html.includes('class="quant-site-header"'),"existing guide now has global site navigation");
+ assert(html.includes('class="quant-site-header quant-corporate-header"'),"existing guide now has global site navigation");
  assert(html.includes('href="research-hub.html"'),"article links to research hub");
  assert(html.includes('class="guide-article"'),"original article content unchanged");
 }
