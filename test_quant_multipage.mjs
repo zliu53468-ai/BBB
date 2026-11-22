@@ -38,8 +38,8 @@ for(const path of shared){
  assert((html.match(/data-bq-menu="/g)||[]).length===4,"four source-rendered, per-page submenus on "+path);
  assert(!html.includes('class="quant-site-mobile-drawer"'),"obsolete overlay menu absent from "+path);
  assert((html.match(/aria-current="page"/g)||[]).length===1,"exactly one current page on "+path);
- assert(html.includes('href="quant-site.css?v=20261122-multipage-v1"'),"style loaded on "+path);
- assert(html.includes('src="quant-site.js?v=20261122-multipage-v1"'),"nav script loaded on "+path);
+ assert(html.includes('href="quant-site.css?v=20261122-corporate-v2"'),"style loaded on "+path);
+ assert(html.includes('src="quant-site.js?v=20261122-corporate-v2"'),"nav script loaded on "+path);
  for(const p of routes){
    assert(html.includes('href="'+p)||html.includes('href="'+p+'#'),"menu route present "+p+" in "+path);
  }
