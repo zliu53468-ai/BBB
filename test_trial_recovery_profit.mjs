@@ -90,6 +90,6 @@ assert.equal(redirects.length,0,"bankroll target is different from prediction hi
 assert(ended.includes('reason==="accuracy60"'),"end page handles valid prediction hit-rate completion");
 assert(ended.includes('data-bbb-link="casinoRegisterUrl"')&&ended.includes('data-bbb-link="lineContactUrl"'),"end page has both casino and LINE");
 assert(!trialCode.includes("window.open("),"BBB trial never auto-opens DG");
-assert(!html.includes('data-bbb-link="dgTrialUrl"')&&html.includes('href="partner-entry.html"'),"external demo removed; partner entry remains");
+assert(!html.includes('id="dgDirectTrialLink"')&&html.includes('id="dgTrialLink"')&&html.includes('href="partner-entry.html"'),"public external demo removed; original authenticated panel link and partner entry remain");
 assert(worker.includes("trial_api_version:1"),"deployed Worker is version-identifiable");
 console.log(JSON.stringify({ok:true,checks:["bankroll_before_trial","404_not_found_local_fallback","no_DG_popup","fixed_30min","profit_60_manual_balance","no_redirect_below_target","no_redirect_at_bankroll_target","casino_and_LINE_end_page","worker_version_health"]}));
