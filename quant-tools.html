@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0F172A">
+<title>分析工具中心：機率、Kelly 與萬局模擬｜BaccaratQuant 量化研究終端</title>
+<meta name="description" content="BaccaratQuant 多頁式機率計算器，含 B/P/T 路單統計、Kelly 資金風控試算、10,000 局固定種子的隨機波動曲線。免費本機運行，非即時下注訊號。">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://bgsv1.xyz/quant-tools.html">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="zh_TW">
+<meta property="og:title" content="分析工具中心：機率、Kelly 與萬局模擬">
+<meta property="og:description" content="BaccaratQuant 多頁式機率計算器，含 B/P/T 路單統計、Kelly 資金風控試算、10,000 局固定種子的隨機波動曲線。免費本機運行，非即時下注訊號。">
+<meta property="og:url" content="https://bgsv1.xyz/quant-tools.html">
+<link rel="stylesheet" href="quant-research.css?v=20261122-tabs-v2">
+<link rel="stylesheet" href="quant-guides.css?v=20261122-a">
+<link rel="stylesheet" href="quant-site.css?v=20261122-multipage-v1">
+
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"分析工具中心：機率、Kelly 與萬局模擬","url":"https://bgsv1.xyz/quant-tools.html","inLanguage":"zh-Hant","description":"BaccaratQuant 多頁式機率計算器，含 B/P/T 路單統計、Kelly 資金風控試算、10,000 局固定種子的隨機波動曲線。免費本機運行，非即時下注訊號。","about":{"@type":"Thing","name":"百家樂機率與量化風險教育"},"isAccessibleForFree":true}</script>
+</head>
+<body class="bbb-black-gold quant-detail-page">
+  <header class="quant-site-header" aria-label="BaccaratQuant 全站導覽">
+    <div class="quant-site-shell">
+      <a class="quant-site-brand" href="./" aria-label="BaccaratQuant 回首頁"><span class="quant-site-brand-mark" aria-hidden="true">BQ</span><span class="quant-site-brand-copy">BaccaratQuant<small>QUANTITATIVE RESEARCH LAB</small></span></a>
+      <nav class="quant-site-links" aria-label="主要頁面與主題分類">
+        <a href="./">首頁</a>
+        <a href="quant-tools.html#quantTabProbability">機率分析</a>
+        <a href="quant-tools.html#quantTabKelly">Kelly 試算</a>
+        <a href="quant-tools.html#quantTabSimulation">萬局模擬</a>
+        <a href="research-hub.html">研究文章</a>
+        <a href="model-methodology.html">模型原理</a>
+        <a href="risk-center.html">安全風控</a>
+        <a class="quant-site-member" href="./#bbbTabExperience">會員試用</a>
+      </nav>
+      <details class="quant-site-mobile-drawer">
+        <summary aria-label="開啟網站分類選單"><span class="quant-site-mobile-icon" aria-hidden="true"></span>分類選單</summary>
+        <nav class="quant-site-mobile-links" aria-label="手機版網站分類">
+          <a href="./">首頁總覽</a>
+          <p class="quant-site-mobile-group">TOOLS / 分析工具</p>
+          <a href="quant-tools.html#quantTabProbability">即時機率與路單</a>
+          <a href="quant-tools.html#quantTabKelly">Kelly 資金控管</a>
+          <a href="quant-tools.html#quantTabSimulation">10,000 局模擬</a>
+          <p class="quant-site-mobile-group">RESEARCH / 研究主題</p>
+          <a href="research-hub.html">研究文章總覽</a>
+          <a href="model-methodology.html">模型原理與資料透明度</a>
+          <p class="quant-site-mobile-group">SAFETY / 風險與服務</p>
+          <a href="risk-center.html">資金風控與防詐</a>
+          <a class="quant-site-member" href="./#bbbTabExperience">會員試用入口</a>
+        </nav>
+      </details>
+    </div>
+  </header>
+<main class="quant-lab quant-content-page">
+  <nav class="quant-site-breadcrumb" aria-label="麵包屑"><a href="./">首頁</a><span aria-hidden="true">/</span>分析工具中心：機率、Kelly 與萬局模擬</nav>
+  <div class="quant-inner-banner"><div><span class="quant-inner-eyebrow">TOOLS / THREE INTERACTIVE MODULES</span><h1>分析工具中心：機率、Kelly 與萬局模擬</h1><p>真正獨立的工具頁：在上方三個頁籤切換 B/P/T 歷史頻率、Kelly 風險教育與可重現模擬。三個頁籤內容皆在 HTML 原始碼中，無須會員資格即可試算。</p></div><div class="quant-inner-badge" aria-hidden="true"><div>3<small>BACCARATQUANT LAB</small></div></div></div>
+    <section class="quant-section" id="quantAnalyzer" aria-labelledby="quantAnalyzerHeading">
+      <h2 id="quantAnalyzerHeading">量化研究工具如何分析機率、Kelly 資金配置與萬局波動？</h2>
+      <p>可切換三個獨立工具：歷史莊閒和路單統計、凱利公式風險試算，以及 10,000 局可重現的隨機資金曲線。所有模組的 HTML 與文字內容均在初始原始碼中呈現，頁籤僅以 CSS 顯示或隱藏。</p>
+
+      <nav class="quant-tab-strip" role="tablist" aria-label="量化工具分析頁籤">
+        <button id="quantTabBtnProbability" class="quant-tab is-active" type="button" role="tab" aria-controls="quantTabProbability" aria-selected="true" tabindex="0" data-quant-tab="quantTabProbability"><span class="quant-tab-index">01</span><span>即時機率與路單分析</span></button>
+        <button id="quantTabBtnKelly" class="quant-tab" type="button" role="tab" aria-controls="quantTabKelly" aria-selected="false" tabindex="-1" data-quant-tab="quantTabKelly"><span class="quant-tab-index">02</span><span>凱利公式注碼控管試算</span></button>
+        <button id="quantTabBtnSimulation" class="quant-tab" type="button" role="tab" aria-controls="quantTabSimulation" aria-selected="false" tabindex="-1" data-quant-tab="quantTabSimulation"><span class="quant-tab-index">03</span><span>10,000 局模擬波動曲線</span></button>
+      </nav>
+
+      <!-- SEO: 三個 tabpanel 的完整語意 HTML 均由伺服器原始頁面提供；僅 CSS 切換顯示狀態。 -->
+      <div class="quant-tab-panel is-active" id="quantTabProbability" role="tabpanel" aria-labelledby="quantTabBtnProbability" aria-hidden="false" tabindex="0">
+        <div class="quant-tab-intro"><h3>即時機率與路單分析：怎麼核對 B／P／T 的歷史頻率？</h3><p>透過手動輸入歷史莊 B、閒 P、和 T 結果計算每項出現次數、樣本百分比與相對理論值的偏差。更新的是歷史描述統計，不會改變下一局的標準理論機率。</p></div>
+        <div class="quant-panel">
+          <div class="quant-tool-grid">
+            <div>
+              <strong class="quant-tool-label">手動建立歷史紀錄</strong>
+              <div class="quant-result-controls" aria-label="輸入歷史結果">
+                <button class="quant-btn secondary active:scale-95" id="quantAddB" type="button">莊 B</button>
+                <button class="quant-btn secondary active:scale-95" id="quantAddP" type="button">閒 P</button>
+                <button class="quant-btn secondary active:scale-95" id="quantAddT" type="button">和 T</button>
+              </div>
+              <label class="quant-history-label" for="quantHistory">已輸入序列（最多 2,000 局，可直接編輯）</label>
+              <textarea class="quant-history" id="quantHistory" placeholder="例如：B P T B P B" spellcheck="false" autocapitalize="characters"></textarea>
+              <div class="quant-actions">
+                <button class="quant-btn primary active:scale-95" type="button" id="quantApply">開始計算機率</button>
+                <button class="quant-btn secondary active:scale-95" type="button" id="quantUndo">撤銷最後一局</button>
+                <button class="quant-btn secondary active:scale-95" type="button" id="quantClear">清空</button>
+              </div>
+              <p class="quant-tip" id="quantInputStatus" role="status" aria-live="polite">公開計算器僅在此裝置執行。</p>
+              <p class="quant-tip">最新紀錄：<span id="quantRecent">尚無紀錄</span></p>
+            </div>
+            <div>
+              <div class="quant-metrics">
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">本機樣本</span><small>觀察局數</small><strong id="quantTotal">0</strong></div>
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">固定基準</span><small>理論機率假設</small><strong>8 副牌</strong></div>
+              </div>
+              <div class="quant-bars">
+                <div class="quant-bar"><span>莊 B</span><div class="quant-track"><div class="quant-fill" id="quantBarB"></div></div><strong id="quantFreqB">—</strong></div>
+                <div class="quant-bar"><span>閒 P</span><div class="quant-track"><div class="quant-fill" id="quantBarP"></div></div><strong id="quantFreqP">—</strong></div>
+                <div class="quant-bar"><span>和 T</span><div class="quant-track"><div class="quant-fill" id="quantBarT"></div></div><strong id="quantFreqT">—</strong></div>
+              </div>
+              <div class="quant-metrics">
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>莊次數／偏離值</small><strong id="quantCountB">0</strong><span class="quant-subtle" id="quantDeviationB">—</span></div>
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>閒次數／偏離值</small><strong id="quantCountP">0</strong><span class="quant-subtle" id="quantDeviationP">—</span></div>
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>和次數／偏離值</small><strong id="quantCountT">0</strong><span class="quant-subtle" id="quantDeviationT">—</span></div>
+                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">標準規則</span><small>理論機率 B / P / T</small><strong class="quant-theory">45.86 / 44.62 / 9.52%</strong></div>
+              </div>
+            </div>
+          </div>
+          <div class="quant-note">理論基準：莊 45.8597%、閒 44.6247%、和 9.5156%。歷史結果本身不等於當前牌靴的真實剩餘牌分布，亦不構成下局方向或勝率保證。</div>
+        </div>
+      </div>
+
+      <div class="quant-tab-panel" id="quantTabKelly" role="tabpanel" aria-labelledby="quantTabBtnKelly" aria-hidden="true" tabindex="0">
+        <div class="quant-tab-intro"><h3>凱利公式注碼控管試算：負期望值時應如何限制曝險？</h3><p>左側顯示標準八副牌百家樂在固定賠率下的理論期望值；下方提供完全獨立的「假設勝率」教學情境。自行輸入的假設勝率並非 BBB 模型估計值，也不能用來推斷下一局結果。</p></div>
+        <div class="quant-panel">
+          <div class="quant-metrics quant-ev-grid">
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">理論基準</span><small>莊 EV · 5% 佣金／和局退回</small><strong id="quantEvB" class="neg">—</strong></div>
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">理論基準</span><small>閒 EV · 和局退回</small><strong id="quantEvP" class="neg">—</strong></div>
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">理論基準</span><small>和 EV · 8：1 賠率</small><strong id="quantEvT" class="neg">—</strong></div>
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">無已驗證優勢</span><small>完整 Kelly 比例 · 莊 / 閒 / 和</small><strong class="quant-theory"><span id="quantKelly">—</span> / <span id="quantKellyP">—</span> / <span id="quantKellyT">—</span></strong></div>
+          </div>
+          <div class="quant-note warning">當沒有經獨立驗證的正期望值時，非負 Kelly 比例為零。標準規則資金曝險參考：<strong id="quantRiskSignal">0.00%</strong>。請勿將模擬計算當作實際下注建議。</div>
+          <div class="quant-kelly-layout">
+            <div class="quant-kelly-form">
+              <h4>假設情境試算（不是模型預測）</h4>
+              <div class="quant-form-grid">
+                <label for="quantBankroll">假設資金（元）<input id="quantBankroll" type="number" min="1" max="100000000" value="10000" inputmode="numeric"></label>
+                <label for="quantHypWin">假設單局勝率（%）<input id="quantHypWin" type="number" min="0" max="100" value="50" step="0.1" inputmode="decimal"></label>
+                <label for="quantHypPayout">假設淨賠率（倍）<input id="quantHypPayout" type="number" min="0.01" max="100" value="1" step="0.05" inputmode="decimal"></label>
+                <label for="quantKellyScale">Kelly 採用比例（%）<input id="quantKellyScale" type="number" min="0" max="100" value="25" step="5" inputmode="numeric"></label>
+                <label for="quantRiskCap">單次最高曝險上限（%）<input id="quantRiskCap" type="number" min="0" max="100" value="2" step="0.5" inputmode="decimal"></label>
+              </div>
+            </div>
+            <div class="quant-kelly-output">
+              <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">手動假設 · 非建議</span><small>此假設情境的 EV</small><strong id="quantHypEV">0.00%</strong></div>
+              <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">計算結果</span><small>完整 Kelly 理論比例</small><strong id="quantHypFullKelly">0.00%</strong></div>
+              <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">曝險上限已套用</span><small>假設比例／金額</small><strong id="quantHypStake">0.00% / 0 元</strong></div>
+            </div>
+          </div>
+          <p class="quant-tip" id="quantKellyStatus" role="status" aria-live="polite">假設勝率預設 50%，1：1 賠率時 Kelly 為 0；這不是即時下注訊號。</p>
+          <div class="quant-actions"><a class="quant-btn primary active:scale-95" href="#bbbTabExperience">探索 BBB 進階研究工具</a></div>
+        </div>
+      </div>
+
+      <div class="quant-tab-panel" id="quantTabSimulation" role="tabpanel" aria-labelledby="quantTabBtnSimulation" aria-hidden="true" tabindex="0">
+        <div class="quant-tab-intro"><h3>10,000 局模擬波動曲線：為何單次結果不等於長期報酬？</h3><p>採用八副牌理論機率進行 10,000 次獨立隨機抽樣，並示範「固定小額押莊、和局退回、莊勝收取 5% 佣金」下的假設資金曲線。這不是歷史資料、已完成模型回測或策略推薦；可透過隨機種子重現。</p></div>
+        <div class="quant-panel">
+          <div class="quant-sim-form">
+            <label for="quantSimSeed">隨機種子（可重現）<input id="quantSimSeed" type="number" min="0" max="4294967295" value="20261122" step="1" inputmode="numeric"></label>
+            <label for="quantSimStake">每局固定模擬金額（元）<input id="quantSimStake" type="number" min="1" max="10000" value="10" step="1" inputmode="numeric"></label>
+            <button class="quant-btn primary active:scale-95" type="button" id="quantRunSim">重新產生 10,000 局曲線</button>
+          </div>
+          <div class="quant-sim-legend"><span><i class="quant-legend-blue"></i>固定金額 · 押莊的隨機路徑</span><span><i class="quant-legend-gray"></i>起始資金參考線 · 10,000 元</span></div>
+          <div class="quant-chart-frame">
+            <svg id="quantSimChart" viewBox="0 0 980 300" role="img" aria-labelledby="quantSimChartTitle quantSimChartDescription" preserveAspectRatio="none">
+              <title id="quantSimChartTitle">10,000 局標準百家樂獨立隨機模擬的資金波動曲線</title>
+              <desc id="quantSimChartDescription">每條線是指定隨機種子下的教學範例，不是正式 BBB 模型回測績效。</desc>
+              <line x1="22" y1="146" x2="960" y2="146" class="quant-chart-baseline" id="quantSimBaseline"></line>
+              <polyline points="22,146 960,146" id="quantSimLine" class="quant-chart-curve"></polyline>
+            </svg>
+          </div>
+          <div class="quant-metrics quant-sim-metrics">
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">模擬輸出</span><small>本次 10,000 局期末資金</small><strong id="quantSimEnd">待產生</strong></div>
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">模擬輸出</span><small>本次路徑最大回撤</small><strong id="quantSimMDD">待產生</strong></div>
+            <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">可核對參數</span><small>實際投入模擬局數</small><strong id="quantSimBets">待產生</strong></div>
+          </div>
+          <p class="quant-tip" id="quantSimStatus" role="status" aria-live="polite">本機模擬使用固定初始資金 10,000 元，模擬波動不代表任何可實現的投資或遊戲績效。</p>
+        </div>
+      </div>
+    </section>
+
+
+
+<section class="quant-section" id="quantToolsSupport">
+  <h2>三項計算功能怎麼選擇？</h2>
+  <div class="quant-page-grid">
+    <article class="quant-page-card"><h3>01 · B/P/T 路單統計</h3><p>適合查看自己輸入的歷史莊／閒／和比例與對理論機率的偏離。這些數字只描述樣本，不是未來局數的保證。</p><a href="#quantTabProbability">切換歷史統計 →</a></article>
+    <article class="quant-page-card"><h3>02 · Kelly 風險試算</h3><p>適合理解假設勝率、賠率與曝險限制的數學關係；標準規則 EV 為負時，不應把自行輸入的勝率當作已被證實。</p><a href="#quantTabKelly" data-quant-target="quantTabKelly">切換 Kelly 試算 →</a></article>
+    <article class="quant-page-card"><h3>03 · 10,000 局隨機模擬</h3><p>適合觀察固定種子下的資金路徑、波動與回撤；本工具採獨立抽樣示例，不是牌桌實際勝率或正式 BBB 模型回測。</p><a href="#quantTabSimulation" data-quant-target="quantTabSimulation">切換模擬曲線 →</a></article>
+  </div>
+  <p class="quant-page-note">如需研究模擬假設、原始腳本或長篇資料說明，請前往 <a href="research-hub.html">研究文章中心</a>；會員研究面板仍位於 <a href="./#bbbTabExperience">網站首頁體驗入口</a>，彼此不共享訊號。</p>
+</section>
+
+  <footer class="quant-page-bottom"><span>© BaccaratQuant · 研究與機率教育用途，不保證任何遊戲結果。</span><a href="./">返回網站首頁 →</a></footer>
+</main>
+<script src="quant-site.js?v=20261122-multipage-v1" defer></script>
+<script src="quant-research.js?v=20261122-tabs-v2" defer></script>
+</body>
+</html>
