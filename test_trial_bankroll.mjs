@@ -12,7 +12,7 @@ assert(map.includes("https://bgsv1.xyz/baccarat-road-guide.html"),"guide in site
 assert(html.includes('id="bbbBankrollDialog"')&&html.includes('id="bbbInitialBankroll"'),"capital input exists BEFORE panel");
 assert(html.indexOf('id="bbbBankrollDialog"')<html.indexOf('id="predictionApp"'),"capital form is before app");
 assert(html.includes('id="bbbTrialBankrollPanel"'),"stop-win dashboard exists");
-assert(html.includes('id="dgDirectTrialLink"'),"DG maintains own trial button");
+assert(!html.includes('id="dgDirectTrialLink"')&&html.includes('id="trialStartBtn"'),"user-requested DG removal preserves BBB trial");
 assert(!trial.includes("openDgOnUserClick"),"BBB start does not open DG");
 assert(trial.includes("bankroll.promptAndStart()"),"trial requires capital setup");
 assert(trial.includes("bankroll.consumeConfirmation()"),"trial only starts after capital confirmation");
