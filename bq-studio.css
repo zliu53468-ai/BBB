@@ -184,3 +184,23 @@
 .quant-lab .bq-hero-preview-bottom small{font:650 9px/1.4 system-ui,sans-serif;color:#94A3B8;margin-left:4px}
 .quant-lab .bq-hero-product-visual .quant-visual-caveat{margin-top:8px;font-size:9px}
 @media(max-width:760px){.quant-lab .bq-hero-product-visual{transform:none}}
+
+/* Feature availability summaries: only published functions receive ready tags. */
+.quant-lab .bq-feature-summary .quant-page-card{
+  display:flex;flex-direction:column;align-items:flex-start;gap:5px;
+  background:linear-gradient(145deg,rgba(25,41,67,.83),rgba(11,21,38,.91));
+  border-color:rgba(71,85,105,.44);min-height:212px
+}
+.quant-lab .bq-feature-summary .quant-page-card h3{margin:4px 0 0;font-size:18px}
+.quant-lab .bq-feature-summary .quant-page-card p{margin:4px 0 10px;flex:1}
+.quant-lab .bq-feature-summary .quant-page-card a{font-size:12px;font-weight:800;text-decoration:none}
+.quant-lab .bq-feature-status{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 9px;
+  border:1px solid rgba(100,116,139,.4);border-radius:999px;
+  font-size:10px;font-weight:800;color:#CBD5E1;
+}
+.quant-lab .bq-feature-status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.quant-lab .bq-feature-status.is-ready{
+  color:#A7F3D0;background:rgba(6,78,59,.34);border-color:rgba(52,211,153,.34)
+}
+.quant-lab .bq-feature-status.is-pending{color:#CBD5E1;background:rgba(51,65,85,.42)}
