@@ -33,7 +33,7 @@ assert(!siteJs.includes("innerHTML")&&!siteJs.includes("fetch("),"navigation JS 
 
 for(const path of shared){
  const html=read(path);
- assert(html.includes('class="quant-site-header"'),"top navigation shared across "+path);
+ assert(html.includes('class="quant-site-header quant-corporate-header"'),"top navigation shared across "+path);
  assert((html.match(/class="quant-corporate-tab/g)||[]).length===4,"exactly four prominent corporate main tabs on "+path);
  assert((html.match(/data-bq-menu="/g)||[]).length===4,"four source-rendered, per-page submenus on "+path);
  assert(!html.includes('class="quant-site-mobile-drawer"'),"obsolete overlay menu absent from "+path);
