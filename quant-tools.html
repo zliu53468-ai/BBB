@@ -13,7 +13,7 @@
 <meta property="og:title" content="分析工具中心：機率、Kelly 與萬局模擬">
 <meta property="og:description" content="BaccaratQuant 多頁式機率計算器，含 B/P/T 路單統計、Kelly 資金風控試算、10,000 局固定種子的隨機波動曲線。免費本機運行，非即時下注訊號。">
 <meta property="og:url" content="https://bgsv1.xyz/quant-tools.html">
-<link rel="stylesheet" href="quant-research.css?v=20261122-tabs-v2">
+<link rel="stylesheet" href="quant-research.css?v=20261122-trial-portal-v3">
 <link rel="stylesheet" href="quant-guides.css?v=20261122-a">
 <link rel="stylesheet" href="quant-site.css?v=20261122-corporate-v2">
 
@@ -39,6 +39,7 @@
       <a href="./#quantAnalyzer">機率計算器</a>
       <a href="./#quantGuides">精選文章</a>
       <a href="./#bbbTabExperience">會員體驗</a>
+      <a href="partner-entry.html">合作平台／聯絡</a>
     </nav>
     <nav class="quant-corporate-subnav" data-bq-menu="tools" aria-label="分析工具專屬選單">
       <span class="quant-corporate-subtitle">分析工具專屬選單</span>
@@ -70,8 +71,8 @@
   <nav class="quant-site-breadcrumb" aria-label="麵包屑"><a href="./">首頁</a><span aria-hidden="true">/</span>分析工具中心：機率、Kelly 與萬局模擬</nav>
   <div class="quant-inner-banner"><div><span class="quant-inner-eyebrow">TOOLS / THREE INTERACTIVE MODULES</span><h1>分析工具中心：機率、Kelly 與萬局模擬</h1><p>真正獨立的工具頁：在上方三個頁籤切換 B/P/T 歷史頻率、Kelly 風險教育與可重現模擬。三個頁籤內容皆在 HTML 原始碼中，無須會員資格即可試算。</p></div><div class="quant-inner-badge" aria-hidden="true"><div>3<small>BACCARATQUANT LAB</small></div></div></div>
     <section class="quant-section" id="quantAnalyzer" aria-labelledby="quantAnalyzerHeading">
-      <h2 id="quantAnalyzerHeading">量化研究工具如何分析機率、Kelly 資金配置與萬局波動？</h2>
-      <p>可切換三個獨立工具：歷史莊閒和路單統計、凱利公式風險試算，以及 10,000 局可重現的隨機資金曲線。所有模組的 HTML 與文字內容均在初始原始碼中呈現，頁籤僅以 CSS 顯示或隱藏。</p>
+      <h2 id="quantAnalyzerHeading">路單紀錄、試用面板與簡易計算工具</h2>
+      <p>記錄 B/P/T、使用程式試用，或切換 Kelly 與萬局模擬。</p>
 
       <nav class="quant-tab-strip" role="tablist" aria-label="量化工具分析頁籤">
         <button id="quantTabBtnProbability" class="quant-tab is-active" type="button" role="tab" aria-controls="quantTabProbability" aria-selected="true" tabindex="0" data-quant-tab="quantTabProbability"><span class="quant-tab-index">01</span><span>即時機率與路單分析</span></button>
@@ -81,45 +82,72 @@
 
       <!-- SEO: 三個 tabpanel 的完整語意 HTML 均由伺服器原始頁面提供；僅 CSS 切換顯示狀態。 -->
       <div class="quant-tab-panel is-active" id="quantTabProbability" role="tabpanel" aria-labelledby="quantTabBtnProbability" aria-hidden="false" tabindex="0">
-        <div class="quant-tab-intro"><h3>即時機率與路單分析：怎麼核對 B／P／T 的歷史頻率？</h3><p>透過手動輸入歷史莊 B、閒 P、和 T 結果計算每項出現次數、樣本百分比與相對理論值的偏差。更新的是歷史描述統計，不會改變下一局的標準理論機率。</p></div>
-        <div class="quant-panel">
-          <div class="quant-tool-grid">
-            <div>
-              <strong class="quant-tool-label">手動建立歷史紀錄</strong>
-              <div class="quant-result-controls" aria-label="輸入歷史結果">
-                <button class="quant-btn secondary active:scale-95" id="quantAddB" type="button">莊 B</button>
-                <button class="quant-btn secondary active:scale-95" id="quantAddP" type="button">閒 P</button>
-                <button class="quant-btn secondary active:scale-95" id="quantAddT" type="button">和 T</button>
-              </div>
-              <label class="quant-history-label" for="quantHistory">已輸入序列（最多 2,000 局，可直接編輯）</label>
-              <textarea class="quant-history" id="quantHistory" placeholder="例如：B P T B P B" spellcheck="false" autocapitalize="characters"></textarea>
-              <div class="quant-actions">
-                <button class="quant-btn primary active:scale-95" type="button" id="quantApply">開始計算機率</button>
-                <button class="quant-btn secondary active:scale-95" type="button" id="quantUndo">撤銷最後一局</button>
-                <button class="quant-btn secondary active:scale-95" type="button" id="quantClear">清空</button>
-              </div>
-              <p class="quant-tip" id="quantInputStatus" role="status" aria-live="polite">公開計算器僅在此裝置執行。</p>
-              <p class="quant-tip">最新紀錄：<span id="quantRecent">尚無紀錄</span></p>
+        <div class="quant-tab-intro quant-compact-intro"><h3>路單紀錄與程式試用</h3><p>簡單記錄莊、閒、和；右側可直接開始試用。</p></div>
+        <div class="quant-entry-layout">
+          <section class="quant-entry-card quant-record-card" aria-labelledby="quantQuickHeading">
+            <div class="quant-entry-head">
+              <div><span class="quant-entry-eyebrow">01 / ROAD INPUT</span><h4 id="quantQuickHeading">路單輸入</h4></div>
+              <div class="quant-round-chip"><strong id="quantTotal">0</strong><span>局</span></div>
             </div>
-            <div>
-              <div class="quant-metrics">
-                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">本機樣本</span><small>觀察局數</small><strong id="quantTotal">0</strong></div>
-                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">固定基準</span><small>理論機率假設</small><strong>8 副牌</strong></div>
-              </div>
+            <div class="quant-result-controls quant-fast-input" aria-label="輸入歷史結果">
+              <button class="quant-btn secondary active:scale-95" id="quantAddB" type="button">莊 B</button>
+              <button class="quant-btn secondary active:scale-95" id="quantAddP" type="button">閒 P</button>
+              <button class="quant-btn secondary active:scale-95" id="quantAddT" type="button">和 T</button>
+            </div>
+            <label class="quant-history-label" for="quantHistory">已輸入紀錄</label>
+            <textarea class="quant-history" id="quantHistory" placeholder="B P T B P…" spellcheck="false" autocapitalize="characters" aria-describedby="quantInputStatus"></textarea>
+            <div class="quant-actions quant-quick-actions">
+              <button class="quant-btn primary active:scale-95" type="button" id="quantApply">更新紀錄</button>
+              <button class="quant-btn secondary active:scale-95" type="button" id="quantUndo">撤銷</button>
+              <button class="quant-btn secondary active:scale-95" type="button" id="quantClear">清空</button>
+            </div>
+            <p class="quant-tip" id="quantInputStatus" role="status" aria-live="polite">僅在此瀏覽器計算。</p>
+            <div class="quant-quick-bars" aria-label="目前輸入的莊閒和歷史比例">
               <div class="quant-bars">
                 <div class="quant-bar"><span>莊 B</span><div class="quant-track"><div class="quant-fill" id="quantBarB"></div></div><strong id="quantFreqB">—</strong></div>
                 <div class="quant-bar"><span>閒 P</span><div class="quant-track"><div class="quant-fill" id="quantBarP"></div></div><strong id="quantFreqP">—</strong></div>
                 <div class="quant-bar"><span>和 T</span><div class="quant-track"><div class="quant-fill" id="quantBarT"></div></div><strong id="quantFreqT">—</strong></div>
               </div>
-              <div class="quant-metrics">
-                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>莊次數／偏離值</small><strong id="quantCountB">0</strong><span class="quant-subtle" id="quantDeviationB">—</span></div>
-                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>閒次數／偏離值</small><strong id="quantCountP">0</strong><span class="quant-subtle" id="quantDeviationP">—</span></div>
-                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>和次數／偏離值</small><strong id="quantCountT">0</strong><span class="quant-subtle" id="quantDeviationT">—</span></div>
-                <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">標準規則</span><small>理論機率 B / P / T</small><strong class="quant-theory">45.86 / 44.62 / 9.52%</strong></div>
-              </div>
             </div>
+            <details class="quant-advanced-detail">
+              <summary>查看詳細統計 <span aria-hidden="true">＋</span></summary>
+              <div class="quant-advanced-content">
+                <p class="quant-tip">最新紀錄：<span id="quantRecent">尚無紀錄</span></p>
+                <div class="quant-metrics">
+                  <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>莊次數／偏離值</small><strong id="quantCountB">0</strong><span class="quant-subtle" id="quantDeviationB">—</span></div>
+                  <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>閒次數／偏離值</small><strong id="quantCountP">0</strong><span class="quant-subtle" id="quantDeviationP">—</span></div>
+                  <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">歷史統計</span><small>和次數／偏離值</small><strong id="quantCountT">0</strong><span class="quant-subtle" id="quantDeviationT">—</span></div>
+                  <div class="quant-metric bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">標準規則</span><small>八副牌理論 B / P / T</small><strong class="quant-theory">45.86 / 44.62 / 9.52%</strong></div>
+                </div>
+                <p class="quant-tip">歷史頻率不代表下一局預測，最多可輸入 2,000 局。</p>
+              </div>
+            </details>
+          </section>
+          <aside class="quant-entry-card quant-preview-card" aria-labelledby="quantPreviewHeading">
+            <div class="quant-entry-head">
+              <div><span class="quant-entry-eyebrow">02 / LIVE TRIAL</span><h4 id="quantPreviewHeading">BBB 程式試用</h4></div>
+              <span class="quant-trial-time">30 MIN</span>
+            </div>
+            <div class="quant-trial-preview" aria-label="BBB 分析畫面示意，不是真實預測">
+              <div class="quant-preview-top"><span class="quant-preview-led"></span> BACCARAT / ROAD PANEL <span>PREVIEW</span></div>
+              <div class="quant-preview-road" aria-hidden="true">
+                <i class="banker"></i><i class="player"></i><i class="banker"></i><i class="banker"></i><i class="player"></i><i class="banker"></i><i class="player"></i><i class="tie"></i><i class="banker"></i><i class="player"></i><i class="banker"></i><i class="player"></i><i class="banker"></i><i class="player"></i><i class="tie"></i><i class="banker"></i><i class="player"></i><i class="banker"></i>
+              </div>
+              <div class="quant-preview-bottom"><span>牌路紀錄 / 分析面板</span><span>畫面示意</span></div>
+            </div>
+            <p class="quant-trial-lead">免開通碼體驗。啟動後使用現有 BBB 分析面板。</p>
+
+          <div class="quant-alt-trial-buttons">
+            <a class="quant-btn primary" href="./#quantAnalyzer">前往首頁開始 30 分鐘試用 <span aria-hidden="true">↗</span></a>
+            <a class="quant-btn secondary" href="./#bbbTabExperience">現有會員入口</a>
           </div>
-          <div class="quant-note">理論基準：莊 45.8597%、閒 44.6247%、和 9.5156%。歷史結果本身不等於當前牌靴的真實剩餘牌分布，亦不構成下局方向或勝率保證。</div>
+            <a class="quant-partner-entry" href="partner-entry.html">
+              <span class="quant-partner-icon" aria-hidden="true">↗</span>
+              <span><strong>合作平台／娛樂城入口</strong><small>平台資訊、跳轉與官方聯繫</small></span>
+              <span class="quant-partner-arrow" aria-hidden="true">→</span>
+            </a>
+            <p class="quant-trial-disclaimer">試用僅供功能體驗，不保證結果；外部平台請確認法定年齡與所在地規範。</p>
+          </aside>
         </div>
       </div>
 

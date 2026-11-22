@@ -1,0 +1,86 @@
+/* BaccaratQuant service & partner portal, 2026-11-22.
+   Native links are assigned by the existing audited outbound-links.js module. */
+html{scroll-behavior:smooth}
+body.bq-portal-page{
+  margin:0;min-height:100vh;
+  color:#E2E8F0;
+  background:radial-gradient(ellipse at 72% 6%,rgba(37,99,235,.17),transparent 42%),
+    linear-gradient(180deg,#0F172A 0%,#080F1E 100%);
+  font-family:Inter,system-ui,-apple-system,"Noto Sans TC",sans-serif;
+  line-height:1.7;
+}
+.bq-portal-page *{box-sizing:border-box}
+.bq-portal-shell{width:min(1080px,calc(100% - 32px));margin:0 auto;padding:19px 0 65px}
+.bq-portal-crumb{display:flex;gap:9px;align-items:center;font-size:12px;color:#94A3B8;margin:12px 0 26px}
+.bq-portal-crumb a{color:#93C5FD;text-decoration:none}
+.bq-portal-panel{
+  position:relative;overflow:hidden;padding:36px 34px 26px;
+  border:1px solid rgba(59,130,246,.28);border-radius:22px;
+  background:radial-gradient(ellipse at 78% -15%,rgba(6,182,212,.13),transparent 44%),rgba(15,23,42,.9);
+  box-shadow:0 24px 50px rgba(2,6,23,.29),inset 0 1px 0 rgba(255,255,255,.04)
+}
+.bq-portal-panel::after{
+  content:"";position:absolute;top:-210px;right:-170px;width:490px;height:490px;
+  border:1px solid rgba(59,130,246,.12);border-radius:50%;pointer-events:none;
+  box-shadow:0 0 0 75px rgba(59,130,246,.015),0 0 0 150px rgba(6,182,212,.015)
+}
+.bq-portal-eyebrow{
+  position:relative;z-index:1;color:#67E8F9;
+  font:800 11px/1.5 ui-monospace,Consolas,monospace;letter-spacing:.13em;
+}
+.bq-portal-eyebrow>span{font-size:10px;color:#10B981;text-shadow:0 0 8px #10B981}
+.bq-portal-panel h1{position:relative;z-index:1;color:#F8FAFC;font-size:clamp(29px,4.2vw,44px);font-weight:850;line-height:1.3;margin:11px 0 10px}
+.bq-portal-intro{position:relative;z-index:1;font-size:14px;color:#AFC3D9;margin:0 0 25px}
+.bq-portal-grid{position:relative;z-index:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+.bq-portal-card{
+  min-width:0;display:flex;flex-direction:column;padding:23px 22px 20px;
+  border:1px solid rgba(100,116,139,.4);border-radius:16px;
+  background:linear-gradient(152deg,rgba(25,42,69,.95),rgba(13,24,42,.96));
+  transition:border-color .2s ease,transform .2s ease,box-shadow .2s ease
+}
+.bq-portal-card:hover{border-color:#60A5FA;transform:translateY(-2px);box-shadow:0 16px 35px rgba(37,99,235,.16)}
+.bq-portal-support{border-color:rgba(16,185,129,.32);background:linear-gradient(152deg,rgba(12,48,55,.62),rgba(13,24,42,.96))}
+.bq-portal-cardhead{display:flex;align-items:center;gap:9px}
+.bq-portal-cardhead>span{width:41px;height:41px;display:grid;place-items:center;border:1px solid rgba(96,165,250,.4);border-radius:11px;color:#67E8F9;background:rgba(30,58,138,.35);font-size:22px}
+.bq-portal-support .bq-portal-cardhead>span{border-color:rgba(16,185,129,.4);color:#6EE7B7;background:rgba(6,78,59,.35)}
+.bq-portal-cardhead small{font:780 11px/1.4 ui-monospace,Consolas,monospace;letter-spacing:.05em;color:#94A3B8}
+.bq-portal-card h2{font-size:21px;font-weight:820;color:#F1F5F9;margin:17px 0 5px;line-height:1.35}
+.bq-portal-card p{font-size:13px;color:#A8BFD5;line-height:1.7;margin:0 0 25px}
+.bq-portal-btn{margin-top:auto;min-height:49px;display:flex;align-items:center;justify-content:center;gap:9px;padding:11px 14px;
+  border:1px solid rgba(96,165,250,.65);border-radius:10px;
+  background:linear-gradient(110deg,#1D4ED8,#0891B2);color:#F8FAFC!important;
+  font-size:14px;font-weight:790;text-decoration:none!important;text-align:center;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 7px 20px rgba(37,99,235,.16);
+  transition:box-shadow .2s ease,transform .2s ease
+}
+.bq-portal-btn:hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 0 24px rgba(59,130,246,.38)}
+.bq-portal-support .bq-portal-btn{background:linear-gradient(110deg,#047857,#0891B2);border-color:rgba(110,231,183,.54)}
+.bq-portal-btn.outbound-disabled{background:#334155;opacity:.65;cursor:not-allowed}
+.bq-portal-next{font-size:12px;color:#A5F3FC;margin:14px 0}
+.bq-portal-foot{position:relative;z-index:1;display:flex;gap:13px;justify-content:space-between;flex-wrap:wrap;align-items:start;border-top:1px solid rgba(100,116,139,.26);margin-top:25px;padding-top:17px}
+.bq-portal-foot span{font-size:11px;color:#8FA7C0;flex:1 1 500px}
+.bq-portal-foot a{color:#93C5FD;text-decoration:none;font-size:12px;font-weight:750}
+.bq-portal-dialog{
+  width:min(480px,calc(100% - 30px));padding:28px;
+  color:#E2E8F0;background:#101F35;
+  border:1px solid rgba(96,165,250,.48);border-radius:18px;
+  box-shadow:0 25px 70px rgba(0,0,0,.6)
+}
+.bq-portal-dialog::backdrop{background:rgba(2,6,23,.78)}
+.bq-portal-dialog h2{font-size:21px;color:#F8FAFC;margin:9px 0}
+.bq-portal-dialog p{font-size:13px;color:#CBD5E1}
+.bq-portal-dialog-close{position:absolute;right:13px;top:12px;width:35px;height:35px;border:1px solid #475569;border-radius:9px;background:#1E293B;color:#F8FAFC;font-size:20px;cursor:pointer}
+.bq-portal-dialog-line{margin:16px 0 9px}
+.bq-portal-dialog-dismiss{display:block;margin:0 auto;padding:9px 12px;color:#CBD5E1;background:transparent;border:0;cursor:pointer}
+.bq-portal-page :is(a,button):focus-visible{outline:3px solid #67E8F9;outline-offset:3px}
+@media(max-width:760px){
+  .bq-portal-panel{padding:25px 16px 18px;border-radius:17px}
+  .bq-portal-grid{grid-template-columns:1fr}
+  .bq-portal-card{padding:19px}
+  .bq-portal-card p{margin-bottom:18px}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .bq-portal-card,.bq-portal-btn{transition:none!important}
+  .bq-portal-card:hover,.bq-portal-btn:hover{transform:none!important}
+}
