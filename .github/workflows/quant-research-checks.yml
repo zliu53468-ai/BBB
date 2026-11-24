@@ -6,6 +6,9 @@ on:
       - "index.html"
       - "quant-research.css"
       - "bq-studio.css"
+      - "bq-video-first.css"
+      - "assets/banker-slayer-monitor-demo.mp4"
+      - "test_video_first_home.mjs"
       - "bq-studio.js"
       - "test_bq_studio.mjs"
       - "partner-entry.html"
@@ -32,6 +35,9 @@ on:
       - "index.html"
       - "quant-research.css"
       - "bq-studio.css"
+      - "bq-video-first.css"
+      - "assets/banker-slayer-monitor-demo.mp4"
+      - "test_video_first_home.mjs"
       - "bq-studio.js"
       - "test_bq_studio.mjs"
       - "partner-entry.html"
@@ -59,9 +65,9 @@ jobs:
         with:
           node-version: "22"
       - name: Validate native JavaScript
-        run: node --check quant-research.js && node --check test_quant_research.mjs && node --check test_quant_guides.mjs && node --check research/martingale-100k.mjs && node --check quant-site.js && node --check test_quant_multipage.mjs && node --check test_quant_trial_portal.mjs && node --check bq-studio.js && node --check test_bq_studio.mjs
+        run: node --check quant-research.js && node --check test_quant_research.mjs && node --check test_quant_guides.mjs && node --check research/martingale-100k.mjs && node --check quant-site.js && node --check test_quant_multipage.mjs && node --check test_quant_trial_portal.mjs && node --check bq-studio.js && node --check test_bq_studio.mjs && node --check test_video_first_home.mjs
       - name: Run quantitative and SEO regression checks
-        run: node test_quant_research.mjs && node test_quant_guides.mjs && node test_quant_multipage.mjs && node test_quant_trial_portal.mjs && node test_bq_studio.mjs
+        run: node test_quant_research.mjs && node test_quant_guides.mjs && node test_quant_multipage.mjs && node test_quant_trial_portal.mjs && node test_bq_studio.mjs && node test_video_first_home.mjs
       - name: Preserve core application and existing SEO
         run: |
           node test_three_tab_ui.mjs
