@@ -21,7 +21,7 @@ for(const page of [home,tools]){
   assert(!page.includes("5,260,000")&&!page.includes("61%⭡")&&!page.includes("勝率 63%"),"no competitor's unverifiable data copied");
 }
 assert(home.includes("莊家剋星 BBB")&&home.includes("AI 百家樂分析程式"),"BBB original brand and product-first copy");
-assert(home.includes("bq-hero-product-visual")&&!home.includes('id="quantHeroFill"'),"hero is an honest product preview, not a fabricated profit curve");
+assert(home.includes('id="bqMonitorVideo"')&&home.includes('assets/banker-slayer-monitor-demo.mp4')&&!home.includes('id="quantHeroFill"'),"hero shows real user-supplied video, not a fabricated profit chart");
 assert(home.includes("圖表為視覺示意，非即時牌桌或實盤績效"),"hero explicitly discloses its illustrative purpose");
 assert.equal((home.match(/id="trialStartBtn"/g)||[]).length,1,"real BBB trial remains single");
 assert(home.includes('href="partner-entry.html"')&&home.includes('id="trialStartMessage"'),"partner and trial status remain");
