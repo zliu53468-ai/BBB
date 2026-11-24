@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b0b09">
   <title>百家樂路單分析工具｜BaccaratQuant 牌靴數據實驗室</title>
-  <meta name="description" content="BaccaratQuant 百家樂路單量化工具：B/P/T 歷史頻率、標準差、EV 與 Kelly 風險試算，另有 10 萬局馬丁格爾模擬、賭徒謬誤解析及 2026 防詐指南；公開方法與數據限制。">
+  <meta name="description" content="莊家剋星 AI 百家樂分析程式，提供監控面板錄影展示與 30 分鐘功能試用。使用原有分析模型，影片不代表即時串流，研究及官方服務另有專區。">
   <meta name="robots" content="index,follow,max-image-preview:large">
   <link rel="canonical" href="https://bgsv1.xyz/">
   <meta property="og:type" content="website">
@@ -30,6 +30,7 @@
   <link rel="stylesheet" href="mobile-one-screen.css?v=20261116-fit-v1">
   <link rel="stylesheet" href="quant-research.css?v=20261122-trial-portal-v3"><!-- BQ Studio -->
   <link rel="stylesheet" href="bq-studio.css?v=20261122-studio-v1">
+  <link rel="stylesheet" href="bq-video-first.css?v=20261124-v1">
   <link rel="stylesheet" href="quant-guides.css?v=20261122-a">
   <link rel="stylesheet" href="quant-site.css?v=20261122-corporate-v2">
 
@@ -51,8 +52,9 @@
     <nav class="quant-corporate-subnav" data-bq-menu="home" aria-label="首頁快速導覽">
       <span class="quant-corporate-subtitle">首頁快速導覽</span>
       <a href="./">首頁總覽</a>
-      <a href="./#quantTopics">主題分類</a>
-      <a href="./#quantAnalyzer">機率計算器</a>
+      <a href="./#quantTopics">功能分類</a>
+      <a href="./#monitorVideo">監控影片</a>
+      <a href="./#quantAnalyzer">免費試用</a>
       <a href="./#quantGuides">精選文章</a>
       <a href="./#bbbTabExperience">會員體驗</a>
       <a href="partner-entry.html">合作平台／聯絡</a>
@@ -87,33 +89,37 @@
     <div class="quant-hero">
       <div class="quant-banner-top">
         <div class="quant-banner-copy">
-          <p class="quant-eyebrow">莊家剋星 · BBB AI BACCARAT STUDIO</p>
-          <h1 id="quantTitle">莊家剋星｜<span style="color:#67E8F9">AI 百家樂分析程式</span></h1>
-          <p class="quant-lead">輸入莊、閒、和路單，就能體驗 BBB 的操作流程與分析面板。提供 30 分鐘功能試用；歷史路單不等於未來結果。</p>
-          <div class="quant-banner-tags"><span>30 分鐘免碼試用</span><span>B/P/T 快速紀錄</span><span>研究與風控功能</span></div>
-          <div class="quant-actions"><a class="quant-btn primary active:scale-95" href="#quantAnalyzer">開始體驗 BBB ↗</a><a class="quant-btn secondary" href="quant-tools.html">查看完整工具 →</a></div>
+          <p class="quant-eyebrow">莊家剋星 · AI BACCARAT STUDIO</p>
+          <h1 id="quantTitle">莊家剋星｜<span style="color:#67E8F9">AI 監控與預測分析</span></h1>
+          <p class="quant-lead">觀看監控介面錄影，了解多桌資訊的呈現方式。立即開啟 30 分鐘分析程式體驗；影片不代表本站正在即時連接遊戲商。</p>
+          <div class="quant-banner-tags"><span>30 分鐘程式體驗</span><span>監控操作展示</span><span>現有模型核心</span></div>
+          <div class="quant-actions"><a class="quant-btn primary active:scale-95" href="#quantAnalyzer">立即體驗莊家剋星 ↗</a><a class="quant-btn secondary" href="partner-entry.html">合作平台與官方聯絡 →</a></div>
         </div>
-        <div class="quant-banner-visual bq-hero-product-visual" aria-hidden="true">
-          <div class="quant-visual-topline"><strong>BBB / SOFT SHOE STUDIO</strong><span>INTERACTIVE PREVIEW</span></div>
-          <div class="bq-hero-preview-status"><span class="bq-hero-status-light"></span><div><small>MODEL STATE</small><strong>等待啟動試用</strong></div><span class="bq-hero-preview-version">BBB V5.1</span></div>
-          <div class="bq-hero-visual-tabs"><span class="is-current">B/P/T 手動紀錄</span><span>30 MIN 體驗</span></div>
-          <div class="bq-hero-blank-road"><span class="bq-hero-road-caption">ROAD HISTORY / 尚未輸入紀錄</span><div class="bq-hero-grid">
-            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-          </div></div>
-          <div class="bq-hero-preview-bottom"><span>試用已開放</span><strong>30:00 <small>啟動後計時</small></strong></div>
-          <p class="quant-visual-caveat">SYNTHETIC DISPLAY · 圖表為視覺示意，非即時牌桌或實盤績效</p>
-        </div>
+        <figure class="bq-monitor-hero" id="monitorVideo" aria-labelledby="monitorVideoTitle">
+          <div class="bq-monitor-frame-head">
+            <div><span class="bq-monitor-status-dot" aria-hidden="true"></span><strong id="monitorVideoTitle">莊家剋星 · 監控面板展示</strong></div>
+            <span class="bq-monitor-type">錄影示範 / VIDEO</span>
+          </div>
+          <div class="bq-monitor-stage">
+            <video id="bqMonitorVideo" autoplay muted loop playsinline controls preload="metadata"
+              width="240" height="547" aria-label="監控面板錄影，展示多個牌桌與房間的資訊列表，並非即時連線">
+              <source src="assets/banker-slayer-monitor-demo.mp4" type="video/mp4">
+              你的瀏覽器不支援影片播放。
+            </video>
+          </div>
+          <figcaption class="bq-monitor-caption"><span class="bq-monitor-dot-label" aria-hidden="true"></span>這是監控介面的錄製片段，不是即時訊號，也不代表本站已串接全部牌桌。</figcaption>
+        </figure>
       </div>
       <div class="quant-kpis" aria-label="研究工具的可核對指標">
-        <article class="quant-kpi bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">免費體驗</span><small>程式試用</small><strong class="quant-counter" data-count-up="30" data-suffix=" 分鐘">30 分鐘</strong><p>免開通碼開啟現有面板。</p></article>
-        <article class="quant-kpi bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">快速輸入</span><small>歷史路單</small><strong class="quant-counter" data-count-up="3" data-suffix=" 種">3 種</strong><p>莊 B、閒 P、和 T。</p></article>
+        <article class="quant-kpi bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">現有功能</span><small>程式試用</small><strong class="quant-counter" data-count-up="30" data-suffix=" 分鐘">30 分鐘</strong><p>免開通碼開啟現有面板。</p></article>
+        <article class="quant-kpi bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">進階工具</span><small>結果類型</small><strong class="quant-counter" data-count-up="3" data-suffix=" 種">3 種</strong><p>莊 B、閒 P、和 T。</p></article>
         <article class="quant-kpi bg-slate-900/70 backdrop-blur-md"><span class="quant-status-pill">教學模擬</span><small>獨立隨機情境</small><strong class="quant-counter" data-count-up="10000" data-suffix=" 局">10,000 局</strong><p>研究用，非實盤績效。</p></article>
       </div>
       <div class="quant-actions">
-        <a class="quant-btn primary active:scale-95" href="#quantAnalyzer" data-quant-target="quantTabProbability">開始計算機率 <span aria-hidden="true">↗</span></a>
-        <a class="quant-btn primary active:scale-95" href="#bbbTabExperience">探索進階雲端研究工具 <span aria-hidden="true">↗</span></a>
+        <a class="quant-btn primary active:scale-95" href="#quantAnalyzer" data-quant-target="quantTabProbability">查看程式試用 <span aria-hidden="true">↗</span></a>
+        <a class="quant-btn primary active:scale-95" href="#bbbTabExperience">查看會員服務 <span aria-hidden="true">↗</span></a>
       </div>
-      <p class="quant-subtle" style="margin-top:12px">公開計算器採用標準規則理論機率，與現有 BBB Soft Shoe v5.1 研究核心分離。模型訓練／驗證樣本待發布可稽核資料；本頁不產生即時下注訊號。</p>
+      <p class="quant-subtle" style="margin-top:12px">監控影片是過去錄製的畫面；正式試用沿用現有模型，不代表即時資料串接或保證勝率。</p>
     </div>
 
 
@@ -133,13 +139,13 @@
     </div>
 
     <section class="quant-section" id="quantAnalyzer" aria-labelledby="quantAnalyzerHeading">
-      <h2 id="quantAnalyzerHeading">BBB AI 分析面板與免費試用</h2>
-      <p>手動記錄 B/P/T，或直接啟動 30 分鐘體驗。Kelly 與模擬研究可由上方頁籤切換。</p>
+      <h2 id="quantAnalyzerHeading">莊家剋星｜AI 分析程式試用</h2>
+      <p>觀看上方監控影片後，直接啟動 30 分鐘試用。手動路單統計留在下方進階功能內。</p>
 
       <nav class="quant-tab-strip" role="tablist" aria-label="量化工具分析頁籤">
-        <button id="quantTabBtnProbability" class="quant-tab is-active" type="button" role="tab" aria-controls="quantTabProbability" aria-selected="true" tabindex="0" data-quant-tab="quantTabProbability"><span class="quant-tab-index">01</span><span>即時機率與路單分析</span></button>
-        <button id="quantTabBtnKelly" class="quant-tab" type="button" role="tab" aria-controls="quantTabKelly" aria-selected="false" tabindex="-1" data-quant-tab="quantTabKelly"><span class="quant-tab-index">02</span><span>凱利公式注碼控管試算</span></button>
-        <button id="quantTabBtnSimulation" class="quant-tab" type="button" role="tab" aria-controls="quantTabSimulation" aria-selected="false" tabindex="-1" data-quant-tab="quantTabSimulation"><span class="quant-tab-index">03</span><span>10,000 局模擬波動曲線</span></button>
+        <button id="quantTabBtnProbability" class="quant-tab is-active" type="button" role="tab" aria-controls="quantTabProbability" aria-selected="true" tabindex="0" data-quant-tab="quantTabProbability"><span class="quant-tab-index">01</span><span>程式試用</span></button>
+        <button id="quantTabBtnKelly" class="quant-tab" type="button" role="tab" aria-controls="quantTabKelly" aria-selected="false" tabindex="-1" data-quant-tab="quantTabKelly"><span class="quant-tab-index">02</span><span>資金控管</span></button>
+        <button id="quantTabBtnSimulation" class="quant-tab" type="button" role="tab" aria-controls="quantTabSimulation" aria-selected="false" tabindex="-1" data-quant-tab="quantTabSimulation"><span class="quant-tab-index">03</span><span>模擬研究</span></button>
       </nav>
 
       <!-- SEO: 三個 tabpanel 的完整語意 HTML 均由伺服器原始頁面提供；僅 CSS 切換顯示狀態。 -->
@@ -147,15 +153,15 @@
         <div class="bq-studio-head">
           <div class="bq-studio-brand">
             <span class="bq-studio-sigil" aria-hidden="true">BQ</span>
-            <div><span class="bq-studio-kicker">BBB SOFT SHOE / INTERACTIVE LAB</span><h3>莊家剋星 AI 分析面板</h3><p>輸入路單、開啟試用，快速體驗現有系統。</p></div>
+            <div><span class="bq-studio-kicker">BANKER SLAYER / AI EXPERIENCE</span><h3>莊家剋星 · 功能體驗</h3><p>使用現有模型與原本的試用機制。</p></div>
           </div>
-          <div class="bq-studio-badges"><span><i aria-hidden="true"></i> 手動資料</span><span>30 分鐘體驗</span></div>
+          <div class="bq-studio-badges"><span><i aria-hidden="true"></i> 正式試用入口</span><span>30 分鐘體驗</span></div>
         </div>
         <div class="bq-studio-switch" aria-label="面板快速切換">
           <button type="button" class="bq-studio-switch-item is-current" data-bq-studio-target="quantManualCard" aria-pressed="true"><span>01</span> 手動路單</button>
           <button type="button" class="bq-studio-switch-item" data-bq-studio-target="quantPreviewCard" aria-pressed="false"><span>02</span> 程式試用</button>
         </div>
-        <div class="quant-entry-layout">
+        <div class="quant-entry-layout bq-home-trial-layout">
           <section class="quant-entry-card quant-record-card" id="quantManualCard" aria-labelledby="quantQuickHeading">
             <div class="quant-entry-head">
               <div><span class="quant-entry-eyebrow">LIVE INPUT / ROAD TRACKER</span><h4 id="quantQuickHeading">手動輸入 · B/P/T</h4></div>
@@ -197,7 +203,7 @@
           </section>
           <aside class="quant-entry-card quant-preview-card" id="quantPreviewCard" aria-labelledby="quantPreviewHeading">
             <div class="quant-entry-head">
-              <div><span class="quant-entry-eyebrow">BBB MODEL / TRIAL ENTRY</span><h4 id="quantPreviewHeading">BBB 進階試用</h4></div>
+              <div><span class="quant-entry-eyebrow">BBB MODEL / TRIAL ENTRY</span><h4 id="quantPreviewHeading">莊家剋星 AI 試用</h4></div>
               <span class="quant-trial-time">30 MIN</span>
             </div>
             <div class="quant-trial-preview" aria-label="BBB 分析畫面示意，不是真實預測">
@@ -207,7 +213,7 @@
               </div>
               <div class="quant-preview-bottom"><span>記錄同步顯示</span><span>畫面示意 · 非即時讀牌</span></div>
             </div>
-            <p class="quant-trial-lead">試用功能使用現有 BBB 核心，啟動後進入分析面板。</p>
+            <p class="quant-trial-lead">按下開始試用，即可進入現有分析系統；不需從首頁手動輸入路單。</p>
       <div class="trial-visitor-entry bbb-neon-entry" aria-label="新訪客體驗入口">
         <button type="button" id="trialStartBtn" class="bbb-neon-cta bbb-neon-cta-start" aria-label="立即試用莊家剋星預測程式｜免費試用 30 分鐘">
           <span class="bbb-cta-symbol" aria-hidden="true">↯</span>
@@ -225,12 +231,12 @@
             <p class="quant-trial-disclaimer">試用僅供功能體驗，不保證結果；外部平台請確認法定年齡與所在地規範。</p>
           </aside>
         </div>
-        <div class="bq-studio-steps" aria-label="BBB 分析工具使用步驟">
-          <div><span>01</span><strong>記錄結果</strong><small>輸入莊、閒、和</small></div>
-          <div><span>02</span><strong>啟動試用</strong><small>開啟現有 30 分鐘面板</small></div>
-          <div><span>03</span><strong>查看分析</strong><small>核對資料與風控提示</small></div>
+        <div class="bq-studio-steps" aria-label="莊家剋星試用步驟">
+          <div><span>01</span><strong>觀看監控</strong><small>查看操作錄影片段</small></div>
+          <div><span>02</span><strong>開始體驗</strong><small>啟動 30 分鐘試用</small></div>
+          <div><span>03</span><strong>操作分析</strong><small>依實際可用功能使用</small></div>
         </div>
-        <p class="bq-studio-honesty">本頁不會自動讀取外部牌桌。示範區只顯示你手動輸入的資料，並非即時 AI 訊號。</p>
+        <p class="bq-studio-honesty">影片僅呈現過去錄製的監控畫面；本站未因此取得外部牌桌即時授權資料。</p>
       </div>
 
       <div class="quant-tab-panel" id="quantTabKelly" role="tabpanel" aria-labelledby="quantTabBtnKelly" aria-hidden="true" tabindex="0">
