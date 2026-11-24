@@ -24,7 +24,10 @@ for(const id of ["quantHistory","quantAddB","quantAddP","quantAddT","quantEvB","
  assert(home.includes('id="'+id+'"'),"existing app, fallback and calculator controls still in DOM: "+id);
 }
 assert.equal((home.match(/class="quant-tab-panel/g)||[]).length,3,"all original research tools remain source rendered");
-assert(tool.includes('id="quantHistory"')&&tool.includes('id="bqStudioRoad"'),"standalone analysis page retains manual road tools");
+assert(tool.includes('id="quantHistory"')&&tool.includes('id="bqStudioRoad"'),"standalone analysis page retains optional road tools");
+assert(tool.includes('id="bqMonitorToolsVideo"')&&tool.includes('assets/banker-slayer-monitor-demo.mp4'),"tools page also leads with recorded video");
+assert(tool.includes('class="bq-home-advanced bq-tool-advanced"'),"tools page manual input is optional");
+assert(tool.indexOf('id="bqMonitorToolsVideo"')<tool.indexOf('id="quantManualCard"'),"tools page prioritizes video before manual statistics");
 for(const p of ["index.html","quant-tools.html","research-hub.html","model-methodology.html","risk-center.html","partner-entry.html","research-martingale-100k.html","research-shoe-deviation.html","research-scam-safety-2026.html"]){
  const source=read(p);
  assert(source.includes('<span class="quant-site-brand-copy">莊家剋星'),"unified brand in "+p);
