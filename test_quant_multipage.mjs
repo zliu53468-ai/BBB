@@ -13,7 +13,7 @@ assert(home.includes('class="quant-banner-visual bq-hero-product-visual"'),"hero
 assert(home.includes('圖表為視覺示意，非即時牌桌或實盤績效'),"synthetic visual labeled honestly");
 assert(home.includes('class="quant-feature-strip"'),"featured research banner exists");
 assert.equal((home.match(/class="quant-topic"/g)||[]).length,4,"four research topic cards");
-assert(home.indexOf('id="quantTopics"')<home.indexOf('id="quantAnalyzer"'),"topic navigation appears above the calculator");
+assert(home.indexOf('id="quantAnalyzer"')<home.indexOf('id="quantTopics"'),"authentic trial is now surfaced above noncritical topic categories");
 assert(home.includes('id="quantGuides"'),"original guide section remains");
 assert(home.includes('id="quantBacktest"'),"original transparency section remains");
 for(const id of ["licenseGate","quantAnalyzer","quantTabProbability","quantTabKelly","quantTabSimulation","trialStartBtn","licenseForm","predictionApp","btnStart","btnB","btnP","btnT"]){
