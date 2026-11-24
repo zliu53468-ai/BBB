@@ -1,0 +1,135 @@
+/* 莊家剋星 · video-first marketing site, 2026-11-24.
+ * Self-hosted user-supplied recording: never represent as a live casino API feed.
+ * The original protected BBB prediction/trial runtime is unchanged.
+ */
+.quant-lab .quant-banner-top{
+  grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr);
+  gap:24px;align-items:center;padding:34px 32px;min-height:470px;
+  background:radial-gradient(ellipse at 80% 16%,rgba(37,99,235,.23),transparent 52%),
+             radial-gradient(ellipse at 7% 94%,rgba(6,182,212,.12),transparent 50%),
+             linear-gradient(145deg,#101F37,#091225);
+}
+.quant-lab .quant-banner-copy h1{font-size:clamp(29px,3.7vw,48px)!important;line-height:1.2!important;max-width:640px}
+.quant-lab .quant-banner-copy .quant-lead{max-width:560px;color:#BDCCDE;font-size:14px;line-height:1.85}
+.quant-lab .quant-banner-tags{margin:16px 0 7px}
+.quant-lab .quant-banner-copy .quant-actions{margin-top:22px;gap:10px}
+.quant-lab .quant-banner-copy .quant-btn.primary{
+  min-height:51px;padding:12px 19px;font-weight:840;
+  background:linear-gradient(112deg,#2563EB,#0891B2)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 8px 27px rgba(37,99,235,.23)!important
+}
+.quant-lab .bq-monitor-hero{
+  position:relative;z-index:1;min-width:0;max-width:480px;width:100%;
+  display:flex;flex-direction:column;overflow:hidden;margin:0 0 0 auto;
+  border-radius:17px;border:1px solid rgba(96,165,250,.46);
+  background:#070F20;
+  box-shadow:0 22px 55px rgba(2,6,23,.42),0 0 34px rgba(37,99,235,.15);
+}
+.quant-lab .bq-monitor-frame-head{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+  gap:7px;padding:12px 14px;color:#DCEAF9;font-size:12px;
+  border-bottom:1px solid rgba(100,116,139,.35);
+  background:linear-gradient(90deg,rgba(30,58,95,.46),rgba(7,18,36,.9))
+}
+.quant-lab .bq-monitor-frame-head>div{display:flex;align-items:center;gap:8px}
+.quant-lab .bq-monitor-frame-head strong{font-size:12px;font-weight:800}
+.quant-lab .bq-monitor-status-dot{height:8px;width:8px;border-radius:50%;background:#64748B;border:1px solid rgba(148,163,184,.9)}
+.quant-lab .bq-monitor-type{
+  border:1px solid rgba(96,165,250,.29);border-radius:7px;padding:5px 7px;
+  font:700 9px/1 ui-monospace,Consolas,monospace;letter-spacing:.05em;color:#A5D8FB
+}
+.quant-lab .bq-monitor-stage{
+  display:flex;justify-content:center;align-items:center;overflow:hidden;
+  min-height:310px;max-height:420px;padding:10px 17px;
+  background:linear-gradient(90deg,rgba(9,18,33,.98),rgba(15,23,42,.66),rgba(9,18,33,.98))
+}
+.quant-lab .bq-monitor-stage video{
+  display:block;width:auto;max-width:100%;max-height:395px;
+  height:auto;aspect-ratio:240/547;object-fit:contain;object-position:center;
+  border:1px solid rgba(71,85,105,.42);border-radius:8px;background:#0B1020
+}
+.quant-lab .bq-monitor-caption{
+  display:flex;align-items:start;gap:7px;margin:0;padding:11px 13px;
+  font-size:10px;line-height:1.55;color:#9AB0CA;
+  background:rgba(15,23,42,.9);
+}
+.quant-lab .bq-monitor-dot-label{display:inline-block;flex:0 0 6px;height:6px;margin-top:5px;border-radius:50%;background:#94A3B8}
+.quant-lab .quant-hero{padding:23px 0 10px}
+.quant-lab .quant-hero>.quant-kpis{display:none}
+.quant-lab .quant-hero>.quant-actions{display:none}
+.quant-lab .quant-hero>.quant-subtle{display:none}
+.quant-lab #quantAnalyzer{scroll-margin-top:142px;margin-top:10px}
+.quant-lab #quantAnalyzer h2{font-size:clamp(22px,2.7vw,31px);font-weight:830;margin-bottom:7px}
+.quant-lab #quantAnalyzer>p{color:#94A3B8;font-size:13px}
+.quant-lab #quantAnalyzer .bq-studio-head{border-radius:15px 15px 0 0}
+.quant-lab #quantAnalyzer .bq-studio-switch{display:none}
+.quant-lab #quantAnalyzer .bq-home-trial-layout{
+  grid-template-columns:1fr;gap:12px;
+  max-width:850px;margin:14px auto 10px;
+}
+.quant-lab #quantAnalyzer .bq-home-trial-layout .quant-preview-card{
+  width:100%;padding:23px;
+  display:flex;flex-direction:column;
+  border-color:rgba(96,165,250,.49);
+  background:radial-gradient(ellipse at 78% 5%,rgba(37,99,235,.16),transparent 55%),
+             linear-gradient(130deg,rgba(20,36,59,.96),rgba(10,23,40,.96));
+}
+.quant-lab #quantAnalyzer .bq-home-trial-layout .quant-trial-preview{display:none}
+.quant-lab #quantAnalyzer .bq-home-trial-layout .quant-trial-lead{font-size:13px;margin:4px 0 14px}
+body.bbb-black-gold #licenseGate #quantAnalyzer .bq-home-trial-layout .trial-visitor-entry{
+  margin:10px 0!important;width:100%!important;
+}
+body.bbb-black-gold #licenseGate #quantAnalyzer .bq-home-trial-layout #trialStartBtn{
+  width:100%!important;min-height:65px!important;
+  background:linear-gradient(110deg,#1D4ED8,#0284C7)!important;
+  border-color:rgba(125,211,252,.72)!important;
+}
+.quant-lab #quantAnalyzer .bq-home-trial-layout .quant-partner-entry{margin-top:12px}
+.quant-lab #quantAnalyzer .bq-home-advanced{
+  background:rgba(15,23,42,.58);
+  border:1px solid rgba(100,116,139,.28);border-radius:12px;overflow:hidden;
+}
+.quant-lab #quantAnalyzer .bq-home-advanced summary{
+  list-style:none;cursor:pointer;display:flex;justify-content:space-between;
+  align-items:center;gap:11px;padding:14px 16px;
+  color:#B5CADF;font-size:12px;font-weight:760;
+}
+.quant-lab #quantAnalyzer .bq-home-advanced summary::-webkit-details-marker{display:none}
+.quant-lab #quantAnalyzer .bq-home-advanced summary span{font-size:10px;color:#67E8F9}
+.quant-lab #quantAnalyzer .bq-home-advanced[open] summary{border-bottom:1px solid rgba(100,116,139,.24)}
+.quant-lab #quantAnalyzer .bq-home-advanced-body{padding:15px}
+.quant-lab #quantAnalyzer .bq-home-advanced-body>p{font-size:11px;color:#94A3B8;margin:0 0 13px}
+.quant-lab #quantAnalyzer .bq-home-advanced-body .quant-record-card{padding:15px;box-shadow:none}
+.quant-lab #quantAnalyzer .bq-studio-steps{max-width:850px;margin:15px auto}
+.quant-lab #quantAnalyzer .bq-studio-honesty{text-align:center}
+@media(max-width:980px){
+  .quant-lab .quant-banner-top{grid-template-columns:1fr 1fr;gap:15px;padding:24px 21px;min-height:0}
+  .quant-lab .bq-monitor-stage{max-height:310px;min-height:240px}
+  .quant-lab .bq-monitor-stage video{max-height:290px}
+}
+@media(max-width:760px){
+  .quant-lab .quant-banner-top{grid-template-columns:1fr;gap:18px;padding:24px 16px}
+  .quant-lab .quant-banner-copy h1{font-size:clamp(29px,8vw,39px)!important}
+  .quant-lab .quant-banner-copy .quant-lead{font-size:13px}
+  .quant-lab .quant-banner-copy .quant-actions{margin-top:17px}
+  .quant-lab .quant-banner-copy .quant-btn{width:100%;justify-content:center}
+  .quant-lab .bq-monitor-hero{max-width:none}
+  .quant-lab .bq-monitor-stage{min-height:250px;max-height:340px}
+  .quant-lab .bq-monitor-stage video{max-height:320px}
+  .quant-lab #quantAnalyzer{scroll-margin-top:180px}
+  .quant-lab #quantAnalyzer .bq-home-trial-layout .quant-preview-card{padding:17px}
+  .quant-lab #quantAnalyzer .bq-studio-steps{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .quant-lab #quantAnalyzer .bq-studio-steps>div{grid-template-columns:1fr;text-align:center;padding:9px 5px}
+  .quant-lab #quantAnalyzer .bq-studio-steps>div>span{grid-row:auto;justify-self:center}
+  .quant-lab #quantAnalyzer .bq-studio-steps strong{font-size:10px}
+  .quant-lab #quantAnalyzer .bq-studio-steps small{font-size:9px}
+}
+@media(max-width:390px){
+  .quant-lab .bq-monitor-stage{padding:8px 12px}
+  .quant-lab #quantAnalyzer .bq-studio-steps{grid-template-columns:1fr;gap:7px}
+  .quant-lab #quantAnalyzer .bq-studio-steps>div{grid-template-columns:31px minmax(0,1fr);text-align:left}
+  .quant-lab #quantAnalyzer .bq-studio-steps>div>span{grid-row:span 2}
+}
+@media(prefers-reduced-motion:reduce){
+  .quant-lab .bq-monitor-hero{scroll-behavior:auto}
+}
