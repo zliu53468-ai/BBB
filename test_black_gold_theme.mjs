@@ -8,7 +8,7 @@ for(const page of pages){
  const content=read(page);
  assert(content.includes('black-gold-theme.css?v=20261116-blackgold-v1'),page+": theme loaded last");
  assert(content.includes("bbb-black-gold"),page+": black gold body class");
- assert(content.includes('name="theme-color" content="#0b0b09"'),page+": browser theme color");
+ assert(content.includes(page==="index.html"?'name="theme-color" content="#0F172A"':'name="theme-color" content="#0b0b09"'),page+": browser theme color");
  assert(!content.includes('src="assets/brand-ai-baccarat-hero.webp"'),page+": no portrait visual");
  assert(!content.includes('src="assets/hero-baccarat-slayer.webp"'),page+": no portrait foreground");
  if(page!=="youtube-video.html"){
