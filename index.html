@@ -124,20 +124,6 @@
 
 
 
-    <section class="quant-section quant-topics" id="quantTopics" aria-labelledby="quantTopicsHeading">
-      <div class="quant-topics-title"><div><p class="quant-topics-eyebrow">DISCOVER BY CATEGORY / 主題分類導覽</p><h2 id="quantTopicsHeading">你想先研究哪個量化主題？</h2></div><p class="quant-subtle">每個分類都有獨立頁面，不必只在首頁往下找。</p></div>
-      <div class="quant-topic-grid">
-        <a class="quant-topic" href="quant-tools.html#quantTabProbability"><span class="quant-topic-number">01 / PROBABILITY</span><span class="quant-topic-icon" aria-hidden="true">◎</span><strong>機率與路單</strong><span class="quant-topic-desc">B/P/T 比例、理論機率與樣本偏離值，手動輸入直接計算。</span><span class="quant-topic-tail">前往機率分析 <span aria-hidden="true">→</span></span></a>
-        <a class="quant-topic" href="quant-tools.html#quantTabKelly"><span class="quant-topic-number">02 / RISK MODEL</span><span class="quant-topic-icon" aria-hidden="true">◈</span><strong>Kelly 資金控管</strong><span class="quant-topic-desc">理解負期望值、注碼比例與假設情境的曝險上限。</span><span class="quant-topic-tail">前往 Kelly 試算 <span aria-hidden="true">→</span></span></a>
-        <a class="quant-topic" href="research-hub.html"><span class="quant-topic-number">03 / RESEARCH</span><span class="quant-topic-icon" aria-hidden="true">▥</span><strong>回測與研究文章</strong><span class="quant-topic-desc">10 萬局示範、蒙地卡羅研究與標準差教學。</span><span class="quant-topic-tail">進入研究中心 <span aria-hidden="true">→</span></span></a>
-        <a class="quant-topic" href="risk-center.html"><span class="quant-topic-number">04 / SAFETY</span><span class="quant-topic-icon" aria-hidden="true">◇</span><strong>安全風控與防詐</strong><span class="quant-topic-desc">辨識可疑代操話術、資金損失預算與驗證步驟。</span><span class="quant-topic-tail">前往風控專區 <span aria-hidden="true">→</span></span></a>
-      </div>
-    </section>
-    <div class="quant-feature-strip" role="region" aria-label="精選研究專題">
-      <div><p class="quant-feature-label">FEATURED RESEARCH / 本月精選</p><strong>100,000 局蒙地卡羅研究：你以為的「倍投勝率」，真的代表可承受的風險嗎？</strong><p>公開固定種子、桌面下注限制與最大回撤；區分策略中止與真正的資金不足。</p></div>
-      <a href="research-martingale-100k.html">閱讀模擬研究 →</a>
-    </div>
-
     <section class="quant-section" id="quantAnalyzer" aria-labelledby="quantAnalyzerHeading">
       <h2 id="quantAnalyzerHeading">莊家剋星｜AI 分析程式試用</h2>
       <p>觀看上方監控影片後，直接啟動 30 分鐘試用。手動路單統計留在下方進階功能內。</p>
@@ -162,7 +148,40 @@
           <button type="button" class="bq-studio-switch-item" data-bq-studio-target="quantPreviewCard" aria-pressed="false"><span>02</span> 程式試用</button>
         </div>
         <div class="quant-entry-layout bq-home-trial-layout">
-          <section class="quant-entry-card quant-record-card" id="quantManualCard" aria-labelledby="quantQuickHeading">
+          <aside class="quant-entry-card quant-preview-card" id="quantPreviewCard" aria-labelledby="quantPreviewHeading">
+            <div class="quant-entry-head">
+              <div><span class="quant-entry-eyebrow">BBB MODEL / TRIAL ENTRY</span><h4 id="quantPreviewHeading">莊家剋星 AI 試用</h4></div>
+              <span class="quant-trial-time">30 MIN</span>
+            </div>
+            <div class="quant-trial-preview" aria-label="手動路單示意，僅供進階研究工具顯示">
+              <div class="quant-preview-top"><span class="quant-preview-led"></span> BBB / ROAD TRACKER <span>LOCAL INPUT</span></div>
+              <div class="quant-preview-road bq-studio-road" id="bqStudioRoad" role="img" aria-label="尚無輸入路單">
+                <span class="bq-road-empty">輸入莊／閒／和後顯示實際紀錄</span>
+              </div>
+              <div class="quant-preview-bottom"><span>記錄同步顯示</span><span>畫面示意 · 非即時讀牌</span></div>
+            </div>
+            <p class="quant-trial-lead">按下開始試用，即可進入現有分析系統；不需從首頁手動輸入路單。</p>
+      <div class="trial-visitor-entry bbb-neon-entry" aria-label="新訪客體驗入口">
+        <button type="button" id="trialStartBtn" class="bbb-neon-cta bbb-neon-cta-start" aria-label="立即試用莊家剋星預測程式｜免費試用 30 分鐘">
+          <span class="bbb-cta-symbol" aria-hidden="true">↯</span>
+          <span class="bbb-cta-copy"><strong>開始試用</strong><small>免費體驗 AI 預測程式 · 30 分鐘</small></span>
+          <span class="bbb-cta-arrow" aria-hidden="true">›</span>
+        </button>
+        <p id="trialStartMessage" role="status" aria-live="polite"></p>
+      </div>
+
+            <a class="quant-partner-entry" href="partner-entry.html">
+              <span class="quant-partner-icon" aria-hidden="true">↗</span>
+              <span><strong>合作平台／娛樂城入口</strong><small>平台資訊、跳轉與官方聯繫</small></span>
+              <span class="quant-partner-arrow" aria-hidden="true">→</span>
+            </a>
+            <p class="quant-trial-disclaimer">試用僅供功能體驗，不保證結果；外部平台請確認法定年齡與所在地規範。</p>
+          </aside>
+          <details class="bq-home-advanced" id="bqAdvancedManual">
+            <summary>進階：手動路單統計 <span>按此展開</span></summary>
+            <div class="bq-home-advanced-body">
+              <p>這是可選用的研究工具；啟動正式試用不必先填寫此處。</p>
+              <section class="quant-entry-card quant-record-card" id="quantManualCard" aria-labelledby="quantQuickHeading">
             <div class="quant-entry-head">
               <div><span class="quant-entry-eyebrow">LIVE INPUT / ROAD TRACKER</span><h4 id="quantQuickHeading">手動輸入 · B/P/T</h4></div>
               <div class="quant-round-chip"><strong id="quantTotal">0</strong><span>局</span></div>
@@ -201,35 +220,8 @@
               </div>
             </details>
           </section>
-          <aside class="quant-entry-card quant-preview-card" id="quantPreviewCard" aria-labelledby="quantPreviewHeading">
-            <div class="quant-entry-head">
-              <div><span class="quant-entry-eyebrow">BBB MODEL / TRIAL ENTRY</span><h4 id="quantPreviewHeading">莊家剋星 AI 試用</h4></div>
-              <span class="quant-trial-time">30 MIN</span>
             </div>
-            <div class="quant-trial-preview" aria-label="BBB 分析畫面示意，不是真實預測">
-              <div class="quant-preview-top"><span class="quant-preview-led"></span> BBB / ROAD TRACKER <span>LOCAL INPUT</span></div>
-              <div class="quant-preview-road bq-studio-road" id="bqStudioRoad" role="img" aria-label="尚無輸入路單">
-                <span class="bq-road-empty">輸入莊／閒／和後顯示實際紀錄</span>
-              </div>
-              <div class="quant-preview-bottom"><span>記錄同步顯示</span><span>畫面示意 · 非即時讀牌</span></div>
-            </div>
-            <p class="quant-trial-lead">按下開始試用，即可進入現有分析系統；不需從首頁手動輸入路單。</p>
-      <div class="trial-visitor-entry bbb-neon-entry" aria-label="新訪客體驗入口">
-        <button type="button" id="trialStartBtn" class="bbb-neon-cta bbb-neon-cta-start" aria-label="立即試用莊家剋星預測程式｜免費試用 30 分鐘">
-          <span class="bbb-cta-symbol" aria-hidden="true">↯</span>
-          <span class="bbb-cta-copy"><strong>開始試用</strong><small>免費體驗 AI 預測程式 · 30 分鐘</small></span>
-          <span class="bbb-cta-arrow" aria-hidden="true">›</span>
-        </button>
-        <p id="trialStartMessage" role="status" aria-live="polite"></p>
-      </div>
-
-            <a class="quant-partner-entry" href="partner-entry.html">
-              <span class="quant-partner-icon" aria-hidden="true">↗</span>
-              <span><strong>合作平台／娛樂城入口</strong><small>平台資訊、跳轉與官方聯繫</small></span>
-              <span class="quant-partner-arrow" aria-hidden="true">→</span>
-            </a>
-            <p class="quant-trial-disclaimer">試用僅供功能體驗，不保證結果；外部平台請確認法定年齡與所在地規範。</p>
-          </aside>
+          </details>
         </div>
         <div class="bq-studio-steps" aria-label="莊家剋星試用步驟">
           <div><span>01</span><strong>觀看監控</strong><small>查看操作錄影片段</small></div>
@@ -298,6 +290,20 @@
       </div>
     </section>
 
+
+    <section class="quant-section quant-topics" id="quantTopics" aria-labelledby="quantTopicsHeading">
+      <div class="quant-topics-title"><div><p class="quant-topics-eyebrow">DISCOVER BY CATEGORY / 主題分類導覽</p><h2 id="quantTopicsHeading">你想先研究哪個量化主題？</h2></div><p class="quant-subtle">每個分類都有獨立頁面，不必只在首頁往下找。</p></div>
+      <div class="quant-topic-grid">
+        <a class="quant-topic" href="quant-tools.html#quantTabProbability"><span class="quant-topic-number">01 / PROBABILITY</span><span class="quant-topic-icon" aria-hidden="true">◎</span><strong>機率與路單</strong><span class="quant-topic-desc">B/P/T 比例、理論機率與樣本偏離值，手動輸入直接計算。</span><span class="quant-topic-tail">前往機率分析 <span aria-hidden="true">→</span></span></a>
+        <a class="quant-topic" href="quant-tools.html#quantTabKelly"><span class="quant-topic-number">02 / RISK MODEL</span><span class="quant-topic-icon" aria-hidden="true">◈</span><strong>Kelly 資金控管</strong><span class="quant-topic-desc">理解負期望值、注碼比例與假設情境的曝險上限。</span><span class="quant-topic-tail">前往 Kelly 試算 <span aria-hidden="true">→</span></span></a>
+        <a class="quant-topic" href="research-hub.html"><span class="quant-topic-number">03 / RESEARCH</span><span class="quant-topic-icon" aria-hidden="true">▥</span><strong>回測與研究文章</strong><span class="quant-topic-desc">10 萬局示範、蒙地卡羅研究與標準差教學。</span><span class="quant-topic-tail">進入研究中心 <span aria-hidden="true">→</span></span></a>
+        <a class="quant-topic" href="risk-center.html"><span class="quant-topic-number">04 / SAFETY</span><span class="quant-topic-icon" aria-hidden="true">◇</span><strong>安全風控與防詐</strong><span class="quant-topic-desc">辨識可疑代操話術、資金損失預算與驗證步驟。</span><span class="quant-topic-tail">前往風控專區 <span aria-hidden="true">→</span></span></a>
+      </div>
+    </section>
+    <div class="quant-feature-strip" role="region" aria-label="精選研究專題">
+      <div><p class="quant-feature-label">FEATURED RESEARCH / 本月精選</p><strong>100,000 局蒙地卡羅研究：你以為的「倍投勝率」，真的代表可承受的風險嗎？</strong><p>公開固定種子、桌面下注限制與最大回撤；區分策略中止與真正的資金不足。</p></div>
+      <a href="research-martingale-100k.html">閱讀模擬研究 →</a>
+    </div>
 
     <section class="quant-section quant-guides" id="quantGuides" aria-labelledby="quantGuidesHeading">
       <p class="quant-guides-eyebrow">QUANTITATIVE RESEARCH &amp; GUIDES · DATA FIRST</p>
