@@ -16,13 +16,13 @@ for(const page of [home,tools]){
   assert(page.includes('href="bq-studio.css?v=20261122-studio-v1"'),"new self-hosted stylesheet");
   assert(page.includes('src="bq-studio.js?v=20261122-studio-v1"'),"new local read-only visualization");
   assert(page.includes('data-bq-studio-target="quantManualCard"')&&page.includes('data-bq-studio-target="quantPreviewCard"'),"user-selectable two-mode strip");
-  assert(page.includes("本頁不會自動讀取外部牌桌"),"limits on auto table scanning transparent");
+  assert(page.includes("本頁不會自動讀取外部牌桌")||page.includes("影片僅呈現過去錄製的監控畫面"),"public UI accurately discloses limitations on live table connections");
   assert(!page.includes('id="dgDirectTrialLink"')&&!page.includes("開啟外部免費試玩"),"removed external demo stays removed");
   assert(!page.includes("5,260,000")&&!page.includes("61%⭡")&&!page.includes("勝率 63%"),"no competitor's unverifiable data copied");
 }
-assert(home.includes("莊家剋星 BBB")&&home.includes("AI 百家樂分析程式"),"BBB original brand and product-first copy");
-assert(home.includes("bq-hero-product-visual")&&!home.includes('id="quantHeroFill"'),"hero is an honest product preview, not a fabricated profit curve");
-assert(home.includes("圖表為視覺示意，非即時牌桌或實盤績效"),"hero explicitly discloses its illustrative purpose");
+assert(home.includes("莊家剋星｜")&&home.includes("AI 監控與預測分析"),"莊家剋星 original video-first product copy");
+assert(home.includes('id="bqMonitorVideo"')&&home.includes('assets/banker-slayer-monitor-demo.mp4')&&!home.includes('id="quantHeroFill"'),"hero shows real user-supplied video, not a fabricated profit chart");
+assert(home.includes("這是監控介面的錄製片段")&&home.includes("不是即時訊號"),"video source and non-live limitations are stated");
 assert.equal((home.match(/id="trialStartBtn"/g)||[]).length,1,"real BBB trial remains single");
 assert(home.includes('href="partner-entry.html"')&&home.includes('id="trialStartMessage"'),"partner and trial status remain");
 assert(!tools.includes('id="trialStartBtn"'),"independent tools page links to real trial instead of duplicating auth buttons");

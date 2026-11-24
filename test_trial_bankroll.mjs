@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 const read=name=>fs.readFileSync(new URL("./"+name,import.meta.url),"utf8");
 const html=read("index.html"),bank=read("bankroll-trial.js"),trial=read("trial-client.js");
 const guide=read("baccarat-road-guide.html"),map=read("sitemap.xml");
-assert(/<title>[^<]*百家樂路單分析工具[^<]*BaccaratQuant/.test(html),"Search title reflects research landing keyword");
+assert(/<title>[^<]*莊家剋星[^<]*百家樂[^<]*<\/title>/.test(html),"Search title reflects official 莊家剋星 brand and baccarat content");
 assert(html.includes("百家樂大路")&&html.includes("百家樂路單"),"natural on-page keywords");
 assert(guide.includes('rel="canonical" href="https://bgsv1.xyz/baccarat-road-guide.html"'),"guide canonical");
 assert(map.includes("https://bgsv1.xyz/baccarat-road-guide.html"),"guide in sitemap");
