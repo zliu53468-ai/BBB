@@ -10,7 +10,7 @@ const shared=["index.html",...routes,...articles];
 assert.equal((home.match(/<h1\b/g)||[]).length,1,"home retains exactly one H1");
 assert(home.includes('class="quant-banner-top"'),"real editorial hero banner present");
 assert(home.includes('class="bq-monitor-hero"')&&home.includes('id="bqMonitorVideo"'),"homepage hero now shows the uploaded monitor demo video");
-assert(home.includes('圖表為視覺示意，非即時牌桌或實盤績效'),"synthetic visual labeled honestly");
+assert(home.includes('監控介面的錄製片段')&&home.includes('不是即時訊號'),"authentic recorded monitor video is clearly distinguished from a live feed");
 assert(home.includes('class="quant-feature-strip"'),"featured research banner exists");
 assert.equal((home.match(/class="quant-topic"/g)||[]).length,4,"four research topic cards");
 assert(home.indexOf('id="quantAnalyzer"')<home.indexOf('id="quantTopics"'),"authentic trial is now surfaced above noncritical topic categories");
