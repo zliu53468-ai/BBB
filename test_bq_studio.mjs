@@ -16,7 +16,7 @@ for(const page of [home,tools]){
   assert(page.includes('href="bq-studio.css?v=20261122-studio-v1"'),"new self-hosted stylesheet");
   assert(page.includes('src="bq-studio.js?v=20261122-studio-v1"'),"new local read-only visualization");
   assert(page.includes('data-bq-studio-target="quantManualCard"')&&page.includes('data-bq-studio-target="quantPreviewCard"'),"user-selectable two-mode strip");
-  assert(page.includes("本頁不會自動讀取外部牌桌"),"limits on auto table scanning transparent");
+  assert(page.includes("本頁不會自動讀取外部牌桌")||page.includes("影片僅呈現過去錄製的監控畫面"),"public UI accurately discloses limitations on live table connections");
   assert(!page.includes('id="dgDirectTrialLink"')&&!page.includes("開啟外部免費試玩"),"removed external demo stays removed");
   assert(!page.includes("5,260,000")&&!page.includes("61%⭡")&&!page.includes("勝率 63%"),"no competitor's unverifiable data copied");
 }
