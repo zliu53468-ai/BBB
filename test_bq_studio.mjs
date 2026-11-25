@@ -21,8 +21,8 @@ for(const page of [home,tools]){
   assert(!page.includes("5,260,000")&&!page.includes("61%⭡")&&!page.includes("勝率 63%"),"no competitor's unverifiable data copied");
 }
 assert(home.includes("莊家剋星｜")&&home.includes("AI 監控與預測分析"),"莊家剋星 original video-first product copy");
-assert(home.includes('id="bqMonitorVideo"')&&home.includes('assets/banker-slayer-monitor-demo.mp4')&&!home.includes('id="quantHeroFill"'),"hero shows real user-supplied video, not a fabricated profit chart");
-assert(home.includes("這是監控介面的錄製片段")&&home.includes("不是即時訊號"),"video source and non-live limitations are stated");
+assert(home.includes('id="bqYouTubeVideo"')&&home.includes("www.youtube-nocookie.com/embed/ns76j16hLTM")&&!home.includes('id="quantHeroFill"'),"hero embeds existing YouTube video rather than a fabricated profit chart or local MP4");
+assert(home.includes("前往 YouTube 觀看")&&home.includes("不代表即時讀牌"),"YouTube fallback and non-live limitations are stated");
 assert.equal((home.match(/id="trialStartBtn"/g)||[]).length,1,"real BBB trial remains single");
 assert(home.includes('href="partner-entry.html"')&&home.includes('id="trialStartMessage"'),"partner and trial status remain");
 assert(!tools.includes('id="trialStartBtn"'),"independent tools page links to real trial instead of duplicating auth buttons");
