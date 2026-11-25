@@ -1,39 +1,50 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-const read=p=>fs.readFileSync(new URL("./"+p,import.meta.url),"utf8");
-const home=read("index.html"),tool=read("quant-tools.html");
-const video=fs.readFileSync(new URL("./assets/banker-slayer-monitor-demo.mp4",import.meta.url));
-assert(video.length>=500000&&video.length<=800000,"original uploaded monitor video retained at readable quality");
-assert(video.subarray(0,64).includes(Buffer.from("ftyp")),"self-hosted source is a valid MP4 container header");
-assert.equal((home.match(/id="bqMonitorVideo"/g)||[]).length,1,"one real monitor video");
-assert(home.includes('<video id="bqMonitorVideo" autoplay muted loop playsinline controls'),"responsive, muted mobile-friendly playback with native pause");
-assert(home.includes('<source src="assets/banker-slayer-monitor-demo.mp4" type="video/mp4">'),"the exact committed asset is referenced");
-assert(home.includes("監控介面的錄製片段")&&home.includes("不是即時訊號"),"video provenance clearly disclosed");
-assert(home.includes("影片不代表本站正在即時連接遊戲商"),"no fabricated live connection");
-assert(home.includes("AI 監控與預測分析"),"hero brand-first messaging");
-assert(home.includes('id="quantAnalyzer"')&&home.includes('id="monitorVideo"'));
-assert(home.indexOf('id="monitorVideo"')<home.indexOf('id="quantAnalyzer"'),"monitor video directly precedes trial section");
-assert(home.indexOf('id="quantAnalyzer"')<home.indexOf('id="quantTopics"'),"trial before topic cluster");
-assert(home.includes('<details class="bq-home-advanced"'),"manual road retained as optional disclosure");
-assert(home.indexOf('id="bqAdvancedManual"')<home.indexOf('id="quantManualCard"'),"advanced manual card is not in initial visual journey");
-assert(home.indexOf('id="quantPreviewCard"')<home.indexOf('id="quantManualCard"'),"real trial before manual research");
-assert.equal((home.match(/id="trialStartBtn"/g)||[]).length,1,"existing protected trial button unique");
-assert.equal((home.match(/id="dgDirectTrialLink"/g)||[]).length,0,"previously removed public demo CTA remains absent");
-assert(home.includes("partner-entry.html"),"existing partner portal preserved");
-for(const id of ["quantHistory","quantAddB","quantAddP","quantAddT","quantEvB","quantSimChart","licenseForm","predictionApp","btnStart","btnB","btnP","btnT"]){
- assert(home.includes('id="'+id+'"'),"existing app, fallback and calculator controls still in DOM: "+id);
-}
-assert.equal((home.match(/class="quant-tab-panel/g)||[]).length,3,"all original research tools remain source rendered");
-assert(tool.includes('id="quantHistory"')&&tool.includes('id="bqStudioRoad"'),"standalone analysis page retains optional road tools");
-assert(tool.includes('id="bqMonitorToolsVideo"')&&tool.includes('assets/banker-slayer-monitor-demo.mp4'),"tools page also leads with recorded video");
-assert(tool.includes('class="bq-home-advanced bq-tool-advanced"'),"tools page manual input is optional");
-assert(tool.indexOf('id="bqMonitorToolsVideo"')<tool.indexOf('id="quantManualCard"'),"tools page prioritizes video before manual statistics");
-for(const p of ["index.html","quant-tools.html","research-hub.html","model-methodology.html","risk-center.html","partner-entry.html","research-martingale-100k.html","research-shoe-deviation.html","research-scam-safety-2026.html"]){
- const source=read(p);
- assert(source.includes('<span class="quant-site-brand-copy">莊家剋星'),"unified brand in "+p);
- assert(!source.includes("BaccaratQuant"),"no prior public brand in "+p);
-}
+const read=path=>fs.readFileSync(new URL("./"+path,import.meta.url),"utf8");
+const home=read("index.html"),tool=read("quant-tools.html"),hub=read("research-hub.html");
 const videoCSS=read("bq-video-first.css");
-assert(videoCSS.includes(".bq-monitor-hero")&&videoCSS.includes("@media(max-width:760px)"),"video-first responsive style exists");
-assert(videoCSS.includes(".bq-home-advanced")&&videoCSS.includes(".bq-home-trial-layout"),"optional manual and primary trial styling");
-console.log(JSON.stringify({ok:true,checks:["self_hosted_original_mp4","video_position","real_trial_preserved","manual_optional","standalone_tools","model_controls_intact","unified_brand","no_live_feed_misrepresentation","responsive_mobile"]}));
+
+// Official YouTube watch URL is already configured elsewhere in the site.
+// Playback is embedded; upload and YouTube live streaming require channel-side setup.
+const watch="https://www.youtube.com/watch?v=ns76j16hLTM";
+const embed="https://www.youtube-nocookie.com/embed/ns76j16hLTM";
+assert.equal((home.match(/id="bqYouTubeVideo"/g)||[]).length,1,"one YouTube iframe in the hero");
+assert(home.includes('src="'+embed+'?rel=0&amp;playsinline=1"'),"YouTube privacy-enhanced player embeds the established video");
+assert(home.includes("allowfullscreen")&&home.includes('loading="lazy"'),"accessible lazy YouTube embed");
+assert(home.includes(watch),'open on YouTube fallback link');
+assert(home.includes("年齡、地區或影片設定無法嵌入"),"clear explanation of embedded playback limitations");
+assert(!/<video\b/i.test(home)&&!/<video\b/i.test(tool),"no local inline MP4 player on home or tools");
+assert(!home.includes('src="assets/banker-slayer-monitor-demo.mp4"'),"local recorded clip removed from UI");
+assert(!tool.includes('bqMonitorToolsVideo')&&!tool.includes('class="bq-tools-video"'),"cramped monitoring preview removed from trial card");
+assert(tool.includes(watch)&&tool.includes("前往首頁開始 30 分鐘試用"),"tools provide YouTube link and actual trial entry");
+assert(videoCSS.includes(".bq-youtube-player")&&videoCSS.includes("aspect-ratio:16/9"),"wide responsive 16:9 video");
+assert(videoCSS.includes(".bq-youtube-player iframe")&&videoCSS.includes("@media(max-width:760px)"),"iframe fills frame on desktop and mobile");
+assert(home.includes('bq-video-first.css?v=20261125-youtube-v2')&&tool.includes('bq-video-first.css?v=20261125-youtube-v2'),"updated stylesheet served without old cache");
+assert(home.includes("非即時讀牌")||home.includes("不代表即時讀牌"),"video does not misrepresent live data");
+assert(home.includes("AI 監控與預測分析"),"hero brand copy maintained");
+assert(home.includes('id="quantAnalyzer"')&&home.includes('id="monitorVideo"'));
+assert(home.indexOf('id="monitorVideo"')<home.indexOf('id="quantAnalyzer"'),"YouTube hero precedes trial");
+assert(home.indexOf('id="quantAnalyzer"')<home.indexOf('id="quantTopics"'),"trial before topic cluster");
+assert(home.includes('<details class="bq-home-advanced"'),"manual road stays optional");
+assert(home.indexOf('id="bqAdvancedManual"')<home.indexOf('id="quantManualCard"'),"manual input is behind advanced disclosure");
+assert(home.indexOf('id="quantPreviewCard"')<home.indexOf('id="quantManualCard"'),"real trial precedes advanced manual input");
+assert.equal((home.match(/id="trialStartBtn"/g)||[]).length,1,"actual authorized trial start button unique");
+assert(!home.includes('id="dgDirectTrialLink"'),"previously removed public free-demo CTA stays absent");
+assert(home.includes("partner-entry.html"),"partner service route remains");
+for(const id of ["quantHistory","quantAddB","quantAddP","quantAddT","quantEvB","quantSimChart","licenseForm","predictionApp","btnStart","btnB","btnP","btnT"]){
+  assert(home.includes('id="'+id+'"'),"core model / research entry stays in DOM: "+id);
+}
+assert.equal((home.match(/class="quant-tab-panel/g)||[]).length,3,"three original research tabs remain in HTML");
+assert(tool.includes('id="quantHistory"')&&tool.includes('id="bqStudioRoad"'),"independent tools retain optional manual research");
+// No fake benchmark rows: keep the methodology anchor and short explanation, not blank comparisons.
+for(const html of [home,hub]){
+ assert(html.includes('id="quantBacktest"'),"transparent methodology anchor remains");
+ assert(!html.includes("待實測")&&!html.includes("最大回撤 Max Drawdown"),"unfinished performance comparison is not shown");
+ assert(html.includes('href="model-methodology.html"'),"reader can check published model limitations");
+}
+for(const path of ["index.html","quant-tools.html","research-hub.html","model-methodology.html","risk-center.html","partner-entry.html","research-martingale-100k.html","research-shoe-deviation.html","research-scam-safety-2026.html"]){
+ const s=read(path);
+ assert(s.includes('<span class="quant-site-brand-copy">莊家剋星'),"unified public brand: "+path);
+ assert(!s.includes("BaccaratQuant"),"no old brand: "+path);
+}
+console.log(JSON.stringify({ok:true,checks:["privacy_youtube_embed","responsive_16_9","no_narrow_local_video","age_restricted_fallback_link","trial_untouched","honest_evidence","no_unverified_drawdown_table","public_brand_consistent"]}));
