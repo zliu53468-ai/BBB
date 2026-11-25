@@ -128,21 +128,10 @@
       <p class="quant-guide-disclaimer">研究方法與公開資料以各篇內文為準。蒙地卡羅數據是固定條件下的隨機模擬，不是實盤績效或保證準確率。</p>
     </section>
 
-    <section class="quant-section" id="quantBacktest" aria-labelledby="quantBacktestHeading">
-      <h2 id="quantBacktestHeading">傳統倍投與動態 EV 風控策略，如何進行可重現的 10,000 局回測比較？</h2>
-      <p>上方第三頁籤是<strong>獨立隨機情境的教學模擬</strong>，不是 BBB 正式預測模型的歷史回測。下表僅列出未來公平比較所需的實驗欄位；在提供可稽核原始資料前，所有績效數字均標為「待實測」。</p>
-      <div class="quant-table-wrap">
-        <table class="quant-table">
-          <caption style="padding:11px;text-align:left;color:#94A3B8">模型策略比較：10,000 局回測實驗設計（待驗證）</caption>
-          <thead><tr><th scope="col">策略方法</th><th scope="col">風險控制方式</th><th scope="col">最大回撤 Max Drawdown</th><th scope="col">資金存活率</th><th scope="col">可驗證資料</th></tr></thead>
-          <tbody>
-            <tr><th scope="row">傳統倍投（Martingale）</th><td>損失後提高下一次風險部位</td><td>待實測</td><td>待實測</td><td>尚未提供</td></tr>
-            <tr><th scope="row">動態 EV 風險控管</th><td>優先檢查 EV、信心與資金上限；無正優勢時不出手</td><td>待實測</td><td>待實測</td><td>尚未提供</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <!-- TODO: 待收集對照測試腳本 SHA、原始 CSV、最大回撤及資金存活率等經實測資料。 -->
-      <div class="quant-panel"><strong>獨立回測資料是否已公布？</strong><p class="quant-subtle">尚未。請勿將第三頁籤的隨機曲線視為已驗證策略績效；真正的策略回測需要固定規則、隨機種子、下注限制及可複現樣本。</p><!-- TODO: 在此填入真實回測圖表與資料產製方法 --></div>
+    <section class="quant-section quant-evidence-note" id="quantBacktest" aria-labelledby="quantBacktestHeading">
+      <h2 id="quantBacktestHeading">研究資料透明度：如何核對模擬與模型結果？</h2>
+      <p>隨機波動曲線是公開的數學示例，不能當成實際 BBB 模型表現。有效的策略研究需要可追溯的樣本、明確的規則、測試版本，以及可以獨立重現的結果。</p>
+      <p>本站不會在缺少驗證資料時展示空白績效表或臆測的最大回撤數字。<a href="model-methodology.html">查看研究方法與資料來源</a>。</p>
     </section>
 
 
