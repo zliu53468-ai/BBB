@@ -84,3 +84,25 @@ body.bq-portal-page{
   .bq-portal-card,.bq-portal-btn{transition:none!important}
   .bq-portal-card:hover,.bq-portal-btn:hover{transform:none!important}
 }
+
+
+/* Search-intent help articles: readable content beneath the main service CTAs.
+ * All headings and paragraphs are server-rendered in HTML, not injected by JS. */
+.bq-portal-help{padding:31px 0 12px;scroll-margin-top:150px}
+.bq-portal-help-heading{max-width:850px;margin-bottom:19px}
+.bq-portal-help-heading h2{font-size:clamp(21px,2.6vw,29px);line-height:1.45;font-weight:820;color:#F1F5F9;letter-spacing:-.025em;margin:8px 0 9px}
+.bq-portal-help-heading>p:last-child{font-size:13px;color:#A8BDD2;line-height:1.7;margin:0}
+.bq-portal-help-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.bq-portal-help-item{min-width:0;padding:18px 19px 17px;border:1px solid rgba(100,116,139,.32);border-radius:13px;background:linear-gradient(140deg,rgba(24,39,62,.72),rgba(12,22,39,.82))}
+.bq-portal-help-item h3{font-size:clamp(15px,1.7vw,18px);color:#DBEAFE;line-height:1.55;font-weight:800;margin:0 0 9px}
+.bq-portal-help-item p{font-size:13px;line-height:1.8;color:#B1C4D8;margin:0}
+.bq-portal-help-item a{color:#93C5FD;font-weight:760;text-decoration:underline;text-decoration-color:rgba(147,197,253,.35);text-underline-offset:3px}
+.bq-portal-help-item a:hover{color:#67E8F9;text-decoration-color:currentColor}
+.bq-portal-help-wide{grid-column:1/-1}
+@media(max-width:760px){
+  .bq-portal-help{padding-top:26px;scroll-margin-top:180px}
+  .bq-portal-help-grid{grid-template-columns:1fr;gap:10px}
+  .bq-portal-help-wide{grid-column:auto}
+  .bq-portal-help-item{padding:16px}
+  .bq-portal-help-item h3{font-size:16px}
+}
