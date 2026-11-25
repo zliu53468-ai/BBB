@@ -57,7 +57,7 @@ assert(home.includes("quant-research.js?v=20261122"));
 assert(home.indexOf("quant-research.css")>home.indexOf("mobile-one-screen.css"),"quant CSS after legacy CSS");
 assert(css.includes("#0F172A")&&css.includes("#3B82F6")&&css.includes("#10B981"),"design palette");
 assert(!js.includes("fetch("),"public calculator performs no remote requests");
-assert(home.includes("待實測")&&!home.includes("10,000 局勝率"),"no fabricated backtest claims");
+assert(!home.includes("待實測")&&!home.includes("最大回撤 Max Drawdown")&&!home.includes("10,000 局勝率"),"no unfinished public performance claims or tables");
 assert(home.includes("<!-- TODO: 在此填入真實回測圖表"));
 
 assert.equal((home.match(/class="quant-tab-panel/g)||[]).length,3,"all 3 HTML panels present at load");
