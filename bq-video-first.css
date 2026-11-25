@@ -173,3 +173,15 @@ body.bbb-black-gold #licenseGate #quantAnalyzer .bq-home-trial-layout #trialStar
  .quant-lab #quantAnalyzer .bq-tools-video{padding:11px}
  .quant-lab #quantAnalyzer .bq-tools-video video{max-height:310px}
 }
+
+
+/* YouTube 16:9 presentation replacing the narrow self-hosted portrait MP4. */
+.quant-lab .bq-youtube-hero{width:100%;max-width:640px;margin-left:auto;background:#070F20}
+.quant-lab .bq-youtube-player{display:block;position:relative;width:100%;aspect-ratio:16/9;min-height:0;overflow:hidden;background:#020617}
+.quant-lab .bq-youtube-player iframe{display:block;position:absolute;inset:0;width:100%;height:100%;border:0;background:#020617}
+.quant-lab .bq-youtube-hero .bq-monitor-caption{font-size:11px;line-height:1.6}
+.quant-lab .bq-youtube-hero .bq-monitor-caption a{color:#93C5FD;font-weight:750;text-decoration:underline}
+.quant-lab .bq-tools-youtube-link{margin:12px 0 16px;padding:11px 13px;border:1px solid rgba(96,165,250,.35);background:rgba(30,58,95,.17);border-radius:9px;color:#CBD5E1;font-size:12px;line-height:1.7}
+.quant-lab .bq-tools-youtube-link a{color:#93C5FD!important;font-weight:800;text-decoration:none!important}
+.quant-lab .bq-tools-youtube-link a:hover{text-decoration:underline!important}
+@media(max-width:760px){.quant-lab .bq-youtube-hero{max-width:none}.quant-lab .bq-youtube-hero .bq-monitor-caption{padding:11px 12px}}
